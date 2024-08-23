@@ -1,4 +1,3 @@
-# Adapted from https://github.com/NixOS/nixpkgs/blob/nixos-unstable/pkgs/by-name/ha/handheld-daemon/package.nix
 {
   fetchFromGitHub,
   appimageTools,
