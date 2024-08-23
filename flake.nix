@@ -17,8 +17,6 @@
       system: import ./pkgs nixpkgs.legacyPackages.${system});
     overlays = import ./overlays {inherit inputs;};
     defaultPackage = flake-utils.lib.eachDefaultSystem (
-      system: {
-        system = system;
-      });
+      system: { system = packages.${system}; });
   };
 }
