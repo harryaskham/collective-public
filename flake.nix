@@ -10,12 +10,17 @@
     nixpkgs,
     flake-utils,
     ...
-  } @ inputs: let
-    inherit (self) outputs;
-  in rec {
-    packages = flake-utils.lib.eachDefaultSystem (
-      system: import ./pkgs { pkgs = nixpkgs.legacyPackages.${system}; });
-    overlays = import ./overlays {inherit inputs;};
-    nixosModules = import ./modules/nixos;
-  };
+  } @ inputs:
+    let
+      inherit (self) outputs;
+    in
+      flake-utils.lib.eachDefaultSystem (system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in rec {
+          packages = import ./pkgs { inherit pkgs; };
+          overlays = import ./overlays {inherit inputs;};
+          nixosModules = import ./modules/nixos;
+          devShells = { default = pkgs.mkShell {}; };
+        });
 }
