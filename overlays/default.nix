@@ -11,11 +11,11 @@ let
   };
 in final: prev:
   let myPkgs = import ../pkgs final.pkgs;
-   in rec {
+  in {
     python3 = prev.python3.override {
       packageOverrides = self: super:
         myPkgs.python3PackageOverrides
         // (image-go-nord-overlay self super);
     };
     python3Packages = final.python3.pkgs;
-  } // myPkgs.replacement // myPkgs.new;
+  } // myPkgs.replacements // myPkgs.new
