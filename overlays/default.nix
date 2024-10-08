@@ -10,15 +10,12 @@ let
     });
   };
 in final: prev:
-  (import ../pkgs final.pkgs)
-  // rec {
+  let myPkgs = import ../pkgs final.pkgs;
+   in rec {
     python3 = prev.python3.override {
       packageOverrides = self: super:
-        super
-        // final.toOverlay.pythonPackages
+        myPkgs.python3PackageOverrides
         // (image-go-nord-overlay self super);
     };
     python3Packages = final.python3.pkgs;
-
-    handheld-daemon = final.toOverlay.handheld-daemon;
-  }
+  } // myPkgs.replacement // myPkgs.new;
