@@ -18,7 +18,9 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
         in rec {
-          packages = import ./pkgs { inherit pkgs; };
+          packages = import ./pkgs { inherit pkgs; } // {
+            default = pkgs.vim;  # arbitrary default package
+          };
           overlays = import ./overlays {inherit inputs;};
           nixosModules = import ./modules/nixos;
           devShells = { default = pkgs.mkShell {}; };
