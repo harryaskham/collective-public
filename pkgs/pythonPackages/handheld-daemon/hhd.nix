@@ -5,7 +5,8 @@
   lib,
   python3,
   toybox,
-  adjustor
+  adjustor,
+  handheld-daemon-ui
 }:
 python3.pkgs.buildPythonPackage rec {
   pname = "handheld-daemon";
@@ -21,7 +22,7 @@ python3.pkgs.buildPythonPackage rec {
 
   propagatedBuildInputs = with python3.pkgs; [
     pkgs.lsof
-    pkgs.handheld-daemon-ui
+    handheld-daemon-ui
     adjustor
     evdev
     hidapi

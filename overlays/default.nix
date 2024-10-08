@@ -10,17 +10,14 @@ let
     });
   };
 in
-  let myPkgs = final: import ../pkgs { pkgs = final; };
-  in
-  {
-    "python" = final: prev: {
-       python3 = prev.python3.override {
-         packageOverrides = self: super:
-           (myPkgs final).python3PackageOverrides
-           // (image-go-nord-overlay self super);
-       };
-       python3Packages = final.python3.pkgs;
-     };
-     "replacements" = final: _: (myPkgs final).replacements;
-     "new" = final: _: (myPkgs final).new;
-   }
+{
+  "python" = final: prev: rec {
+    python3 = prev.python3.override {
+      packageOverrides = self: super:
+        (import ../pkgs/python-packages.nix { pkgs = prev; })
+        // (image-go-nord-overlay self super);
+    python3Packages = prev.python3Packages // final.python3.pkgs;
+    };
+  };
+  "packages" = final: prev: prev // (import ../pkgs { pkgs = prev; });
+}
