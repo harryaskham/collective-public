@@ -14,7 +14,7 @@ in
   "python" = final: prev: rec {
     python3 = prev.python3.override {
       packageOverrides = (self: super:
-        (import ../pkgs/python-packages.nix { pkgs = prev; })
+        (import ../pkgs/pythonPackages.nix { pkgs = prev; handheld-daemon-ui = final.handheld-daemon-ui; })
         // (image-go-nord-overlay self super)
       );
     };
