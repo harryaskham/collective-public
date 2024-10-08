@@ -17,10 +17,11 @@
       flake-utils.lib.eachDefaultSystem (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-        in rec {
+        in {
           packages = import ./pkgs { inherit pkgs; };
-          overlays = import ./overlays {inherit inputs;};
-          nixosModules = import ./modules/nixos;
           devShells = { default = pkgs.mkShell {}; };
-        });
+        }) // rec {
+          overlays = import ./overlays { inherit inputs; };
+          nixosModules = import ./modules/nixos;
+        };
 }
