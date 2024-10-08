@@ -13,11 +13,12 @@ in
 {
   "python" = final: prev: rec {
     python3 = prev.python3.override {
-      packageOverrides = self: super:
+      packageOverrides = (self: super:
         (import ../pkgs/python-packages.nix { pkgs = prev; })
-        // (image-go-nord-overlay self super);
-    python3Packages = prev.python3Packages // final.python3.pkgs;
+        // (image-go-nord-overlay self super)
+      );
     };
+    python3Packages = prev.python3Packages // final.python3.pkgs;
   };
   "packages" = final: prev: prev // (import ../pkgs { pkgs = prev; });
 }
