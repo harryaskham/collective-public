@@ -38,7 +38,7 @@ in {
       };
       environment.systemPackages = with pkgs; [
         handheld-daemon
-        python3Packages.handheld-daemon.hhd
+        python3Packages.handheld-daemon-hhd
       ];
     }
 
@@ -51,7 +51,7 @@ in {
     (mkIf cfg.adjustor.enable ({
       environment.systemPackages = with pkgs; [
         handheld-daemon-adjustor
-        python3Packages.handheld-daemon.adjustor
+        python3Packages.handheld-daemon-adjustor
       ];
     }))
 
