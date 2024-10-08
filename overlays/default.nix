@@ -10,7 +10,7 @@ let
     });
   };
 in final: prev:
-  let myPkgs = import ../pkgs final.pkgs;
+  let myPkgs = import ../pkgs { pkgs = final; };
   in {
     python3 = prev.python3.override {
       packageOverrides = self: super:
