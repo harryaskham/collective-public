@@ -20,5 +20,5 @@ in
     };
     python3Packages = prev.python3Packages // final.python3.pkgs;
   };
-  "public-packages" = final: prev: import ../pkgs { pkgs = prev; };
+  "packages" = final: prev: import ../pkgs { pkgs = prev; };
 }
