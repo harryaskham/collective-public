@@ -11,10 +11,18 @@ in {
       default = false;
       description = "Install the HHD Adjustor for TDP control.";
     };
+    acpiCall = {
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Enable acpi_call at boot, required for Adjustor TDP control.";
+      };
+    };
   };
 
-  config = mkIf (cfg.enable && cfg.adjustor.enable) (
-    let adjustorPkgs = with pkgs; [
+  config = mkIf (cfg.enable && cfg.adjustor.enable) (mkMerge [
+
+    (let adjustorPkgs = with pkgs; [
       # Makes `adjustor` available in the environment for forked execution
       handheld-daemon-adjustor
       # Makes hhd.adjustor Python library available to HHD for direct imported use
@@ -25,6 +33,13 @@ in {
       services.handheld-daemon.package = pkgs.handheld-daemon.overrideAttrs (attrs: {
         propagatedBuildInputs = attrs.propagatedBuildInputs ++ adjustorPkgs;
       });
-    });
+    })
+
+    (mkIf cfg.adjustor.acpiCall.enable {
+      boot.extraModulePackages = [ config.boot.kernelPackages.acpi_call ];
+      boot.kernelModules = [ "acpi_call" ];
+    })
+
+  ]);
 
 }
