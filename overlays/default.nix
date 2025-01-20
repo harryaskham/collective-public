@@ -11,16 +11,16 @@ let
   };
   handheld-daemon-overlay = final: prev: {
     handheld-daemon = prev.handheld-daemon.overrideAttrs (attrs: {
-        buildInputs = (attrs.buildInputs or []) ++ (with pkgs; [
-          (pkgs.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ]))
-        ]);
-        dependencies = (attrs.dependencies or []) ++ (with pkgs; [
-          handheld-daemon-adjustor
-          (pkgs.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ]))
-        ]);
-        propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ (with pkgs; [
-          python3Packages.handheld-daemon-adjustor
-        ]);
+        buildInputs = (attrs.buildInputs or []) ++ [
+          (final.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ]))
+        ];
+        dependencies = (attrs.dependencies or []) ++ [
+          final.handheld-daemon-adjustor
+          (final.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ]))
+        ];
+        propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ [
+          final.python3Packages.handheld-daemon-adjustor
+        ];
       });
   };
 in
