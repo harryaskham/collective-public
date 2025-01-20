@@ -23,8 +23,8 @@ in {
   config = mkIf (cfg.enable && cfg.adjustor.enable) (mkMerge [
 
     (let adjustorPkgs = with pkgs; [
-      handheld-daemon-adjustor
-      # python3Packages.handheld-daemon-adjustor
+      # handheld-daemon-adjustor
+      python3Packages.handheld-daemon-adjustor
     ];
     in {
       # environment.systemPackages = adjustorPkgs;
