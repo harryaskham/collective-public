@@ -9,6 +9,20 @@ let
         in super.image-go-nord.propagatedBuildInputs ++ missingBuildInputs;
     });
   };
+  handheld-daemon-overlay = final: prev: {
+    handheld-daemon = prev.handheld-daemon.overrideAttrs (attrs: {
+        buildInputs = (attrs.buildInputs or []) ++ (with pkgs; [
+          (pkgs.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ]))
+        ]);
+        dependencies = (attrs.dependencies or []) ++ (with pkgs; [
+          handheld-daemon-adjustor
+          (pkgs.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ]))
+        ]);
+        propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ (with pkgs; [
+          python3Packages.handheld-daemon-adjustor
+        ]);
+      });
+  };
 in
 {
   "python" = final: prev: rec {
@@ -21,4 +35,5 @@ in
     python3Packages = prev.python3Packages // final.python3.pkgs;
   };
   "packages" = final: prev: import ../pkgs { pkgs = prev; };
+  "handheld-daemon" = handheld-daemon-overlay;
 }
