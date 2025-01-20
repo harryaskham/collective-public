@@ -24,14 +24,17 @@ in {
 
     {
       # environment.systemPackages = with pkgs.python3Packages; [ handheld-daemon-adjustor ];
-      services.handheld-daemon.package = pkgs.handheld-daemon.overrideAttrs (attrs: {
-        nativeBuildInputs = attrs.nativeBuildInputs ++ [
-            (pkgs.python3.override {
-              packageOverrides = pyfinal: pyprev: {
-                inherit (pkgs.python3Packages) handheld-daemon-adjustor;
+      services.handheld-daemon.package = pkgs.handheld-daemon.overrideAttrs (attrs:
+        let python =
+              pkgs.python3.override {
+                packageOverrides = pyfinal: pyprev: {
+                  inherit (pkgs.python3Packages) handheld-daemon-adjustor;
+                };
               };
-            }).withPackages(ps: [ ps.handheld-daemon-adjustor ]) ];
-      });
+        in {
+          buildInputs = attrs.buildInputs ++ [
+            (python.withPackages (ps: [ ps.handheld-daemon-adjustor ])) ];
+        });
     }
 
     (mkIf cfg.adjustor.acpiCall.enable {
