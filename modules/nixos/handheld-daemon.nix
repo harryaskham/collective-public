@@ -29,9 +29,7 @@ in {
       ];
       services.handheld-daemon.package = pkgs.handheld-daemon.overrideAttrs (attrs: {
         nativeBuildInputs = [
-          (pkgs.python3.buildEnv.override {
-            extraLibs = [ pkgs.python3Packages.handheld-daemon-adjustor ];
-          })
+          (pkgs.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ]))
         ];
         dependencies = (attrs.dependencies or []) ++ (with pkgs; [
           python3Packages.handheld-daemon-adjustor
