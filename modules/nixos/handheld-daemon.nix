@@ -35,7 +35,7 @@ in {
         in {
           buildInputs = (attrs.buildInputs or []) ++ [ pythonWithAdjustor ];
           nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ pythonWithAdjustor ];
-          propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ [ pythonWithAdjustor ];
+          propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ [ pkgs.python3Packages.handheld-daemon-adjustor ];
         });
     }
 
