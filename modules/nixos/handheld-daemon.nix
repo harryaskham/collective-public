@@ -9,13 +9,13 @@ in {
     enable = mkOption {
       type = types.bool;
       default = false;
-      description = "Install the HHD Adjustor for TDP control.";
+      description = "Enable the HHD Adjustor for TDP control.";
     };
     acpiCall = {
       enable = mkOption {
         type = types.bool;
         default = true;
-        description = "Enable acpi_call at boot, required for Adjustor TDP control.";
+        description = "Enable acpi_call at boot, required for Adjustor TDP control on most devices.";
       };
     };
   };
@@ -26,11 +26,9 @@ in {
       hhdPython = pkgs.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ] );
       handheld-daemon-with-adjustor = pkgs.handheld-daemon.overrideAttrs (attrs: {
         nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ hhdPython.pkgs.wrapPython ];
-        propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ (with pkgs; [
-        ]) ++ (with pkgs.python3Packages; [
+        propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ (with pkgs.python3Packages; [
           handheld-daemon-adjustor
         ]);
-        # Ensure forked interpreters can also find `adjustor`
         postFixup = ''
           wrapProgram "$out/bin/hhd" \
             --prefix PYTHONPATH : "$PYTHONPATH" \
