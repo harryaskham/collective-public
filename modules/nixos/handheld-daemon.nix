@@ -26,7 +26,7 @@ in {
       # Makes `adjustor` available in the environment for forked execution
       handheld-daemon-adjustor
       # Makes hhd.adjustor Python library available to HHD for direct imported use
-      python3Packages.handheld-daemon-adjustor
+      # python3Packages.handheld-daemon-adjustor
     ];
     in {
       environment.systemPackages = adjustorPkgs;
