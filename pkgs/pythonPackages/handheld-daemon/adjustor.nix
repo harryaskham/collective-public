@@ -25,6 +25,7 @@ python3.pkgs.buildPythonPackage rec {
     rich
     setuptools
   ]) ++ (with pkgs; [
+    wrapGAppsHook3
     glib
     gobject-introspection
   ]);
