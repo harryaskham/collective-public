@@ -23,13 +23,13 @@ in {
   config = mkIf (cfg.enable && cfg.adjustor.enable) (mkMerge [
 
     (let adjustorPkgs = with pkgs; [
-      # handheld-daemon-adjustor
-      python3Packages.handheld-daemon-adjustor
+      handheld-daemon-adjustor
+      # python3Packages.handheld-daemon-adjustor
     ];
     in {
       # environment.systemPackages = adjustorPkgs;
       services.handheld-daemon.package = pkgs.handheld-daemon.overrideAttrs (attrs: {
-        dependencies = (attrs.dependencies or []) ++ adjustorPkgs;
+        propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ adjustorPkgs;
       });
     })
 
