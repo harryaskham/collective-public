@@ -32,7 +32,11 @@ in {
         in pkgs.handheld-daemon.overrideAttrs (attrs: {
           nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ hhdPython.pkgs.wrapPython ];
           propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ (with pkgs; [
-            python3Packages.handheld-daemon-adjustor
+            wrapGAppsHook3
+            glib
+            gobject-introspection
+          ]) ++ (with pkgs.python3Packages; [
+            handheld-daemon-adjustor
           ]);
           postFixup = ''
             wrapProgram "$out/bin/hhd" \
