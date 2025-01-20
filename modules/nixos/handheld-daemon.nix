@@ -24,7 +24,7 @@ in {
 
     (let adjustorPkgs = with pkgs; [
       handheld-daemon-adjustor
-      python3Packages.handheld-daemon-adjustor
+      # python3Packages.handheld-daemon-adjustor
     ];
     in {
       # environment.systemPackages = adjustorPkgs;
