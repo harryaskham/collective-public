@@ -31,9 +31,10 @@ in {
                   inherit (pkgs.python3Packages) handheld-daemon-adjustor;
                 };
               };
+            pythonWithAdjustor = python.withPackages (ps: [ ps.handheld-daemon-adjustor ]);
         in {
-          buildInputs = attrs.buildInputs ++ [
-            (python.withPackages (ps: [ ps.handheld-daemon-adjustor ])) ];
+          buildInputs = (attrs.buildInputs or []) ++ [ pythonWithAdjustor ];
+          nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ pythonWithAdjustor ];
         });
     }
 
