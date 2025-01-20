@@ -20,7 +20,6 @@ python3.pkgs.buildPythonPackage rec {
     pyroute2
     fuse
     pygobject3
-    glib
     dbus-python
     pyyaml
     rich
