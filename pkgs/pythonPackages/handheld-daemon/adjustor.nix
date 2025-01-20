@@ -5,7 +5,7 @@
 }:
 python3.pkgs.buildPythonPackage rec {
   pname = "hhd-adjustor";
-  version = "3.4.4";
+  version = "3.6.4";
   pyproject = true;
 
   src = fetchFromGitHub {
