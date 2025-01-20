@@ -25,16 +25,12 @@ in {
     {
       # environment.systemPackages = with pkgs.python3Packages; [ handheld-daemon-adjustor ];
       services.handheld-daemon.package = pkgs.handheld-daemon.overrideAttrs (attrs: {
-        nativeBuildInputs = attrs.nativeBuildInputs ++ [pkgs.makeWrapper];
-        postFixUp = ''
-          wrapProgram $out/bin/hhd \
-            --prefix PATH: "${lib.makeBinPath [
-              (pkgs.python3.override {
-                packageOverrides = pyfinal: pyprev: {
-                  inherit (pkgs.python3Packages) handheld-daemon-adjustor;
-                };
-              }).withPackages(ps: [ ps.handheld-daemon-adjustor ]) ]}"
-        '';
+        nativeBuildInputs = attrs.nativeBuildInputs ++ [
+            (pkgs.python3.override {
+              packageOverrides = pyfinal: pyprev: {
+                inherit (pkgs.python3Packages) handheld-daemon-adjustor;
+              };
+            }).withPackages(ps: [ ps.handheld-daemon-adjustor ]) ];
       });
     }
 
