@@ -1,0 +1,5 @@
+* NixOS configs
+
+non-private subset of NixOS configs/modules/utils
+
+- Extra ~services.handheld-daemon~ options for enabling TDP controls
