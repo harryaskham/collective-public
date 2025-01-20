@@ -12,7 +12,7 @@ python3.pkgs.buildPythonPackage rec {
     owner = "hhd-dev";
     repo = "adjustor";
     rev = "refs/tags/v${version}";
-    hash = "sha256-/fdarz2rfDfwgjE4VtbtBTSouc6Ttx/Dlw7QxttMxZ0=";
+    hash = "sha256-vtYSOfUmOvULLBULtabL15D82QxC2I00RbvCDrCoI3w=";
   };
 
   propagatedBuildInputs = with python3.pkgs; [
