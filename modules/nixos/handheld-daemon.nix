@@ -38,6 +38,15 @@ in {
           ]) ++ (with pkgs.python3Packages; [
             handheld-daemon-adjustor
           ]);
+          # Avoid double wrapping
+          # We need to wrap once for the PYTHONPATH since hhd forks the interpreter
+          # and again for the use of glib
+          dontWrapGApps = true;
+          # Manually apply the glib wrapping
+          preFixup = ''
+            makeWrapperArgs+=("''${gappsWrapperArgs[@]}")
+          '';
+          # Apply the PYTHONPATH wrapping
           postFixup = ''
             wrapProgram "$out/bin/hhd" \
               --prefix PYTHONPATH : "$PYTHONPATH" \
