@@ -23,22 +23,23 @@ in {
   config = mkIf (cfg.enable && cfg.adjustor.enable) (mkMerge [
 
     {
-      environment.systemPackages = with pkgs; [
-        handheld-daemon-adjustor
-        python3Packages.handheld-daemon-adjustor
-      ];
-      services.handheld-daemon.package = (pkgs.handheld-daemon.override (prev: {
-        python3Packages = pkgs.python3Packages;
-      })).overrideAttrs (attrs: {
-        dependencies = (attrs.dependencies or []) ++ (with pkgs; [
-          handheld-daemon-adjustor
-          python3Packages.handheld-daemon-adjustor
-        ]);
-        propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ (with pkgs; [
-          handheld-daemon-adjustor
-          python3Packages.handheld-daemon-adjustor
-        ]);
-      });
+      # environment.systemPackages = with pkgs; [
+      #   handheld-daemon-adjustor
+      #   python3Packages.handheld-daemon-adjustor
+      # ];
+      services.handheld-daemon.package =
+        let hhdPython = pkgs.python3.withPackages { extraLibs = [ pkgs.pythonPackages.handheld-daemon-adjustor ]; };
+        in (pkgs.handheld-daemon.overrideAttrs (attrs: {
+          nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ hddPython.pkgs.wrapPython ];
+          propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ (with pkgs; [
+            python3Packages.handheld-daemon-adjustor
+          ]);
+          postFixup = ''
+            wrapProgram "$out/bin/hhd" \
+              --prefix PYTHONPATH : "$PYTHONPATH" \
+              --prefix PATH : "${hhdPython}/bin"
+          '';
+        });
     }
 
     (mkIf cfg.adjustor.acpiCall.enable {
