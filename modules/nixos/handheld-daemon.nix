@@ -39,11 +39,8 @@ in {
       });
     in rec {
       services.handheld-daemon.package = handheld-daemon-with-adjustor;
-      services.dbus.packages = [
-        hhdPython
-        services.handheld-daemon.package
-        pkgs.python3Packages.handheld-daemon-adjustor
-      ];
+      # Adjustor assumes it can talk PPD protocol over dbus
+      services.power-profiles-daemon.enable = true;
     })
 
     (mkIf cfg.adjustor.acpiCall.enable {
