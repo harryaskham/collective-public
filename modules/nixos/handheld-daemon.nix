@@ -28,9 +28,9 @@ in {
     ];
     in {
       environment.systemPackages = adjustorPkgs;
-      # services.handheld-daemon.package = pkgs.handheld-daemon.overrideAttrs (attrs: {
-      #   propagatedBuildInputs = attrs.propagatedBuildInputs ++ adjustorPkgs;
-      # });
+      services.handheld-daemon.package = pkgs.handheld-daemon.overrideAttrs (attrs: {
+        propagatedBuildInputs = attrs.propagatedBuildInputs ++ [ pkgs.handheld-daemon-adjustor ];
+      });
     })
 
     (mkIf cfg.adjustor.acpiCall.enable {
