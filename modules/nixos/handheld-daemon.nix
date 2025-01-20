@@ -23,30 +23,15 @@ in {
   config = mkIf (cfg.enable && cfg.adjustor.enable) (mkMerge [
 
     {
-      # environment.systemPackages = with pkgs; [
-      #   handheld-daemon-adjustor
-      #   python3Packages.handheld-daemon-adjustor
-      # ];
       services.handheld-daemon.package =
         let hhdPython = pkgs.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ] );
         in pkgs.handheld-daemon.overrideAttrs (attrs: {
           nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ hhdPython.pkgs.wrapPython ];
           propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ (with pkgs; [
-            wrapGAppsHook3
-            glib
-            gobject-introspection
           ]) ++ (with pkgs.python3Packages; [
             handheld-daemon-adjustor
           ]);
-          # Avoid double wrapping
-          # We need to wrap once for the PYTHONPATH since hhd forks the interpreter
-          # and again for the use of glib
-          dontWrapGApps = true;
-          # Manually apply the glib wrapping
-          preFixup = ''
-            makeWrapperArgs+=("''${gappsWrapperArgs[@]}")
-          '';
-          # Apply the PYTHONPATH wrapping
+          # Ensure forked interpreters can also find `adjustor`
           postFixup = ''
             wrapProgram "$out/bin/hhd" \
               --prefix PYTHONPATH : "$PYTHONPATH" \
