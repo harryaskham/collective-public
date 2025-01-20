@@ -37,7 +37,7 @@ in {
             --prefix PATH : "${hhdPython}/bin"
         '';
       });
-    in {
+    in rec {
       services.handheld-daemon.package = handheld-daemon-with-adjustor;
       services.dbus.packages = [ services.handheld-daemon.package ];
     })
