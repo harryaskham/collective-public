@@ -2,6 +2,7 @@
   fetchFromGitHub,
   lib,
   python3,
+  pkgs
 }:
 python3.pkgs.buildPythonPackage rec {
   pname = "hhd-adjustor";
@@ -15,15 +16,19 @@ python3.pkgs.buildPythonPackage rec {
     hash = "sha256-vtYSOfUmOvULLBULtabL15D82QxC2I00RbvCDrCoI3w=";
   };
 
-  propagatedBuildInputs = with python3.pkgs; [
+  propagatedBuildInputs = (with python3.pkgs; [
     pyroute2
     fuse
     pygobject3
+    glib
     dbus-python
     pyyaml
     rich
     setuptools
-  ];
+  ]) ++ (with pkgs; [
+    glib
+    gobject-introspection
+  ]);
 
   doCheck = false;
 
