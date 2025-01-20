@@ -22,7 +22,7 @@ in {
 
   config = mkIf (cfg.enable && cfg.adjustor.enable) (mkMerge [
 
-    {
+    (rec {
       services.handheld-daemon.package =
         let hhdPython = pkgs.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ] );
         in pkgs.handheld-daemon.overrideAttrs (attrs: {
@@ -38,7 +38,9 @@ in {
               --prefix PATH : "${hhdPython}/bin"
           '';
         });
-    }
+
+        services.dbus.packages = services.handheld-daemon.package;
+    })
 
     (mkIf cfg.adjustor.acpiCall.enable {
       boot.extraModulePackages = [ config.boot.kernelPackages.acpi_call ];
