@@ -22,24 +22,24 @@ in {
 
   config = mkIf (cfg.enable && cfg.adjustor.enable) (mkMerge [
 
-    (rec {
-      services.handheld-daemon.package =
-        let hhdPython = pkgs.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ] );
-        in pkgs.handheld-daemon.overrideAttrs (attrs: {
-          nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ hhdPython.pkgs.wrapPython ];
-          propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ (with pkgs; [
-          ]) ++ (with pkgs.python3Packages; [
-            handheld-daemon-adjustor
-          ]);
-          # Ensure forked interpreters can also find `adjustor`
-          postFixup = ''
-            wrapProgram "$out/bin/hhd" \
-              --prefix PYTHONPATH : "$PYTHONPATH" \
-              --prefix PATH : "${hhdPython}/bin"
-          '';
-        });
-
-        services.dbus.packages = services.handheld-daemon.package;
+    (let
+      hhdPython = pkgs.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ] );
+      handheld-daemon-with-adjustor = pkgs.handheld-daemon.overrideAttrs (attrs: {
+        nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ hhdPython.pkgs.wrapPython ];
+        propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ (with pkgs; [
+        ]) ++ (with pkgs.python3Packages; [
+          handheld-daemon-adjustor
+        ]);
+        # Ensure forked interpreters can also find `adjustor`
+        postFixup = ''
+          wrapProgram "$out/bin/hhd" \
+            --prefix PYTHONPATH : "$PYTHONPATH" \
+            --prefix PATH : "${hhdPython}/bin"
+        '';
+      });
+    in {
+      services.handheld-daemon.package = handheld-daemon-with-adjustor;
+      services.dbus.packages = [ services.handheld-daemon.package ];
     })
 
     (mkIf cfg.adjustor.acpiCall.enable {
