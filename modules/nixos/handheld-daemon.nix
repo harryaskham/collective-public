@@ -27,10 +27,10 @@ in {
       python3Packages.handheld-daemon-adjustor
     ];
     in {
-      # environment.systemPackages = adjustorPkgs;
-      services.handheld-daemon.package = pkgs.handheld-daemon.overrideAttrs (attrs: {
-        propagatedBuildInputs = attrs.propagatedBuildInputs ++ adjustorPkgs;
-      });
+      environment.systemPackages = adjustorPkgs;
+      # services.handheld-daemon.package = pkgs.handheld-daemon.overrideAttrs (attrs: {
+      #   propagatedBuildInputs = attrs.propagatedBuildInputs ++ adjustorPkgs;
+      # });
     })
 
     (mkIf cfg.adjustor.acpiCall.enable {
