@@ -29,7 +29,7 @@ in {
     in {
       # environment.systemPackages = adjustorPkgs;
       services.handheld-daemon.package = pkgs.handheld-daemon.overrideAttrs (attrs: {
-        dependencies = attrs.dependencies ++ adjustorPkgs;
+        dependencies = ((attrs ? dependencies) or []) ++ adjustorPkgs;
       });
     })
 
