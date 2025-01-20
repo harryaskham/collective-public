@@ -11,21 +11,13 @@ let
   };
   handheld-daemon-overlay = final: prev: {
     handheld-daemon = prev.handheld-daemon.overrideAttrs (attrs: {
-        buildInputs = (attrs.buildInputs or []) ++ [
-          (final.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ]))
-        ];
-        dependencies = (attrs.dependencies or []) ++ [
-          final.handheld-daemon-adjustor
-          (final.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ]))
-        ];
-        propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ [
-          final.python3Packages.handheld-daemon-adjustor
-        ];
-      });
+      dependencies = (attrs.dependencies or []) ++ [
+        final.pythonPackages.handheld-daemon-adjustor
+      ];
+    });
   };
-in
-{
-  "python" = final: prev: rec {
+in rec {
+  python3Overlay = final: prev: rec {
     python3 = prev.python3.override {
       packageOverrides = (self: super:
         (import ../pkgs/pythonPackages { pkgs = prev; })
@@ -34,6 +26,6 @@ in
     };
     python3Packages = prev.python3Packages // final.python3.pkgs;
   };
-  "packages" = final: prev: import ../pkgs { pkgs = prev; };
-  "handheld-daemon" = handheld-daemon-overlay;
+  packagesOverlay = final: prev: import ../pkgs { pkgs = prev; };
+  handheldDaemonOverlay = inputs.nixpkgs.lib.fixedPoints.composeManyExtensions [ python3Overlay handheld-daemon-overlay ];
 }
