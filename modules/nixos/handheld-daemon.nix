@@ -13,11 +13,18 @@ in {
     };
   };
 
-  config = mkIf (cfg.enable && cfg.adjustor.enable) {
-    environment.systemPackages = with pkgs; [
+  config = mkIf (cfg.enable && cfg.adjustor.enable) (
+    let adjustorPkgs = with pkgs; [
+      # Makes `adjustor` available in the environment for forked execution
       handheld-daemon-adjustor
+      # Makes hhd.adjustor Python library available to HHD for direct imported use
       python3Packages.handheld-daemon-adjustor
     ];
-  };
+    in {
+      environment.systemPackages = adjustorPkgs;
+      services.handheld-daemon.package = pkgs.handheld-daemon.overrideAttrs (attrs: {
+        propagatedBuildInputs = attrs.propagatedBuildInputs ++ adjustorPkgs;
+      });
+    });
 
 }
