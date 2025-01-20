@@ -3,9 +3,9 @@
 with lib;
 
 let
-  cfg = config.handheld-daemon;
+  cfg = config.services.handheld-daemon;
 in {
-  options.handheld-daemon.adjustor = {
+  options.services.handheld-daemon.adjustor = {
     enable = mkOption {
       type = types.bool;
       default = false;
