@@ -31,8 +31,10 @@ in {
         buildInputs = (attrs.buildInputs or []) ++ (with pkgs; [
           (pkgs.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ]))
         ]);
-        propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ (with pkgs; [
+        dependencies = (attrs.dependencies or []) ++ (with pkgs; [
           (pkgs.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ]))
+        ]);
+        propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ (with pkgs; [
           python3Packages.handheld-daemon-adjustor
         ]);
       });
