@@ -28,8 +28,11 @@ in {
         python3Packages.handheld-daemon-adjustor
       ];
       services.handheld-daemon.package = pkgs.handheld-daemon.overrideAttrs (attrs: {
-        inherit (pkgs) python3Packages;
         propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ (with pkgs; [
+          handheld-daemon-adjustor
+          python3Packages.handheld-daemon-adjustor
+        ]);
+        dependencies = (attrs.dependencies or []) ++ (with pkgs; [
           handheld-daemon-adjustor
           python3Packages.handheld-daemon-adjustor
         ]);
