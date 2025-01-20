@@ -13,7 +13,7 @@ in {
     };
   };
 
-  config = mkIf cfg.adjustor.enable {
+  config = mkIf (cfg.enable && cfg.adjustor.enable) {
     environment.systemPackages = with pkgs; [
       handheld-daemon-adjustor
       python3Packages.handheld-daemon-adjustor
