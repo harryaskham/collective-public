@@ -24,12 +24,11 @@ in {
 
     (let adjustorPkgs = with pkgs; [
       handheld-daemon-adjustor
-      python3Packages.handheld-daemon-adjustor
     ];
     in {
       environment.systemPackages = adjustorPkgs;
       services.handheld-daemon.package = pkgs.handheld-daemon.overrideAttrs (attrs: {
-        propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ adjustorPkgs;
+        dependencies = (attrs.dependencies or []) ++ [ python3Packages.handheld-daemon-adjustor ];
       });
     })
 
