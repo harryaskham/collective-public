@@ -27,7 +27,9 @@ in {
         handheld-daemon-adjustor
         python3Packages.handheld-daemon-adjustor
       ];
-      services.handheld-daemon.package = pkgs.handheld-daemon.overrideAttrs (attrs: {
+      services.handheld-daemon.package = (pkgs.handheld-daemon.override (prev: {
+        python3Packages = pkgs.python3Packages;
+      })).overrideAttrs (attrs: {
         dependencies = (attrs.dependencies or []) ++ (with pkgs; [
           handheld-daemon-adjustor
           python3Packages.handheld-daemon-adjustor
