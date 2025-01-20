@@ -28,7 +28,7 @@ in {
       #   python3Packages.handheld-daemon-adjustor
       # ];
       services.handheld-daemon.package =
-        let hhdPython = pkgs.python3.withPackages (_: pkgs.python3Packages.handheld-daemon-adjustor );
+        let hhdPython = pkgs.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ] );
         in pkgs.handheld-daemon.overrideAttrs (attrs: {
           nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ hhdPython.pkgs.wrapPython ];
           propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ (with pkgs; [
