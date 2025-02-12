@@ -27,6 +27,7 @@ python3.pkgs.buildPythonPackage rec {
   ]) ++ (with pkgs; [
     wrapGAppsHook3
     glib
+    busybox
     gobject-introspection
   ]);
 
