@@ -28,7 +28,7 @@ in {
         nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ hhdPython.pkgs.wrapPython ];
         propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ (with pkgs.python3Packages; [
           handheld-daemon-adjustor
-        ]) ++ (with pkgs [
+        ]) ++ (with pkgs; [
           busybox
         ]);
         postFixup = ''
