@@ -387,7 +387,7 @@ rec {
               '';
             expected = trimNewlines ''
               def fn() {
-                embed1:xxx
+                embed1:
                   embed2
               }
             '';

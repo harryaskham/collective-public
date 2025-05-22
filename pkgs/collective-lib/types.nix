@@ -28,8 +28,7 @@ with cutils.strings;
 #      isString (String.new "abc") == false
 #      isString (String.new "abc").value == true
 #
-# Person = mkType {
-#   name = "Person";
+# Person = mkType "Person" {
 #   fields = [
 #     (Field (Of String) "name")
 #     (Field (Of (Optional String)) "nickname")
@@ -57,7 +56,9 @@ with cutils.strings;
 # alice.hello "Binding works as expected" = "Hello, Alice, 22y old! Binding works as expected"
 # bob.show = "Robert (Bob), 40y old! Cool."
 
-rec {
+let
+  log = cutils.log;
+in rec {
   over = name: aToDict: a: (aToDict a).${typeOf a} or throw "${name}: ${typeOf a}";
   Functor = {
     fmap = f: over "fmap" (a: {
@@ -82,11 +83,15 @@ rec {
   Builtin =
     with Types;
     let mkBuiltin = name: builtinType: isType:
-          mkType {
-            inherit name;
+          mkType name {
             fields = [
               (Field (Of builtinType) "value")
             ];
+            static = {
+              __isValueType = This: true;
+              __builtinTypeName = This: builtinType;
+              __checkBuiltin = This: isType;
+            };
             # For a builtin we already wrapped the value for "New"
             # so we can unpack the value here
             ctor = x: { inherit (x) value; };
@@ -102,6 +107,34 @@ rec {
       List = mkBuiltin "List" "list" isList;
       Set = mkBuiltin "Set" "set" (x: isAttrs x && !(x ? Type));
       Lambda = mkBuiltin "Lambda" "lambda" isFunction;
+
+      # Get the builtin type name corresponding to the given Builtin T.
+      # Fails if T is not a Builtin.
+      toBuiltinTypeName = T:
+        T.__builtinTypeName or
+          (throw "Invalid T argument for Builtin.toBuiltinTypeName: ${log.print T}");
+
+      # Get the Builtin type corresponding to the given builtin type.
+      # Returns null if builtinType is not a builtin type string.
+      maybeFromT = builtinType:
+        {
+          null = Null;
+          int = Int;
+          float = Float;
+          string = String;
+          path = Path;
+          bool = Bool;
+          list = List;
+          set = Set;
+          lambda = Lambda;
+        }.${builtinType} or null;
+
+      # Get the Builtin type corresponding to the given builtin type.
+      # Throws if builtinType is not a builtin type string.
+      FromT = builtinType:
+        let T = maybeFromT builtinType;
+        in if T == null then (throw "Invalid T argument for Builtin.FromT: ${log.print builtinType}")
+        else T;
 
       From = x:
         let T = ({
@@ -122,6 +155,9 @@ rec {
     # Whether or not x is a builtin type
     isBuiltinValue = x: !(isAttrs x && x ? Type);
 
+    # Whether or not name is one of the builtin type names.
+    isBuiltinTypeName = name: Builtin.maybeFromT name != null;
+
     # Wrap a builtin type
     wrap = Builtin.From;
 
@@ -132,7 +168,23 @@ rec {
     maybeWrap = x: if isBuiltinValue x then wrap x else x;
 
     # Unwrap a value type or leave a non-value Type value unchanged
-    maybeUnwrap = x: if x ? value then unwrap x else x;
+    maybeUnwrap = x: if isValueType x then unwrap x else x;
+
+    # Cast between builtin and Builtin
+    cast = T: x:
+      # noop if same type
+      if hasType T x then x
+      # maybe downcast a Builtin
+      else if isTyped x
+        then if (!isBuiltinTypeName T) then throw "Cannot cast value of type ${typeName x} to non-builtin type ${print T}"
+        else let TWrapped = Builtin.FromT T;
+             in if !(typeEq x.Type TWrapped) then "Cannot cast value of type ${typeName x} to type ${print T} via wrapping as ${TWrapped.name}"
+        else unwrap x
+      # maybe upcast a builtin
+      else
+        let xTWrapped = Builtin.FromT (typeOf x);
+        in if !(typeEq xTWrapped T) then "Cannot cast value of type ${typeName x} to type ${print T} via wrapping as ${xTWrapped.name}"
+        else wrap x;
 
     # The root type of all types, including itself.
     Type = mkType "Type" {};
@@ -140,9 +192,23 @@ rec {
     # Is the given type equivalent to Type?
     isRootType = T: T.name or "" == Type.name;
 
+    # Check if a given argument is a Type.
+    isType = hasType Types.Type;
+
     # Get the name of a type whether builtin or user-defined.
     typeName = x:
       if isBuiltinValue x then typeOf x else x.Type.name;
+
+    # Check two types for equality, supporting both Types and builtin type-name strings.
+    typeEq = T: U:
+      if isType T && isType U then T.name == U.name
+      else let
+        T_ = maybeFromT T;
+        U_ = maybeFromT U;
+      in
+        if T_ == null then throw "typeEq: ${print T} is not a Type or builtin type"
+        else if U_ == null then throw "typeEq: ${print U} is not a Type or builtin type"
+        else typeEq T_ U_;
 
     # Check a string or custom type against a value.
     hasType = T: x:
@@ -178,13 +244,17 @@ rec {
         __allowUnknownFields = spec.allowUnknownFields or false;
         __allFields =
           if isRootType This then {}
-          else Super.__allFields // This.fields;
+          else Super.__allFields // This.__fields;
         __allMethods =
-          if isRootType This then This.methods or {}
-          else Super.__allMethods // This.methods or {};
+          if isRootType This then This.__methods or {}
+          else Super.__allMethods // This.__methods or {};
+        __allStatic =
+          if isRootType This then This.__static or {}
+          else Super.__allStatic // This.__static or {};
 
-        fields = keyByName (must "list" (spec.fields or []));
-        methods = must "set" (spec.methods or {});
+        __fields = keyByName (must "list" (spec.fields or []));
+        __methods = must "set" (spec.methods or {});
+        __static = must "set" (spec.static or {});
 
         checkType = that:
           doChecks [
@@ -216,7 +286,9 @@ rec {
 
         # Variadically accept arguments until the ctor is fully applied
       };
-      in This;
+      in
+        # Bind static at top-level finally.
+        This // (mapAttrs (name: staticMember: staticMember This) This.__allStatic);
 
     # Variadic constructor for a type that wraps its arguments.
     # ctor should be a function of e.g.
@@ -241,64 +313,6 @@ rec {
     # Fields with defaults can be omitted.
     mkInstance = This: arg:
       let
-        setFields = this:
-          foldl'
-            (this: field:
-              let hasValue = arg ? ${field.name} || field ? default;
-                  value = arg.${field.name} or field.default;
-              in if hasValue
-                 then this.setField field.name value
-                 else this
-            )
-            this
-            (attrValues This.fields);
-
-        # Methods to include on all instances.
-        defaultMethods = {
-
-          __setField = this: fieldName: value:
-            let fieldExists = this.Type.__allFields ? ${fieldName};
-                field = this.Type.__allFields.${fieldName};
-            in assert (doChecks [
-                { cond = fieldExists;
-                  msg = "Setting unknown field ${fieldName} on ${field.fieldType.name}"; }
-                { cond = !fieldExists || hasType field.fieldType value;
-                  msg = "Invalid type for ${typeName this}.${fieldName}: Wanted ${field.fieldType}, got ${typeName value}"; }
-              ]);
-              this // { ${fieldName} = value; };
-
-          # String representation of the instance.
-          # Since this is available as a nullary this.__toString function, it passes
-          # the builtins.toString (x ? __toString) check and will be used as the
-          # default string repr for printing.
-          __toString = this: codeBlock ''
-${this.Type.name} {
-  ${setIndent 2
-      (joinLines
-        (mapAttrsToList
-          (fieldName: field:
-            let fieldValue = this.${fieldName};
-            in "${fieldName} = ${toString fieldValue};")
-          this.fields))}
-}
-          '';
-        };
-
-        # Bind defined methods to 'this' in the first argument
-        # Must be called last in initialization so that bound methods see the
-        # fully initialized instance.
-        finallySetMethods = this:
-          let
-            this_ = this // boundMethods;
-            methods = defaultMethods // This.__allMethods;
-            boundMethods = concatMapAttrs (name: method: {
-              # Bind methods recursively to the final this_ that has all methods set such
-              # that they can call one another, otherwise in a left-fold earlier-defined
-              # methods would not be able to call later-defined methods.
-              ${name} = method this_;
-            }) methods;
-           in this_;
-
         # Construct the parent instance for merging with the new instance.
         # Temporarily enable unknown fields for constructing super to avoid failing
         # on This-defined fields.
@@ -314,12 +328,94 @@ ${this.Type.name} {
         # superclass that may behave differently (i.e. different defaults).
         # this.super essentially acts as though we instantiated Super directly
         # with the subset of the This fields that are not overridden.
-        setSuper = super: this: this // { inherit super; };
+        setSuper = this: this // { inherit super; };
+
+        setByName = this: fieldName: value:
+          let fieldExists = this.Type.__allFields ? ${fieldName};
+              field = this.Type.__allFields.${fieldName};
+          in assert (doChecks [
+              { cond = fieldExists;
+                msg = "Setting unknown field ${fieldName} on ${field.fieldType.name}"; }
+              { cond = !fieldExists || hasType field.fieldType value;
+                msg = "Invalid type for ${typeName this}.${fieldName}: Wanted ${field.fieldType}, got ${typeName value}"; }
+            ]);
+            this // { ${fieldName} = wrap value; };
+
+        # Set all fields on the instance.
+        # Occurs before methods are set, so cannot use the this.set interface directly.
+        setFields = this:
+          foldl'
+            (this: field:
+              let hasValue = arg ? ${field.name} || field ? default;
+                  value = arg.${field.name} or field.default;
+              in if hasValue
+                 then setByName this field.name value
+                 else this
+            )
+            this
+            (attrValues This.__fields); # Not __allFields as these will be set in Super init
+
+        # Methods to include on all instances.
+        defaultMethods = rec {
+          # Enable setting by string fieldname
+          # e.g. this.setByName "myInt" 123 -> this'
+          #      this.setByName "myInt" "123" -> throws Type error
+          inherit setByName;
+
+          # Field setting interface
+          # e.g. this.set.someInt 123 -> this'
+          #      this.set.someInt "123" -> throws Type error
+          set = this: mapAttrs (fieldName: _: x: setByName this fieldName x) this.Type.__allFields;
+
+          # Field modification interface
+          # e.g. this.modify.someInt (x: x+1) -> this'
+          #      this.modify.someInt toString -> throws Type error
+          modify = this: mapAttrs (fieldName: x: f: this.set.${fieldName} (f x));
+
+          # String representation of the instance.
+          # Since this is available as a nullary this.__toString function, it passes
+          # the builtins.toString (x ? __toString) check and will be used as the
+          # default string repr for printing.
+          __toString =
+            let
+            in this: indent.block ''
+              (${this.Type.name} {
+                ${indent.here
+                    (joinLines
+                      (map
+                        (fieldName:
+                          let fieldValue = this.${fieldName};
+                          in "${fieldName} = ${log.print fieldValue};")
+                        (attrNames this.Type.__allFields)))}
+              })
+            '';
+        };
+
+        # Copy over already-bound static methods to the instance before binding
+        # instance methods.
+        setStaticMethods = this:
+          let
+            boundStaticMethods = mapAttrs (name: staticMethod: staticMethod This) This.__allStatic;
+          in this // boundStaticMethods;
+
+        # Bind defined methods to 'this' in the first argument
+        # Must be called last in initialization so that bound methods see the
+        # fully initialized instance.
+        finallySetMethods = this:
+          let
+            this_ = this // boundMethods;
+            methods = defaultMethods // This.__allMethods;
+            # Bind methods recursively to the final this_ that has all methods set such
+            # that they can call one another, otherwise in a left-fold earlier-defined
+            # methods would not be able to call later-defined methods.
+            boundMethods = concatMapAttrs (name: method: method this_) methods;
+           in this_;
 
         # Construct the This instance.
         this =
-          {} |> setType This
-             |> setSuper super
+          {} |> setType
+             |> setSuper
+             |> setStaticMethods
              |> setFields
              |> finallySetMethods;
 
@@ -332,12 +428,12 @@ ${this.Type.name} {
             missingFields = removeAttrs This.__allFields (attrNames this);
           in [
             {
-              cond = This.__allowUnknownFields || __unknownFields == {};
-              msg = "${typeName this}: Unknown fields in mkInstance call: ${joinSep ", " (attrNames __unknownFields)}";
+              cond = This.__allowUnknownFields || unknownFields == {};
+              msg = "${typeName this}: Unknown fields in mkInstance call: ${joinSep ", " (attrNames unknownFields)}";
             }
             {
-              cond = __missingFields == {};
-              msg = "${typeName this}: Missing fields in mkInstance call: ${joinSep ", " (attrNames __missingFields)}";
+              cond = missingFields == {};
+              msg = "${typeName this}: Missing fields in mkInstance call: ${joinSep ", " (attrNames missingFields)}";
             }
           ];
       in
@@ -356,6 +452,7 @@ ${this.Type.name} {
 
     NullOr = T: mkType "NullOr" {
       fields = [(Field (Of (Union [Null T])) "value")];
+      static = {__isValueType = This: true;};
     };
 
     # Construct a new type that wraps another in its value field.
@@ -364,6 +461,9 @@ ${this.Type.name} {
     # x.value == 123;
     NewType = name: T: mkType name {
       fields = [(Field (Of T) "value")];
+      static = {
+        __isValueType = This: true;
+      };
       ctor = value: { inherit value; };
     };
 
@@ -460,8 +560,7 @@ ${this.Type.name} {
 
       MyString = NewType "MyString" String;
 
-      MyType = mkType {
-        name = "MyType";
+      MyType = mkType "MyType" {
         fields = [
           (Field (Of String) "myField")
         ];
@@ -472,8 +571,7 @@ ${this.Type.name} {
         };
       };
 
-      MyType2 = mkType {
-        name = "MyType2";
+      MyType2 = mkType "MyType2" {
         fields = [
           (Field (Of String) "stringField")
           (Field (Of Int) "intField")
@@ -523,6 +621,17 @@ ${this.Type.name} {
             let this = MyType.new (wrap "World");
              in this.helloMyField "!";
           expected = "Hello, World!";
+        };
+
+        MyType_set = {
+          expr =
+            let this = MyType.new (wrap "");
+            in [
+              (this.helloMyField "!")
+              ((this.set.myField (wrap "World")).helloMyField "!")
+              ((this.setByName "myField" (wrap "World")).helloMyField "!")
+            ];
+          expected = [ "Hello, !" "Hello, World!" "Hello, World!"];
         };
 
         MyType2_mk_overrideDefault = {
