@@ -94,7 +94,7 @@ in rec {
             };
             # For a builtin we already wrapped the value for "New"
             # so we can unpack the value here
-            ctor = x: { inherit (x) value; };
+            ctor = value: { inherit value; };
             checkValue = that: isType that.value;
           };
     in rec {
@@ -190,7 +190,7 @@ in rec {
     Type = mkType "Type" {};
 
     # Is the given type equivalent to Type?
-    isRootType = T: T.name or "" == Type.name;
+    isRootType = T: T.name or "" == "Type";
 
     # Check if a given argument is a Type.
     isType = hasType Types.Type;
@@ -236,14 +236,14 @@ in rec {
     mkType = name: spec:
       let This = rec {
         inherit name;
-        Super = spec.Super or Types.Type;
+        Super = if isRootType This then This else spec.Super or Types.Type;
         Type = Types.Type;
         ctor = spec.ctor or null;
 
         __toString = this: name;
         __allowUnknownFields = spec.allowUnknownFields or false;
         __allFields =
-          if isRootType This then {}
+          if isRootType This then This.fields or {}
           else Super.__allFields // This.__fields;
         __allMethods =
           if isRootType This then This.__methods or {}
@@ -304,7 +304,7 @@ in rec {
         else
           let go = ctorOrArg:
                 if isFunction ctorOrArg
-                then let ctor = ctorOrArg; in arg: go (ctor (maybeWrap arg))
+                then let ctor = ctorOrArg; in arg: go (ctor arg)
                 else let arg = ctorOrArg; in T.mk arg;
           in go T.ctor;
 
