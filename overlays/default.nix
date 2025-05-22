@@ -1,4 +1,4 @@
-{inputs, ...}:
+{inputs, lib, ...}:
 
 let
   imageGoNordOverlay = self: super: {
@@ -9,15 +9,16 @@ let
         in super.image-go-nord.propagatedBuildInputs ++ missingBuildInputs;
     });
   };
-in {
-  python3Overlay = final: prev: rec {
-    python3 = prev.python3.override {
-      packageOverrides = (self: super:
-        (import ../pkgs/pythonPackages { pkgs = prev; })
-        // (imageGoNordOverlay self super)
-      );
+  overlays = {
+    python3Overlay = final: prev: rec {
+      python3 = prev.python3.override {
+        packageOverrides = (self: super:
+          (import ../pkgs/pythonPackages { pkgs = prev; })
+          // (imageGoNordOverlay self super)
+        );
+      };
+      python3Packages = prev.python3Packages // final.python3.pkgs;
     };
-    python3Packages = prev.python3Packages // final.python3.pkgs;
+    packagesOverlay = final: prev: import ../pkgs { pkgs = prev; };
   };
-  packagesOverlay = final: prev: import ../pkgs { pkgs = prev; };
-}
+in overlays // lib.composeManyExtensions (lib.attrValues overlays)
