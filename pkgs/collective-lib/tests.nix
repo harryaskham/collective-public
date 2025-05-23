@@ -27,7 +27,8 @@ in rec {
       ${toString nPass} of ${toString nTests} tests passed
 
       ${toString nFail} failed:
-      ${joinLines
+
+      ${indent.blocksSep "\n\n==========\n\n"
           (map
             (t: joinLines [
               t.name

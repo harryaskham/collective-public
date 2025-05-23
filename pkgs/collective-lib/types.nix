@@ -232,19 +232,62 @@ in rec {
       if isString T then typeOf x == T
       else T.check x;
 
+    # Constructor presets
+    Ctor = rec {
+      # By default, accept a single field values attrset to pass to mk.
+      default = id;
+
+      # Accept a single named field value.
+      unary = fieldName: x: { ${fieldName} = x; };
+
+      # Accept a single field value to pass to mk.
+      value = unary "value";
+
+      # Accept fields in order of a list of ordered field names.
+      ordered = fieldNames:
+        Variadic.mk {
+          initialState = { inherit fieldNames; };
+          isTerminal = state: _: state.fieldNames == [];
+          handle = state: x:
+        }
+
+    }
+
     # Construct a type from spec attrs:
     # {
+    #   # The name of the type.
     #   name = "TypeName";
+    #
+    #   # The superclass of the type.
     #   Super = SuperType (default: Type);
+    #
+    #   # The names and types of the fields.
     #   fields = {
     #     fieldname = Type;
     #     defaultfieldname = Default Type 123;
     #     ...
     #   }
-    #   ctor = some: args: {field attrs to be passed to mk}
+    #
+    #   # The constructor of the type.
+    #   # If not specified, T.mk is used.
+    #   # To specify argument ordering, __ctor can be a function of e.g.
+    #   # field3: field1: field3: { inherit field1 field2 field3; }
+    #   #   field1 = arg1;
+    #   #   field2 = arg2;
+    #   #   field3 = arg3;
+    #   # }
+    #   ctor = args...: fieldValues
+    #
+    #   # Whether to allow unknown fields.
     #   allowUnknownFields = false (default)
+    #
+    #   # Additional type checks.
     #   checkType = that: <any additional type checks> (optional)
+    #
+    #   # Additional value checks.
     #   checkValue = that: <any value checks> (optional)
+    #
+    #   # Completely take over check.
     #   overrideCheck = that: <completely take over check> (optional)
     # }
     mkType = name: spec:
@@ -297,33 +340,28 @@ in rec {
           then spec.overrideCheck
           else that: checkType that && checkValue that;
 
+        # Build a new instance from a single dict of field values.
         mk = mkInstance This;
-        new = Types.new This;
 
-        # Variadically accept arguments until the ctor is fully applied
+        # Create an instance of T using the provided __ctor
+        # Otherwise fall back to non-variadic T.mk.
+        # __ctor is applied one argument at a time until all its arguments are saturated
+        # in order to support variadic constructors.
+        new =
+          if (T.__ctor == null) then T.mk
+          else
+            let go = ctorOrArg:
+                  if isFunction ctorOrArg
+                  then let ctor = ctorOrArg; in arg: go (ctor arg)
+                  else let arg = ctorOrArg; in T.mk arg;
+            in go T.__ctor;
+
+
       };
       in
         # Bind staticMethods at top-level finally.
         # TODO: Replace with Type using mkInstance
         This // (mapAttrs (name: staticMethod: staticMethod This) This.__allStaticMethods);
-
-    # Variadic constructor for a type that wraps its arguments.
-    # ctor should be a function of e.g.
-    # arg1: arg2: arg3: {
-    #   field1 = arg1;
-    #   field2 = arg2;
-    #   field3 = arg3;
-    # }
-    # where arg1/2/3 can be assumed to be of the correct type (and wrapped if builtin).
-    new = T:
-      if (T.__ctor == null)
-        then throw "${typeName T}: No constructor provided for new"
-        else
-          let go = ctorOrArg:
-                if isFunction ctorOrArg
-                then let ctor = ctorOrArg; in arg: go (ctor arg)
-                else let arg = ctorOrArg; in T.mk arg;
-          in go T.__ctor;
 
     # Construct an instance from a This type and attrset.
     # arg = { fieldName = value, ... } for all fields.
