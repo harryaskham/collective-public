@@ -237,20 +237,11 @@ in rec {
       # By default, accept a single field values attrset to pass to mk.
       default = id;
 
-      # Accept a single named field value.
-      unary = fieldName: x: { ${fieldName} = x; };
-
       # Accept a single field value to pass to mk.
-      value = unary "value";
+      value = Variadic.unary "value";
 
       # Accept fields in order of a list of ordered field names.
-      ordered = fieldNames:
-        Variadic.mk {
-          initialState = { inherit fieldNames; };
-          isTerminal = state: _: state.fieldNames == [];
-          handle = state: x:
-        }
-
+      ordered = Variadic.ordered;
     }
 
     # Construct a type from spec attrs:
