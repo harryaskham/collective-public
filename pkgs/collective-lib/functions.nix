@@ -51,10 +51,20 @@ rec {
 
     # Build a variadic function that accepts partial attrsets until
     # exactly the given names are present.
-    Tags = names: mk {
+    argNames = names: mk {
       isTerminal = state: _: attrNames state == names;
-      check = _: x: isAttrs x && all (name: elem name names) x;
+      check = _: x: isAttrs x && all (name: elem name names) (attrNames x);
     };
+
+    # Expect arguments to be passed as single values in the order provided
+    ordered = names: mk {
+      initialState = {};
+      isTerminal = state: _: attrNames state == names;
+      check = _: x: isAttrs x && all (name: elem name names) (attrNames x);
+      handle
+    }
+
+
   };
 
   # Make a polymorphic function from the given type-to-value attrs
