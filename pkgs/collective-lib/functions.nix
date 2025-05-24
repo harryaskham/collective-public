@@ -203,6 +203,10 @@ in rec {
             expr = (Variadic.mkUnary "xxx") "abc";
             expected = { xxx = "abc"; };
           };
+          list = {
+            expr = Variadic.mkList 1 2 3 Variadic.end;
+            expected = [ 1 2 3 ];
+          };
         };
       };
     };
