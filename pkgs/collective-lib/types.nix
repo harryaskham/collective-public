@@ -82,7 +82,7 @@ in rec {
 
   Builtin =
     with Types;
-    let mkBuiltin = name: builtinType: isType:
+    let mkBuiltin = name: builtinType: isType: methods: staticMethods_:
           mkType name {
             fields = {
               value = builtinType;
@@ -90,22 +90,40 @@ in rec {
             staticMethods = {
               __builtinTypeName = This: builtinType;
               __checkBuiltin = This: isType;
-            };
+              cast = This: x: cast This x;
+              is = This: x: !(isCastError This.cast x);
+            } // staticMethods_;
+            inherit methods;
             # For a builtin we already wrapped the value for "New"
             # so we can unpack the value here
             ctor = value: { inherit value; };
             checkValue = that: isType that.value;
           };
     in rec {
-      Null = mkBuiltin "Null" "null" isNull;
-      Int = mkBuiltin "Int" "int" isInt;
-      Float = mkBuiltin "Float" "float" isFloat;
-      String = mkBuiltin "String" "string" isString;
-      Path = mkBuiltin "Path" "path" isPath;
-      Bool = mkBuiltin "Bool" "bool" isBool;
-      List = mkBuiltin "List" "list" isList;
-      Set = mkBuiltin "Set" "set" (x: isAttrs x && !(x ? Type));
-      Lambda = mkBuiltin "Lambda" "lambda" isFunction;
+      Null = mkBuiltin "Null" "null" isNull {} {};
+      Int = mkBuiltin "Int" "int" isInt {} {};
+      Float = mkBuiltin "Float" "float" isFloat {} {};
+      String = mkBuiltin "String" "string" isString {
+        size = this: stringLength this.value;
+      } {};
+      Path = mkBuiltin "Path" "path" isPath {
+        size = this: stringLength (toString this.value);
+      } {};
+      Bool = mkBuiltin "Bool" "bool" isBool {} {};
+      List = mkBuiltin "List" "list" isList {
+        fmap = this: f: List.new (map f this.value);
+        size = this: length this.value;
+        merge = this: mergeAttrsList this.value;
+      } {};
+      Set = mkBuiltin "Set" "set" (x: isAttrs x && !(x ? Type)) {
+        fmap = this: f: Set.new (mapAttrs (_: v: f v) this.value);
+        size = this: length (attrNames this.value);
+        attrNames = this: attrNames this.value;
+        attrValues = this: attrValues this.value;
+      } {};
+      Lambda = mkBuiltin "Lambda" "lambda" isFunction {
+        fmap = this: f: Lambda.new (compose f this.value);
+      } {};
 
       # Get the builtin type name corresponding to the given Builtin T.
       # Fails if T is not a Builtin.
@@ -154,7 +172,9 @@ in rec {
   Types = rec {
     # Whether or not x is a builtin type
     # All builtins are attrs. The short-circuit stops recursive inspection of Type.
-    isBuiltinValue = x: !(isAttrs x) || (x ? Type);
+    isBuiltinValue = x:
+      if isAttrs x then !(x ? Type)
+      else true;
 
     # Whether or not name is one of the builtin type names.
     isBuiltinTypeName = name: Builtin.maybeFromT name != null;
@@ -237,12 +257,40 @@ in rec {
       # By default, accept a single field values attrset to pass to mk.
       default = id;
 
-      # Accept a single field value to pass to mk.
-      value = Variadic.unary "value";
+      # Accept no arguments.
+      nullary = {};
 
-      # Accept fields in order of a list of ordered field names.
-      ordered = Variadic.ordered;
-    }
+      # Accept a single field value to pass to mk.
+      unary = _: fields:
+        let fieldNames = attrNames fields;
+        in if length fieldNames == 1 then Variadic.mkUnary (head fieldNames)
+        else throw "Expected a single field name for Ctor.unary but got ${log.print fieldNames}";
+
+      # Tag for ctor disambiguation.
+      Unary = { __Ctor = unary; };
+
+      # Accept fields in order of their index attribute in T.
+      # If T has a supertype, this first accepts its fields, then or those of its supertype, and so on,
+      # such that the final argument is the final field by index on T
+      fields = Super: fields_:
+        let 
+          superNew =
+              if T.Super == null then id
+              else args: Variadic.mk { initialState = args; };
+          orderedFields = sortOn (field0: field1: field0.fieldIndex < field1.fieldIndex) T.__allFields;
+        in 
+          if T.Super == null then thisNew
+          else 
+            let 
+              # First force Super's fields to be collated as args
+              superNew = (T.Super // {__ctor = Ctor.fields Super;}).new;
+              # Then establish T.new as taking ordered fields and adding them to the Super's args
+              thisNew = args: Variadic.mk ((Variadic.ordered orderedFields) // { initialState = args; });
+            in Variadic.compose thisNew superNew;
+
+      # Tag for ctor disambiguation.
+      Fields = { __Ctor = fields; };
+    };
 
     # Construct a type from spec attrs:
     # {
@@ -267,7 +315,7 @@ in rec {
     #   #   field2 = arg2;
     #   #   field3 = arg3;
     #   # }
-    #   ctor = args...: fieldValues
+    #   ctor = <ctor function e.g. Ctor.default, ...> (default Ctor.default)
     #
     #   # Whether to allow unknown fields.
     #   allowUnknownFields = false (default)
@@ -290,8 +338,20 @@ in rec {
         Super = if isRootType This then null else spec.Super or Types.Type;
         Type = Types.Type;
 
-        __ctor = spec.ctor or null;
-        __fields = must "set" (mapAttrs mkField (spec.fields or {}));
+        __ctor =
+          let ctor = spec.ctor or Ctor.default;
+          in # Apply the wrapped ctor tag
+            if ctor ? __Ctor
+            then ctor.__Ctor Super __fields
+            else ctor;
+        __fields =
+          let fields = spec.fields or {};
+          in {
+            # Treat a raw fields set as an unordered collection of fields.
+            set = mapAttrs (mkField 0) fields;
+            # Treat a list as though shorthand for Ordered.
+            list = keyByName ((Ordered.new fields).zipWith mkField);
+          }.${typeOf fields} or (throw "Invalid field type (${typeOf fields}) in ${This.name}: ${log.print fields}");
         __methods = must "set" (spec.methods or {});
         __staticMethods = must "set" (spec.staticMethods or {});
         __allowUnknownFields = spec.allowUnknownFields or false;
@@ -334,19 +394,9 @@ in rec {
         # Build a new instance from a single dict of field values.
         mk = mkInstance This;
 
-        # Create an instance of T using the provided __ctor
-        # Otherwise fall back to non-variadic T.mk.
-        # __ctor is applied one argument at a time until all its arguments are saturated
-        # in order to support variadic constructors.
-        new =
-          if (T.__ctor == null) then T.mk
-          else
-            let go = ctorOrArg:
-                  if isFunction ctorOrArg
-                  then let ctor = ctorOrArg; in arg: go (ctor arg)
-                  else let arg = ctorOrArg; in T.mk arg;
-            in go T.__ctor;
-
+        # Create an instance of T using the provided possibly-variadic __ctor.
+        # If __ctor is a nullary, T.mk is called on it directly
+        new = Variadic.compose This.mk This.__ctor;
 
       };
       in
@@ -396,7 +446,8 @@ in rec {
           #      this.notAField -> throws error
           #      this.get.notAField -> throws error
           #      this.get.notAField or default -> default
-          get = mapAttrs (fieldName: _: this.${fieldName}) This.__allFields;
+          # Defined with optionalAttrs for the first pass to define .set, where .get will be empty
+          get = concatMapAttrs (fieldName: _: optionalAttrs (this ? ${fieldName}) { ${fieldName} = this.${fieldName}; }) This.__allFields;
 
           # Field checking interface.
           # e.g. this.has.someInt -> true
@@ -492,7 +543,8 @@ in rec {
 
             # Get any fields not populated in this or any supertype.
             populatedFieldNames = filter (name: this ? ${name}) allFieldNames;
-            missingFieldNames = attrNames (removeAttrs This.__allFields populatedFieldNames);
+            requiredFields = filterAttrs (_: field: !(field ? default)) This.__allFields;
+            missingFieldNames = attrNames (removeAttrs requiredFields populatedFieldNames);
           in [
             {
               cond = This.__allowUnknownFields || unknownFieldNames == [];
@@ -517,15 +569,17 @@ in rec {
       overrideCheck = that: true;
     };
 
-    Union = Ts: mkType "Union[${joinSep ", " (sort (map (T: T.name) Ts))}]" {
+    Union = Ts: mkType "Union<[${joinSep ", " (sort (map (T: T.name) Ts))}]>" {
       overrideCheck = that: any (T: T.check that) Ts;
     };
 
-    NullOr = T: mkType "NullOr" {
-      fields = {
-        value = Union [Null T];
-      };
-      ctor = value: { inherit value; };
+    mkTypeAlias = name: T: spec: mkType name (rec {
+      Super = T;
+      ctor = T.__ctor;
+    } // spec);
+
+    NullOr = T: mkTypeAlias "NullOr" (Union [Null T]) {
+      overrideCheck = that: Null.is that || T.check that;
     };
 
     # Construct a new type that wraps another in its value field.
@@ -533,11 +587,9 @@ in rec {
     # x = MyInt.new 123;
     # x.value == 123;
     # x.get.value == 123;
-    NewType = name: T: mkType name {
-      fields = {
-        value = T;
-      };
-      ctor = value: { inherit value; };
+    mkNewType = name: T: mkType name {
+      fields = { value = T; };
+      ctor = Ctor.Unary;
     };
 
     # Inline assertion for runtime type assertion.
@@ -545,15 +597,102 @@ in rec {
       if hasType T x then x
       else throw "Expected type ${T} (got ${typeName x})";
 
+    # TODO: mkTypeFn instead of <T> string
+    ListOf = T: mkType "ListOf<${T.name}>" {
+      Super = List;
+      # TODO: default to Super ctor
+      ctor = List.__ctor;
+      checkValue = that: all (x: hasType T x) that.value;
+    };
+
+    # TODO: mkTypeFn instead of <T> string
+    # A type that enforces a size on the value. If n is null, any size is allowed, but .size must be present.
+    Sized = n: T: 
+      assert assertMsg (isInt n || isNull n) "Invalid Sized parameter: ${log.print n}";
+      # TODO: .has not __has when T is instance of Type
+      assert assertMsg (T.__has ? size) "Sized type argument does not have 'size': ${T.name}";
+      let 
+        typeName = 
+          if n == null then "Sized<${T.name}>"
+          else "Sized<${toString n}, ${T.name}>";
+        checkValue = that: that ? size && (n == null || that.size == n);
+      in
+        mkType typeName {
+          Super = T;
+          # TODO: default to Super ctor
+          ctor = T.__ctor;
+          inherit checkValue;
+        };
+
+    # Sized_ T indicates T is sized but the size is not specified.
+    Sized_ = Sized null;
+
+    Set1 = 
+      let
+        Super = Sized 1 Set;
+      in 
+        mkType "Set1" {
+          inherit Super;
+          # TODO: default to Super ctor
+          ctor = Super.__ctor;
+          methods = {
+            # Get the name of the only attribute.
+            attrName = this: head this.attrNames;
+            # Get the value of the only attribute.
+            attrValue = this: head this.attrValues;
+          };
+        };
+
+    # An attribute set with attributes zero-indexed by their definition order.
+    # xs = Ordered.new [ {c = 1;} {b = 2;} {a = 3;} ];
+    # xs.value == { a = 1; b = 2; c = 3; } (arbitrary order)
+    # xs.names == [ "c" "b" "a" ] (in order of definition)
+    # xs.values == [ 1 2 3 ] (in order of definition)
+    Ordered = mkType "Ordered" (rec {
+      Super = ListOf Set1;
+      ctor = Super.__ctor;
+      methods = {
+        # The unordered merged attribute set
+        unordered = this: (this.fmap (x: x.value)).merge;
+
+        # The ordered attribute names.
+        attrNames = this: this.fmap (x: head x.attrNames);
+
+        # The ordered attribute values.
+        attrValues = this: this.fmap (x: head x.attrValues);
+
+        # Zip over the index, name and value of the ordered fields.
+        zipWith = this: f: 
+          zipListsWith
+            ({index, name}: value: f index name value)
+            (enumerate this.attrNames)
+            this.attrValues;
+      };
+    });
+
+    # Create a nullary type.
+    # MyType = mkNullaryType "MyType"
+    # MyType.new == MyType.mk {}
+    mkNullaryType = name: mkType name { ctor = Ctor.nullary; };
+
+    # Base type for enums.
+    Enum = mkNullaryType "Enum";
+
+    # Create an enum type from a list of item names.
+    # MyEnum = mkEnum "MyEnum" [ "Item1" "Item2" "Item3" ]
+    # MyEnum.names == [ "Item1" "Item2" "Item3" ]
+    # MyEnum.fromName "Item1" == 0
+    # MyEnum.fromIndex 0 == "Item1"
     mkEnum = enumName: itemNames:
       let
         indexes = range 0 (length itemNames - 1);
-        EnumName = mkType enumName {
-          fields = {
-            index = Int;
-            name = String;
-          };
-          ctor = index: name: { inherit index name; };
+        Item = mkType enumName {
+          Super = Enum;
+          fields = [
+            {index = Int;}
+            {name = String;}
+          ];
+          ctor = Ctor.fields;
           staticMethods = {
             # Enum members live on the Enum type itself.
             __items = This: zipListsWith EnumName.new indexes names;
@@ -565,11 +704,16 @@ in rec {
         };
       in EnumName;
 
-    Default = T: def: { Type = T; Default = def; };
-    mkField = name: spec:
-      if spec ? Default
-        then { name = name; fieldType = spec.Type; default = spec.Default; }
-        else { name = name; fieldType = spec; };
+    Default = T: def: { __type = T; __default = def; };
+    mkField = fieldIndex: name: typeSpec:
+      let 
+        fieldType = if typeSpec ? __default then typeSpec.__type else typeSpec;
+        maybeWithDefault =
+          if typeSpec ? __default
+          then field: field // { default = typeSpec.__default; }
+          else id;
+        field = { inherit fieldIndex fieldType; name = name; };
+      in maybeWithDefault field;
   };
 
   # nix eval --impure --expr '(import ./cutils/types.nix {})._tests'
@@ -582,7 +726,7 @@ in rec {
         expr =
           let x = T.new rawValue;
           in {
-            name = typeName x;
+            name = x.Type.name;
             value = if name == "Lambda" then null else x.value;
             newIsBuiltin = isBuiltinValue x;
             rawIsBuiltin = isBuiltinValue x.value;
@@ -595,7 +739,7 @@ in rec {
         };
       };
 
-      MyString = NewType "MyString" String;
+      MyString = mkNewType "MyString" String;
 
       MyType = mkType "MyType" {
         fields = {
@@ -617,7 +761,7 @@ in rec {
       };
 
     in cutils.tests.suite {
-      types = {
+      types = with Types; {
         Null = mkBuiltinTest Null "Null" null;
         Int = mkBuiltinTest Int "Int" 123;
         Float = mkBuiltinTest Float "Float" 12.3;
@@ -628,19 +772,64 @@ in rec {
         Set = mkBuiltinTest Set "Set" {a = 1; b = 2; c = 3;};
         Lambda = mkBuiltinTest Lambda "Lambda" (a: b: 123);
 
-        MyString_mk = {
-          expr = (MyString.mk { value = String.mk {value = "hello";}; }).value.value;
-          expected = "hello";
+        isRootType = {
+          Type = {
+            expr = isRootType Type;
+            expected = true;
+          };
+          bool = {
+            expr = isRootType "bool";
+            expected = false;
+          };
+          Bool = {
+            expr = isRootType Bool;
+            expected = false;
+          };
         };
 
-        MyString_new = {
-          expr = (MyString.new (String.new "hello")).value.value;
-          expected = "hello";
+        isBuiltinValue = {
+          Type = {
+            expr = isBuiltinValue Type;
+            expected = false;
+          };
+          int = {
+            expr = isBuiltinValue 123;
+            expected = true;
+          };
+          set = {
+            expr = isBuiltinValue {abc="xyz";};
+            expected = true;
+          };
+          Bool = {
+            expr = isBuiltinValue (Bool.new true);
+            expected = false;
+          };
         };
 
-        MyString_new_raw = {
-          expr = (MyString.new "hello").value.value;
-          expected = "hello";
+        MyString = {
+          mk = {
+            typed = {
+              expr = (MyString.mk { value = String.mk {value = "hello";}; }).value.value;
+              expected = "hello";
+            };
+
+            raw = {
+              expr = (MyString.mk { value = "hello"; }).value.value;
+              expected = "hello";
+            };
+          };
+
+          new = {
+            typed = {
+              expr = (MyString.new (String.new "hello")).value.value;
+              expected = "hello";
+            };
+
+            raw = {
+              expr = (MyString.new "hello").value.value;
+              expected = "hello";
+            };
+          };
         };
 
         MyType_mk = {
@@ -667,7 +856,7 @@ in rec {
               (this.call.helloMyField "!")
               ((this.set.myField (wrap "World")).call.helloMyField "!")
             ];
-          expected = [ "Hello, !" "Hello, World!" "Hello, World!"];
+          expected = [ "Hello, !" "Hello, World!" ];
         };
 
         MyType2_mk_overrideDefault = {
@@ -715,6 +904,8 @@ in rec {
 
         # TODO:
         # Inheritance
+        # Ordered
+        # ListOf
         # Type classes
         # Unions
         # Enums

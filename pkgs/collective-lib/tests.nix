@@ -16,34 +16,73 @@ in rec {
     };
   };
 
-  formatTestResults = tests: results_:
+  formatTestResults = test: tryEvalResults:
     let
-      nTests = length (attrNames tests);
-      nFail = length results_;
-      nPass = nTests - nFail;
-    in ''
-      Running ${toString nTests} tests
+      evalSuccess = tryEvalResults.success or false;
+      results = tryEvalResults.value;
+      passed = results == [];
+    in
+      if passed then {
+        passed = true;
+        msg = "PASS: ${test.name}";
+      }
+      else {
+        passed = false;
+        msg = indent.block ''
+          FAIL: ${test.name}
 
-      ${toString nPass} of ${toString nTests} tests passed
+          Expected: ${log.print test.expected}
 
-      ${toString nFail} failed:
+          Actual: ${if evalSuccess then log.print (head results).result else "<tryEval error>"}
+        '';
+      };
 
-      ${indent.blocksSep "\n\n==========\n\n"
-          (map
-            (t: joinLines [
-              t.name
-              "Expected: ${log.print tests.${t.name}.expected}"
-              "Actual: ${log.print t.result}"
-            ])
-            results_
-          )}
-    '';
+  runFormatted = test:
+    let t = formatTestResults test (builtins.tryEval (runTests { ${test.name} = test; }));
+    in deepSeq t t;
+
+  toTest = testName: test:
+    let
+      test_ = test // {
+        name = testName;
+      };
+    in test_ // {
+      run = runFormatted test_;
+    };
 
   suite = nestedTests: rec {
     inherit nestedTests;
-    tests = flattenTests nestedTests;
+    tests = mapAttrs toTest (flattenTests nestedTests);
     run =
-      let t = formatTestResults tests (runTests tests);
-      in deepSeq t t;
+      let
+        results_ = mapAttrsToList (_: test: test.run) tests;
+        results = deepSeq results_ results_;
+        passed = filter (r: r.passed) results;
+        failed = filter (r: !r.passed) results;
+        nTests = length results;
+        nPassed = length passed;
+        nFailed = length failed;
+        testBlocksSep = indent.blocksSep "\n\n==========\n\n";
+        headerBlock = ''
+          Running ${toString nTests} tests
+        '';
+        passedHeader = ''
+          ${toString nPassed} of ${toString nTests} tests passed
+        '';
+        passedBlock =
+          optionalString (nPassed > 0)
+          (indent.lines
+            (map (result: result.msg) passed));
+        failedBlock =
+          optionalString (nFailed > 0)
+          (testBlocksSep
+            (map (result: result.msg) failed));
+
+      in testBlocksSep [
+        headerBlock
+        passedHeader
+        passedBlock
+        failedBlock
+      ];
   };
 }
