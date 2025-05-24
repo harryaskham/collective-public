@@ -931,6 +931,22 @@ in rec {
               expected = { a = "a"; };
             };
 
+            hasSuperFields = {
+              expr = B.__allFields;
+              expected = {
+                a = {
+                  fieldIndex = 0;
+                  fieldType = String;
+                  name = "a";
+                };
+                b = {
+                  fieldIndex = 0;
+                  fieldType = Int;
+                  name = "b";
+                };
+              };
+            };
+
             fieldsCompose = {
               expr = B.new "a" 2;
               expected = B.mk { a = "a"; b = 2; };
