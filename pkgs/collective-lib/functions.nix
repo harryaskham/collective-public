@@ -27,6 +27,9 @@ in rec {
   #                 xs = maybeTail ys |> def [];
   def = d: a: if a == null then d else a;
 
+  # Evaluate 'a' strictly, forcing all of its components, and return the final value.
+  strict = a: deepSeq a a;
+
   # Variadic function builder.
   Variadic = rec {
     # Default settings for taking arguments of e.g. f { a = 1; } { b = 2; } -> { a = 1; b = 2; }

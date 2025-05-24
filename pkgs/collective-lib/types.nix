@@ -100,30 +100,32 @@ in rec {
             checkValue = that: isType that.value;
           };
     in rec {
-      Null = mkBuiltin "Null" "null" isNull {} {};
-      Int = mkBuiltin "Int" "int" isInt {} {};
-      Float = mkBuiltin "Float" "float" isFloat {} {};
-      String = mkBuiltin "String" "string" isString {
-        size = this: stringLength this.value;
-      } {};
-      Path = mkBuiltin "Path" "path" isPath {
-        size = this: stringLength (toString this.value);
-      } {};
-      Bool = mkBuiltin "Bool" "bool" isBool {} {};
-      List = mkBuiltin "List" "list" isList {
-        fmap = this: f: List.new (map f this.value);
-        size = this: length this.value;
-        merge = this: mergeAttrsList this.value;
-      } {};
-      Set = mkBuiltin "Set" "set" (x: isAttrs x && !(x ? Type)) {
-        fmap = this: f: Set.new (mapAttrs (_: v: f v) this.value);
-        size = this: length (attrNames this.value);
-        attrNames = this: attrNames this.value;
-        attrValues = this: attrValues this.value;
-      } {};
-      Lambda = mkBuiltin "Lambda" "lambda" isFunction {
-        fmap = this: f: Lambda.new (compose f this.value);
-      } {};
+      BuiltinTypes = {
+        Null = mkBuiltin "Null" "null" isNull {} {};
+        Int = mkBuiltin "Int" "int" isInt {} {};
+        Float = mkBuiltin "Float" "float" isFloat {} {};
+        String = mkBuiltin "String" "string" isString {
+          size = this: stringLength this.value;
+        } {};
+        Path = mkBuiltin "Path" "path" isPath {
+          size = this: stringLength (toString this.value);
+        } {};
+        Bool = mkBuiltin "Bool" "bool" isBool {} {};
+        List = mkBuiltin "List" "list" isList {
+          fmap = this: f: List.new (map f this.value);
+          size = this: length this.value;
+        } {};
+        Set = mkBuiltin "Set" "set" (x: isAttrs x && !(x ? Type)) {
+          fmap = this: f: Set.new (mapAttrs (_: v: f v) this.value);
+          size = this: length (attrNames this.value);
+          attrNames = this: attrNames this.value;
+          attrValues = this: attrValues this.value;
+        } {};
+        Lambda = mkBuiltin "Lambda" "lambda" isFunction {
+          fmap = this: f: Lambda.new (compose f this.value);
+        } {};
+      };
+      inherit (BuiltinTypes) Null Int Float String Path Bool List Set Lambda;
 
       # Get the builtin type name corresponding to the given Builtin T.
       # Fails if T is not a Builtin.
@@ -300,9 +302,17 @@ in rec {
                   (field0: field1: field0.fieldIndex < field1.fieldIndex)
                   (attrValues __fields);
               orderedFieldNames = map (field: field.name) orderedFields;
-              superNew = if Super == null then id else Super.new;
-              thisNew = Variadic.mkOrdered orderedFieldNames;
-            in Variadic.compose thisNew superNew;
+              superCtor = if Super == null then id else Super.__ctor;
+              # Start accepting ordered fields variadically, on top of the already
+              # populated args from Super.
+              thisCtor = superArgs:
+                let spec = Variadic.ordered orderedFieldNames;
+                in Variadic.mk (spec // {
+                  initialState = spec.initialState // {
+                    args = superArgs;
+                  };
+                });
+            in Variadic.compose thisCtor superCtor;
       };
     };
 
@@ -617,6 +627,19 @@ in rec {
       if hasType T x then x
       else throw "Expected type ${T} (got ${typeName x})";
 
+    # A = mkType "A" {};
+    # B = mkType "B" { Super = A; };
+    #
+    # isSuperTypeOf A B == true
+    # isSuperTypeOf B A == false
+    # isSuperTypeOf A A == false
+    # isSuperTypeOf Type A == true
+    # isSuperTypeOf Type B == true
+    isSuperTypeOf = Super: T:
+      if T == null then false
+      else typeEq Super T.Super || isSuperTypeOf Super T.Super;
+    isSubTypeOf = flip isSuperTypeOf;
+
     # TODO: mkTypeFn instead of <T> string
     ListOf = T: mkType "ListOf<${T.name}>" {
       Super = List;
@@ -624,6 +647,19 @@ in rec {
       ctor = List.__ctor;
       checkValue = that: all (x: hasType T x) that.value;
     };
+
+    # A list of attrsets
+    # TODO: mkTypeFn instead of <T> string
+    SetList = T:
+      let Super = ListOf Set;
+      in mkType "SetList" {
+        inherit Super;
+        # TODO: default to Super ctor
+        ctor = List.__ctor;
+        methods = {
+          merge = this: mergeAttrsList (map (x: x.value) this.value);
+        };
+      };
 
     # TODO: mkTypeFn instead of <T> string
     # A type that enforces a size on the value. If n is null, any size is allowed, but .size must be present.
@@ -839,14 +875,14 @@ in rec {
             };
           };
 
-          new = disable {
+          new = skip {
             typed = {
               expr = (MyString.new (String.new "hello")).value.value;
               expected = "hello";
             };
 
-            raw = {
-              expr = TODO; # (MyString.new "hello").value;
+            raw = skip {
+              expr = (MyString.new "hello").value;
               expected = String.new "hello";
             };
           };
@@ -921,14 +957,52 @@ in rec {
           expected = expect.failure;
         };
 
+        cast =
+          let
+            ComparableBuiltinTypes = removeAttrs BuiltinTypes [ "Lambda" ];
+            testX = {
+              Null = null;
+              Int = 123;
+              Float = 12.3;
+              String = "abc";
+              Path = ./.;
+              Bool = true;
+              List = [1 2 3];
+              Set = { a = 1; b = 2; c = 3; };
+            };
+            mkToTypedBuiltinTest = T: x: {
+              expr = cast T x;
+              expected = T.new x;
+              compare = Compare.Typed;
+            };
+          in {
+            toTypedBuiltin = mapAttrs (name: T: mkToTypedBuiltinTest T testX.${name}) ComparableBuiltinTypes;
+          };
+
         inheritance =
           let
             A = mkType "A" { fields = { a = String; }; };
             B = mkType "B" { Super = A; fields = { b = Int; }; };
           in {
-            newA = {
-              expr = (A.new "a").get;
-              expected = { a = "a"; };
+
+            isSuperTypeOf = {
+              parentChild = expect.True (isSuperTypeOf A B);
+              childParent = expect.False (isSuperTypeOf B A);
+              parentParent = expect.False (isSuperTypeOf A A);
+              childChild = expect.False (isSuperTypeOf B B);
+              typeParent = expect.True (isSuperTypeOf Type A);
+              typeChild = expect.True (isSuperTypeOf Type B);
+              typeType = expect.False (isSuperTypeOf Type Type);
+            };
+
+            isSubTypeOf = {
+              parentChild = expect.False (isSubTypeOf A B);
+              childParent = expect.True (isSubTypeOf B A);
+              parentParent = expect.False (isSubTypeOf A A);
+              childChild = expect.False (isSubTypeOf B B);
+              typeParent = expect.False (isSubTypeOf Type A);
+              typeChild = expect.False (isSubTypeOf Type B);
+              typeType = expect.False (isSubTypeOf Type Type);
             };
 
             hasSuperFields = {

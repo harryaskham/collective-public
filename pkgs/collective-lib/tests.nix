@@ -2,6 +2,8 @@
 
 with lib;
 with cutils.attrs;
+with cutils.functions;
+with cutils.lists;
 with cutils.strings;
 with cutils.types;
 
@@ -9,107 +11,193 @@ with cutils.types;
 let
   log = cutils.log;
 in rec {
+
   Status = {
-    Passed = "Passed";
-    Failed = "Failed";
-    Disabled = "Failed";
+    Passed = "Status.Passed";
+    Failed = "Status.Failed";
+    Skipped = "Status.Skipped";
   };
 
-  TODO = "TODO: Enable this test";
-  DISABLED = "Test is disabled";
+  EvalStatus = {
+    OK = "EvalStatus.OK";
+    Error = "EvalStatus.Error";
+    Skipped = "EvalStatus.Skipped";
+  };
 
+  Compare = {
+    Typed = this: this.get;
+    Repr = this: log.print this;
+  };
+
+  # Detect a raw test object
   isTest = test: test ? expr && test ? expected;
-  disable = tests:
-  let doDisable = test: test // {
-        enabled = false;
-      };
-    in
-      if isTest tests then doDisable tests
-      else mapAttrsRecursiveCond (xs: !(isTest xs)) (_: doDisable) tests;
+
+  # Detect a wrapped test object
+  isWrappedTest = test: test ? __mkTest;
+
+  skip = tests:
+    let setSkip = test: test // {skip = true;};
+    in if isTest tests
+       then setSkip tests
+       else mapAttrsRecursiveCond (xs: !(isTest xs)) (_: setSkip) tests;
 
   expect = {
     failure = {
       success = false;
       value = false;
     };
+
+    True = expr: {
+      inherit expr;
+      expected = true;
+    };
+
+    False = expr: {
+      inherit expr;
+      expected = false;
+    };
   };
 
-  formatTestResults = test: tryEvalResults:
-    let
-      evalSuccess = tryEvalResults.success or false;
-      results = if tryEvalResults ? success && tryEvalResults ? value then tryEvalResults.value else tryEvalResults;
-      passed = results == [];
-    in
-      if passed then {
-        passed = true;
-        msg = "PASS: ${test.name}";
-      }
-      else {
-        passed = false;
-        msg = indent.block ''
+  # Is x the result of calling builtins.tryEval
+  isTryEvalResult = x: isAttrs x && x ? success && x ? value;
+
+  runOneTest = test: results_: rec {
+    evalStatus =
+      if test.skip then EvalStatus.Skipped
+      else if isTryEvalResult results_ && !results_.success then EvalStatus.Error
+      else EvalStatus.OK;
+    results =
+      if test.skip then null
+      else if evalStatus == EvalStatus.Error then null
+      else if isTryEvalResult results_ then results_.value
+      else results_;
+    status =
+      if test.skip then Status.Skipped
+      else if evalStatus == EvalStatus.Error then Status.Failed
+      else if results == [] then Status.Passed
+      else Status.Failed;
+    actual =
+      if test.skip then null
+      else if evalStatus == EvalStatus.Error then "<evaluation error>"
+      else if status == Status.Failed
+      then
+        let failedResult = assert (size results) <= 1; maybeHead results;
+        in if failedResult == null then null else failedResult.result
+      else null;
+    msg = {
+      ${Status.Skipped} = "SKIP: ${test.name}";
+      ${Status.Passed} = "PASS: ${test.name}";
+      ${Status.Failed} = joinLines [
+        (indent.block ''
           FAIL: ${test.name}
 
           Expected:
-            ${indent.here (log.print test.expected)}
+            ${indent.here (indent.blocks [
+                (log.print test.rawExpected)
+                (optionalString (test.compare != null) (indent.lines [
+                  "Comparing on:"
+                  test.expected
+                ]))
+            ])}
 
           Actual:
-            ${indent.here (if evalSuccess then log.print (head results).result else "<tryEval error>")}
-        '';
-      };
+            ${indent.here (log.print actual)}
+        '')
+        ""
+      ];
+    }.${status};
+  };
 
-  runFormatted = tryEvalFn: test:
-    let t = formatTestResults test (tryEvalFn (runTests { ${test.name} = test; }));
-    in deepSeq t t;
+  # Run the given test as a singleton test suite, formatting its results.
+  evalOneTest = evalFn: test:
+    let tests = { ${test.name} = test; };
+        result = evalFn (runTests tests);
+    in strict (runOneTest test result);
 
-  toTest = testName: test:
-    let
-      test_ = test // {
-        name = testName;
-        enabled = true;
-      };
-    in test_ // {
-      run = runFormatted builtins.tryEval test_;
-      debug = runFormatted id test_;
+  # Create a test attribute set adding extra functionality to a runTests-style
+  # test of format { expr = ...; expected = ...; }
+  # Optionally { skip = bool; } can be set too on the raw test.
+  mkTest = testName: test:
+    let test_ = rec {
+      # Marker for detecting an augmented test.
+      __mkTest = true;
+
+      # The flattened test name.
+      name = testName;
+
+      # A custom comparator to use to evaluate equality, or null if none provided.
+      compare = test.compare or null;
+
+      # The raw expression to evaluate as defined in the test.
+      rawExpr = test.expr;
+
+      # The expression to evaluate, optionally under a comparison function.
+      expr = if compare == null then rawExpr else compare rawExpr;
+
+      # The raw expected expression to compare with as defined in the test.
+      rawExpected = test.expected;
+
+      # The expected expression to compare with, optionally under a comparison function.
+      expected = if compare == null then rawExpected else compare rawExpected;
+
+      # Iff true, skip this test and do not treat as failure.
+      skip = test.skip or false;
+
+      # Run the test under tryEval, treating eval failure as test failure
+      run = evalOneTest builtins.tryEval test_;
+
+      # Run the test propagating eval errors that mask real failures
+      debug = evalOneTest id test_;
     };
+    in test_;
 
   suite = nestedTests: rec {
     inherit nestedTests;
-    tests = mapAttrs toTest (flattenTests nestedTests);
+    tests = mapAttrs mkTest (flattenTests nestedTests);
     overOne = f: mapAttrs (testName: test: f { ${testName} = test; }) tests;
     runOne = overOne (run_ (test: test.run));
     debugOne = overOne (run_ (test: test.debug));
-    run = run_ (test: test.run) tests;
-    debug = run_ (test: test.debug) tests;
-    run_ = runner: tests:
+    run = run_ false (test: test.run) tests;
+    runThenDebug = run_ true (test: test.run) tests;
+    debug = run_ false (test: test.debug) tests;
+    run_ = debugOnFailure: runner: tests:
       let
-        results_ = mapAttrsToList (_: runner) tests;
-        results = deepSeq results_ results_;
-        passed = filter (r: r.passed) results;
-        failed = filter (r: !r.passed) results;
-        nTests = length results;
-        nPassed = length passed;
-        nFailed = length failed;
-        testBlocksSep = indent.blocksSep "\n\n==========\n\n";
-        headerBlock = ''
-          Running ${toString nTests} tests
+        results = strict (mapAttrsToList (_: runner) tests);
+        byStatus = mapAttrs (statusK: statusV: filter (r: r.status == statusV) results) Status;
+        counts =
+          (mapAttrs (status: results: length results) byStatus)
+          // { all = size tests;
+               run = counts.all - counts.Skipped;
+             };
+        header = ''
+          Running ${toString counts.all} tests
         '';
-        passedHeader = ''
-          ${toString nPassed} of ${toString nTests} tests passed
-        '';
-        passedBlock =
-          optionalString (nPassed > 0)
-          (indent.lines
-            (map (result: result.msg) passed));
-        failedBlock =
-          optionalString (nFailed > 0)
-          (testBlocksSep
-            (map (result: result.msg) failed));
+        verbs = mapAttrs (statusName: _: toLower statusName) Status;
+        allCounts = {
+          Skipped = counts.all;
+          Passed = counts.run;
+          Failed = counts.run;
+        };
+        headers = mapAttrs (statusName: _:
+          optionalString (counts.${statusName} > 0) ''
+            ${toString (counts.${statusName})} of ${toString allCounts.${statusName}} tests ${verbs.${statusName}}
+          '') Status;
+        msgs =
+          mapAttrs
+            (statusName: _: joinLines (map (result: result.msg) byStatus.${statusName}))
+            Status;
+        maybeDebugAfterRun =
+          optionalString (debugOnFailure && counts.Failed > 0) debug;
 
-      in testBlocksSep [
-        headerBlock
-        passedHeader
-        passedBlock
-        failedBlock
+      in indent.blocksSep "\n\n==========\n\n" [
+        header
+        headers.Skipped
+        msgs.Skipped
+        headers.Passed
+        msgs.Passed
+        headers.Failed
+        msgs.Failed
+        maybeDebugAfterRun
       ];
   };
 }
