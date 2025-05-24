@@ -24,9 +24,17 @@ in rec {
     Skipped = "EvalStatus.Skipped";
   };
 
-  Compare = {
-    Typed = this: this.get;
-    Repr = this: log.print this;
+  Compare = rec {
+    Fields = this:
+      if typeOf this == "set"
+      then mapAttrs (_: Fields) (this.get or this)
+      else this;
+    # Produce a version of the this-set with replaced lambdas, enabling deep comparison.
+    NoLambdas = this:
+      if typeOf this == "lambda" then { __lambda = true; }
+      else if typeOf this == "set" then mapAttrs (_: NoLambdas) this
+      else this;
+    Print = this: log.print this;
   };
 
   # Detect a raw test object
@@ -96,7 +104,7 @@ in rec {
                 (log.print test.rawExpected)
                 (optionalString (test.compare != null) (indent.lines [
                   "Comparing on:"
-                  test.expected
+                  (log.print test.expected)
                 ]))
             ])}
 

@@ -4,6 +4,7 @@ with lib;
 with cutils.strings;
 with cutils.errors;
 with cutils.lists;
+with cutils.tests;
 
 # Misc functional utilities
 let
@@ -29,6 +30,14 @@ in rec {
 
   # Evaluate 'a' strictly, forcing all of its components, and return the final value.
   strict = a: deepSeq a a;
+
+  # Compose two functions left-to-right and merge their outputs.
+  # For example:
+  # f = sequentialWith mergeAttrs (b: c: {inherit b c;}) (a: b: {inherit a b;});
+  # f "a" "b" "c" "d" = { a = "a"; b = "b"; c = "c"; d = "d"; }
+  fjoin = mergeFn: g: f:
+    let g_ = fx: Variadic.compose (gx: mergeFn gx fx) g;
+    in Variadic.compose g_ f;
 
   # Variadic function builder.
   Variadic = rec {
@@ -112,7 +121,7 @@ in rec {
          };
       terminate = state: _: state.args;
     };
-    mkOrdered = fieldOrder: mk (ordered fieldOrder);
+    mkOrdered = fieldOrder: if fieldOrder == [] then {} else mk (ordered fieldOrder);
 
     # Expect a single argument to be embedded within an attrset with the given name.
     unary = fieldName: ordered [fieldName];
@@ -139,9 +148,10 @@ in rec {
     # Accrue arguments into a list until the given size is met
     mkListOfLength = l: mkList_ (state: _: (length state.xs) == l);
 
-    # Compose a variadic function with a function that accepts a single argument.
+    # Compose a variadic function f with a function g.
     # The variadic can't return terminate with a function or this will not be able to detect termination
     # since the Variadic is elided and we don't have g.isTerminal
+    # If g is n-ary or variadic, then the final result of f is passed as the first argument of g.
     compose = g: f:
       if (!isFunction g) then throw "Cannot precompose a non-function (${typeOf g}) in Variadic.compose"
       else if isFunction f then a: Variadic.compose g (f a)
@@ -210,8 +220,18 @@ in rec {
           };
 
           ordered = {
-            expr = (Variadic.mkOrdered ["a" "b"]) 1 2;
-            expected = { a = 1; b = 2; };
+            _0 = {
+              expr = Variadic.mkOrdered [];
+              expected = {};
+            };
+            _1 = {
+              expr = (Variadic.mkOrdered ["a"] ) 1;
+              expected = { a = 1; };
+            };
+            _2 = {
+              expr = (Variadic.mkOrdered ["a" "b"]) 1 2;
+              expected = { a = 1; b = 2; };
+            };
           };
 
           unary = {
@@ -263,6 +283,90 @@ in rec {
                 c = 123;
               };
             };
+
+            orderedWithOrdered = {
+              expr =
+                let f = Variadic.mkOrdered ["a" "b"];
+                    g = Variadic.mkOrdered ["c" "d"];
+                    gf = Variadic.compose g f;
+                in gf 1 2 3;
+              expected = {
+                c = {
+                  a = 1;
+                  b = 2;
+                };
+                d = 3;
+              };
+            };
+
+          };
+
+          fjoin = {
+            fUnary =
+              let f = a: a * 3;
+              in {
+                gUnary =
+                  let g = a: a + 2;
+                      gf = fjoin (gr: fr: {inherit gr fr;}) g f;
+                  in {
+                    expr = gf 2 10;
+                    expected = { fr = 6; gr = 12;};
+                  };
+                gBinary =
+                  let g = a: b: a + b;
+                      gf = fjoin (gr: fr: {inherit gr fr;}) g f;
+                  in {
+                    expr = gf 2 10 1;
+                    expected = { fr = 6; gr = 11;};
+                  };
+              };
+
+            fBinary =
+              let f = a: b: a * b;
+              in {
+                gUnary =
+                  let g = a: a + 2;
+                      gf = fjoin (gr: fr: {inherit gr fr;}) g f;
+                  in {
+                    expr = gf 3 2 10;
+                    expected = { fr = 6; gr = 12;};
+                  };
+                gBinary =
+                  let g = a: b: a + b;
+                      gf = fjoin (gr: fr: {inherit gr fr;}) g f;
+                  in {
+                    expr = gf 3 2 10 1;
+                    expected = { fr = 6; gr = 11;};
+                  };
+              };
+
+            orderedWithOrderedMerge = {
+              distinct = {
+                expr =
+                  let f = Variadic.mkOrdered ["a" "b"];
+                      g = Variadic.mkOrdered ["c" "d"];
+                      gf = fjoin mergeAttrs g f;
+                  in gf 1 2 3 4;
+                expected = { a = 1; b = 2; c = 3; d = 4; };
+              };
+              overlapping = {
+                expr =
+                  let f = Variadic.mkOrdered ["a" "b"];
+                      g = Variadic.mkOrdered ["b" "c"];
+                      gf = fjoin mergeAttrs g f;
+                  in gf 1 2 3 4;
+                expected = { a = 1; b = 2; c = 4; };
+              };
+              overlappingFlip = {
+                expr =
+                  let f = Variadic.mkOrdered ["a" "b"];
+                      g = Variadic.mkOrdered ["b" "c"];
+                      gf = fjoin (flip mergeAttrs) g f;
+                  in gf 1 2 3 4;
+                expected = { a = 1; b = 3; c = 4; };
+              };
+            };
+
           };
 
         };

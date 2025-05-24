@@ -2,6 +2,7 @@
 
 with lib;
 with lib.strings;
+with cutils.clib;
 with cutils.attrs;
 with cutils.functions;
 with cutils.errors;
@@ -267,14 +268,14 @@ in rec {
     Ctor = rec {
 
       # T.new -> T {}
-      Nullary = { __Ctor = _: _: {}; };
+      Nullary = { __Ctor = _: {}; };
 
       # For single-valued types, accept a single field value to pass to mk.
       # TODO: Should be equivalent to Fields iff Super unset
       Unary = {
         __Ctor =
-          _: __fields:
-            let fieldNames = attrNames __fields;
+          This:
+            let fieldNames = attrNames This.__fields;
             in if length fieldNames == 1 then Variadic.mkUnary (head fieldNames)
             else throw "Expected a single field name for Ctor.unary but got ${log.print fieldNames}";
       };
@@ -295,24 +296,15 @@ in rec {
       # This.new "a" 2 true == This { a = "a"; b = 2; c = true; }
       Fields = {
         __Ctor =
-          Super: __fields:
+          This:
             let
-              orderedFields =
-                sortOn
-                  (field0: field1: field0.fieldIndex < field1.fieldIndex)
-                  (attrValues __fields);
+              orderedFields = sortOn (field: field.fieldIndex) (attrValues This.__fields);
               orderedFieldNames = map (field: field.name) orderedFields;
-              superCtor = if Super == null then id else Super.__ctor;
-              # Start accepting ordered fields variadically, on top of the already
-              # populated args from Super.
-              thisCtor = superArgs:
-                let spec = Variadic.ordered orderedFieldNames;
-                in Variadic.mk (spec // {
-                  initialState = spec.initialState // {
-                    args = superArgs;
-                  };
-                });
-            in Variadic.compose thisCtor superCtor;
+              thisCtor = Variadic.mkOrdered orderedFieldNames;
+            in
+              if This.Super == null
+              then thisCtor
+              else fjoin mergeAttrs thisCtor This.Super.__ctor;
       };
     };
 
@@ -367,7 +359,7 @@ in rec {
           in
             if ctor ? __Ctor
             # Apply the wrapped __Ctor type if any
-            then ctor.__Ctor Super __fields
+            then ctor.__Ctor This
             # Otherwise use the literal provided.
             else ctor;
         __fields =
@@ -501,8 +493,9 @@ in rec {
                     }
                     { pred = (field: !(isCastError castValue));
                       msg = indent.block ''
-                        Error casting field assignment for ${This.name}.${fieldName}:
-                        ${indent.here castValue.castError}
+                        Error casting field assignment
+                          ${This.name}.${fieldName} = ${log.print uncastValue}
+                          ${indent.here castValue.castError}
                       '';
                     }
                   ] field);
@@ -520,11 +513,9 @@ in rec {
           modify = mapAttrs (fieldName: x: f: set.${fieldName} (f x));
 
           # Method calling interface
-          # We can't bind recursively in general but for .call we bind to this_ so that
-          # get/has/set/modify/call all work.
-          # Nested this.call should work as each subsequent nest adds another layer of call
+          # Nested calls should work as each is bound to this_, the version after the methods are set.
           # e.g. this.call.someMethod arg1 arg2 arg3 -> return value
-          call = mapAttrs (_: method: method (reinitThis this)) This.__allMethods;
+          call = mapAttrs (_: method: method this) This.__allMethods;
         };
 
         # Set all fields on the instance
@@ -540,7 +531,6 @@ in rec {
             )
             this
             (attrValues This.__fields); # Not __allFields as these will be set in Super init
-
 
         # Copy over already-bound static methods to the instance before binding
         # instance methods.
@@ -798,10 +788,10 @@ in rec {
       MyString = mkNewType "MyString" String;
 
       MyType = mkType "MyType" {
+        ctor = Ctor.Unary;
         fields = {
           myField = String;
         };
-        ctor = myField: { inherit myField; };
         methods = {
           helloMyField = this: extra:
             "Hello, ${this.myField.value}${extra}";
@@ -875,15 +865,16 @@ in rec {
             };
           };
 
-          new = skip {
+          new = {
             typed = {
               expr = (MyString.new (String.new "hello")).value.value;
               expected = "hello";
             };
 
-            raw = skip {
+            raw = {
               expr = (MyString.new "hello").value;
               expected = String.new "hello";
+              compare = Compare.Fields;
             };
           };
         };
@@ -973,7 +964,7 @@ in rec {
             mkToTypedBuiltinTest = T: x: {
               expr = cast T x;
               expected = T.new x;
-              compare = Compare.Typed;
+              compare = Compare.Fields;
             };
           in {
             toTypedBuiltin = mapAttrs (name: T: mkToTypedBuiltinTest T testX.${name}) ComparableBuiltinTypes;
@@ -984,6 +975,12 @@ in rec {
             A = mkType "A" { fields = { a = String; }; };
             B = mkType "B" { Super = A; fields = { b = Int; }; };
           in {
+
+            newA = {
+              expr = A.new "a";
+              expected = A.mk { a = "a"; };
+              compare = Compare.Fields;
+            };
 
             isSuperTypeOf = {
               parentChild = expect.True (isSuperTypeOf A B);
@@ -1005,6 +1002,17 @@ in rec {
               typeType = expect.False (isSubTypeOf Type Type);
             };
 
+            hasThisFields = {
+              expr = B.__fields;
+              expected = {
+                b = {
+                  fieldIndex = 0;
+                  fieldType = Int;
+                  name = "b";
+                };
+              };
+            };
+
             hasSuperFields = {
               expr = B.__allFields;
               expected = {
@@ -1024,6 +1032,7 @@ in rec {
             fieldsCompose = {
               expr = B.new "a" 2;
               expected = B.mk { a = "a"; b = 2; };
+              compare = Compare.Fields;
             };
 
         };
