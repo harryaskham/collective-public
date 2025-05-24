@@ -25,7 +25,7 @@ in
   collective-lib // {
     # Run all:
     # nix eval --impure --expr '(import collective-public/pkgs/collective-lib {})._tests.run' --show-trace | xargs -0 -I{} python -c 'print('''{}''')' | less
-    # Inspect one:
+    # Run one:
     # nix eval --impure --expr '(import collective-public/pkgs/collective-lib {})._tests.tests.test-types__MyType2_mk_missingDefault'
     _tests =
       collective-lib.tests.suite
