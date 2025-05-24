@@ -22,4 +22,16 @@ rec {
 
   # Get the maximum of a list of numbers.
   maximum = foldr1 max;
+
+  # Get the tail of a list or null if empty.
+  maybeHead = xs: if xs == [] then null else head xs;
+
+  # Get the tail of a list or null if empty.
+  maybeTail = xs: if xs == [] then null else tail xs;
+
+  # Get the head/tail of a list as {head, tail}, { a, [] } for singleton and null;
+  maybeSnoc = xs:
+    let h = head xs;
+        t = tail xs;
+    in if xs == [] then null else {head = h; tail = t;};
 }

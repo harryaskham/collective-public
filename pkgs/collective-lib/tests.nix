@@ -9,6 +9,20 @@ with cutils.types;
 let
   log = cutils.log;
 in rec {
+  TODO = "TODO: Enable this test";
+  DISABLED = "Test is disabled";
+
+  isTest = test: test ? expr && test ? expected;
+  disable_ = expr: expected: tests:
+    let doDisable = test: test // {
+        inherit expr expected;
+      };
+    in
+      if isTest tests then doDisable tests
+      else mapAttrsRecursiveCond (xs: !(isTest xs)) (_: doDisable) tests;
+  disable = disable_ TODO DISABLED;
+  disablePass = disable_ TODO TODO;
+
   expect = {
     failure = {
       success = false;
@@ -19,7 +33,7 @@ in rec {
   formatTestResults = test: tryEvalResults:
     let
       evalSuccess = tryEvalResults.success or false;
-      results = tryEvalResults.value;
+      results = if tryEvalResults ? success && tryEvalResults ? value then tryEvalResults.value else tryEvalResults;
       passed = results == [];
     in
       if passed then {
@@ -31,14 +45,16 @@ in rec {
         msg = indent.block ''
           FAIL: ${test.name}
 
-          Expected: ${log.print test.expected}
+          Expected:
+            ${indent.here (log.print test.expected)}
 
-          Actual: ${if evalSuccess then log.print (head results).result else "<tryEval error>"}
+          Actual:
+            ${indent.here (if evalSuccess then log.print (head results).result else "<tryEval error>")}
         '';
       };
 
-  runFormatted = test:
-    let t = formatTestResults test (builtins.tryEval (runTests { ${test.name} = test; }));
+  runFormatted = tryEvalFn: test:
+    let t = formatTestResults test (tryEvalFn (runTests { ${test.name} = test; }));
     in deepSeq t t;
 
   toTest = testName: test:
@@ -47,15 +63,21 @@ in rec {
         name = testName;
       };
     in test_ // {
-      run = runFormatted test_;
+      run = runFormatted builtins.tryEval test_;
+      debug = runFormatted id test_;
     };
 
   suite = nestedTests: rec {
     inherit nestedTests;
     tests = mapAttrs toTest (flattenTests nestedTests);
-    run =
+    overOne = f: mapAttrs (testName: test: f { ${testName} = test; }) tests;
+    runOne = overOne (run_ (test: test.run));
+    debugOne = overOne (run_ (test: test.debug));
+    run = run_ (test: test.run) tests;
+    debug = run_ (test: test.debug) tests;
+    run_ = runner: tests:
       let
-        results_ = mapAttrsToList (_: test: test.run) tests;
+        results_ = mapAttrsToList (_: runner) tests;
         results = deepSeq results_ results_;
         passed = filter (r: r.passed) results;
         failed = filter (r: !r.passed) results;

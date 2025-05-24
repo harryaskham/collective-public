@@ -3,6 +3,7 @@
 with lib;
 with cutils.strings;
 with cutils.errors;
+with cutils.lists;
 
 # Misc functional utilities
 let
@@ -20,6 +21,11 @@ in rec {
 
   # Return a value iff a condition is not met, otherwise return null
   unless = cond: when (!cond);
+
+  # Wrap a possibly null value with a default.
+  # Can use as e.g. person.name = def "Unknown" (person.name or null);
+  #                 xs = maybeTail ys |> def [];
+  def = d: a: if a == null then d else a;
 
   # Variadic function builder.
   Variadic = rec {
@@ -94,10 +100,13 @@ in rec {
         args = {};
       };
       isTerminal = state: _: state.fieldOrder == [];
-      handle = state: x: {
-        fieldOrder = tail state.fieldOrder;
-        args = state.args // { ${head state.fieldOrder} = x; };
-      };
+      handle = state: x:
+        let ht = maybeSnoc state.fieldOrder;
+         in if ht == null then state
+         else state // {
+           fieldOrder = ht.tail;
+           args = state.args // { ${ht.head} = x; };
+         };
       terminate = state: _: state.args;
     };
     mkOrdered = fieldOrder: mk (ordered fieldOrder);
@@ -128,11 +137,12 @@ in rec {
     mkListOfLength = l: mkList_ (state: _: (length state.xs) == l);
 
     # Compose a variadic function with a function that accepts a single argument.
-    # The variadic can't return a function or it will not be able to detect termination.
+    # The variadic can't return terminate with a function or this will not be able to detect termination
+    # since the Variadic is elided and we don't have g.isTerminal
     compose = g: f:
-      if isFunction f then a: Variadic.compose g (f a)
+      if (!isFunction g) then throw "Cannot precompose a non-function (${typeOf g}) in Variadic.compose"
+      else if isFunction f then a: Variadic.compose g (f a)
       else g f;
-
   };
 
   # Make a polymorphic function from the given type-to-value attrs

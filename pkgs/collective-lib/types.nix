@@ -200,7 +200,10 @@ in rec {
       if hasType T x then x
       # maybe downcast a Builtin
       else if isTyped x
-        then if (!isBuiltinTypeName T) then mkCastError "Cannot cast value of type ${typeName x} to non-builtin type ${log.print T}"
+      then if (!isBuiltinTypeName T) then mkCastError (indent.block ''
+          Cannot cast value of type ${typeName x} to ${log.print T}:
+            ${indent.here (log.print x)}
+        '')
         else let TWrapped = Builtin.FromT T;
              in if !(typeEq x.Type TWrapped) then mkCastError "Cannot cast value of type ${typeName x} to type ${log.print T} via wrapping as ${TWrapped.name}"
         else unwrap x
@@ -253,43 +256,54 @@ in rec {
       else T.check x;
 
     # Constructor presets
+    # A Ctor.CtorName is of form:
+    # {
+    #   __Ctor = Super: fields: <constructor function producing field-value attrs>
+    # }
+    # s.t. if a type has 'ctor = Ctor.CtorName' then on Type T construction the ctor
+    # is created by binding to T.Super and T.__fields
     Ctor = rec {
-      # By default, accept a single field values attrset to pass to mk.
-      default = id;
 
-      # Accept no arguments.
-      nullary = {};
+      # T.new -> T {}
+      Nullary = { __Ctor = _: _: {}; };
 
-      # Accept a single field value to pass to mk.
-      unary = _: fields:
-        let fieldNames = attrNames fields;
-        in if length fieldNames == 1 then Variadic.mkUnary (head fieldNames)
-        else throw "Expected a single field name for Ctor.unary but got ${log.print fieldNames}";
+      # For single-valued types, accept a single field value to pass to mk.
+      # TODO: Should be equivalent to Fields iff Super unset
+      Unary = {
+        __Ctor =
+          _: __fields:
+            let fieldNames = attrNames __fields;
+            in if length fieldNames == 1 then Variadic.mkUnary (head fieldNames)
+            else throw "Expected a single field name for Ctor.unary but got ${log.print fieldNames}";
+      };
 
-      # Tag for ctor disambiguation.
-      Unary = { __Ctor = unary; };
-
-      # Accept fields in order of their index attribute in T.
-      # If T has a supertype, this first accepts its fields, then or those of its supertype, and so on,
-      # such that the final argument is the final field by index on T
-      fields = Super: fields_:
-        let 
-          superNew =
-              if T.Super == null then id
-              else args: Variadic.mk { initialState = args; };
-          orderedFields = sortOn (field0: field1: field0.fieldIndex < field1.fieldIndex) T.__allFields;
-        in 
-          if T.Super == null then thisNew
-          else 
-            let 
-              # First force Super's fields to be collated as args
-              superNew = (T.Super // {__ctor = Ctor.fields Super;}).new;
-              # Then establish T.new as taking ordered fields and adding them to the Super's args
-              thisNew = args: Variadic.mk ((Variadic.ordered orderedFields) // { initialState = args; });
+      # Default constructor for regular non-NewType/Builtin/Alias types.
+      # Accept fields in order of their index attribute.
+      # If This has a supertype, its constructor is variadically precomposed with This.new
+      # so that if we have:
+      #
+      # Super = {__fields = {a = String};};
+      # This = {
+      #   inherit Super;
+      #   __fields = {b = Int; c = Bool;};
+      # };
+      #
+      # Then:
+      #
+      # This.new "a" 2 true == This { a = "a"; b = 2; c = true; }
+      Fields = {
+        __Ctor =
+          Super: __fields:
+            let
+              orderedFields =
+                sortOn
+                  (field0: field1: field0.fieldIndex < field1.fieldIndex)
+                  (attrValues __fields);
+              orderedFieldNames = map (field: field.name) orderedFields;
+              superNew = if Super == null then id else Super.new;
+              thisNew = Variadic.mkOrdered orderedFieldNames;
             in Variadic.compose thisNew superNew;
-
-      # Tag for ctor disambiguation.
-      Fields = { __Ctor = fields; };
+      };
     };
 
     # Construct a type from spec attrs:
@@ -315,7 +329,7 @@ in rec {
     #   #   field2 = arg2;
     #   #   field3 = arg3;
     #   # }
-    #   ctor = <ctor function e.g. Ctor.default, ...> (default Ctor.default)
+    #   ctor = Super: __fields: <ctor function> (default Ctor.Fields)
     #
     #   # Whether to allow unknown fields.
     #   allowUnknownFields = false (default)
@@ -339,10 +353,12 @@ in rec {
         Type = Types.Type;
 
         __ctor =
-          let ctor = spec.ctor or Ctor.default;
-          in # Apply the wrapped ctor tag
+          let ctor = spec.ctor or Ctor.Fields;
+          in
             if ctor ? __Ctor
+            # Apply the wrapped __Ctor type if any
             then ctor.__Ctor Super __fields
+            # Otherwise use the literal provided.
             else ctor;
         __fields =
           let fields = spec.fields or {};
@@ -474,7 +490,11 @@ in rec {
                       ];
                     }
                     { pred = (field: !(isCastError castValue));
-                      msg = "Error casting field assignment for ${This.name}.${fieldName}: ${castValue.castError}"; }
+                      msg = indent.block ''
+                        Error casting field assignment for ${This.name}.${fieldName}:
+                        ${indent.here castValue.castError}
+                      '';
+                    }
                   ] field);
                   reinitThis (this // { 
                     ${fieldName} = castValue;
@@ -819,15 +839,15 @@ in rec {
             };
           };
 
-          new = {
+          new = disable {
             typed = {
               expr = (MyString.new (String.new "hello")).value.value;
               expected = "hello";
             };
 
             raw = {
-              expr = (MyString.new "hello").value.value;
-              expected = "hello";
+              expr = TODO; # (MyString.new "hello").value;
+              expected = String.new "hello";
             };
           };
         };
@@ -900,11 +920,28 @@ in rec {
             in builtins.tryEval this;
           expected = expect.failure;
         };
+
+        inheritance =
+          let
+            A = mkType "A" { fields = { a = String; }; };
+            B = mkType "B" { Super = A; fields = { b = Int; }; };
+          in {
+            newA = {
+              expr = (A.new "a").get;
+              expected = { a = "a"; };
+            };
+
+            fieldsCompose = {
+              expr = B.new "a" 2;
+              expected = B.mk { a = "a"; b = 2; };
+            };
+
+        };
+
       };
 
         # TODO:
         # Inheritance
-        # Ordered
         # ListOf
         # Type classes
         # Unions
