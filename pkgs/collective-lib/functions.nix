@@ -107,17 +107,17 @@ in rec {
     mkUnary = fieldName: mk (unary fieldName);
 
     # Variadic end-marker for otherwise-ambiguous termination
-    end = "__end__";
+    end = { __end = true; };
 
     # Accrue arguments into a list until one satisfies isTerminal.
     list_ = isTerminal: {
       inherit isTerminal;
       initialState = { xs = []; };
       handle = state: x: 
-        if isTerminal x
+        if isTerminal state x
         then state
         else { xs = [x] ++ state.xs; };
-      terminate = state: _: reverse state.xs;
+      terminate = state: _: reverseList state.xs;
     };
     mkList_ = isTerminal: mk (list_ isTerminal);
 
@@ -125,7 +125,7 @@ in rec {
     mkList = mkList_ (_: x: x == end);
 
     # Accrue arguments into a list until the given size is met
-    mkListOfLength = length: mkList_ (state: _: length state.xs == length);
+    mkListOfLength = l: mkList_ (state: _: (length state.xs) == l);
 
     # Compose a variadic function with a function that accepts a single argument.
     # The variadic can't return a function or it will not be able to detect termination.
@@ -195,18 +195,63 @@ in rec {
               in f {x = "y";} {abc = 123;};
             expected = { x = "y"; abc = 123; };
           };
+
           ordered = {
             expr = (Variadic.mkOrdered ["a" "b"]) 1 2;
             expected = { a = 1; b = 2; };
           };
+
           unary = {
             expr = (Variadic.mkUnary "xxx") "abc";
             expected = { xxx = "abc"; };
           };
+
           list = {
             expr = Variadic.mkList 1 2 3 Variadic.end;
             expected = [ 1 2 3 ];
           };
+
+          listOfLength = {
+            partial = {
+              expr = typeOf ((Variadic.mkListOfLength 3) 1 2);
+              expected = "lambda";
+            };
+            full = {
+              expr = (Variadic.mkListOfLength 3) 1 2 3;
+              expected = [1 2 3];
+            };
+          };
+
+          compose = {
+            unaryWithVariadic = {
+              expr =
+                let f = Variadic.mkOrdered ["a" "b"];
+                    g = x: x // { c = 123; };
+                    gf = Variadic.compose g f;
+                in gf 1 2;
+
+              expected = {
+                a = 1;
+                b = 2;
+                c = 123;
+              };
+            };
+
+            variadicWithVariadic = {
+              expr =
+                let f = Variadic.mkOrdered ["a" "b"];
+                    g = Variadic.mk { isTerminal = state: _: size state > 2; };
+                    gf = Variadic.compose g f;
+                in gf 1 2 {c = 123;};
+
+              expected = {
+                a = 1;
+                b = 2;
+                c = 123;
+              };
+            };
+          };
+
         };
       };
     };
