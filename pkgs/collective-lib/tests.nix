@@ -9,19 +9,23 @@ with cutils.types;
 let
   log = cutils.log;
 in rec {
+  Status = {
+    Passed = "Passed";
+    Failed = "Failed";
+    Disabled = "Failed";
+  };
+
   TODO = "TODO: Enable this test";
   DISABLED = "Test is disabled";
 
   isTest = test: test ? expr && test ? expected;
-  disable_ = expr: expected: tests:
-    let doDisable = test: test // {
-        inherit expr expected;
+  disable = tests:
+  let doDisable = test: test // {
+        enabled = false;
       };
     in
       if isTest tests then doDisable tests
       else mapAttrsRecursiveCond (xs: !(isTest xs)) (_: doDisable) tests;
-  disable = disable_ TODO DISABLED;
-  disablePass = disable_ TODO TODO;
 
   expect = {
     failure = {
@@ -61,6 +65,7 @@ in rec {
     let
       test_ = test // {
         name = testName;
+        enabled = true;
       };
     in test_ // {
       run = runFormatted builtins.tryEval test_;
