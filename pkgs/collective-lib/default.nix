@@ -1,7 +1,8 @@
 { pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, ... }:
 
 let
-  collective-lib = rec {
+  collective-lib =
+    rec {
     tests = import ./tests.nix { inherit lib cutils; };
     functions = import ./functions.nix { inherit lib cutils; };
     log = import ./log.nix { inherit lib cutils; };

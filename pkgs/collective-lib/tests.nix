@@ -49,6 +49,12 @@ in rec {
        then setSkip tests
        else mapAttrsRecursiveCond (xs: !(isTest xs)) (_: setSkip) tests;
 
+  solo = tests:
+    let setSolo = test: test // {solo = true;};
+    in if isTest tests
+       then setSolo tests
+       else mapAttrsRecursiveCond (xs: !(isTest xs)) (_: setSolo) tests;
+
   expect = {
     failure = {
       success = false;
@@ -151,6 +157,9 @@ in rec {
       # Iff true, skip this test and do not treat as failure.
       skip = test.skip or false;
 
+      # Iff any test has solo == true, run only tests with solo == true.
+      solo = test.solo or false;
+
       # Run the test under tryEval, treating eval failure as test failure
       run = evalOneTest builtins.tryEval test_;
 
@@ -161,7 +170,14 @@ in rec {
 
   suite = nestedTests: rec {
     inherit nestedTests;
-    tests = mapAttrs mkTest (flattenTests nestedTests);
+    tests =
+      let flatTests = mapAttrs mkTest (flattenTests nestedTests);
+          soloTests = filterAttrs (_: t: t.solo) flatTests;
+          nonSoloTests = filterAttrs (_: t: !t.solo) flatTests;
+      in if soloTests == {}
+         then flatTests
+         # else soloTests // (mapAttrs (_: t: t // {skip = true;}) nonSoloTests);
+         else soloTests;
     overOne = f: mapAttrs (testName: test: f { ${testName} = test; }) tests;
     runOne = overOne (run_ (test: test.run));
     debugOne = overOne (run_ (test: test.debug));
