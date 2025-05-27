@@ -20,7 +20,7 @@ rec {
 
   # Convert a value of any type to a string, supporting the types module's Type values.
   print = x: 
-    if Types.isTyped x
+    if Types.isTyped x && (x ? __toString)
       then toString x
       else {
         null = "null";

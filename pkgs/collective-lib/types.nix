@@ -13,7 +13,7 @@ with cutils.strings;
 # - SetOf
 # - LambdaOf
 # - OrderedOf
-# - mkSubType
+# - newSubType
 # - Tests for:
 #   - Inheritance
 #   - Nested calls / chained sets see the correct bound state
@@ -24,17 +24,21 @@ with cutils.strings;
 #   - Maybe / ADTs
 # - Try https://bolt.tvix.dev/
 
-# Simple inheritance-based typesystem for use outside of the module system.
+# Inheritance-based typesystem for use outside of the module system.
 #
 # Objects are represented as attrsets with "Type" and "Super" keys, holding the
 # type and supertype definitions respectively.
 #
-# All types ultimately inherit from Types.Type, which inherits from itself.
+# The type system is bootstrapped from:
+# - a minimal manually constructed HyperType, definining the fields of a type
+# - a subtype of HyperType, MetaType, which is also an instance of HyperType, adding methods
+# - a subtype of MetaType, ProtoType, which is also an instance of MetaType, whose instantiation binds the methods
+# - Type, a subtype and instance of ProtoType, which is the base type for all subsequent types in this system.
 #
 # Fields are validated and typechecked upon object creation and again on updates,
 # such that once an object of type T is constructed it remains valid under T.check.
 #
-# Builtin types are wrapped as Builtin.<type> such that when a field is assigned
+# Builtin types are wrapped as e.g. String, Bool, ... such that when a field is assigned
 # a builtin type it is implicitly converted to its corresponding Builtin. The
 # raw builtin value can be accessed via the 'value' field.
 #
@@ -79,74 +83,74 @@ in rec {
 
   Types = rec {
 
-    Builtin = rec {
-
-      mkBuiltin =
-        name: builtinType: isType: methods: staticMethods_:
-          Type.new name {
-            fields.value = builtinType;
-
-            staticMethods = {
-              __builtinTypeName = This: builtinType;
-              __checkBuiltin = This: isType;
-              cast = This: x: cast This x;
-              is = This: x: !(isCastError This.cast x);
-            } // staticMethods_;
-
-            methods = {
-              mapBuiltin = this: this.modify.value;
-            } // methods;
-
-            checkValue = that: isType that.value;
+    mkBuiltin =
+      name: builtinType: isT: methods:
+        Type.new name {
+          fields = { value = builtinType; };
+          inherit methods;
+          staticMethods = {
+            __builtinTypeName = This: builtinType;
+            is = This: x: !(isCastError cast This x);
           };
+          checkValue = that: isT that.value;
+        };
+    mkBuiltin_ = name: builtinType: isT:
+      mkBuiltin name builtinType isT {};
 
-      Null = mkBuiltin "Null" "null" isNull {} {};
 
-      Int = mkBuiltin "Int" "int" isInt {} {};
+    # Start Builtin value-types.
 
-      Float = mkBuiltin "Float" "float" isFloat {} {};
+    Null = mkBuiltin_ "Null" "null" isNull;
 
-      String = mkBuiltin "String" "string" isString {
-        size = this: stringLength this.value;
-      } {};
+    Int = mkBuiltin_ "Int" "int" isInt;
 
-      Path = mkBuiltin "Path" "path" isPath {
-        size = this: stringLength (toString this.value);
-      } {};
+    Float = mkBuiltin_ "Float" "float" isFloat;
 
-      Bool = mkBuiltin "Bool" "bool" isBool {} {};
+    String = mkBuiltin "String" "string" isString {
+      size = this: stringLength this.value;
+    };
 
-      List = mkBuiltin "List" "list" isList {
-        fmap = this: f: this.modify.value (map f);
-        size = this: length this.value;
-        append = this: x: this.modify.value (xs: xs ++ [x]);
-      } {};
+    Path = mkBuiltin "Path" "path" isPath {
+      size = this: stringLength (toString this.value);
+    };
 
-      Set = mkBuiltin "Set" "set" (x: isAttrs x && !(x ? Type)) {
-        fmap = this: f: this.modify.value (mapAttrs (_: f));
-        size = this: length this.attrNames;
-        attrNames = this: attrNames this.value;
-        attrValues = this: attrValues this.value;
-        # e.g. this.modifyAt.name (x: x+1)
-        getAt = this: this.value;
-        modifyAt = this: mapAttrs (_: value: f: f value) this.value;
-        setAt = this: mapAttrs (_: modifyHere: x: modifyHere (const x)) this.modifyAt;
-        setAtName = this: name: value:
-          if this.setAt ? ${name}
-          then this.setAt.${name} value
-          else this.modify.value (xs: xs // {${name} = value;});
-      };
+    Bool = mkBuiltin_ "Bool" "bool" isBool;
 
-      Lambda = mkBuiltin "Lambda" "lambda" isFunction {
-        fmap = this: f: this.modify.value (compose f);
-      } {};
+    List = mkBuiltin "List" "list" isList {
+      fmap = this: f: this.modify.value (map f);
+      size = this: length this.value;
+      append = this: x: this.modify.value (xs: xs ++ [x]);
+    };
 
-      # Get the builtin type name corresponding to the given Builtin T.
-      # Fails if T is not a Builtin.
-      toBuiltinTypeName = T:
-        T.__builtinTypeName or
-          (throw "Invalid T argument for Builtin.toBuiltinTypeName: ${log.print T}");
+    Set = mkBuiltin "Set" "set" (x: isAttrs x && !(x ? Type)) {
+      fmap = this: f: this.modify.value (mapAttrs (_: f));
+      size = this: length this.attrNames;
+      attrNames = this: attrNames this.value;
+      attrValues = this: attrValues this.value;
+      # e.g. this.modifyAt.name (x: x+1)
+      getAt = this: this.value;
+      modifyAt = this: mapAttrs (_: value: f: f value) this.value;
+      setAt = this: mapAttrs (_: modifyHere: x: modifyHere (const x)) this.modifyAt;
+      setAtName = this: name: value:
+        if this.setAt ? ${name}
+        then this.setAt.${name} value
+        else this.modify.value (xs: xs // {${name} = value;});
+    };
 
+    Lambda = mkBuiltin "Lambda" "lambda" isFunction {
+      fmap = this: f: this.modify.value (compose f);
+    };
+
+    ### End Builtin value-types.
+
+
+    # Get the builtin type name corresponding to the given Builtin T.
+    # Fails if T is not a Builtin.
+    toBuiltinTypeName = T:
+      T.__builtinTypeName or
+        (throw "Invalid T argument for toBuiltinTypeName: ${log.print T}");
+
+    Builtin = {
       # Get the Builtin type corresponding to the given builtin type.
       # Returns null if builtinType is not a builtin type string.
       maybeFromT = builtinType:
@@ -191,7 +195,7 @@ in rec {
       if isAttrs x then !(x ? Type)
       else true;
 
-    # Whether or not name is one of the builtin type names.
+    # Whether or not name is one of the lowercase builtin type names.
     isBuiltinTypeName = name: Builtin.maybeFromT name != null;
 
     # Wrap a builtin type
@@ -206,304 +210,461 @@ in rec {
     # Unwrap a value type or leave a non-value Type value unchanged
     maybeUnwrap = x: if isValueType x then unwrap x else x;
 
-    # Cast between builtin and Builtin types.
-    # Returns an error set if the cast is not possible.
+    # Cast between types.
+    # Returns a set with a 'castError' attribute if the cast is not possible
+    # or a set with a 'castSuccess' attribute containined the cast value.
+    # Also includes a 'msgs' attribute with a list of messages recording
+    # cast attempts.
     mkCastError = msg: { castError = msg; };
+    mkCastSuccess = value: msg: { castSuccess = value; castSuccessMsg = msg; };
     isCastError = x: x ? castError;
+    isCastSuccess = x: x ? castSuccess;
     cast = T: x:
-      # Noop if same type
-      # Note that this does not call T.check, so if the value has been manipulated
-      # to be invalid, it will not throw an error.
-      if hasType T x then x
-      # maybe downcast a Builtin
-      else if isTyped x
-      then if (!isBuiltinTypeName T) then mkCastError (indent.block ''
-          Cannot cast value of type ${typeName x} to ${log.print T}:
-            ${indent.here (log.print x)}
-        '')
-        else let TWrapped = Builtin.FromT T;
-             in if !(typeEq x.Type TWrapped) then mkCastError "Cannot cast value of type ${typeName x} to type ${typeName T} via wrapping as ${typeName}"
-        else unwrap x
-      # maybe upcast a builtin
-      else
-        let xTWrapped = Builtin.FromT (typeOf x);
-        in if !(typeEq xTWrapped T) then mkCastError "Cannot cast value of type ${typeName x} to type ${typeName T} via wrapping as ${typeName xTWrapped}"
-        else wrap x;
+      if !(isType T || isBuiltinTypeName T)
+      then mkCastError "Invalid target type provided for cast: T = ${log.print T}"
+      else let
+        printT = T: T.__TypeId or T;
 
-    # Merge the static data of a type, preferring children over parents.
-    mergeSuper = getFn: This:
-      let xs = getFn This;
-      in if !(This ? Super) || This.Super == null || typeEq (This.Super {}) This
-         then xs
-         else (mergeSuper getFn (This.Super {})) // xs;
+        TName = printT T;
+        xTName = typeBoundName x;
 
-    # A constraint on a type variable.
-    Constraint = Type.new "Constraint" {
-      fields.constraintType = Type;
-      methods = {
-        # Whether a given type variable binding satisfies the constraint.
-        # If the constraint is unbound, we treat as satisfied, but instantiating the unbound type
-        # will throw an error.
-        satisfiedBy = this: That:
-          typeEq Unbound That
-          || That.isInstance this.constraintType;
-      };
-    };
+        xFields = assert isTyped x; filterAttrs (_: f: !f.fieldStatic) x.Type.fields.indexed;
+        TFields = assert isType T; filterAttrs (_: f: !f.fieldStatic) T.fields.indexed;
+
+        xIsUnary = isTyped x && size xFields == 1;
+        TIsUnary = isType T && size TFields == 1;
+
+        xUnaryField = assert xIsUnary; head (attrValues xFields);
+        TUnaryField = assert TIsUnary; head (attrValues TFields);
+
+        xUnaryFieldName = xUnaryField.fieldName;
+        TUnaryFieldName = TUnaryField.fieldName;
+
+        xUnaryFieldT = xUnaryField.fieldType;
+        TUnaryFieldT = TUnaryField.fieldType;
+
+        xUnaryFieldTName = printT xUnaryFieldT;
+        TUnaryFieldTName = printT TUnaryFieldT;
+
+        TFieldNames = sortOn (f: f.index) (mapAttrsToList (fieldName: _: fieldName) TFields);
+        xFieldNames = sortOn (f: f.index) (mapAttrsToList (fieldName: _: fieldName) xFields);
+
+        # A list of casts to attempt in order.
+        # The first cast satisfying 'when == true && isCastSuccess result' will be returned.
+        # If no cast satisfies, then a cast error set is returned with the collated errors.
+        casts = [
+          # No-op cast if x is already an instance of T.
+          # This does not call T.check, so if the value has been manipulated
+          # to be invalid through modification outside of the type-checked x.set and x.modify
+          # interfaces, this will not be caught here.
+          {
+            name = "Identity";
+            when = hasType T x;
+            orMsg = "Not an identity cast: ${xTName} -> ${TName}";
+            result = mkCastSuccess x "";
+            failMsg = _: null;
+            successMsg = _: "Identity cast succeeded: ${xTName} -> ${TName}";
+          }
+
+          # Downcasting for unary x types via a nested cast
+          # This includes Builtins and other value types.
+          # Careful not to use other attrs of 'fields' here besides 'indexed' to
+          # be bootstrap-compatible.
+          {
+            name = "Downcast from Unary";
+            when = xIsUnary;
+            orMsg = "Cannot downcast from an instance of non-unary type: ${xTName} -> ${TName}";
+            result = cast T x.${xUnaryField.fieldName};
+            failMsg = castErrorMsg: indent.block ''
+              Downcast failed from unary field ${xTName}.${xUnaryFieldName}: ${xUnaryFieldTName} -> ${TName}
+
+              ${indent.here "Downcast error: ${castErrorMsg}"}
+            '';
+            successMsg = castSuccessMsg: ''
+              Downcast succeeded from unary field ${xTName}.${xUnaryFieldName}: ${xUnaryFieldTName} -> ${TName}";
+
+              ${indent.here "Upcast success: ${castSuccessMsg}"}
+            '';
+          }
+
+          # Upcasting for unary x types via a nested cast
+          # This includes Builtins and other value types.
+          # Careful not to use other attrs of 'fields' here besides 'indexed' to
+          # be bootstrap-compatible.
+          {
+            name = "Upcast to Unary";
+            when = TIsUnary;
+            orMsg = "Cannot upcast to a non-unary type: ${xTName} -> ${TName}";
+            result =
+              let xCast = cast TUnaryFieldT x;
+              in if isCastError xCast then xCast
+              else mkCastSuccess (T.mk { ${TUnaryFieldName} = xCast.castSuccess; }) xCast.castSuccessMsg;
+            failMsg = castErrorMsg: indent.block ''
+              Upcast failed to unary field ${TName}.${TUnaryFieldName}: ${xTName} -> ${TUnaryFieldTName})
+
+              ${indent.here "Upcast error: ${castErrorMsg}"}
+            '';
+            successMsg = castSuccessMsg: indent.block ''
+              Upcast succeeded to unary field ${TName}.${TUnaryFieldName}: ${xTName} -> ${TUnaryFieldTName})
+
+              ${indent.here "Upcast success: ${castSuccessMsg}"}
+            '';
+          }
+
+          # Sidecasting types via a nested cast
+          # Careful not to use other attrs of 'fields' here besides 'indexed' to
+          # be bootstrap-compatible.
+          {
+            name = "Sidecast Fields";
+            when = isType T && isTyped x && length xFieldNames == length TFieldNames;
+            orMsg = ''
+              Cannot sidecast unless from a typed instance to a Type with the same field count: ${xTName} -> ${TName}
+                Source fields: ${joinSep ", " xFieldNames}
+                Target fields: ${joinSep ", " TFieldNames}
+              '';
+            result =
+              let castTArgs = zipListsWith (xFieldName: TFieldName: { ${TFieldName} = cast T.fields.indexed.${TFieldName}.fieldType x.${xFieldName}; }) xFieldNames TFieldNames;
+                  castErrors = filterAttrs (_: isCastError) castTArgs;
+                  castArgs = mapAttrs (_: castResult: castResult.castSuccess) castTArgs;
+                  castErrorMsgs = joinLines (mapAttrsToList (name: castResult: "${name}: ${castResult.castError}") castTArgs);
+                  castSuccessMsgs = joinLines (mapAttrsToLIst (name: castResult: "${name}: ${castResult.castSuccessMsg}") castTArgs);
+              in if size castErrors > 0
+                 then mkCastError castErrorMsgs
+                 else mkCastSuccess (T.mk castArgs) castSuccessMsgs;
+            failMsg = castErrorMsg: indent.block ''
+              Sidecast failed: ${xTName} -> ${TName}
+
+              Field cast errors:
+                ${indent.here castErrorMsg}
+            '';
+            successMsg = castSuccessMsg: indent.block ''
+              Sidecast succeeded: ${xTName} -> ${TName}
+
+              Field casts successes:
+                ${indent.here castSuccessMsg}
+            '';
+          }
+        ];
+
+        getOrMsg = cast: "${cast.name}: ${cast.orMsg}";
+        getFailMsg = cast: assert isCastError cast.result; "${cast.name}: ${cast.failMsg cast.result.castError}";
+        getSuccessMsg = cast: assert isCastSuccess cast.result; "${cast.name}: ${cast.successMsg cast.result.castSuccessMsg}";
+
+        tryCasts = msgs: casts:
+          let
+            cast = head casts;
+            casts' = tail casts;
+          in
+            # If we exhausted all casts, terminate with a combined castError
+            if casts == []
+              then (
+                mkCastError ''
+                  Cast failed: ${xTName} -> ${TName}
+
+                  ${xTName} instance:
+                    ${indent.here (log.print x)}
+
+                  Attempted casts:
+                    ${indent.here (joinLines msgs)}
+                '')
+
+            # Skip non-matching casts with a note message
+            else if !cast.when
+              then let msgs' = msgs ++ [(getOrMsg cast)]; in tryCasts msgs' casts'
+
+            # Record nested cast errors
+            else if isCastError cast.result
+              then let msgs' = msgs ++ [(getFailMsg cast)]; in tryCasts msgs' casts'
+
+            # Cast succeeded
+            else
+              assert isCastSuccess cast.result;
+              let
+                msgs' = msgs ++ [(getSuccessMsg cast)];
+              in
+                mkCastSuccess cast.result.castSuccess ''
+                  Cast succeeded: ${xTName} -> ${TName}
+
+                  ${xTName} instance:
+                    ${indent.here (log.print x)}
+
+                  Attempted casts:
+                    ${indent.here (joinLines msgs')}
+                '';
+
+      in tryCasts [] casts;
+
+    # Fold over a chain of inheritance, calling a function of (acc: This: acc') on each
+    # type and returning the final acc.
+    # Takes an initial value for the accumulator and the current type This.
+    # Terminates when Super is null or when reaching a type where This == Super.
+    #
+    # Akin to a left fold, with children being processed before parents:
+    # (f
+    #   ...
+    #     (f
+    #       (f
+    #         (f init This)
+    #        This.Super)
+    #      This.Super.Super)
+    #   ...
+    #  This.Super.Super... ... .Super)
+    foldUpward = f: acc: This:
+      let
+        acc' = f acc This;
+        This' = This.Super or null;
+      in
+        if This == null then acc
+        else if This' == null || typeEq This This' then acc'
+        else foldUpward f acc' This';
+
+    # Merge an attribute of This's inheritance chain, with This attributes overriding those of Super.
+    # Does not deeply merge so should be used to pick out a single flat mergable like 'methods' such that
+    # this models This inheriting Super's methods, but applying any overrides to them by redefining.
+    #
+    # e.g. mergeSuper (This: This.methods) This ==
+    #        This.Super.Super...methods // ... // This.Super.methods // This.methods;
+    mergeSuper = f: foldUpward (acc: This: acc // f This) {};
 
     # Modify an argument set to inherit from a supertype.
     # Unless ctor is set explicitly in the child, this will also inherit the supertype's constructor.
     inheritFrom = Super: args: {
       inherit Super;
-      inherit (Super) ctor;
+      inherit (Super) Type ctor;
     } // args;
 
-    # The way a Type is represented when embededd as a value inside a Type.
-    # Made thunk-lazy to avoid recursion errors in bootstrapping Type.
-    # TODO: Typed lambda
-    TypeThunk = "lambda";
-    # The way a Fields instance is represented when embedded as a value inside a Type.
-    # A lambda from This->Fields
-    FieldsThunk = "lambda";
+    typeFields = Universe: with Universe; [
+      # The name of the type.
+      {name = String;}
+      # The type of the instance as a thunk.
+      {Type = (Default Type).new Type;}
+      # The supertype of the type.
+      {Super = (Default (NullOr Type)).new null;}
+      # The type parameters of the type.
+      {tvars = (Default (NullOr (SetOf Constraint))).new null;}
+      # The type parameter bindings of the type.
+      {tvarBindings = (Default (NullOr (SetOf Type))).new null;}
+      # The constructor function creating the fields of the type as a set to pass to mk.
+      {ctor = (Default Ctor).new Ctors.Fields;}
+      # A set of ordered fields to make available as this.___ and this.get.___, this.set.___, etc
+      {fields = (Default Fields).new (_: Fields.new {});}
+      # A set of methods from this to make available as this.___
+      {methods = (Default (SetOf Lambda)).new {};}
+      # A set of methods from This to make available as This.___ and this.___
+      {staticMethods = (Default (SetOf Lambda)).new {};}
+      # Perform additional checks on the value of the type when comparing.
+      {checkValue = (Default (NullOr Lambda)).new null;}
+      # If set, ignore all other checks and use this check function only.
+      {overrideCheck = (Default (NullOr Lambda)) null;}
+    ];
 
-    # Bootstrap the definition of type by calling unbound-new on Prototype.
-    # Prototype is manually constructed without any access to static methods or fields.
-    # MetaType is instantiated as an instance of Prototype, inheriting its methods and fields.
-    # Type is instantiated as an instance of MetaType, which then overrides its fields to correctly typed versions
-    MetaType = mkInstance (Prototype // {
-      name = "MetaType";
-    });
+    # Execute a function of the type level in that level, returning the value
+    # of the expression.
+    withTypeLevel = Level: f: f Level;
 
-    Type = MetaType.new "Type" (Prototype // {
-      fields = Fields.new {
-        # The name of the type.
-        name = String;
-        # The type of the instance as a thunk.
-        Type = (Default TypeThunk).new Types.Type;
-        # The supertype of the type.
-        Super = (Default (NullOr TypeThunk)).new Types.Type;
-        # The type parameters of the type.
-        tvars = (Default (NullOr (SetOf Constraint))).new null;
-        # The type parameter bindings of the type.
-        tvarBindings = (Default (NullOr (SetOf TypeThunk))).new null;
-        # The constructor function creating the fields of the type as a set to pass to mk.
-        ctor = (Default Ctor).new Ctors.Fields;
-        # A set of ordered fields to make available as this.___ and this.get.___, this.set.___, etc
-        fields = (Default FieldsThunk).new (_: Fields.new {});
-        # A set of methods from this to make available as this.___
-        methods = (Default (SetOf Lambda)).new {};
-        # A set of methods from This to make available as This.___ and this.___
-        staticMethods = (Default (SetOf Lambda)).new {};
-        # Perform additional checks on the value of the type when comparing.
-        checkValue = (Default (NullOr Lambda)).new null;
-        # If set, ignore all other checks and use this check function only.
-        overrideCheck = (Default (NullOr Lambda)) null;
-      };
-    });
+    # Map a function over the supplied type levels, producing a set keyed
+    # by Type name. Can be used to construct the same type in multiple different
+    # Type universes.
+    withTypeLevels = Levels: f:
+      mergeAttrsList (map (Level: { ${Level.__TypeId} = f Level; }) Levels);
 
-    protoValue = x: { value = x; };
-    protoDefaultValue = x: { defaultValue = x; };
-    protoFields = {
-      indexed = {
-        # name = { fieldStatic = false; index = 0; fieldName = "name"; fieldType = String;};
-        # Type = { fieldStatic = false; index = 1; fieldName = "Type"; fieldType = TypeThunk; fieldDefault = protoDefaultValue Types.Type;};
-        # Super = { fieldStatic = false; index = 2; fieldName = "Super"; fieldType = NullOr TypeThunk; fieldDefault = protoDefaultValue Types.Type;};
-        # tvars = { fieldStatic = false; index = 3; fieldName = "tvars"; fieldType = NullOr (SetOf Constraint); fieldDefault = null;};
-        # tvarBindings = { fieldStatic = false; index = 4; fieldName = "tvarBindings"; fieldType = NullOr (SetOf TypeThunk); fieldDefault = null;};
-        # ctor = { fieldStatic = false; index = 5; fieldName = "ctor"; fieldType = Ctor; fieldDefault = protoDefaultValue Ctors.Fields;};
-        # fields = { fieldStatic = false; index = 6; fieldName = "fields"; fieldType = Fields; fieldDefault = protoDefaultValue (Fields.new {}); };
-        # methods = { fieldStatic = false; index = 7; fieldName = "methods"; fieldType = SetOf Lambda; fieldDefault = protoDefaultValue {};};
-        # staticMethods = { fieldStatic = false; index = 8; fieldName = "staticMethods"; fieldType = SetOf Lambda; fieldDefault = protoDefaultValue {};};
-        # checkValue = { fieldStatic = false; index = 9; fieldName = "checkValue"; fieldType = NullOr Lambda; fieldDefault = null;};
-        # overrideCheck = { fieldStatic = false; index = 10; fieldName = "overrideCheck"; fieldType = NullOr Lambda; fieldDefault = null;};
-        name = { fieldStatic = false; index = 0; fieldName = "name"; fieldType = null; fieldDefault = null;};
-        Type = { fieldStatic = false; index = 1; fieldName = "Type"; fieldType = null; fieldDefault = null;};
-        Super = { fieldStatic = false; index = 2; fieldName = "Super"; fieldType = null; fieldDefault = null;};
-        tvars = { fieldStatic = false; index = 3; fieldName = "tvars"; fieldType = null; fieldDefault = null;};
-        tvarBindings = { fieldStatic = false; index = 4; fieldName = "tvarBindings"; fieldType = null; fieldDefault = null;};
-        ctor = { fieldStatic = false; index = 5; fieldName = "ctor"; fieldType = null; fieldDefault = null;};
-        fields = { fieldStatic = false; index = 6; fieldName = "fields"; fieldType = null; fieldDefault = null;};
-        methods = { fieldStatic = false; index = 7; fieldName = "methods"; fieldType = null; fieldDefault = null;};
-        staticMethods = { fieldStatic = false; index = 8; fieldName = "staticMethods"; fieldType = null; fieldDefault = null;};
-        checkValue = { fieldStatic = false; index = 9; fieldName = "checkValue"; fieldType = null; fieldDefault = null;};
-        overrideCheck = { fieldStatic = false; index = 10; fieldName = "overrideCheck"; fieldType = null; fieldDefault = null;};
-      };
-    };
-    # The Prototype of all Types.
-    # Construct the minimal base type manually in order to enable instantiating Type.
-    Prototype =
-      let This = rec {
-        name = "Type";
-        Type = Prototype;
-        Super = null;
-        tvars = null;
-        tvarBindings = null;
-        ctor = This: name: arg: arg // { inherit name; };
-        # fields = This: Fields.new {
-        #   # The name of the type.
-        #   name = String;
-        #   # The type of the instance as a thunk.
-        #   Type = (Default TypeThunk).new Types.Type;
-        #   # The supertype of the type.
-        #   Super = (Default (NullOr TypeThunk)).new Types.Type;
-        #   # The type parameters of the type.
-        #   tvars = (Default (NullOr (SetOf Constraint))).new null;
-        #   # The type parameter bindings of the type.
-        #   tvarBindings = (Default (NullOr (SetOf TypeThunk))).new null;
-        #   # The constructor function creating the fields of the type as a set to pass to mk.
-        #   ctor = (Default Ctor).new Ctors.Fields;
-        #   # A set of ordered fields to make available as this.___ and this.get.___, this.set.___, etc
-        #   fields = (Default FieldsThunk).new (_: Fields.new {});
-        #   # A set of methods from this to make available as this.___
-        #   methods = (Default (SetOf Lambda)).new {};
-        #   # A set of methods from This to make available as This.___ and this.___
-        #   staticMethods = (Default (SetOf Lambda)).new {};
-        #   # Perform additional checks on the value of the type when comparing.
-        #   checkValue = (Default (NullOr Lambda)).new null;
-        #   # If set, ignore all other checks and use this check function only.
-        #   overrideCheck = (Default (NullOr Lambda)) null;
-        # };
-        fields = protoFields;
-        staticMethods = {};
-        methods = {
-          # Is this instance an instance of type That, or inherits from it?
-          isInstance = this: That:
-            typeEq this.Type That
-            || (This.Super != null && This.Super.isInstance That);
+    # Build the 'methods' field for one of the given types or type precursors.
+    mkTypeMethods = Universe: This: with Universe;
+      {
+      # Is this instance an instance of type That, or inherits from it?
+      isInstance = this: That:
+        typeEq this.Type That
+        || (This.Super != null && This.Super.isInstance That);
 
-          # Use the bound name with its ordered param assignments to determine type identity
-          # and equality.
-          id = This: This.boundName;
+      # Get the full templated name of the type.
+      boundName = This:
+        if This.tvars == null || This.tvars.size == 0 then This.name
+        else
+          let
+            printBinding = tvarName:
+              let T = This.tvarBindings.getAt.${tvarName};
+              in if typeEq Unbound T
+                then tvarName
+                else "${tvarName} = ${typeBoundName T}";
+            printBindings = joinSep ", " (map printBinding This.tvars.attrNames);
+          in "${This.name}<${printBindings}>";
 
-          # Get the full templated name of the type.
-          boundName = This:
-            if This.tvars == null || This.tvars.size == 0 then This.name
-            else
-              let
-                printBinding = tvarName:
-                  let T = This.tvarBindings.getAt.${tvarName};
-                  in if typeEq Unbound T
-                    then tvarName
-                    else "${tvarName} = ${typeBoundName T}";
-                printBindings = joinSep ", " (map printBinding This.tvars.attrNames);
-              in "${This.name}<${printBindings}>";
+      # Construct the type resulting from applying the given bindings to the parameterized This type.
+      bind = This: tvarBindingsAttrs:
+        let
+          tvarBindingsList =
+            mapAttrsToList
+              (tvarName: T: {inherit tvarName T;})
+              tvarBindingsAttrs;
 
-          # Construct the type resulting from applying the given bindings to the parameterized This type.
-          bind = This: tvarBindingsAttrs:
+          bindOne = tvarName: T:
             let
-              tvarBindingsList =
-                mapAttrsToList
-                  (tvarName: T: {inherit tvarName T;})
-                  tvarBindingsAttrs;
-
-              bindOne = tvarName: T:
-                let
-                  throwBindError = msg: joinLines [
-                    "bind: Error binding ${tvarName} <- ${typeName T}"
-                    msg
-                  ];
-                  constraint =
-                    This.tvars.${tvarName} or
-                      (throwBindError "Type ${This.name} does not have type variable ${tvarName}");
-                in
-                  if This.tvarBindings.getAt ? tvarName
-                    then throwBindError "Type ${This.boundName} already has type variable ${tvarName} bound to ${typeName This.tvarBindings.getAt.${tvarName}}"
-                  else if !(constraint.satisfiedBy T)
-                    then throwBindError "Type ${typeName T} does not satisfy constraint: ${log.print constraint}"
-                  else This.modify.tvarBindings (bs: bs.setAt.${tvarName} T);
-
-            in foldl' bindOne This tvarBindingsList;
-
-          # Create a new instance of the type by providing field values
-          mk = This: args: mkInstance (args // {
-            name = This.name;
-            Type = This;
-          });
-
-          # Create a new instance of the type by calling This's constructor
-          # When This == Type, creates a new Type.
-          new = This: Variadic.compose This.mk (This.ctor This);
-
-          # Create a new template of a type accepting type parameters.
-          # The parameters can be accessed via the _ argument surrounding the type specification.
-          # Returns a function from {bindings} to a new bound type.
-          # e.g.
-          # MyInt = Int.subtype "MyInt" {};
-          # MyTemplate = Type.template "MyTemplate" { T = Type, U = Int; } (_: {
-          #   fields = [{ t = _.T;} {u = _.U;}];
-          # };
-          # then
-          # typeOf MyTemplate == lambda
-          # (MyTemplate { T = String; U = Int }).new "abc" 123 == MyTemplate<String, Int> {t="abc"; u=123;}
-          # (MyTemplate { T = String; U = MyInt }).new "abc" (MyInt.new 123) == MyTemplate<String, MyInt> {t="abc"; u=MyInt 123;}
-          # (MyTemplate { T = String; U = Bool }) -> throws binding error, Bool not valid for U's Int constraint
-          # MyStringInt = MyTemplate { T = String }) -> MyStringInt == MyTemplate<String, U = Int>, the partially bound template
-          # MyStringInt.bind {U = MyInt} -> MyTemplate<String, MyInt>
-          template =
-            This: name: tvars_: bindingsToArg_:
-            let
-              tvars = mapAttrs (_: Constraint.new) tvars_;
-              bindingsToArg = bindings: (bindingsToArg_ bindings) // {
-                inherit tvars;
-                tvarBindings = (SetOf Types.Type).new bindings; # TODO: cast
-              };
-              unboundBindings = mapAttrs (_: _: Unbound) tvars;
-              unboundArg = bindingsToArg unboundBindings;
-              T = This.new name unboundArg;
-            in T.bind;
-
-          # Create a new subtype inheriting from This
-          # TODO: Compose checkValue / overrideCheck
-          subtype = This: name: args:
-            Type.new name (inheritFrom This args);
-
-          # Does this type inherit from That?
-          inheritsFrom = This: That:
-            typeEq This That
-            || (This.Super != null && This.Super.inheritsFrom That);
-
-          check = This: that:
-            let
-              runChecks = doChecksNoAssert [
-                {
-                  cond = typeEq This that.Type;
-                  msg = "Type check failed for ${This.boundName} (got ${That.boundName})";
-                }
-                {
-                  cond = This.checkValue == null || This.checkValue that;
-                  msg = "checkValue failed: ${log.print that} is not a value of type ${This.boundName}";
-                }
+              throwBindError = msg: joinLines [
+                "bind: Error binding ${tvarName} <- ${typeName T}"
+                msg
               ];
-            in if This.overrideCheck.value != null
-              then This.overrideCheck.value that
-              else runChecks;
+              constraint =
+                This.tvars.${tvarName} or
+                  (throwBindError "Type ${This.name} does not have type variable ${tvarName}");
+            in
+              if This.tvarBindings.getAt ? tvarName
+                then throwBindError "Type ${This.__TypeId} already has type variable ${tvarName} bound to ${typeName This.tvarBindings.getAt.${tvarName}}"
+              else if !(constraint.satisfiedBy T)
+                then throwBindError "Type ${typeName T} does not satisfy constraint: ${log.print constraint}"
+              else This.modify.tvarBindings (bs: bs.setAt.${tvarName} T);
 
-          # __toString needs to take a this parameter for toString compliance.
-          # Therefore we have Type.staticMethods.__toString which ends up on instances as (instance.__toString instance) which is correct.
-          # This will work to print both types as T.__toString T and instances as t.__toString t
-          __toString = This: this:
-            if typeEq This this then This.boundName
-            else "${This.boundName} ${log.print (this.get or {})}";
-        };
-        checkValue = null;
-        overrideCheck = null;
-      };
-      in This;
+        in foldl' bindOne This tvarBindingsList;
 
-    Void = Type.new "Void" {
-      staticMethods.mk = error "Void.mk: Void has no inhabitants";
+      # Does this type inherit from That?
+      inheritsFrom = This: That:
+        typeEq This That
+        || (This.Super != null && This.Super.inheritsFrom That);
+
+      check = This: that:
+        let
+          runChecks = doChecksNoAssert [
+            {
+              cond = typeEq This that.Type;
+              msg = "Type check failed for ${This.__TypeId} (got ${That.__TypeId})";
+            }
+            {
+              cond = This.checkValue == null || This.checkValue that;
+              msg = "checkValue failed: ${log.print that} is not a value of type ${This.__TypeId}";
+            }
+          ];
+        in if This.overrideCheck.value != null
+          then This.overrideCheck.value that
+          else runChecks;
     };
 
-    # A type specific to unbound type variables
-    Unbound = Void.subtype "Unbound" {};
+    universeIndependentBaseMethods = {
+      # Use the bound name with its ordered param assignments to determine type identity
+      # and equality.
+      # For bootstrap types this may not be bound yet, falling back to the name.
+      __TypeId = This: This.boundName or This.name;
 
-    # Is the given type equivalent to Type?
-    isRootType = typeEq Type;
+      # Create a new instance of the type by providing field values
+      mk = mkInstance;
+
+      # Create a new instance of the type by calling This's constructor
+      # When This == Type, creates a new Type.
+      new = newInstance;
+
+      # Create a new subType inheriting from This
+      # TODO: Compose checkValue / overrideCheck if they appear in args
+      subType = newSubType;
+
+      # __toString needs to take a this parameter for toString compliance.
+      # Therefore we have Type.staticMethods.__toString which ends up on instances as (instance.__toString instance) which is correct.
+      # This will work to print both types as T.__toString T and instances as t.__toString t
+      __toString = This: this:
+        if isType this then (assert This.__TypeId == this.__TypeId; This.__TypeId)
+        else "${This.__TypeId or "<no __TypeId>"} ${log.print (this.get or {})}";
+    };
+
+    universeDependentBaseMethods = Universe: {
+      # Create a new template of a type accepting type parameters.
+      # The parameters can be accessed via the _ argument surrounding the type specification.
+      # Returns a function from {bindings} to a new bound type.
+      template = Universe.newTemplate;
+    };
+
+    baseMethods = Universe:
+      universeIndependentBaseMethods
+      // (universeDependentBaseMethods Universe);
+
+    # Default values for field instantiation in HyperType, before we can use ProtoType.Fields
+    # or ProtoType.Default.
+    hyperFieldDefaults = {
+      Super = null;
+      fields = {indexed = {};};
+      ctor = _: {};
+      methods = {};
+      staticMethods = {};
+    };
+
+    # Manually construct an untyped indexed field.
+    hyperField = index: fieldName:
+      {
+        ${fieldName} = {
+          inherit fieldName index;
+          fieldStatic = false;
+          fieldType = null;
+          fieldDefault = { defaultValue = hyperFieldDefaults.${fieldName} or null; };
+        };
+      };
+
+    # Manually construct the untyped indexed fields by transforming the typed
+    # field specifications of Type, such that HyperType can be instantiated to
+    # bootstrap via HyperType -> MetaType -> ProtoType -> Type.
+    hyperFields = {
+      indexed =
+        mergeAttrsList
+          (imap0
+            (index: field: hyperField index (head (attrNames field)))
+            (typeFields Universe.HyperType));
+    };
+
+    # HyperType is constructed such that it is both:
+    # - a valid type input to mkInstance for the creation of MetaType
+    # - a valid output from mkInstance HyperType, manually created.
+    # This allows us to ground the infinite recurse we'd otherwise get by needing to actually create HyperType as an instance
+    # of itself or a higher type.
+    #
+    # - HyperType.Type is manually set to be self-referential, as it would be if HyperType was created via 'mkInstance HyperType'
+    # - Super is manually set to be null.
+    # - HyperType.methods are restricted only to a Universe-independent set. Further method construction requires reference to the Universe. These are added in MetaType and bound in ProtoType.
+    # - HyperType.get/set/modify/call accessors are missing owing to having not itself gone through mkInstance (this happens in MetaType creation).
+    # - Other defaults are manually set.
+    HyperType = {
+      __TypeId = "HyperType";
+      name = "HyperType";
+      Type = HyperType;
+      Super = null;
+      tvars = null;
+      tvarBindings = null;
+      fields = hyperFields;
+      ctor = _: name: arg: arg // { inherit name; };
+      methods = universeIndependentBaseMethods;
+      staticMethods = {};
+      checkValue = null;
+      overrideCheck = null;
+    };
+
+    # MetaType is the instantiated HyperType, which is both an instance of
+    # HyperType and also inherits from HyperType.
+    # __TypeId must be manually set as the boundName method is not in place at this point.
+    MetaType = newSubType HyperType "MetaType" {
+      methods =
+        (baseMethods Universe.MetaType)
+        // (mkTypeMethods Universe.HyperType MetaType);
+    };
+
+    # The ProtoType of all Types.
+    # Constructed as per Type, but without using any of the machinery of Type
+    # Can be used to construct e.g. Fields for use in Type
+    ProtoType = newSubType MetaType "ProtoType" {
+      methods =
+        (baseMethods Universe.MetaType)
+        // (mkTypeMethods Universe.MetaType ProtoType);
+    };
+
+    # Finally construct the base Type to use from here on out.
+    # Override 'fields' to contain the actual field specifiers.
+    Type =
+      with Universe.ProtoType;
+      ProtoType.subType "Type" {
+        fields = Fields.new typeFields;
+        methods =
+          (baseMethods Universe.ProtoType)
+          // (mkTypeMethods Universe.ProtoType MetaType);
+      };
 
     # Check if a given argument is a custom Type.
     isTyped = x: isAttrs x && x ? Type;
 
     # Check if a given argument is a Type.
-    isType = T: isTyped T && (isRootType T || (T ? Super && isType T.Super));
+    isType = T: T ? __TypeId;
 
     # Gets the type of a value, whether it is a Type or a builtin type.
     getRawType = x:
@@ -521,68 +682,19 @@ in rec {
 
     # Get the bound name of a type whether builtin or Type.
     typeBoundName = x:
-      if isBuiltinValue x then typeOf x else x.Type.boundName;
+      if isBuiltinValue x then typeOf x else x.Type.__TypeId;
 
     # Check two types for equality, supporting both Types and builtin type-name strings.
     typeEq = T: U:
       if isType T && !isType U then false
       else if !isType T && isType U then false
-      else if isType T && isType U then T.id == U.id
-      else let
-        T_ = Builtin.maybeFromT T;
-        U_ = Builtin.maybeFromT U;
-      in
-        if T_ == null then throw "typeEq: ${log.print T} is not a Type or builtin type"
-        else if U_ == null then throw "typeEq: ${log.print U} is not a Type or builtin type"
-        else typeEq T_ U_;
+      else if isType T && isType U then T.__TypeId == U.__TypeId
+      else if !(isBuiltinTypeName T) then throw "typeEq: ${log.print T} is not a Type or builtin type"
+      else if !(isBuiltinTypeName U) then throw "typeEq: ${log.print U} is not a Type or builtin type"
+      else T == U;
 
     # Check a string or custom type against a value.
     hasType = T: x: typeEq T (getRawType x);
-
-    # A Ctors.CtorName is of form:
-    # Ctor.new (This: args...: <field-value attrs to pass to mk)
-    Ctor = Type.new "Ctor" {
-      fields = {
-        __Ctor = Lambda;
-      };
-    };
-
-    # Constructor presets
-    Ctors = rec {
-      Nullary = Ctor.new (This: {});
-
-      # Default constructor for regular non-NewType/Builtin/Alias types.
-      # Accept fields in order of their index attribute.
-      # If This has a supertype, its constructor is variadically precomposed with This.new
-      # so that if we have:
-      #
-      # Super = {fields = {a = String};};
-      # This = {
-      #   inherit Super;
-      #   fields = {b = Int; c = Bool;};
-      # };
-      #
-      # Then:
-      #
-      # This.new "a" 2 true == This { a = "a"; b = 2; c = true; }
-      Fields =
-        Ctor.new
-          (This:
-            let fields =
-                  filterAttrs (_: f: !f.fieldStatic) This.fields.indexed;  # Here 'indexed' is manually set on the Prototype
-                # Do manually to avoid a new call
-                sortedFieldNames = attrNames (sortOn (f: f.index) (mapAttrsToList (_: f: {inherit (f) fieldName index;})));
-            in
-              if size fields == 0
-               then if This.Super == null then {}
-                    else This.Super.ctor
-              else
-                let thisCtor = Variadic.mkOrdered This.fields.attrNames;
-                in
-                  if This.Super == null
-                  then thisCtor
-                  else fjoin mergeAttrs thisCtor This.Super.ctor);
-    };
 
     combinedFields = This:
       if This.Super == null
@@ -609,10 +721,10 @@ in rec {
     # Any still-unknown fields provided will be caught by checking the expected
     # fields of the entire inheritance chain after 'this' is created.
     mkSuperInstance = This: args:
-      if !(args ? Super) || args.Super == null then {}
+      if (This.Super or null) == null then {}
       else
-        let superFields = mergeSuper (T: T.fields.getAllFields) Super;
-            superArgs = filter (name: _: superFields ? name) args;
+        let superFields = mergeSuper (T: T.fields.indexed) This.Super;
+            superArgs = filterAttrs (name: _: superFields ? name) args;
         in mkInstance This.Super superArgs;
 
     setType = This: this: this // { Type = This;};
@@ -679,7 +791,7 @@ in rec {
                 { pred = (field: !(isCastError castValue));
                   msg = indent.block ''
                     Error casting field assignment:
-                      ${This.boundName}.${fieldName} = ${log.print uncastValue}
+                      ${This.__TypeId}.${fieldName} = ${log.print uncastValue}
                       ${indent.here castValue.castError}
                   '';
                 }
@@ -688,8 +800,8 @@ in rec {
                 { pred = field: field.fieldType == null || field.fieldType.check castValue;
                   msg = indent.block ''
                     Cast value did not pass typecheck:
-                      ${This.boundName}.${fieldName} = ${log.print uncastValue}
-                      Cast value of ${log.print castValue} is not a valid instance of ${field.fieldType.boundName}.
+                      ${This.__TypeId}.${fieldName} = ${log.print uncastValue}
+                      Cast value of ${log.print castValue} is not a valid instance of ${field.fieldType.__TypeId}.
                   '';
                 }
               ] field);
@@ -741,16 +853,6 @@ in rec {
       let this_ = this // (mapAttrs (_: method: method this_) (combinedMethods This));
       in this_;
 
-    # Construct the This instance.
-    initThis = This: this: args:
-      this
-        |> (setType This)
-        |> (setSuper This args)
-        |> (setAccessors This)
-        |> (setStaticMethods This)
-        |> (setFields This args)
-        |> (setMethods This);
-
     # Reconstruct the This instance after change.
     reinitThis = This: this:
       this
@@ -758,17 +860,36 @@ in rec {
         |> (setStaticMethods This)
         |> (setMethods This);
 
+    # Create a new instance of a type by calling its constructor.
+    # The constructor's output arguments are then passed into mkInstance.
+    # For types, the constructor just merges a name parameter with an arguments
+    # parameter and delegates to mkInstance.
+    newInstance = This:
+      Variadic.compose (mkInstance This) (This.ctor This);
+
+    # For a given type, create a new type of the same Type with the given name and args, inheriting any
+    # unspecified fields and non-overridden methods.
+    # Unless ctor is specified, the ctor is also inherited.
+    newSubType = This: name: args:
+      if !(isType This) then throw "Cannot subtype non-Type or Type-precursor: ${log.print This}"
+      else newInstance This.Type name (inheritFrom This args);
+
     # Build a new instance from a single dict of field values.
     # Construct an instance from a This type and attrset of field-to-value assignments.
     # arg = { fieldName = value, ... } for all fields.
     # Fields with defaults can be omitted.
     # Build a new instance from a single dict of field values.
-    mkInstance = args:
+    mkInstance = This: args:
       let
-        This = args.Type;
-
         # Construct the final instance
-        this = initThis This {} args;
+        this =
+          {}
+            |> (setType This)
+            |> (setSuper This args)
+            |> (setAccessors This)
+            |> (setStaticMethods This)
+            |> (setFields This args)
+            |> (setMethods This);
 
         checks =
           let
@@ -783,12 +904,12 @@ in rec {
           in [
             {
               cond = unknownFieldNames == [];
-              msg = "${This.boundName}: Unknown fields in mkInstance call: ${joinSep ", " unknownFieldNames}";
+              msg = "${This.__TypeId}: Unknown fields in mkInstance call: ${joinSep ", " unknownFieldNames}";
             }
             {
               cond = missingFieldNames == [];
               msg = ''
-                ${This.boundName}: Missing fields in mkInstance call: ${joinSep ", " missingFieldNames}
+                ${This.__TypeId}: Missing fields in mkInstance call: ${joinSep ", " missingFieldNames}
                 args: ${log.print args}
                 Super: ${log.print This.Super}
                 super: ${log.print super}
@@ -799,16 +920,6 @@ in rec {
           ];
 
       in assert (doChecks checks); this;
-
-    Any = Type.new "Any" {
-      overrideCheck = that: true;
-    };
-
-    Union = Type.template "Union" {Ts = ListOf Type;} (_: {
-      overrideCheck = that: any (T: T.check that) _.Ts;
-    });
-
-    NullOr = T: Union {Ts = [Null T];};
 
     # Inline assertion for runtime type assertion.
     must = T: x:
@@ -826,195 +937,317 @@ in rec {
     isSuperTypeOf = Super: T:
       if T == null then false
       else typeEq Super T.Super || isSuperTypeOf Super T.Super;
+
     isSubTypeOf = flip isSuperTypeOf;
 
-    ListOf = Type.template "ListOf" {T = Type;} (_: {
-      checkValue = that: all (x: hasType _.T x) that.value;
-    });
+    # Create a related set of types in each of .Type and .ProtoType universes.
+    Universe = {
+      HyperType = withTypeLevel HyperType mkUniverse;
+      MetaType = withTypeLevel MetaType mkUniverse;
+      ProtoType = withTypeLevel ProtoType mkUniverse;
+      Type = withTypeLevel Type mkUniverse;
+    };
 
-    SetOf = Type.template "SetOf" {T = Type;} (_: {
-      checkValue = that: all (x: hasType _.T x) that.attrValues;
-    });
+    mkUniverse = (Type: rec {
 
-    # A type that enforces a size on the value. If n is null, any size is allowed, but .size must be present.
-    Sized = n:
-      let Sized_ = Type.template "Sized" {N = Literal n; T = Has "size";} (_:
-            inheritFrom _.T {
-              checkValue = that:
-                Super.checkValue that
-                && typeEq Any _.N || that.size == _.N.literal;
-            });
-      in Sized_ {N = Literal n;};
-
-    # An attribute set with attributes zero-indexed by their definition order.
-    # xs = Ordered.new [ {c = 1;} {b = 2;} {a = 3;} ];
-    # xs.value == { a = 1; b = 2; c = 3; } (arbitrary order)
-    # xs.names == [ "c" "b" "a" ] (in order of definition)
-    # xs.values == [ 1 2 3 ] (in order of definition)
-    OrderedOf = Type.template "OrderedOf" {T = Type;} (_:
-      let Item = Sized 1 (SetOf _.T);
-      in inheritFrom (ListOf Item) (rec {
-        methods = {
-          # The unordered merged attribute set
-          unindexed = this:
-            mergeAttrsList
-              (this.zipWith
-                (_: name: value: {name = value;}));
-
-          # The merged attribute set with an additional 'index' field indicating
-          # its place in the order.
-          indexed = this:
-            mergeAttrsList
-              (this.zipWith
-                (index: name: value: {
-                  name = value // { inherit index; };
-                }));
-
-          # The ordered attribute names.
-          attrNames = this: (this.fmap (x: head x.attrNames)).value;
-
-          # The ordered attribute values.
-          attrValues = this: (this.fmap (x: head x.attrValues)).value;
-
-          # A set from name to index.
-          indexes = this: mapAttrs (name: xs: xs.index) this.indexed;
-
-          # Zip over the index, name and value of the ordered fields.
-          zipWith = this: f:
-            zipListsWith
-              ({index, name}: value: f index name value)
-              (enumerate this.attrNames)
-              this.attrValues;
-
-          # Modify the value at the given key via this.modifyAt.name f, preserving order
-          modifyAt = this:
-            mapAttrs
-              (name: _: f:
-                this.fmap
-                  (item:
-                    let maybeModifyHere = item.modifyAt.${name} or (const item);
-                    in maybeModifyHere f))
-              this.unindexed;
-
-          # Set the value at the given key via this.setAt.name value, preserving order
-          # Key must exist in the Ordered (cannot create new keys).
-          setAt = this: mapAttrs (name: modifyHere: x: modifyHere (const x)) this.modifyAt;
-
-          # Set the value at the given key via this.setAtName "name" value, preserving order
-          # If the key does not exist, it will be added at the end of the order.
-          setAtName = this: name: value:
-            if this.setAt ? ${name}
-            then this.setAt.name value
-            else this.append (Item.new {${name} = value;});
-
-          # Get the value with the given key via this.getAt.name
-          getAt = this: this.unindexed;
-
-          # Get the value with the given key and index set via this.getIndexedAt.name
-          getIndexedAt = this: this.indexed;
-        };
-
-        checkValue = that:
-          Super.checkValue that
-          && assertMsg
-              (size that.attrNames == size that.unindexed)
-              "Duplicate keys in OrderedOf: ${joinSep ", " that.attrNames}";
-      }));
-
-    # An Ordered that takes any value type
-    Ordered = (OrderedOf Any).subtype "Ordered" {};
-
-    # Base type for enums.
-    Enum = Type.new "Enum" {};
-
-    # Create an enum type from a list of item names.
-    # MyEnum = mkEnum "MyEnum" [ "Item1" "Item2" "Item3" ]
-    # MyEnum.names == [ "Item1" "Item2" "Item3" ]
-    # MyEnum.fromName "Item1" == 0
-    # MyEnum.fromIndex 0 == "Item1"
-    mkEnum = enumName: itemNames:
-      let
-        Item = Enum.subtype enumName {
-          fields = [
-            {index = Int;}
-            {name = String;}
-          ];
-          staticMethods = {
-            # Enum members live on the Enum type itself.
-            __items = This: zipListsWith EnumName.new (range 0 (length itemNames - 1)) names;
-            __indexToItem = This: keyByF (item: item.index) __items;
-            __nameToItem = This: keyByName __items;
-            fromIndex = This: index: This.__indexToItem.${index} or throw "Invalid index in enum ${enumName}: ${toString index}";
-            fromName = This: name: This.__nameToItem.${name} or throw "Invalid name in enum ${enumName}: ${name}";
-          };
-        };
-      in Item;
-
-    # A type inhabited by only one value.
-    Literal = Type.template "Literal" {Value = Any;} (_: rec {
-      ctor = Ctor.Nullary;
-      staticMethods = {
-        literal = This: _.Value;
-      };
-    });
-
-    # A type inhabited by literals of any of the given list of values
-    Literals = values:
-      let literalTypes = map Literal values;
-      in Union literalTypes;
-
-    Default = Type.template "Default" {T = Type;} (_: {
-      fields.defaultValue = _.T;
-    });
-
-    Static = Type.template "Static" {T = Type;} (_: {});
-
-    # Either:
-    # Field.new "myField" Int
-    # Field.new "myField" (Static Int)
-    # Field.new "myField" (Default 123) -> type int
-    # Field.new "myField" (Default (Int.new 123)) -> type Int
-    # Field.new "myField" (Static (Default 123)) -> type (Static int)
-    Field = T: Type.new "Field" [T] {
-      fields = [
-        {fieldName = String;}
-        {fieldType = Default (NullOr T) null;}
-        {fieldStatic = Default Bool false;}
-        {fieldDefault = Default (NullOr (Default T)) null;}
-        {index = Default Int 0;}
-      ];
-      # ctor in the order of Ordered.zipWith iteration
-      ctor = fieldName: T:
+      # Create a new template of a type accepting type parameters.
+      # The parameters can be accessed via the _ argument surrounding the type specification.
+      # Returns a function from {bindings} to a new bound type.
+      #
+      # Due to dependency on Constraint / SetOf, exists within the ProtoType Universe.
+      #
+      # e.g.
+      # MyInt = Int.subType "MyInt" {};
+      # MyTemplate = Type.template "MyTemplate" { T = Type, U = Int; } (_: {
+      #   fields = [{ t = _.T;} {u = _.U;}];
+      # };
+      # then
+      # typeOf MyTemplate == lambda
+      # (MyTemplate { T = String; U = Int }).new "abc" 123 == MyTemplate<String, Int> {t="abc"; u=123;}
+      # (MyTemplate { T = String; U = MyInt }).new "abc" (MyInt.new 123) == MyTemplate<String, MyInt> {t="abc"; u=MyInt 123;}
+      # (MyTemplate { T = String; U = Bool }) -> throws binding error, Bool not valid for U's Int constraint
+      # MyStringInt = MyTemplate { T = String }) -> MyStringInt == MyTemplate<String, U = Int>, the partially bound template
+      # MyStringInt.bind {U = MyInt} -> MyTemplate<String, MyInt>
+      newTemplate =
+        This: name: tvars_: bindingsToArg_:
         let
-          init = U:
-            if U.tvars.size == 0
-            then {inherit fieldName; fieldType = U;}
-            else {
-              # TODO: Pattern matching
-              Static = init U.tvars.T // {fieldStatic = true;};
-              Default = init U.tvars.T // {fieldDefault = U.defaultValue;};
-            }.${typeName U}
-              or (throw "Invalid Field argument of type ${typeName T}: ${log.print T}");
-        in init T;
-    };
+          tvars = mapAttrs (_: Constraint.new) tvars_;
+          bindingsToArg = bindings: (bindingsToArg_ bindings) // {
+            inherit tvars;
+            tvarBindings = bindings;
+          };
+          unboundBindings = mapAttrs (_: _: Unbound) tvars;
+          unboundArg = bindingsToArg unboundBindings;
+          T = This.new name unboundArg;
+        in T.bind;
 
-    Fields = Type.new "Fields" {
-      Super = OrderedOf Field;
+      Void = Type.new "Void" {
+        ctor = _: throw "Void.new: Void has no inhabitants";
+      };
 
-      ctor = fields:
-        let init = fields:
-              {
-                # Treat a raw fields set as an arbitrary-order collection of fields.
-                set = init (mapAttrsToList (name: field: { inherit name field; }) fields);
-                Set = init fields.value;
+      # A type specific to unbound type variables
+      Unbound = Void.subType "Unbound" {};
 
-                # Treat a list/List as though shorthand for Ordered.
-                list = Ordered.new (map (field: Field.new field.name field.fieldType) fields);
-                List = init fields.value;
-              }.${(fields.Type or {name = typeOf fields;}).name}
-                or (throw "Invalid Fields argument (${typeOf fields}): ${log.print fields}");
-        in init fields;
-    };
+      # A constraint on a type variable.
+      Constraint = Type.new "Constraint" {
+        fields.constraintType = Type;
+        methods = {
+          # Whether a given type variable binding satisfies the constraint.
+          # If the constraint is unbound, we treat as satisfied, but instantiating the unbound type
+          # will throw an error.
+          satisfiedBy = this: That:
+            typeEq Unbound That
+            || That.isInstance this.constraintType;
+        };
+      };
+
+      # A type satisfied by all values.
+      Any = Type.new "Any" {
+        overrideCheck = that: true;
+      };
+
+      # A type satisfied by any value of the given list of types.
+      Union = Type.template "Union" {Ts = ListOf Type;} (_: {
+        overrideCheck = that: any (T: T.check that) _.Ts.value;
+      });
+
+      # A value or T or Null.
+      NullOr = T: Union {Ts = [Null T];};
+
+      # A Ctors.CtorName is of form:
+      # Ctor.new (This: args...: <field-value attrs to pass to mk>)
+      Ctor = Type.new "Ctor" {
+        fields = {
+          __Ctor = Lambda;
+        };
+      };
+
+      # Constructor presets
+      Ctors = rec {
+        Nullary = Ctor.new (This: {});
+
+        # Default constructor for regular non-NewType/Builtin/Alias types.
+        # Accept fields in order of their index attribute.
+        # If This has a supertype, its constructor is variadically precomposed with This.new
+        # so that if we have:
+        #
+        # Super = {fields = {a = String};};
+        # This = {
+        #   inherit Super;
+        #   fields = {b = Int; c = Bool;};
+        # };
+        #
+        # Then:
+        #
+        # This.new "a" 2 true == This { a = "a"; b = 2; c = true; }
+        Fields =
+          Ctor.new
+            (This:
+              let
+                # Here 'indexed' is manually set on the ProtoType
+                fields = filterAttrs (_: f: !f.fieldStatic) This.fields.indexed;
+                # Do manually to avoid a new call
+                sortedFieldNames = attrNames (sortOn (f: f.index) (mapAttrsToList (_: f: {inherit (f) fieldName index;})));
+              in
+                if size fields == 0
+                then if This.Super == null then {}
+                      else This.Super.ctor
+                else
+                  let thisCtor = Variadic.mkOrdered This.fields.attrNames;
+                  in
+                    if This.Super == null
+                    then thisCtor
+                    else fjoin mergeAttrs thisCtor This.Super.ctor);
+      };
+
+      # Subtype of List that enforces homogeneity of element types.
+      ListOf = Type.template "ListOf" {T = Type;} (_: {
+        checkValue = that: all (x: hasType _.T x) that.value;
+      });
+
+      # Subtype of Set that enforces homogeneity of value types.
+      SetOf = newTemplate Type "SetOf" {T = Type;} (_: {
+        checkValue = that: all (x: hasType _.T x) that.attrValues;
+      });
+
+      # A type that enforces a size on the value.
+      Sized = n:
+        let Sized_ = Type.template "Sized" {N = Literal n; T = Has "size";} (_:
+              inheritFrom _.T {
+                checkValue = that:
+                  Super.checkValue that
+                  && that.size == _.N.literal;
+              });
+        in Sized_ {N = Literal n;};
+
+      # An attribute set with attributes zero-indexed by their definition order.
+      # xs = Ordered.new [ {c = 1;} {b = 2;} {a = 3;} ];
+      # xs.value == { a = 1; b = 2; c = 3; } (arbitrary order)
+      # xs.names == [ "c" "b" "a" ] (in order of definition)
+      # xs.values == [ 1 2 3 ] (in order of definition)
+      OrderedOf = Type.template "OrderedOf" {T = Type;} (_:
+        let Item = Sized 1 (SetOf _.T);
+        in inheritFrom (ListOf Item) (rec {
+          methods = {
+            # The unordered merged attribute set
+            unindexed = this:
+              mergeAttrsList
+                (this.zipWith
+                  (_: name: value: {name = value;}));
+
+            # The merged attribute set with an additional 'index' field indicating
+            # its place in the order.
+            indexed = this:
+              mergeAttrsList
+                (this.zipWith
+                  (index: name: value: {
+                    name = value // { inherit index; };
+                  }));
+
+            # The ordered attribute names.
+            attrNames = this: (this.fmap (x: head x.attrNames)).value;
+
+            # The ordered attribute values.
+            attrValues = this: (this.fmap (x: head x.attrValues)).value;
+
+            # A set from name to index.
+            indexes = this: mapAttrs (name: xs: xs.index) this.indexed;
+
+            # Zip over the index, name and value of the ordered fields.
+            zipWith = this: f:
+              zipListsWith
+                ({index, name}: value: f index name value)
+                (enumerate this.attrNames)
+                this.attrValues;
+
+            # Modify the value at the given key via this.modifyAt.name f, preserving order
+            modifyAt = this:
+              mapAttrs
+                (name: _: f:
+                  this.fmap
+                    (item:
+                      let maybeModifyHere = item.modifyAt.${name} or (const item);
+                      in maybeModifyHere f))
+                this.unindexed;
+
+            # Set the value at the given key via this.setAt.name value, preserving order
+            # Key must exist in the Ordered (cannot create new keys).
+            setAt = this: mapAttrs (name: modifyHere: x: modifyHere (const x)) this.modifyAt;
+
+            # Set the value at the given key via this.setAtName "name" value, preserving order
+            # If the key does not exist, it will be added at the end of the order.
+            setAtName = this: name: value:
+              if this.setAt ? ${name}
+              then this.setAt.name value
+              else this.append (Item.new {${name} = value;});
+
+            # Get the value with the given key via this.getAt.name
+            getAt = this: this.unindexed;
+
+            # Get the value with the given key and index set via this.getIndexedAt.name
+            getIndexedAt = this: this.indexed;
+          };
+
+          checkValue = that:
+            Super.checkValue that
+            && assertMsg
+                (size that.attrNames == size that.unindexed)
+                "Duplicate keys in OrderedOf: ${joinSep ", " that.attrNames}";
+        }));
+
+      # An Ordered that takes any value type
+      Ordered = (OrderedOf Any).subType "Ordered" {};
+
+      # Base type for enums.
+      Enum = Type.new "Enum" {};
+
+      # Create an enum type from a list of item names.
+      # MyEnum = mkEnum "MyEnum" [ "Item1" "Item2" "Item3" ]
+      # MyEnum.names == [ "Item1" "Item2" "Item3" ]
+      # MyEnum.fromName "Item1" == 0
+      # MyEnum.fromIndex 0 == "Item1"
+      mkEnum = enumName: itemNames:
+        let Item = Enum.subType enumName {
+              fields = [
+                {index = Int;}
+                {name = String;}
+              ];
+              staticMethods = {
+                # Enum members live on the Enum type itself.
+                __items = This: zipListsWith Item.new (range 0 (length itemNames - 1)) names;
+                __indexToItem = This: keyByF (item: item.index) __items;
+                __nameToItem = This: keyByName __items;
+                fromIndex = This: index: This.__indexToItem.${index} or throw "Invalid index in enum ${enumName}: ${toString index}";
+                fromName = This: name: This.__nameToItem.${name} or throw "Invalid name in enum ${enumName}: ${name}";
+              };
+            };
+        in Item;
+
+      # A type inhabited by only one value.
+      Literal = Type.template "Literal" {Value = Any;} (_: rec {
+        ctor = Ctor.Nullary;
+        staticMethods = {
+          literal = This: _.Value;
+        };
+      });
+
+      # A type inhabited by literals of any of the given list of values
+      Literals = values: Union (map Literal values);
+
+      # A type indicating a default value.
+      Default = Type.template "Default" {T = Type;} (_: {
+        fields.defaultValue = _.T;
+      });
+
+      # Newtype wrapper
+      Static = Type.template "Static" {T = Type;} (_: {});
+
+      # Either:
+      # Field.new "myField" Int
+      # Field.new "myField" (Static Int)
+      # Field.new "myField" (Default 123) -> type int
+      # Field.new "myField" (Default (Int.new 123)) -> type Int
+      # Field.new "myField" (Static (Default 123)) -> type (Static int)
+      Field = Type.template "Field" {T = Type;} {
+        fields = [
+          {fieldName = String;}
+          {fieldType = Default (NullOr T) null;}
+          {fieldStatic = Default Bool false;}
+          {fieldDefault = Default (NullOr (Default T)) null;}
+          {index = Default Int 0;}
+        ];
+        ctor = fieldName: T:
+          let
+            init = U:
+              if U.tvars.size == 0
+              then {inherit fieldName; fieldType = U;}
+              else {
+                # TODO: Pattern matching
+                Static = init U.tvars.T // {fieldStatic = true;};
+                Default = init U.tvars.T // {fieldDefault = U.defaultValue;};
+              }.${typeName U}
+                or (throw "Invalid Field argument of type ${typeName T}: ${log.print T}");
+          in init T;
+      };
+
+      Fields = Type.new "Fields" {
+        Super = OrderedOf Field;
+        ctor = fields:
+          let init = fields:
+                {
+                  # Treat a raw fields set as an arbitrary-order collection of fields.
+                  set = init (mapAttrsToList (name: field: { inherit name field; }) fields);
+                  Set = init fields.value;
+
+                  # Treat a list/List as though shorthand for Ordered.
+                  list = Ordered.new (map (field: Field.new field.name field.fieldType) fields);
+                  List = init fields.value;
+                }.${(fields.Type or {name = typeOf fields;}).name}
+                  or (throw "Invalid Fields argument (${typeOf fields}): ${log.print fields}");
+          in init fields;
+      };
+
+    });
 
   };
 
@@ -1078,21 +1311,6 @@ in rec {
         RootType = {
           expr = Type.name;
           expected = "Type";
-        };
-
-        isRootType = {
-          Type = {
-            expr = isRootType Type;
-            expected = true;
-          };
-          bool = {
-            expr = isRootType "bool";
-            expected = false;
-          };
-          Bool = {
-            expr = isRootType Bool;
-            expected = false;
-          };
         };
 
         isBuiltinValue = {
