@@ -55,11 +55,22 @@ rec {
   # Split a string into lines.
   splitLines = splitSep "\n";
 
+  # Split a string according to any whitespace character.
+  # e.g. "hell   o \n\n  \t \n wor\t\tld" -> [ "hell" "o" "wor" "ld"]
+  splitWhitespace = s:
+    let s_ = replaceStrings [ "\n" "\t" "\r" ] [ " " " " " " ] s;
+        words = splitWords s_;
+    in nonEmpties words;
+
   # Join a list of lines into a string.
   joinLines = joinSep "\n";
 
   # Join a list of words into a string.
   joinWords = joinSep " ";
+
+  lineCount = s: length (splitLines s);
+  wordCount = s: length (splitWhitespace s);
+  isWhitespace = s: wordCount s == 0;
 
   # Retain only the non-null/emptystrings in a list.
   nonEmpties = filter (x: x != null && x != "");
@@ -239,26 +250,60 @@ rec {
       start = ''__CUTILS_START_INDENT__'';
       end = ''__CUTILS_END_INDENT__'';
       regex = {
-        start = ''^([\t ]*)${markers.start}$'';
-        end = ''^${markers.end}$'';
+        start = ''^(.*)${markers.start}(.*)$'';
+        end = ''^(.*)${markers.end}(.*)$'';
+        both = ''^(.*)${markers.start}(.*)${markers.end}(.*)$'';
       };
       handle = s:
-        joinLines
-          (trimNewlinesList
-            (foldlLines
-              (acc @ {lines, indentFn, justEnded}: line:
-                let maybePrefix = maybeFirstMatch markers.regex.start line;
-                    isStart = isString maybePrefix;
-                    isEnd = matches markers.regex.end line;
+        let
+          # Initial linefold state
+          init = { lines = []; indentFn = id; };
+
+          # Function to handle each line in the fold
+          handleLine = (acc @ {lines, indentFn}: line:
+            let startMatch = match markers.regex.start line;
+                isStart = startMatch != null;
+                endMatch = match markers.regex.end line;
+                isEnd = endMatch != null;
+                bothMatch = match markers.regex.both line;
+                isBoth = bothMatch != null;
+            in
+              # If we have both markers on a line we don't need to update state but do need
+              # to take the middle and add the prefix/suffix.
+              if isBoth then
+                let
+                  prefix = elemAt bothMatch 0;
+                  line_ = elemAt bothMatch 1;
+                  suffix = elemAt bothMatch 2;
+                in acc // {lines = acc.lines ++ ["${prefix}${line_}${suffix}"];}
+              else if isStart then
+                # Retain any content either side of the marker, which is already in the right place.
+                # The LHS of the marker is used to get the indentation level for the block.
+                let
+                  prefix = elemAt startMatch 0;
+                  line_ = elemAt startMatch 1;
+                in acc // {
+                  indentFn = indent.by (stringLength prefix);
+                  lines = acc.lines ++ ["${prefix}${line_}"];
+                }
+              else if isEnd then
+                # Keep any content that occurred after the marker.
+                # Indent this line, but reset indentation thereafter.
+                let
+                  line_ = elemAt endMatch 0;
+                  suffix = elemAt endMatch 1;
                 in
-                  if justEnded then acc // { justEnded = false; }  # Skip a newline after the block
-                  else if isStart then acc // { indentFn = indent.by (stringLength maybePrefix); }
-                  else if isEnd then acc // { indentFn = id; justEnded = true;}
-                  else acc // { lines = acc.lines ++ [(indentFn line)]; })
-              { lines = []; indentFn = id; justEnded = false; }
-              s).lines);
+                  acc // {
+                    indentFn = id;
+                    lines = acc.lines ++ [(indentFn "${line_}${suffix}")];
+                  }
+              else
+                # Otherwise just indent the line according to current marker
+                acc // { lines = acc.lines ++ [(indentFn line)]; });
+
+        in joinLines (trimNewlinesList (foldlLines handleLine init s).lines);
     };
-    here = s: "${markers.start}\n${indent.set 0 s}\n${markers.end}\n";
+    here = s: "${markers.start}${indent.set 0 s}${markers.end}";
 
     # Consistent API
     get = getIndent;
@@ -272,6 +317,20 @@ rec {
     blocksSep = codeBlocksSep;
     lines = codeBlockLines;
     linesHeader = codeBlockLinesHeader;
+
+    # Indented block affecting only the tail, with an f that operates on a block.
+    tail = s: f:
+      let snoc = maybeSnoc (splitLines s);
+      in if snoc == null then ""
+         else if snoc.tail == null then snoc.head
+         else lines [snoc.head (f snoc.tail)];
+
+    # Indented block affecting only the tail, with an f that operates per-line.
+    tailLines = ls: f:
+      let snoc = maybeSnoc ls;
+      in if snoc == null then ""
+         else if snoc.tail == null then snoc.head
+         else lines ([snoc.head] ++ (map f snoc.tail));
   };
 
   # Adds a prefix to a string if the string is not empty
@@ -333,7 +392,14 @@ rec {
   _tests =
     cutils.tests.suite {
       strings = {
-        testIndent = {
+        split = {
+          whitespace = {
+            expr = splitWhitespace " \n hell   o \n\n  \t \n wor\t\tld  \n";
+            expected = [ "hell" "o" "wor" "ld" ];
+          };
+        };
+
+        indent = {
           set0 = {
             expr = indent.set 0 (joinLines [
               "            line1"
@@ -373,7 +439,7 @@ rec {
           };
         };
 
-        testCodeBlock = {
+        codeBlock = {
           embedded = {
             expr =
               let body = codeBlock ''
@@ -390,6 +456,22 @@ rec {
                 embed1:
                   embed2
               }
+            '';
+          };
+          inline = {
+            expr =
+              let body = codeBlock ''
+                1
+                2
+                3
+              '';
+              in codeBlock ''
+                X = [ ${indent.here body} ]
+              '';
+            expected = trimNewlines ''
+              X = [ 1
+                    2
+                    3 ]
             '';
           };
         };

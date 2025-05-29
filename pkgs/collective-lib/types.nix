@@ -382,7 +382,7 @@ in rec {
               let T = This.tvarBindings.${tvarName} or Void;
               in if typeEq Void T
                 then tvarName
-                else "${tvarName} = ${typeBoundName T}";
+                else "${tvarName}=${typeBoundName T}";
             printBindings = joinSep ", " (map printBinding (attrNames This.tvars));
           in "${This.name}<${printBindings}>";
 
@@ -447,7 +447,10 @@ in rec {
 
       # Create a new instance of the type by calling This's constructor
       # When This == Type, creates a new Type.
-      new = newInstance;
+      new = this:
+        with log.vtrace.methodCall this "new" ___;
+        let return_ = compose return traceVariadic;
+        in return (newInstance this);
 
       # Create a new subType inheriting from This
       # TODO: Compose checkValue / overrideCheck if they appear in args
@@ -710,84 +713,87 @@ in rec {
     # Since modifying here requires a new instance with updated accessors, and we don't
     # want to have to call as e.g. (this.fn this arg1 arg2) we need to set the accessors
     # again here in 'set' bound to the new instance.
-    setAccessors = This: this: this // rec {
-      # Field getting interface
-      # Fields are also accessible at this.fieldName but alongside methods and static methods
-      # This set will be constructable at this point and should not incur infinite recursion when
-      # accessed in __toString below
-      # e.g. this.someInt -> 123
-      #      this.get.someInt -> 123
-      #      this.notAField -> throws error
-      #      this.get.notAField -> throws error
-      #      this.get.notAField or default -> default
-      # Defined with optionalAttrs for the first pass to define .set, where .get will be empty
-      get =
-        concatMapAttrs
-          (fieldName: _: optionalAttrs (this ? ${fieldName}) { ${fieldName} = this.${fieldName}; })
-          (combinedFields This);
-
-      # Field checking interface.
-      # e.g. this.has.someInt -> true
-      #      this.has ? someInt -> true
-      #      this.has.notAField -> throws error
-      #      this.has ? notAField -> false
-      #      this.has.notAField or default -> default
-      has = mapAttrs (_: _: true) (combinedFields This);
-
-      # Field setting interface
-      # We need to setAccessors again here to update the logical binding for future updates
-      # e.g. this.set.someInt 123 -> this'
-      #      this.set.someInt "123" -> throws Type error
-      set =
-        let
-          setByName = this: fieldName: uncastValue:
-            let field = (combinedFields This).${fieldName} or null;
-                castValue =
-                  if field.fieldType != null
-                    then cast field.fieldType uncastValue
-                    else uncastValue;
-            in assert (predChecks [
-                { pred = (field: field != null);
-                  msg = joinLines [
-                    "Setting unknown field: ${This.name}.${fieldName}"
-                    "Known fields: ${joinSep ", " (attrNames (combinedFields This))}"
-                  ];
-                }
-                { pred = (field: !(isCastError castValue));
-                  msg = indent.block ''
-                    Error casting field assignment:
-                      ${This.__TypeId}.${fieldName} = ${log.print uncastValue}
-                      ${indent.here castValue.castError}
-                  '';
-                }
-                # TODO: This check could be O(n) for container types, updating attrsets goes O(1) to O(n)
-                # Need item-wise checks
-                { pred = field: field.fieldType == null || field.fieldType.check castValue;
-                  msg = indent.block ''
-                    Cast value did not pass typecheck:
-                      ${This.__TypeId}.${fieldName} = ${log.print uncastValue}
-                      Cast value of ${log.print castValue} is not a valid instance of ${field.fieldType.__TypeId}.
-                  '';
-                }
-              ] field);
-              reinitThis This (this // {
-                ${fieldName} = castValue;
-              });
-        in
-          mapAttrs
-            (fieldName: _: x: setByName this fieldName x)
+    setAccessors = This: this:
+      let this_ =
+        this // rec {
+        # Field getting interface
+        # Fields are also accessible at this.fieldName but alongside methods and static methods
+        # This set will be constructable at this point and should not incur infinite recursion when
+        # accessed in __toString below
+        # e.g. this.someInt -> 123
+        #      this.get.someInt -> 123
+        #      this.notAField -> throws error
+        #      this.get.notAField -> throws error
+        #      this.get.notAField or default -> default
+        # Defined with optionalAttrs for the first pass to define .set, where .get will be empty
+        get =
+          concatMapAttrs
+            (fieldName: _: optionalAttrs (this ? ${fieldName}) { ${fieldName} = this.${fieldName}; })
             (combinedFields This);
 
-      # Field modification interface
-      # e.g. this.modify.someInt (x: x+1) -> this'
-      #      this.modify.someInt toString -> throws Type error
-      modify = mapAttrs (fieldName: x: f: set.${fieldName} (f x)) (combinedFields This);
+        # Field checking interface.
+        # e.g. this.has.someInt -> true
+        #      this.has ? someInt -> true
+        #      this.has.notAField -> throws error
+        #      this.has ? notAField -> false
+        #      this.has.notAField or default -> default
+        has = mapAttrs (_: _: true) (combinedFields This);
 
-      # Method calling interface
-      # Nested calls should work as each is bound to this_, the version after the methods are set.
-      # e.g. this.call.someMethod arg1 arg2 arg3 -> return value
-      call = mapAttrs (_: method: method this) (combinedMethods This);
-    };
+        # Field setting interface
+        # We need to setAccessors again here to update the logical binding for future updates
+        # e.g. this.set.someInt 123 -> this'
+        #      this.set.someInt "123" -> throws Type error
+        set =
+          let
+            setByName = this: fieldName: uncastValue:
+              let field = (combinedFields This).${fieldName} or null;
+                  castValue =
+                    if field.fieldType != null
+                      then cast field.fieldType uncastValue
+                      else uncastValue;
+              in assert (predChecks [
+                  { pred = (field: field != null);
+                    msg = joinLines [
+                      "Setting unknown field: ${This.name}.${fieldName}"
+                      "Known fields: ${joinSep ", " (attrNames (combinedFields This))}"
+                    ];
+                  }
+                  { pred = (field: !(isCastError castValue));
+                    msg = indent.block ''
+                      Error casting field assignment:
+                        ${This.__TypeId}.${fieldName} = ${log.print uncastValue}
+                        ${indent.here castValue.castError}
+                    '';
+                  }
+                  # TODO: This check could be O(n) for container types, updating attrsets goes O(1) to O(n)
+                  # Need item-wise checks
+                  { pred = field: field.fieldType == null || field.fieldType.check castValue;
+                    msg = indent.block ''
+                      Cast value did not pass typecheck:
+                        ${This.__TypeId}.${fieldName} = ${log.print uncastValue}
+                        Cast value of ${log.print castValue} is not a valid instance of ${field.fieldType.__TypeId}.
+                    '';
+                  }
+                ] field);
+                reinitThis This (this // {
+                  ${fieldName} = castValue;
+                });
+          in
+            mapAttrs
+              (fieldName: _: x: setByName this fieldName x)
+              (combinedFields This);
+
+        # Field modification interface
+        # e.g. this.modify.someInt (x: x+1) -> this'
+        #      this.modify.someInt toString -> throws Type error
+        modify = mapAttrs (fieldName: _: f: set.${fieldName} (f this.${fieldName})) (combinedFields This);
+
+        # Method calling interface
+        # Nested calls should work as each is bound to this_, the version after the methods are set.
+        # e.g. this.call.someMethod arg1 arg2 arg3 -> return value
+        call = mapAttrs (_: method: method this_) (combinedMethods This);
+      };
+    in this_;
 
     # Set all fields on the instance
     # Occurs before methods are set, so cannot use the this.set interface directly.
@@ -831,13 +837,21 @@ in rec {
     # For types, the constructor just merges a name parameter with an arguments
     # parameter and delegates to mkInstance.
     newInstance = This:
-      Variadic.compose (mkInstance This) (This.ctor This);
+      with log.vtrace.call "newInstance" { inherit This; } ___;
+
+      let mkViaCtor =
+            traceComposeVariadic "mkViaCtor"
+              "(mkInstance This)" "(This.ctor This)"
+              (mkInstance This)   (This.ctor This);
+      in return mkViaCtor;
 
     # For a given type, create a new type of the same Type with the given name and args, inheriting any
     # unspecified fields, ctor, and non-overridden methods.
     newSubType = This: name: args:
+      with log.vtrace.call "newSubType" { inherit This name args; } ___;
+
       if !(isType This) then throw "Cannot subtype non-Type or Type-precursor: ${log.print This}"
-      else newInstance This name (inheritFrom This args);
+      else return (newInstance This.Type name (inheritFrom This args));
 
     # Build a new instance from a single dict of field values.
     # Construct an instance from a This type and attrset of field-to-value assignments.
@@ -845,6 +859,8 @@ in rec {
     # Fields with defaults can be omitted.
     # Build a new instance from a single dict of field values.
     mkInstance = This: args:
+      with log.vtrace.methodCall This "mkInstance" args ___;
+
       let
         # Construct the final instance
         this =
@@ -884,7 +900,7 @@ in rec {
             }
           ];
 
-      in assert (doChecks checks); this;
+      in assert (doChecks checks); return this;
 
     # Inline assertion for runtime type assertion.
     must = T: x:
@@ -934,7 +950,7 @@ in rec {
           sortedFieldNames = map (f: f.fieldName) (sortOn (f: f.index) (mapAttrsToList (_: f: {inherit (f) fieldName index;})));
         in
           if size fields == 0
-          then if This.Super == null then {}
+          then if (This.Super or null) == null then {}
               else
                 # Dig into Super to apply the wrapped Ctor
                 This.Super.ctor This
@@ -1180,28 +1196,21 @@ in rec {
               in args // {
                 # Set the tvars to exactly those given.
                 inherit tvars;
+                tvarBindings = mapAttrs (_: _: Void) tvars;
               };
 
-            # Create initial total set of bindings that leave all tvars unbound.
-            unboundBindings = mapAttrs (_: _: Void) tvars;
-
-            # Construct a full type against the unbound bindings
-            T = newSubType This name (bindingsToArgs unboundBindings);
-
+            isFullyBound = T: size (filterAttrs (_: T: typeEq Void T) T.tvars) == 0;
           in
-            # If bindingsToSuper is not null, we can't instantiate the type until we get
-            # bindings.
-            if bindingsToSuper == null
-            then
-              # MyTemplate = Type.template "name" { T = Type; } (_: { ... });
-              # MyInt = MyTemplate.bind { T = Int; }
-              # MyUnbound = MyTemplate;
-              (T.bind unboundBindings).bind
+            if bindingsToSuper == null then
+              let T = newInstance This name (bindingsToArgs unboundBindings);
+              in if isFullyBound T then T else T.bind
             else
-              # Otherwise require we are fully bound before inheriting.
+              # If bindingsToSuper is not null, we can't instantiate the type until we get
+              # bindings.
               bindings:
-                let T = newSubType (bindingsToSuper bindings) name (bindingsToArgs bindings);
-                in T.bind (unboundBindings // bindings);
+                let Tmpl = newSubType (bindingsToSuper bindings) name (bindingsToArgs bindings);
+                    T = Tmpl.bind bindings;
+                in if isFullyBound T then T else T.bind;
 
         # Create a new template with no inheritance.
         newTemplate = This: name: tvars: bindingsToArgs:
@@ -1568,7 +1577,7 @@ in rec {
       };
 
     in cutils.tests.suite {
-      types = {
+      types = withTypeLevels [HyperType MetaType ProtoType Type] (Type: with Universe.${Type.__TypeId}; {
         Null = mkBuiltinTest Null "Null" null;
         Int = mkBuiltinTest Int "Int" 123;
         Float = mkBuiltinTest Float "Float" 12.3;
@@ -1788,7 +1797,7 @@ in rec {
 
         };
 
-      };
+      });
   };
 
 }

@@ -34,4 +34,17 @@ rec {
     let h = head xs;
         t = tail xs;
     in if xs == [] then null else {head = h; tail = t;};
+
+  mapSnoc = fHead: fTail: xs:
+    let snoc = maybeSnoc xs;
+    in if snoc == null then xs
+       else if snoc.tail == null then [(fHead snoc.head)]
+       else
+         let tail' = fTail snoc.tail;
+             tail'' = if isString tail' then [tail'] else tail';
+         in [(fHead snoc.head)] ++ tail'';
+
+  mapHead = fHead: mapSnoc fHead id;
+
+  mapTail = fTail: mapSnoc id fTail;
 }

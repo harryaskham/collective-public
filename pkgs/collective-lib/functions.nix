@@ -15,7 +15,11 @@ in rec {
   compose = g: f: a: g (f a);
 
   # Apply a function to a value
+  ap = f: a: f a;
   apply = f: a: f a;
+
+  # Apply a function to a value with the arguments flipped.
+  flap = a: f: ap f a;
 
   # Return a value iff a condition is met, otherwise return null
   when = cond: a: if cond then a else null;
@@ -157,6 +161,9 @@ in rec {
       else if isFunction f then a: Variadic.compose g (f a)
       else g f;
   };
+
+  # Shorthand for variadic end marker
+  ___ = Variadic.end;
 
   # Make a polymorphic function from the given type-to-value attrs
   # Also dispatches a function polymorphically if values are functions from the type of the argument.
