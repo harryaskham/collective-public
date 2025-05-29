@@ -174,7 +174,7 @@ in rec {
     list = length;
     set = compose length attrValues;
     string = stringLength;
-    null = const 0;
+    path = compose stringLength toString;
   };
 
   # Convert a list of length n[ x ... y ] to a list
