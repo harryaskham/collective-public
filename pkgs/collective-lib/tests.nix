@@ -55,11 +55,12 @@ in rec {
        then setSolo tests
        else mapAttrsRecursiveCond (xs: !(isTest xs)) (_: setSolo) tests;
 
-  expect = {
+  expect = rec {
     failure = {
       success = false;
       value = false;
     };
+    error = failure;
 
     True = expr: {
       inherit expr;
@@ -82,22 +83,48 @@ in rec {
       else EvalStatus.OK;
     results =
       if test.skip then null
-      else if evalStatus == EvalStatus.Error then null
-      else if isTryEvalResult results_ then results_.value
+      else if evalStatus == EvalStatus.Error then
+        # Surface the raw results of an eval failure so we can expect against them
+        results_
+      else if isTryEvalResult results_ then
+        # Otherwise unwrap the successful result for comparison
+        results_.value
       else results_;
     status =
       if test.skip then Status.Skipped
-      else if evalStatus == EvalStatus.Error then Status.Failed
+      else if evalStatus == EvalStatus.Error then
+        if test.expected == expect.error then Status.Passed
+        else Status.Failed  # Failure due to tryEval
       else if results == [] then Status.Passed
-      else Status.Failed;
+      else Status.Failed;  # Failure due to mismatch
     actual =
-      if test.skip then null
-      else if evalStatus == EvalStatus.Error then "<evaluation error>"
-      else if status == Status.Failed
-      then
-        let failedResult = assert (size results) <= 1; maybeHead results;
-        in if failedResult == null then null else failedResult.result
-      else null;
+      let mkActual = msg: result: {
+            inherit status evalStatus result;
+            __toString = _:
+              if result == null then "<${msg}>"
+              else "<${msg}: ${log.print result}>";
+          };
+
+      in
+        if test.skip
+         then mkActual "SKIP" null
+
+        else if evalStatus == EvalStatus.Error
+          then
+            let errorResult =
+                  assert assertMsg (isTryEvalResult results)
+                    "Eval error handled without being a tryEval result: ${log.print results}";
+                  results;
+            in mkActual "ERROR" errorResult
+
+        else if status == Status.Failed
+          then
+            let failedResult = assert (size results) == 1; head results;
+            in mkActual "FAIL" failedResult.result
+
+        else
+          mkActual "PASS" null;
+
     msg = {
       ${Status.Skipped} = "SKIP: ${test.name}";
       ${Status.Passed} = "PASS: ${test.name}";
@@ -179,15 +206,16 @@ in rec {
          # else soloTests // (mapAttrs (_: t: t // {skip = true;}) nonSoloTests);
          else soloTests;
     overOne = f: mapAttrs (testName: test: f { ${testName} = test; }) tests;
-    runOne = overOne (run_ (test: test.run));
-    debugOne = overOne (run_ (test: test.debug));
+    runOne = overOne (run_ false (test: test.run));
+    debugOne = overOne (run_ true (test: test.debug));
     run = run_ false (test: test.run) tests;
     runThenDebug = run_ true (test: test.run) tests;
     debug = run_ false (test: test.debug) tests;
     run_ = debugOnFailure: runner: tests:
       let
         results = strict (mapAttrsToList (_: runner) tests);
-        byStatus = mapAttrs (statusK: statusV: filter (r: r.status == statusV) results) Status;
+        byStatus =
+          mapAttrs (statusK: statusV: filter (r: r.status == statusV) results) Status;
         counts =
           (mapAttrs (status: results: length results) byStatus)
           // { all = size tests;

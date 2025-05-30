@@ -11,6 +11,8 @@ let
   log = rec {
 
     mkPrintArgs = {
+      ignoreToString = false;
+      # Default here to leave indentation markers in until the top level call
       formatBlock = trimNewlines;
       compact = true;
       depth = 0;
@@ -31,25 +33,26 @@ let
       if depth >= maxDepth then "..."
       else if x == {} then "{}"
       else
-        let px = mapAttrsToList (k: v: "${k} = ${formatBlock (print_ (descend args) v)};") x;
-            pxLine = formatBlock "{ ${head px} }";
-        in
-          if length px == 1 && lineCount pxLine == 1 then pxLine
-          else if compact then formatBlock (compactBlock args "{" "}" px)
-          else formatBlock ''
-            {
-              ${indent.here (indent.lines px)}
-            }
-          '';
+        formatBlock (
+          let px = mapAttrsToList (k: v: "${k} = ${(print_ args v)};") x;
+              pxLine = "{ ${head px} }";
+          in
+            if length px == 1 && lineCount pxLine == 1 then pxLine
+            else if compact then (compactBlock args "{" "}" px)
+            else ''
+              {
+                ${indent.here (indent.lines px)}
+              }
+            '');
 
-    printAttrs = printAttrs_ mkPrintArgs;
+    printAttrs = xs: indent.block (printAttrs_ mkPrintArgs xs);
 
     printList_ = args: x:
       with args;
       if depth >= maxDepth then "..."
       else if x == [] then "[]"
       else
-        let px = map (print_ (descend args)) x;
+        let px = map (print_ args) x;
             pxLine = formatBlock "[ ${formatBlock (joinLines px)} ]";
         in
           if lineCount pxLine <= 1 then pxLine
@@ -60,7 +63,7 @@ let
             ]
           '';
 
-    printList = printList_ mkPrintArgs;
+    printList = xs: indent.block (printList_ mkPrintArgs xs);
 
     # Add parens around a string only if it contains whitespace.
     maybeParen = x: if wordCount x <= 1 then x else "(${x})";
@@ -68,22 +71,34 @@ let
     # Convert a value of any type to a string, supporting the types module's Type values.
     print_ = args: x:
       with args;
-      if depth >= maxDepth then "..."
-      else if Types.isTyped x && (x ? __toString)
-      then maybeParen (toString x)
-      else {
-        null = "null";
-        path = toString x;
-        string = ''"${x}"'';
-        int = ''${builtins.toJSON x}'';
-        float = ''${builtins.toJSON x}'';
-        lambda = "<lambda>";
-        list = formatBlock (printList_ args x);
-        set = formatBlock (printAttrs_ args x);
-        bool = if x then "true" else "false";
-      }.${typeOf x};
+      let
+        args' = descend args;
+        block =
+          if depth >= maxDepth then "..."
+          else if (x ? __toString) && !ignoreToString then
+            # Call either __toString this or __toString This this depending
+            # on whether not statically bound.
+            let xS = x.__toString x;
+            in dispatch {
+              string = id;
+              lambda = (f: f x);
+            } xS
+          else {
+            null = "null";
+            path = toString x;
+            string = ''"${x}"'';
+            int = ''${builtins.toJSON x}'';
+            float = ''${builtins.toJSON x}'';
+            lambda = "<lambda>";
+            list = formatBlock (printList_ args' x);
+            set = formatBlock (printAttrs_ args' x);
+            bool = boolToString x;
+          }.${typeOf x};
+      in
+        block;
 
-    print = x: codeBlock (print_ mkPrintArgs x);
+    print = x: indent.block (print_ mkPrintArgs x);
+    vprint = x: indent.block (print_ (mkPrintArgs // { ignoreToString = true; }) x);
 
     mkTrace = traceFn:
       let self = rec {
@@ -155,6 +170,24 @@ let
         call_ = buildCall_: callName:
           Variadic.compose
             (xs: rec {
+              # Built an intermediate value trace for use with assert.
+              trace = intermediate: value:
+                over (xs // {
+                  call = xs.call ++ [
+                    { inherit intermediate; }
+                    { inherit value; }
+                  ];
+                });
+
+              # Trace an assignment
+              assign = name: value:
+                assert over (xs // {
+                  call = xs.call ++ [{
+                    assign = [{ inherit name; } {inherit value;}];
+                  }];
+                });
+                value;
+
               # Return a value from the call, tracing the value.
               return = x:
                 if isFunction x then traceVariadic x

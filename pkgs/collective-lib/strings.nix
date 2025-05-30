@@ -157,8 +157,7 @@ rec {
   trimNewlines =
     let chars = "\r\n";
         regex = "[${chars}]*(.*[^${chars}])[${chars}]*";
-    in s: let res = match regex s;
-          in optionalString (res != null) (head res);
+    in s: firstMatchOr "" regex s;
 
   # Remove the surrounding newlines from a list of lines
   trimNewlinesList = lines: splitLines (trimNewlines (joinLines lines));
