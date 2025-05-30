@@ -623,31 +623,36 @@ in rec {
 
       HyperType = HyperType__bound;
 
-      # MetaType is the instantiated HyperType, which is both an instance of
-      # HyperType and also inherits from HyperType.
+      # MetaType is an instantiated HyperType.
+      # This validates HyperType can instantiate another fully fledged universe,
+      # which does not need to depend on Quasiverse and the shims at all.
       MetaType =
         HyperType.new "MetaType"
           (mkTypeArgs Universe.HyperType universeMethods "MetaType");
 
-      # The ProtoType of all Types.
-      # Constructed as per Type, but without using any of the machinery of Type
-      # Can be used to construct e.g. Fields for use in Type
-      ProtoType = newSubType MetaType "ProtoType" {
-        methods =
-          (baseMethods Universe.MetaType)
-          // (mkTypeMethods Universe.MetaType ProtoType);
-      };
+      # ProtoType is an instantiated MetaType.
+      # The only difference here is that the Fields of the base ProtoType Type are
+      # set via Fields.new, so that when we create Type from ProtoType,
+      # Type will have been created in a typesafe way, and anything downstream of
+      # it will have the same checks.
+      ProtoType =
+        MetaType.new "ProtoType"
+          (mkTypeArgs Universe.MetaType universeMethods "ProtoType")
+          // {fields = typeFields Universe.MetaType;};
 
-      # Finally construct the base Type to use from here on out.
+      # Construct the base Type to use from here on out.
       # Override 'fields' to contain the actual field specifiers.
+      Type__fromProtoType =
+        ProtoType.new "Type"
+          (mkTypeArgs Universe.ProtoType universeMethods "Type")
+          // {fields = typeFields Universe.ProtoType;};
+
+      # Lastly, bootstrap Type inside its own universe by instancing
+      # and eliding the superuniverse-dependent Type__fromProtoType
       Type =
-        with Universe.ProtoType;
-        ProtoType.subType "Type" {
-          fields = Fields.new (typeFields Universe.Type);
-          methods =
-            (baseMethods Universe.ProtoType)
-            // (mkTypeMethods Universe.ProtoType MetaType);
-        };
+        Type__fromProtoType.new "Type"
+          (mkTypeArgs Universe.Type universeMethods "Type")
+          // {fields = typeFields Universe.Type;};
     };
 
     inherit (Bootstrap) HyperType MetaType ProtoType Type;
@@ -1107,7 +1112,7 @@ in rec {
     # No accessors or constructors beyond those shimmed
     Quasiverse = rec {
 
-      Type = HyperType;
+      Type = Bootstrap.HyperType;
 
       quasiField = fieldName: _: {
         inherit fieldName;
@@ -1156,7 +1161,7 @@ in rec {
     };
 
     # Create a related set of types in each of .Type and .ProtoType universes.
-    Universe = {
+    Universe = with Bootstrap; {
       HyperType = withTypeLevel HyperType mkUniverse;
       MetaType = withTypeLevel MetaType mkUniverse;
       ProtoType = withTypeLevel ProtoType mkUniverse;
@@ -1589,11 +1594,6 @@ in rec {
                 # Raw set converted to raw list of field singletons.
                 set = let fieldList = mapAttrsToList mkField fieldListOrSet;
                       in { value = fieldList; };
-
-                # Typed Set unwrapped to raw set and handled above
-                Set = init fieldListOrSet.value;
-                SetOf = init fieldListOrSet.value;
-
                 # Raw list of field singletons conver
                 # [ { fieldName: fieldType; } ... ] assignments
                 # -> [ Sized 1 (SetOf (FieldOf Type)) { fieldName: (FieldOf fieldType).new(Field Any)
@@ -1607,14 +1607,9 @@ in rec {
                               else (head soloField))
                           fieldListOrSet;
                   in { value = fieldList; };
-
-                # Typed List unwrapped to raw list and handled above
-                List = init fieldListOrSet.value;
-                ListOf = init fieldListOrSet.value;
               }.${
-                # Match against base type name, or otherwise builtin type.
-                (fieldListOrSet.Type or {name = typeOf fieldListOrSet;}).name
-                }
+                typeOf fieldListOrSet
+              }
                 or (throw "Invalid Fields.new argument (${typeOf fieldListOrSet}): ${log.print fieldListOrSet}");
             in init fieldListOrSet;
         };
@@ -1669,7 +1664,12 @@ in rec {
       };
 
     in cutils.tests.suite {
-      types = withTypeLevels [HyperType MetaType] (Type: with Universe.${Type.__TypeId}; {
+      types = withTypeLevels [
+        Bootstrap.HyperType
+        Bootstrap.MetaType
+        Bootstrap.ProtoType
+        Bootstrap.Type
+      ] (Type: with Universe.${Type.__TypeId}; {
         Null = mkBuiltinTest Null "Null" null;
         Int = mkBuiltinTest Int "Int" 123;
         Float = mkBuiltinTest Float "Float" 12.3;
