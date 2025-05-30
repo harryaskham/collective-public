@@ -9,65 +9,81 @@ with cutils.functions;
 # Printing/logging utilities
 let
   log = rec {
-    compactBlock = formatBlock: braceL: braceR: px:
+
+    mkPrintArgs = {
+      formatBlock = trimNewlines;
+      compact = true;
+      depth = 0;
+      maxDepth = 10;
+    };
+    descend = args: args // { depth = args.depth + 1; };
+
+    compactBlock = args: braceL: braceR: px:
+      with args;
       formatBlock (
         let pxLines = splitLines (formatBlock (joinLines px));
         in ''
           ${braceL} ${indent.here (indent.lines pxLines)} ${braceR}
         '');
 
-    printAttrs_ = formatBlock: compact: x:
-      if x == {} then "{}"
+    printAttrs_ = args: x:
+      with args;
+      if depth >= maxDepth then "..."
+      else if x == {} then "{}"
       else
-        let px = mapAttrsToList (k: v: "${k} = ${formatBlock (print_ formatBlock compact v)};") x;
+        let px = mapAttrsToList (k: v: "${k} = ${formatBlock (print_ (descend args) v)};") x;
             pxLine = formatBlock "{ ${head px} }";
         in
           if length px == 1 && lineCount pxLine == 1 then pxLine
-          else if compact then formatBlock (compactBlock formatBlock "{" "}" px)
+          else if compact then formatBlock (compactBlock args "{" "}" px)
           else formatBlock ''
             {
               ${indent.here (indent.lines px)}
             }
           '';
 
-    printAttrs = printAttrs_ codeBlock true;
+    printAttrs = printAttrs_ mkPrintArgs;
 
-    printList_ = formatBlock: compact: x:
-      if x == [] then "[]"
+    printList_ = args: x:
+      with args;
+      if depth >= maxDepth then "..."
+      else if x == [] then "[]"
       else
-        let px = map (print_ formatBlock compact) x;
+        let px = map (print_ (descend args)) x;
             pxLine = formatBlock "[ ${formatBlock (joinLines px)} ]";
         in
           if lineCount pxLine <= 1 then pxLine
-          else if compact then formatBlock (compactBlock formatBlock "[" "]" px)
+          else if compact then formatBlock (compactBlock args "[" "]" px)
           else formatBlock ''
             [
               ${indent.here (indent.lines px)}
             ]
           '';
 
-    printList = printList_ codeBlock true;
+    printList = printList_ mkPrintArgs;
 
     # Add parens around a string only if it contains whitespace.
     maybeParen = x: if wordCount x <= 1 then x else "(${x})";
 
     # Convert a value of any type to a string, supporting the types module's Type values.
-    print_ = formatBlock: compact: x:
-      if Types.isTyped x && (x ? __toString)
+    print_ = args: x:
+      with args;
+      if depth >= maxDepth then "..."
+      else if Types.isTyped x && (x ? __toString)
       then maybeParen (toString x)
       else {
         null = "null";
         path = toString x;
         string = ''"${x}"'';
-        int = ''"${builtins.toJSON x}"'';
-        float = ''"${builtins.toJSON x}"'';
+        int = ''${builtins.toJSON x}'';
+        float = ''${builtins.toJSON x}'';
         lambda = "<lambda>";
-        list = formatBlock (printList_ formatBlock compact x);
-        set = formatBlock (printAttrs_ formatBlock compact x);
+        list = formatBlock (printList_ args x);
+        set = formatBlock (printAttrs_ args x);
         bool = if x then "true" else "false";
       }.${typeOf x};
 
-    print = x: codeBlock (print_ trimNewlines true x);
+    print = x: codeBlock (print_ mkPrintArgs x);
 
     mkTrace = traceFn:
       let self = rec {
@@ -110,7 +126,7 @@ let
 
         buildMethodCall = this: methodName:
           Variadic.compose
-            (l: { call = [ {method = methodName;} { inherit this; } {args = l;} ]; })
+            (l: { call = [ {method = methodName;} { T = this.name; } {args = l;} ]; })
             Variadic.mkList;
 
         traceCall = callName:
@@ -140,13 +156,14 @@ let
           Variadic.compose
             (xs: rec {
               # Return a value from the call, tracing the value.
-              return = x: assert over (xs // { call = xs.call ++ [{
-                return = x;
-              }]; }); x;
+              return = x:
+                if isFunction x then traceVariadic x
+                else assert over (xs // { call = xs.call ++ [{
+                  return = x;
+                }]; }); x;
 
               # Return a variadic function from the call, tracing the function's return value when it is fully invoked.
               traceVariadic = f:
-                assert assertMsg (isFunction f) "returnVariadic: f must be a function (got ${log.print f})";
                 let traceOut =
                       out:
                       assert over (xs // {
@@ -167,7 +184,7 @@ let
                           }];
                         });
                         g varargs;
-                in traceVariadic (Variadic.compose gTraceVarargs f);
+                in Variadic.compose gTraceVarargs f;
 
             })
             (buildCall_ callName);
