@@ -16,7 +16,7 @@ let
       formatBlock = trimNewlines;
       compact = true;
       depth = 0;
-      maxDepth = 10;
+      maxDepth = 5;
     };
     descend = args: args // { depth = args.depth + 1; };
 
@@ -34,7 +34,7 @@ let
       else if x == {} then "{}"
       else
         formatBlock (
-          let px = mapAttrsToList (k: v: "${k} = ${(print_ args v)};") x;
+          let px = mapAttrsToList (k: v: "${k} = ${(print_ (descend args) v)};") x;
               pxLine = "{ ${head px} }";
           in
             if length px == 1 && lineCount pxLine == 1 then pxLine
@@ -52,7 +52,7 @@ let
       if depth >= maxDepth then "..."
       else if x == [] then "[]"
       else
-        let px = map (print_ args) x;
+        let px = map (print_ (descend args)) x;
             pxLine = formatBlock "[ ${formatBlock (joinLines px)} ]";
         in
           if lineCount pxLine <= 1 then pxLine
@@ -75,14 +75,8 @@ let
         args' = descend args;
         block =
           if depth >= maxDepth then "..."
-          else if (x ? __toString) && !ignoreToString then
-            # Call either __toString this or __toString This this depending
-            # on whether not statically bound.
-            let xS = x.__toString x;
-            in dispatch {
-              string = id;
-              lambda = (f: f x);
-            } xS
+          else if (x ? Type) && (x ? __toString) && !ignoreToString then
+            toString x
           else {
             null = "null";
             path = toString x;
@@ -90,15 +84,17 @@ let
             int = ''${builtins.toJSON x}'';
             float = ''${builtins.toJSON x}'';
             lambda = "<lambda>";
-            list = formatBlock (printList_ args' x);
-            set = formatBlock (printAttrs_ args' x);
+            list = formatBlock (printList_ args x);
+            set = formatBlock (printAttrs_ args x);
             bool = boolToString x;
           }.${typeOf x};
       in
         block;
 
+    vprint_ = args: x: indent.block (print_ (args // { ignoreToString = true; }) x);
+
     print = x: indent.block (print_ mkPrintArgs x);
-    vprint = x: indent.block (print_ (mkPrintArgs // { ignoreToString = true; }) x);
+    vprint = x: indent.block (vprint_ mkPrintArgs x);
 
     mkTrace = traceFn:
       let self = rec {

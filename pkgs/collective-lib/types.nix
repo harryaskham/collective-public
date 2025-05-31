@@ -151,6 +151,8 @@ in rec {
         xFieldNames = castErrorOr xFields (fs: sortOn (f: f.index) (mapAttrsToList (fieldName: _: fieldName) fs));
         TFieldNames = castErrorOr TFields (fs: sortOn (f: f.index) (mapAttrsToList (fieldName: _: fieldName) fs));
 
+        castStr = "${xTName} -> ${TName}";
+
         # A list of casts to attempt in order.
         # The first cast satisfying 'when == true && isCastSuccess result' will be returned.
         # If no cast satisfies, then a cast error set is returned with the collated errors.
@@ -162,7 +164,10 @@ in rec {
           {
             name = "Identity";
             when = hasType T x;
-            orMsg = "Not an identity cast: ${xTName} -> ${TName}";
+            orMsg = indent.block ''
+              Not an identity cast:
+                ${indent.here castStr}
+            '';
             result = mkCastSuccess x "";
             failMsg = _: null;
             successMsg = _: "Identity cast succeeded: ${xTName} -> ${TName}";
@@ -343,7 +348,7 @@ in rec {
       # The type of the instance as a thunk.
       {Type = Default Type Type;}
       # The supertype of the type.
-      {Super = Default (NullOr Type) (Null.new null);}
+      {Super = Default (NullOr Type) null;}
       # The type parameters of the type.
       {tvars = Default "set" {};}
       # The type parameter bindings of the type.
@@ -383,26 +388,33 @@ in rec {
       # Get the full templated name of the type.
       boundName = This:
         with log.vtrace.methodCall This "boundName" ___;
-        assert trace "attrNames This" (attrNames This);
 
         return (
           if This.tvars == {} then This.name
           else
             let
               printBinding = tvarName:
-                let T = This.tvarBindings.${tvarName} or Void;
+                let C = This.tvars.${tvarName} or (
+                      throw "No type variable ${tvarName} on ${This.name}");
+                    T = This.tvarBindings.${tvarName} or Void;
                 in
                   # Unbound
-                  if typeEq Void T then tvarName
+                  if typeEq Void T
+                    then tvarName
+
                   # Bound to a type
-                  else if (isTyped T && T.Type.check T) then "${T.boundName}"
+                  else if isTyped T
+                    then T.boundName
+
                   # Bound to a literal
-                  else "${log.print T}";
+                  else
+                    (log.print T);
               printBindings = joinSep ", " (map printBinding (attrNames This.tvars));
             in "${This.name}<${printBindings}>"
         );
 
       # Construct the type resulting from applying the given bindings to the parameterized This type.
+      # TODO: TypeVar object plus bootstraps
       bind = This: tvarBindingsAttrs:
         let
           tvarBindingsList =
@@ -412,20 +424,28 @@ in rec {
 
           bindOne = This: {tvarName, T}:
             let
-              throwBindError = msg: throw (joinLines [
-                "bind: Error binding ${tvarName} <- ${typeName T}"
-                msg
-              ]);
-              constraint =
-                This.tvars.${tvarName} or
-                  (throwBindError "Type ${This.name} does not have type variable ${tvarName}");
+              throwBindError = msg: throw (indent.block ''
+                Bind error:
+                  ${indent.here "${This.name}.${tvarName} <- ${log.print T}"}
+                  Constraints: ${indent.here "${log.print C.value} (${if TSatC then "" else "not "}satisfied)"}
+                  ${indent.here msg}
+                '');
+              C = This.tvars.${tvarName} or null;
+              B = This.tvarBindings.${tvarName} or Void;
+              TSatC = C.satisfiedBy T;
             in
-              if This.tvarBindings == null
+              if C == null
+                then throwBindError "Type ${This.name} does not have type variable ${tvarName}"
+
+              else if This.tvarBindings == null
                 then throwBindError "Type ${This.__TypeId} does not have bound or unbound type variable bindings"
-              else if This.tvarBindings ? tvarName
-                then throwBindError "Type ${This.__TypeId} already has type variable ${tvarName} bound to ${typeName This.tvarBindings.${tvarName}}"
-              else if !(constraint.satisfiedBy T)
-                then throwBindError "Type ${typeName T} does not satisfy constraint: ${log.print constraint}"
+
+              else if !(typeEq B Void)
+                then throwBindError "Type ${This.__TypeId} already has type variable ${tvarName} bound to ${log.print B}"
+
+              else if !(C.satisfiedBy T)
+                then throwBindError "Binding ${log.print T} does not satisfy constraint: ${log.print C}"
+
               else This.modify.tvarBindings (bs: bs // {${tvarName} = T;});
 
         in foldl' bindOne This tvarBindingsList;
@@ -476,13 +496,9 @@ in rec {
       # This will work to print both types as T.__toString T and instances as t.__toString t
       __toString = This: this:
         if isType this && isString this.__TypeId then
-          # For types, print only the type ID by default
-          assert assertMsg (isString This.__TypeId) "Unbound This.__TypeId in ${log.printAttrs This}";
-          assert assertMsg (isString this.__TypeId) "Unbound this.__TypeId in ${log.printAttrs this}";
-          # assert assertMsg (This.__TypeId == this.__TypeId) "__toString This/this mismatch: ${log.print This}/${log.print this}";
           this.__TypeId
         else
-          "${log.printAttrs this}";
+          log.print this;
 
       __print = this: maxDepth:
         let truncated = deepMapWith (depth: x: if depth >= maxDepth then "..." else x) this;
@@ -1106,6 +1122,33 @@ in rec {
       inherit (BuiltinTypes) Null Int Float String Path Bool List Set Lambda;
     };
 
+# e.g. parseFieldType Static<Default<Int, 123>> -> {fieldStatic = true, fieldDefault = 123; fieldType = Int; }
+#      parseFieldType Static<Int> -> {fieldStatic = true; fieldType = Int; }
+#      parseFieldType Default<Int, 123> -> {fieldDefault = 123; fieldType = Int; }
+#      parseFieldType Int -> { fieldType = Int; }
+parseFieldType = FieldType:
+  {
+    # Unwrap Static types.
+    # If not a Static<T>, defaultType is not of type T
+    Static =
+      (parseFieldType FieldType.staticType)
+      // {fieldStatic = true;};
+    # Unwrap Default types.
+    # If defaultType is not of type T
+    Default =
+      (parseFieldType FieldType.defaultType)
+      // {fieldDefault = FieldType.defaultValue;};
+  }.${ # typeName here to match all Default/Static, not Default<Int> etc
+      typeName FieldType
+    }
+    # When reaching a non-Static/Default, treat as the type.
+    # Defaults here are overridden above when Static/Default are encountered.
+    or {
+      fieldType = FieldType;
+      fieldStatic = false;
+      fieldDefault = null;
+    };
+
     # The barest minimum universe to bootstrap the type system.
     # No type checking
     # No field defaults
@@ -1114,25 +1157,27 @@ in rec {
 
       Type = Bootstrap.HyperType;
 
-      quasiField = fieldName: _: {
-        inherit fieldName;
-        index = 0;
-        fieldStatic = false;
-        fieldType = null;
-        fieldDefault =
-          let def = {
-            Super = null;
-            tvars = {};
-            tvarBindings = {};
-            fields = Fields.new {};
-            ctor = Ctors.Fields false;
-            methods = {};
-            staticMethods = {};
-            checkValue = null;
-            overrideCheck = null;
-          }.${fieldName} or null;
-          in if def == null then null else { defaultValue = def; };
-      };
+      quasiField = fieldName: T:
+        let field = parseFieldType T;
+        in {
+          inherit fieldName;
+          index = 0;
+          fieldStatic = false;
+          fieldType = null;
+          fieldDefault =
+            let def = {
+              Super = null;
+              tvars = {};
+              tvarBindings = {};
+              fields = Fields.new {};
+              ctor = Ctors.Fields false;
+              methods = {};
+              staticMethods = {};
+              checkValue = null;
+              overrideCheck = null;
+            }.${fieldName} or null;
+            in if def == null then null else { defaultValue = def; };
+        };
 
       # The barest minimum s.t. Fields.new can be called without many features.
       Fields = {
@@ -1144,7 +1189,7 @@ in rec {
         };
       };
 
-      FieldOf = _: {new = quasiField;};
+      FieldOf = T: {new = name: quasiField name T;};
       SetOf = T: {new = Set.new;};
       ListOf = T: {new = List.new; tvars = { T = Type; }; tvarBindings = { inherit T; };};
       OrderedOf = T: {new = (ListOf (Sized 1 (SetOf T))).new;};
@@ -1298,10 +1343,10 @@ in rec {
               # before instantiating.
               # TODO: A Template type with static bind method
               { bind = bindings:
-                  let totalBindings = voidBindings // bindings;
-                      Super = bindingsToSuperOrSuper totalBindings;
-                      T = newSubType Super name voidArgs;
-                    in T.bind totalBindings;
+                  let Super = bindingsToSuperOrSuper bindings;
+                      args = bindingsToArgs bindings;
+                      T = newSubType Super name args;
+                    in T.bind bindings;
               };
 
         newSubTemplateOf =
@@ -1347,13 +1392,13 @@ in rec {
         };
 
         # A type satisfied by any value of the given list of types.
-        Union_ = Type.template "Union" {Ts = Type;} (_: {
-          overrideCheck = that: any (T: T.check that) _.Ts;
+        Union_ = Type.template "Union" {Ts = ListOf Type;} (_: {
+          overrideCheck = that: any (T: T.check that) _.Ts.value;
         });
-        Union = Ts: Union_ {inherit Ts;};
+        Union = Ts: Union_.bind {inherit Ts;};
 
         # A value or T or Null.
-        NullOr = T: Union [Null T];
+        NullOr = T: Union ["null" Null T];
 
         # Subtype of List that enforces homogeneity of element types.
         ListOf_ = List.subTemplate "ListOf" {T = Type;} (_: {
@@ -1370,10 +1415,10 @@ in rec {
         SetOf = T: SetOf_.bind { inherit T; };
 
         # A type that enforces a size on the value.
-        Sized_ = Type.subTemplateOf (_: _.T) "Sized" {N = Type; T = Type;} (_: {
+        Sized_ = Type.subTemplateOf (_: _.T) "Sized" {N = Literal Any; T = Type;} (_: {
           ctor = _.T.ctor;
           checkValue = that:
-            Super.checkValue that
+            (Super.checkValue or (const true)) that
             && that.size == _.N.literal;
         });
         Sized = n: T:
@@ -1519,33 +1564,6 @@ in rec {
         });
         Static = T: Static_.bind {inherit T;};
 
-        # e.g. parseFieldType Static<Default<Int, 123>> -> {fieldStatic = true, fieldDefault = 123; fieldType = Int; }
-        #      parseFieldType Static<Int> -> {fieldStatic = true; fieldType = Int; }
-        #      parseFieldType Default<Int, 123> -> {fieldDefault = 123; fieldType = Int; }
-        #      parseFieldType Int -> { fieldType = Int; }
-        parseFieldType = FieldType:
-          {
-            # Unwrap Static types.
-            # If not a Static<T>, defaultType is not of type T
-            Static =
-              (parseFieldType FieldType.staticType)
-              // {fieldStatic = true;};
-            # Unwrap Default types.
-            # If defaultType is not of type T
-            Default =
-              (parseFieldType FieldType.defaultType)
-              // {fieldDefault = FieldType.defaultValue;};
-          }.${ # typeName here to match all Default/Static, not Default<Int> etc
-              typeName FieldType
-            }
-            # When reaching a non-Static/Default, treat as the type.
-            # Defaults here are overridden above when Static/Default are encountered.
-            or {
-              fieldType = FieldType;
-              fieldStatic = false;
-              fieldDefault = null;
-            };
-
         # TODO: Type Family candidate
         # Untag T to its root field value type.
         # e.g. Untagged Static<Default<Int, 123>> -> Int
@@ -1564,7 +1582,7 @@ in rec {
             {fieldName = String;}
             {fieldType = Untagged _.T;}
             {fieldStatic = Bool;}
-            {fieldDefault = NullOr (Untagged _.T).fieldType;}
+            {fieldDefault = NullOr (Untagged _.T);}
             {index = Int;}
           ];
           # ctor adds support for Static/Default type wrappers.
@@ -1579,14 +1597,14 @@ in rec {
 
         # Fields is an OrderedOf that first converts any RHS values into Field types.
         # TODO: FieldOf Int must correctly type-match to FieldOf Type
-        Fields = (OrderedOf (FieldOf Type)).subType "Fields" {
+        Fields = (OrderedOf (FieldOf Any)).subType "Fields" {
           ctor = This: fieldListOrSet:
             let
               mkField = fieldName: T:
-                # Produce a valid (Sized 1 (SetOf (FieldOf Type)))
+                # Produce a valid (Sized 1 (SetOf (FieldOf T)))
                 # ctor must return args for the supertype's mk; in this case,
                 # ultimately a ListOf (...), which constructs with {value = list}.
-                (SU.Sized 1 (SU.SetOf (SU.FieldOf Type))).new {
+                (SU.Sized 1 (SU.SetOf (SU.FieldOf T))).new {
                   ${fieldName} = (FieldOf T).new fieldName;
                 };
 
@@ -1667,8 +1685,8 @@ in rec {
       types = withTypeLevels [
         Bootstrap.HyperType
         Bootstrap.MetaType
-        Bootstrap.ProtoType
-        Bootstrap.Type
+        # Bootstrap.ProtoType
+        # Bootstrap.Type
       ] (Type: with Universe.${Type.__TypeId}; {
         Null = mkBuiltinTest Null "Null" null;
         Int = mkBuiltinTest Int "Int" 123;
