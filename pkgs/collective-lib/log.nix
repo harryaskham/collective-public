@@ -16,7 +16,7 @@ let
       formatBlock = trimNewlines;
       compact = true;
       depth = 0;
-      maxDepth = 5;
+      maxDepth = 10;
     };
     descend = args: args // { depth = args.depth + 1; };
 
@@ -72,7 +72,6 @@ let
     print_ = args: x:
       with args;
       let
-        args' = descend args;
         block =
           if depth >= maxDepth then "..."
           else if (x ? Type) && (x ? __toString) && !ignoreToString then

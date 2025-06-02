@@ -85,12 +85,12 @@ in rec {
     builtinNames = [ "null" "int" "float" "string" "path" "bool" "list" "set" "lambda" ];
     builtinNameCheck_ = mergeAttrsList (map (name: { ${name} = true; }) builtinNames);
     # Whether or not name is one of the lowercase builtin type names.
-    builtinNameCheck = name: builtinNameCheck_.${name} or false;
+    builtinNameCheck = name: isString name && (builtinNameCheck_.${name} or false);
 
     BuiltinNames = [ "Null" "Int" "Float" "String" "Path" "Bool" "List" "Set" "Lambda" ];
     BuiltinNameCheck_ = mergeAttrsList (map (name: { ${name} = true; }) BuiltinNames);
     # Whether or not name is one of the uppercase Builtin type names.
-    BuiltinNameCheck = name: BuiltinNameCheck_.${name} or false;
+    BuiltinNameCheck = name: isString name && (BuiltinNameCheck_.${name} or false);
 
     # Whether or not x is a lowercase builtin type
     # All builtins are attrs. The short-circuit stops recursive inspection of Type.
@@ -114,6 +114,7 @@ in rec {
     isCastSuccess = x: x ? castSuccess;
     castErrorOr = xOrError: f:
       if isCastError xOrError then xOrError else f xOrError;
+
     cast = T: x:
       if T == null
         then mkCastError "Cannot cast to null: T = ${log.print T}, x = ${log.print x}"
@@ -172,6 +173,18 @@ in rec {
             failMsg = _: null;
             successMsg = _: "Identity cast succeeded: ${xTName} -> ${TName}";
           }
+
+          # {
+          #   name = "Coerce";
+          #   when = (T.checkValue or (const false)) x;
+          #   orMsg = indent.block ''
+          #     No value-check or not directly checkValue-coercible:
+          #       ${indent.here castStr}
+          #   '';
+          #   result = mkCastSuccess (T.mk x.get) "";
+          #   failMsg = _: null;
+          #   successMsg = _: "Coercion cast succeeded: ${xTName} -> ${TName}";
+          # }
 
           # Downcasting for unary x types via a nested cast
           # This includes Builtins and other value types.
@@ -388,6 +401,7 @@ in rec {
       # Get the full templated name of the type.
       boundName = This:
         with log.vtrace.methodCall This "boundName" ___;
+        assert trace "wat" This.name;
 
         return (
           if This.tvars == {} then This.name
@@ -428,6 +442,7 @@ in rec {
                 Bind error:
                   ${indent.here "${This.name}.${tvarName} <- ${log.print T}"}
                   Constraints: ${indent.here "${log.print C.value} (${if TSatC then "" else "not "}satisfied)"}
+                  Existing binding: ${log.print B}
                   ${indent.here msg}
                 '');
               C = This.tvars.${tvarName} or null;
@@ -637,7 +652,11 @@ in rec {
         HyperType__selfHosted
           |> reinitThis HyperType__selfHosted;
 
-      HyperType = HyperType__bound;
+      # Lastly set Type to Self to fix the type chain
+      HyperType = HyperType__bound // {
+        # segfault?
+        # Type = HyperType;
+      };
 
       # MetaType is an instantiated HyperType.
       # This validates HyperType can instantiate another fully fledged universe,
@@ -652,23 +671,24 @@ in rec {
       # Type will have been created in a typesafe way, and anything downstream of
       # it will have the same checks.
       ProtoType =
+        with Universe.ProtoType;
         MetaType.new "ProtoType"
-          (mkTypeArgs Universe.MetaType universeMethods "ProtoType")
-          // {fields = typeFields Universe.MetaType;};
+          (mkTypeArgs SU universeMethods "ProtoType")
+          // {fields = Fields.new (typeFields U);};
 
       # Construct the base Type to use from here on out.
       # Override 'fields' to contain the actual field specifiers.
       Type__fromProtoType =
         ProtoType.new "Type"
           (mkTypeArgs Universe.ProtoType universeMethods "Type")
-          // {fields = typeFields Universe.ProtoType;};
+          // {fields = Fields.new (typeFields Universe.ProtoType);};
 
       # Lastly, bootstrap Type inside its own universe by instancing
       # and eliding the superuniverse-dependent Type__fromProtoType
       Type =
         Type__fromProtoType.new "Type"
           (mkTypeArgs Universe.Type universeMethods "Type")
-          // {fields = typeFields Universe.Type;};
+          // {fields = Fields.new (typeFields Universe.Type);};
     };
 
     inherit (Bootstrap) HyperType MetaType ProtoType Type;
@@ -702,8 +722,8 @@ in rec {
       if isType T && !isType U then false
       else if !isType T && isType U then false
       else if isType T && isType U then T.__TypeId == U.__TypeId
-      else if !(builtinNameCheck T) then throw "typeEq: ${log.print T} is not a Type or builtin type"
-      else if !(builtinNameCheck U) then throw "typeEq: ${log.print U} is not a Type or builtin type"
+      else if !(builtinNameCheck T) then false # throw "typeEq ${log.print T} ${log.print U}: ${log.print T} is not a Type or builtin type"
+      else if !(builtinNameCheck U) then false # throw "typeEq ${log.print T} ${log.print U}: ${log.print U} is not a Type or builtin type"
       else T == U;
 
     # Check a string or custom type against a value.
@@ -809,10 +829,14 @@ in rec {
     #     valid = xs.set.value [10 20 30] -> ok
     setByName = This: this: fieldName: uncastValue:
       let field = (combinedFields This).${fieldName} or null;
+          castRequired = 
+            field.fieldType != null
+            && !((isType field.fieldType && field.fieldType.check uncastValue)
+                 || (hasType uncastValue field.fieldType));
           castValue =
-            if field.fieldType != null
+            if castRequired
               then cast field.fieldType uncastValue
-              else uncastValue;
+              else mkCastSuccess uncastValue "id";
       in assert (predChecks [
           { pred = (field: field != null);
             msg = joinLines [
@@ -820,7 +844,7 @@ in rec {
               "Known fields: ${joinSep ", " (attrNames (combinedFields This))}"
             ];
           }
-          { pred = (field: !(isCastError castValue));
+          { pred = field: (!castRequired) || isCastSuccess castValue;
             msg = indent.block ''
               Error casting field assignment:
                 ${This.__TypeId}.${fieldName} = ${log.print uncastValue}
@@ -829,17 +853,19 @@ in rec {
           }
           # TODO: This check could be O(n) for container types, updating attrsets goes O(1) to O(n)
           # Need item-wise checks
-          { pred = field: field.fieldType == null || field.fieldType.check castValue;
+          { pred = field: (!castRequired)
+                          || (isType field.fieldType && field.fieldType.check castValue.castSuccess)
+                          || (typeOf castValue.castSuccess == field.fieldType);
             msg = indent.block ''
               Cast value did not pass typecheck:
                 ${This.__TypeId}.${fieldName} = ${log.print uncastValue}
-                Cast value of ${log.print castValue} is not a valid instance of ${field.fieldType.__TypeId}.
+                Cast value of ${log.print (castValue.castSuccess or null)} is not a valid instance of ${log.print field.fieldType}.
             '';
           }
         ] field);
         # We need to reinit here to update the logical binding for future updates
         reinitThis This (this // {
-          ${fieldName} = castValue;
+          ${fieldName} = castValue.castSuccess;
         });
 
     # Accessors to include on all instances.
@@ -897,10 +923,18 @@ in rec {
     setFields = This: args: this:
       foldl'
         (this: field:
-          let hasValue = args ? ${field.fieldName} || (field.fieldDefault or null) != null;
+          let shouldSetValue =
+                args ? ${field.fieldName}
+                || (field.fieldDefault or null) != null;
               value = args.${field.fieldName} or field.fieldDefault.defaultValue;
-          in if this ? ${field.fieldName} then this
-            else if hasValue then setByName This this field.fieldName value
+          in
+            if this ? ${field.fieldName} && args ? ${field.fieldName} then
+              this
+              # throw ''
+              #   Field ${field.fieldName} already set to ${log.print this.${field.fieldName}}
+              #   (when setting to ${log.print args.${field.fieldName}})
+              # ''
+            else if shouldSetValue then setByName This this field.fieldName value
             else this
         )
         this
@@ -1159,37 +1193,44 @@ parseFieldType = FieldType:
 
       quasiField = fieldName: T:
         let field = parseFieldType T;
-        in {
-          inherit fieldName;
-          index = 0;
-          fieldStatic = false;
-          fieldType = null;
-          fieldDefault =
-            let def = {
-              Super = null;
-              tvars = {};
-              tvarBindings = {};
-              fields = Fields.new {};
-              ctor = Ctors.Fields false;
-              methods = {};
-              staticMethods = {};
-              checkValue = null;
-              overrideCheck = null;
-            }.${fieldName} or null;
-            in if def == null then null else { defaultValue = def; };
-        };
+        in (Field T).new fieldName;
+        #   inherit fieldName;
+        #   index = 0;
+        #   fieldStatic = false;
+        #   fieldType = null;
+        #   fieldDefault =
+        #     let def = {
+        #       Super = null;
+        #       tvars = {};
+        #       tvarBindings = {};
+        #       fields = Fields.new {};
+        #       ctor = Ctors.Fields false;
+        #       methods = {};
+        #       staticMethods = {};
+        #       checkValue = null;
+        #       overrideCheck = null;
+        #     }.${fieldName} or null;
+        #     in if def == null then null else { defaultValue = def; };
+        # };
 
       # The barest minimum s.t. Fields.new can be called without many features.
       Fields = {
         new = xs: {
           indexed = {
-            set = mapAttrs quasiField xs;
-            list = mapAttrs quasiField (mergeAttrsList xs);
+            set = mapAttrs (n: T: (Field T).new n) xs;
+            list = mapAttrs (n: T: (Field T).new n) (mergeAttrsList xs);
           }.${typeOf xs};
         };
       };
-
-      FieldOf = T: {new = name: quasiField name T;};
+      # Disable typechecking in base case
+      Field = T: {
+        new = fieldName: parseFieldType T // {
+          inherit fieldName;
+          fieldType = null;
+          index = 0;
+        };
+      };
+      Any = T: {new = T.new;};
       SetOf = T: {new = Set.new;};
       ListOf = T: {new = List.new; tvars = { T = Type; }; tvarBindings = { inherit T; };};
       OrderedOf = T: {new = (ListOf (Sized 1 (SetOf T))).new;};
@@ -1231,6 +1272,7 @@ parseFieldType = FieldType:
         # Inherit Type as defined to be the root of the universe
         inherit Type;
 
+        U = _: ThisUniverse;
         SU = superUniverse ThisUniverse;
 
         inherit (mkBuiltins SU) BuiltinTypes;
@@ -1324,12 +1366,22 @@ parseFieldType = FieldType:
             # No supertype; just create a new type with unbound args.
             # 'This' goes unused here. MyString.template is not meaningful vs Type.template.
             if bindingsToSuperOrSuper == null
-              then newInstance Type name voidArgs
+              then 
+                { bind = bindings:
+                    # TODO: constraints skipped here
+                    let args = bindingsToArgs bindings;
+                    in newInstance Type name args;
+                }
 
             # Rigid supertype; just create a new subtemplate.
             else if isType bindingsToSuperOrSuper
-              then let Super = bindingsToSuperOrSuper;
-                   in newSubType Super name voidArgs
+              then 
+                { bind = bindings:
+                    let args = bindingsToArgs bindings;
+                        # TODO: constraints skipped here
+                        Super = bindingsToSuperOrSuper;
+                    in newSubType Super name args;
+                }
 
             else
               assert assertMsg (isFunction bindingsToSuperOrSuper) ''
@@ -1344,9 +1396,10 @@ parseFieldType = FieldType:
               # TODO: A Template type with static bind method
               { bind = bindings:
                   let Super = bindingsToSuperOrSuper bindings;
+                      # TODO: constraints skipped here
                       args = bindingsToArgs bindings;
                       T = newSubType Super name args;
-                    in T.bind bindings;
+                    in T;
               };
 
         newSubTemplateOf =
@@ -1382,7 +1435,8 @@ parseFieldType = FieldType:
             # will throw an error.
             satisfiedBy = this: That:
               typeEq Void That
-              || That.isInstance this.constraintType;
+              || That.isInstance this.constraintType
+              || this.constraintType.check That;
           };
         };
 
@@ -1573,39 +1627,43 @@ parseFieldType = FieldType:
         Untagged = FieldType: (parseFieldType FieldType).fieldType;
 
         # Either:
-        # (FieldOf Int).new "myField"
-        # (FieldOf (Static Int)).new "myField" -> FieldOf<Static<Int>>.fieldType == Int
-        # (FieldOf (Default Int 123)).new "myField" -> FieldOf<Default<Int, 123>>.fieldType == Int
-        # (FieldOf (Static (Default Int 123))).new "myField" -> FieldOf<Static<Default<Int, 123>>>.fieldType == Int
-        FieldOf_ = Type.template "FieldOf" { T = Type; } (_: {
+        # (Field.new "myField" Int).new "myField"
+        # (Field.new "myField" (Static Int)).new "myField" -> Field<Static<Int>>.fieldType == Int
+        # (Field.new "myField" (Default Int 123)).new "myField" -> Field<Default<Int, 123>>.fieldType == Int
+        # (Field.new "myField" (Static (Default Int 123))).new "myField" -> Field<Static<Default<Int, 123>>>.fieldType == Int
+        Field = Type.new "Field" {
           fields = SU.Fields.new [
             {fieldName = String;}
-            {fieldType = Untagged _.T;}
-            {fieldStatic = Bool;}
-            {fieldDefault = NullOr (Untagged _.T);}
-            {index = Int;}
+            {fieldSpec = Default (NullOr Type) null;}
+            {index = Default (NullOr Int) null;}
           ];
-          # ctor adds support for Static/Default type wrappers.
-          # Constructed as (FieldOf T).new "fieldName"
-          ctor = This: fieldName:
-            {
-              inherit fieldName;
-              index = 0;  # Set by OrderedOf
-            } // (parseFieldType _.T);
+          methods = {
+            parsedT = this: parseFieldType this.fieldSpec;
+            fieldType = this: This.parsedT.fieldType;
+            fieldStatic = this: This.parsedT.fieldStatic;
+            fieldDefault = this: This.parsedT.fieldDefault;
+          };
+          ctor = This: fieldName: fieldSpec: { inherit fieldName fieldSpec; };
         });
-        FieldOf = T: FieldOf_.bind { inherit T; };
+        Field = T: Field_.bind { inherit T; };
 
         # Fields is an OrderedOf that first converts any RHS values into Field types.
-        # TODO: FieldOf Int must correctly type-match to FieldOf Type
-        Fields = (OrderedOf (FieldOf Any)).subType "Fields" {
+        # TODO: Field Int must correctly type-match to Field
+        Fields = (OrderedOf Field).subType "Fields" {
+          # Fields.new { field = FieldType; ... }
+          # Fields.new { field = Default FieldType defaultValue; ... }
+          # Fields.new { field = Static FieldType; ... }
+          # Fields.new [ { field = FieldType; ... } ... ]
+          # Fields.new [ { field = Default FieldType defaultValue; ... } ... ]
+          # Fields.new [ { field = Static FieldType; ... } ... ]
           ctor = This: fieldListOrSet:
             let
               mkField = fieldName: T:
-                # Produce a valid (Sized 1 (SetOf (FieldOf T)))
+                # Produce a valid (Sized 1 (SetOf (Field T)))
                 # ctor must return args for the supertype's mk; in this case,
                 # ultimately a ListOf (...), which constructs with {value = list}.
-                (SU.Sized 1 (SU.SetOf (SU.FieldOf T))).new {
-                  ${fieldName} = (FieldOf T).new fieldName;
+                (Sized 1 (SetOf Field).new {
+                  ${fieldName} = Field.new T fieldName;
                 };
 
               init = fieldListOrSet: {
@@ -1614,7 +1672,7 @@ parseFieldType = FieldType:
                       in { value = fieldList; };
                 # Raw list of field singletons conver
                 # [ { fieldName: fieldType; } ... ] assignments
-                # -> [ Sized 1 (SetOf (FieldOf Type)) { fieldName: (FieldOf fieldType).new(Field Any)
+                # -> [ Sized 1 (SetOf Field) { fieldName = Field.new fieldName fieldType; } ...]
                 list =
                   let fieldList =
                         map
@@ -1908,6 +1966,7 @@ parseFieldType = FieldType:
         };
 
       });
+
   };
 
 }
