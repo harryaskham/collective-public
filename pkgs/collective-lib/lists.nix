@@ -2,9 +2,26 @@
 
 with lib;
 with lists;
+with cutils.functions;
 
 # List utils and aliases.
 rec {
+  # Append element to end of list
+  append = x: xs: xs ++ [x];
+
+  # Prepend element to start of list
+  cons = x: xs: [x] ++ xs;
+
+  # Insert element at position pos in list xs.
+  insertAt = pos: x: xs:
+    take pos xs ++ [x] ++ drop pos xs;
+
+  # Polymorphic concat for [[a]] and [{_=a}]
+  concat = dispatchElem {
+    list = concatLists;
+    set = mergeAttrsList;
+  };
+
   # Left-fold f over x with initial value (head xs).
   # Throws if the list is empty.
   foldl1 = f: xs:
@@ -47,4 +64,46 @@ rec {
   mapHead = fHead: mapSnoc fHead id;
 
   mapTail = fTail: mapSnoc id fTail;
+
+  _tests =
+    cutils.tests.suite {
+      lists = {
+        append = {
+          expr = append 5 [1 2 3];
+          expected = [1 2 3 5];
+        };
+        cons = {
+          expr = cons 0 [1 2 3];
+          expected = [0 1 2 3];
+        };
+        insertAt = {
+          start = {
+            expr = insertAt 0 99 [1 2 3 4];
+            expected = [99 1 2 3 4];
+          };
+          middle = {
+            expr = insertAt 2 99 [1 2 3 4];
+            expected = [1 2 99 3 4];
+          };
+          end = {
+            expr = insertAt 4 99 [1 2 3 4];
+            expected = [1 2 3 4 99];
+          };
+          beyondEnd = {
+            expr = insertAt 10 99 [1 2 3 4];
+            expected = [1 2 3 4 99];
+          };
+        };
+        concat = {
+          listOfLists = {
+            expr = concat [[1 2] [3 4] [5]];
+            expected = [1 2 3 4 5];
+          };
+          listOfSets = {
+            expr = concat [{a=1;}{b=2;c=3;}{d=4;}];
+            expected = { a=1; b=2; c=3; d=4; };
+          };
+        };
+      };
+    };
 }

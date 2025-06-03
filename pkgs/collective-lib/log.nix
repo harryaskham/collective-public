@@ -90,10 +90,21 @@ let
       in
         block;
 
-    vprint_ = args: x: indent.block (print_ (args // { ignoreToString = true; }) x);
-
-    print = x: indent.block (print_ mkPrintArgs x);
-    vprint = x: indent.block (vprint_ mkPrintArgs x);
+    # print x using a function of the default print options
+    printWith = f: x: indent.block (print_ (f mkPrintArgs) x);
+    print = printWith id;
+    prints = rec {
+      ___ = cutils.functions.___;
+      put = x: Variadic.mkSetFromThen mkPrintArgs (args: print_ args x);
+      block = x: Variadic.compose indent.block (put x);
+      here = x: Variadic.compose indent.here (put x);
+      using = {
+        raw = { ignoreToString = true; };
+        depth = n: { depth = n; };
+        maxDepth = n: { maxDepth = n; };
+      };
+    };
+    vprint = x: with prints; put x using.raw ___;
 
     mkTrace = traceFn:
       let self = rec {
@@ -102,10 +113,11 @@ let
         # 123
         show = x: a: traceFn "\n\n[log.trace.show]\n${print x}\n" a;
 
-        # log.trace.id 123
+        # log.trace.showId 123
         # -> trace: 123
         # 123
-        id = x: show x x;
+        showId = x: show x x;
+        msg = x: over (showId x);
 
         toTraceF = fs: {
           list =
@@ -124,19 +136,27 @@ let
         # Can mix partially applied traces with raw values, which will be printed.
         over = fs: (toTraceF fs) true;
 
-        mkTagged = tag: fs: [ "\n\n" "START:${tag}" (toTraceF fs) "END:${tag}" "\n\n" ];
-        tagged = tag: fs: over mkTagged tag fs;
+        # e.g. with log.trace; assert over (tagged "START_CALL" xs);
+        tagged = tag: xs: xs // { _ = tag; };
+
+        mkSurround = tag: fs: [ "\n\n" "START:${tag}" (toTraceF fs) "END:${tag}" "\n\n" ];
+        surround = tag: fs: over mkSurround tag fs;
 
         # e.g.
         # with log.trace; assert call "callName" arg1 arg2
         buildCall = callName:
           Variadic.compose
-            (l: { call = [ {name = callName;} {args = l;} ]; })
+            (l: { group = [ {call = callName;} {args = l;} ]; })
             Variadic.mkList;
 
         buildMethodCall = this: methodName:
           Variadic.compose
-            (l: { call = [ {method = methodName;} { T = this.name; } {args = l;} ]; })
+            (l: { group = [ {method = methodName;} { T = this.name; } {args = l;} ]; })
+            Variadic.mkList;
+
+        buildAttrs = attrsName:
+          Variadic.compose
+            (l: { group = [ {attrs = attrsName;} ] ++ (optionals (size l > 0) [{extra = l;}]); })
             Variadic.mkList;
 
         traceCall = callName:
@@ -162,63 +182,79 @@ let
         #   return x;
         #   ...
         #   return y;
-        call_ = buildCall_: callName:
-          Variadic.compose
-            (xs: rec {
-              # Built an intermediate value trace for use with assert.
-              trace = intermediate: value:
-                over (xs // {
-                  call = xs.call ++ [
-                    { inherit intermediate; }
+        group_ = groupType: buildGroup_: groupName:
+          let
+            groupBuilder = buildGroup_ groupName;
+            groupUtils = xs:
+              assert vtrace.over (tagged "START:${groupType}:${groupName}" xs);
+
+              rec {
+              # Trace an intermediate value
+              intermediate = name: value:
+                let xs' = xs // {
+                  group = xs.group ++ [
+                    { intermediate = name; }
                     { inherit value; }
                   ];
-                });
+                }; in assert over (tagged "TRACE:${groupType}:${groupName}" xs'); xs';
 
-              # Trace an assignment
+              # Trace a message by printing the given value.
+              # When used with 'with', accrues logs by modifying the groupUtils in scope.
+              msg = value:
+                let xs' = xs // {
+                  group = xs.group ++ [
+                    { msg = print value; }
+                  ];
+                }; in assert over (tagged "MSG:${groupType}:${groupName}" xs'); xs;
+
+              # Trace an assignment inline.
+              # Does not accrue logs, and returns the assignment.
               assign = name: value:
-                assert over (xs // {
-                  call = xs.call ++ [{
+                assert over (tagged "ASSIGN:${groupType}:${groupName}" (xs // {
+                  group = xs.group ++ [{
                     assign = [{ inherit name; } {inherit value;}];
                   }];
-                });
+                }));
                 value;
 
-              # Return a value from the call, tracing the value.
+              # Return a value from the group, tracing the value.
               return = x:
                 if isFunction x then traceVariadic x
-                else assert over (xs // { call = xs.call ++ [{
-                  return = x;
-                }]; }); x;
+                else assert over (tagged "RETURN:${groupType}:${groupName}" (xs // {
+                  group = xs.group ++ [{
+                    return = x;
+                  }];
+                })); x;
 
-              # Return a variadic function from the call, tracing the function's return value when it is fully invoked.
+              # Return a variadic function from the group, tracing the function's return value when it is fully invoked.
               traceVariadic = f:
-                let traceOut =
-                      out:
-                      assert over (xs // {
-                        call = xs.call ++ [{
+                let traceOut = out:
+                      assert over (tagged "VARIADIC_RETURN:${groupType}:${groupName}" (xs // {
+                        group = xs.group ++ [{
                           variadicReturn = out;
                         }];
-                      });
+                      }));
                       out;
                 in Variadic.compose traceOut f;
 
-              # Return a variadic composite function from the call, tracing the function's return value when it is fully invoked.
+              # Return a variadic composite function from the group, tracing the function's return value when it is fully invoked.
               traceComposeVariadic = name: gName: fName: g: f:
-                let gTraceVarargs =
-                      varargs:
-                        assert over (xs // {
-                          call = xs.call ++ [{
-                            vcompose = [ { inherit name; } {g = gName;} {f = fName;} { inherit varargs; } ];
-                          }];
-                        });
-                        g varargs;
+                let gTraceVarargs = varargs:
+                      assert over (tagged "VARIADIC_COMPOSE:${groupType}:${groupName}" (xs // {
+                        group = xs.group ++ [{
+                          vcompose = [ { inherit name; } {g = gName;} {f = fName;} { inherit varargs; } ];
+                        }];
+                      }));
+                      g varargs;
                 in Variadic.compose gTraceVarargs f;
 
-            })
-            (buildCall_ callName);
+            };
+          in
+            Variadic.compose groupUtils groupBuilder;
 
-        call = call_ buildCall;
-        methodCall = this: call_ (buildMethodCall this);
+        call = group_ "call" buildCall;
+        methodCall = this: group_ "methodCall" (buildMethodCall this);
+        attrs = group_ "attrs" buildAttrs;
 
 
       }; in self;
@@ -232,7 +268,7 @@ let
 
     # Tracing interface using print.
     # Only log when --trace-verbose is set
-    # with log.vtrace; assert traces [
+    # with log.vtrace; assert over [
     #   (msg "newSubType")
     #   ((withMsg "newSubType").show {inherit This name args;})
     # ];

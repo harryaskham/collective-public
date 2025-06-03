@@ -3,6 +3,7 @@
 with lib;
 with lib.strings;
 with cutils.lists;
+with cutils.functions;
 
 # String formatting and indentation utilities.
 # Allows for multi-line indentation in indented strings where
@@ -37,7 +38,9 @@ with cutils.lists;
 #     some
 #       string
 #   }'';
-rec {
+let
+  log = cutils.log;
+in rec {
   # Join a list of strings into a string with a separator.
   # Just shorthand for concatStringsSep.
   joinSep = concatStringsSep;
@@ -245,6 +248,13 @@ rec {
   #   }
   # }'';
   indent = rec {
+    # Interface to indent that throws its result
+    throws = mapAttrs (k: f: Variadic.compose (x: throw x) f) indent;
+    # Shorthand for printing in blocks
+    print = log.print;
+    print' = log.print';
+    print_ = log.print_;
+    vprint = log.vprint;
     markers = {
       start = ''__CUTILS_START_INDENT__'';
       end = ''__CUTILS_END_INDENT__'';

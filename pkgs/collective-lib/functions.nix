@@ -13,6 +13,7 @@ in rec {
 
   # Compose two functions left-to-right
   compose = g: f: a: g (f a);
+  composeMany = foldl' compose id;
 
   # Apply a function to a value
   ap = f: a: f a;
@@ -101,6 +102,22 @@ in rec {
 
       in f spec.initialState;
 
+    # Build a variadic function that merges its attrset arguments.
+    set_ = isTerminal: {
+      inherit isTerminal;
+      initialState = { xs = {}; };
+      handle = state: x:
+        if isTerminal state x
+        then state
+        else { xs = state.xs // x; };
+      terminate = state: _: state.xs;
+    };
+    mkSet_ = isTerminal: mk (set_ isTerminal);
+    mkSet = mkSet_ (_: x: x == end);
+    mkSetThen = f: Variadic.compose f mkSet;
+    mkSetFrom = init: mkSetThen (xs: init // xs);
+    mkSetFromThen = init: f: Variadic.compose f (mkSetFrom init);
+
     # Build a variadic function that accepts partial attrsets until
     # exactly the given names are present.
     argNames = names: {
@@ -121,7 +138,12 @@ in rec {
          in if ht == null then state
          else state // {
            fieldOrder = ht.tail;
-           args = state.args // { ${ht.head} = x; };
+           args =
+             assert assertMsg (isString ht.head) ''
+               Variadic.mkOrdered: expected a string field name, got ${typeOf ht.head}: ${log.print ht.head}
+               fieldOrder: ${log.print state.fieldOrder}
+             '';
+             state.args // { ${ht.head} = x; };
          };
       terminate = state: _: state.args;
     };
@@ -152,6 +174,20 @@ in rec {
     # Accrue arguments into a list until the given size is met
     mkListOfLength = l: mkList_ (state: _: (length state.xs) == l);
 
+    # Accrue a list of arguments then apply a function to it.
+    mkListThen = f: Variadic.compose f mkList;
+
+    # Accrue a list of function arguments then compose them
+    mkListCompose = mkListThen (foldl' compose id);
+
+    # Accrue a list of function arguments then compose them, then return the partial application of the composition
+    mkListComposeAp = mkListCompose;
+
+    # Accrue a list of function arguments then compose them, then return the a partial flipped application of the function
+    mkListComposeFlap =
+      let f = Variadic.mkListThen (fs: f: f (foldl' compose id fs));
+      in f;
+
     # Compose a variadic function f with a function g.
     # The variadic can't return terminate with a function or this will not be able to detect termination
     # since the Variadic is elided and we don't have g.isTerminal
@@ -168,17 +204,28 @@ in rec {
   # Make a polymorphic function from the given type-to-value attrs.
   # Accepts a given default function to apply to any unspecified types.
   # Also dispatches a function polymorphically if values are functions from the type of the argument.
-  dispatchDef = defaultF: dict: x:
-    let f = dict.${typeOf x} or defaultF; in f x;
+  dispatchDefOn = getType: defaultF: dict: x:
+    let f = dict.${getType x} or defaultF; in f x;
+  dispatchDef = dispatchDefOn typeOf;
 
   # Make a polymorphic function from the given type-to-value attrs
   # Also dispatches a function polymorphically if values are functions from the type of the argument.
-  dispatch = dict: x:
+  dispatchOn = getType: dict: x:
     let defaultF = throw ''
-      Unsupported type ${typeOf x} in polymorphic dispatch.
+      Unsupported type ${getType x} in polymorphic dispatch.
       Expected: ${joinSep ", " (attrNames dict)}
     '';
-    in dispatchDef defaultF dict x;
+    in dispatchDefOn getType defaultF dict x;
+  dispatch = dispatchOn typeOf;
+
+  # Make a polymorphic function from the given type-to-value attrs
+  # Gets the type of the argument via a function f e.g.
+  dispatchElem = dict: xs:
+    if size xs == 0 then throw "Cannot dispatch on an empty ${typeOf xs}"
+    else dispatch {
+      list = dispatchOn (xs: typeOf (head xs)) dict;
+      set = dispatchOn (xs: typeOf (head (attrValues xs))) dict;
+    } xs;
 
   # Map a function over the leaves of an arbitrary value, applying it recursively to all set and list values.
   deepMap = f: dispatchDef f {
@@ -308,6 +355,49 @@ in rec {
             expected = { xxx = "abc"; };
           };
 
+          set = {
+            default = {
+              noArgs = {
+                expr = Variadic.mkSet ___;
+                expected = {};
+              };
+              empty = {
+                expr = Variadic.mkSet {} ___;
+                expected = {};
+              };
+              merged = {
+                expr = Variadic.mkSet {a = 1;} {b = 2;} ___;
+                expected = {a = 1; b = 2;};
+              };
+              preferLater = {
+                expr = Variadic.mkSet {a = 1;} {a = 2;} ___;
+                expected = {a = 2;};
+              };
+              from = {
+                noArgs = {
+                  expr = Variadic.mkSetFrom {x = 9;} ___;
+                  expected = {x = 9;};
+                };
+                args = {
+                  expr = Variadic.mkSetFrom {x = 9;} {a = 1;} ___;
+                  expected = {a = 1; x = 9;};
+                };
+                overwriteInit = {
+                  expr = Variadic.mkSetFrom {x = 9;} {x = 1;} ___;
+                  expected = {x = 1;};
+                };
+              };
+              setThen = {
+                expr = sortOn id (Variadic.mkSetThen attrNames {a = 1;} {b = 3;} ___);
+                expected = ["a" "b"];
+              };
+              fromThen = {
+                expr = sortOn id (Variadic.mkSetFromThen {x = 9;} attrNames {a = 1;} ___);
+                expected = ["a" "x"];
+              };
+            };
+          };
+
           list = {
             expr = Variadic.mkList 1 2 3 Variadic.end;
             expected = [ 1 2 3 ];
@@ -322,6 +412,32 @@ in rec {
               expr = (Variadic.mkListOfLength 3) 1 2 3;
               expected = [1 2 3];
             };
+          };
+
+          listThen = {
+            expr = Variadic.mkListThen size 1 1 1 ___;
+            expected = 3;
+          };
+
+          listCompose = {
+            expr =
+              let f = Variadic.mkListCompose (x: x + 1) (x: x * 2) ___;
+              in f 2;
+            expected = 5;
+          };
+
+          listComposeAp = {
+            expr =
+              let f = Variadic.mkListComposeAp (x: x + 1) (x: x * 2) ___;
+              in f 2;
+            expected = 5;
+          };
+
+          listComposeFlap = {
+            expr =
+              let f = Variadic.mkListComposeFlap (x: x + 1) (x: x * 2) ___ map;
+              in f [1 2 3];
+            expected = [3 5 7];
           };
 
           compose = {
