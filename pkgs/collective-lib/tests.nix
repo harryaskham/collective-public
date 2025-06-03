@@ -62,6 +62,8 @@ in rec {
     };
     error = failure;
 
+    equal = expr: expected: { inherit expr expected; };
+
     True = expr: {
       inherit expr;
       expected = true;

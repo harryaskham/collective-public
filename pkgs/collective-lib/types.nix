@@ -429,7 +429,7 @@ in rec {
 
                 # Bound to a literal or builtin
                 else
-                  (log.print T);
+                  with log.prints; put T using.oneLine ___;
             printBindings = joinSep ", " (map printBinding (attrNames This.tvars));
           in "${This.name}<${printBindings}>";
 
@@ -480,7 +480,7 @@ in rec {
         let
           runChecks = doChecksNoAssert [
             {
-              cond = typeEq This that.Type;
+              cond = hasType This that;
               msg = "Type check failed for ${This.__TypeId} (got ${That.__TypeId})";
             }
             {
@@ -1650,58 +1650,21 @@ in rec {
     with Types;
     with cutils.tests;
     let
-      mkBuiltinTest = T: name: rawValue: {
-        expr =
-          let x = T.new rawValue;
-          in {
-            name = x.Type.name;
-            value = if name == "Lambda" then null else x.value;
-            newIsBuiltin = builtinValueCheck x;
-            rawIsBuiltin = builtinValueCheck x.value;
-          };
-        expected = {
-          inherit name;
-          value = if name == "Lambda" then null else rawValue;
-          newIsBuiltin = false;
-          rawIsBuiltin = true;
-        };
-      };
-
-      MyString = Type.new "MyString" {
-        fields = Fields.new [{ value = String; }];
-      };
-
-      MyType = Type.new "MyType" {
-        fields = Fields.new [{ myField = String; }];
-        methods = {
-          helloMyField = this: extra:
-            "Hello, ${this.myField.value}${extra}";
-        };
-      };
-
-      MyType2 = Type.new "MyType2" {
-        fields = Fields.new [
-          { stringField = String; }
-          { intField = Int; }
-          { defaultIntField = Default Int 666; }
-        ];
-      };
-
       testInUniverse = test: U: test U;
       testInUniverses = Us: test: mapAttrs (_: testInUniverse test) Us;
       allUniverses = Universe;
-      # precursorUniverses = {inherit (allUniverses) Quasiverse QuasiType HyperType MetaType ProtoType;};
-      precursorUniverses = {inherit (allUniverses) Quasiverse QuasiType HyperType;};
+      untypedUniverses = {inherit (allUniverses) Quasiverse QuasiType HyperType;};
+      typedUniverses = {inherit (allUniverses) MetaType ProtoType Type;};
+      precursorUniverses = {inherit (allUniverses) Quasiverse QuasiType HyperType MetaType ProtoType;};
       finalUniverses = {inherit (allUniverses) Type;};
 
       precursorUniverseTests = testInUniverses precursorUniverses (U: with U; {
-        instantiateLiteral = solo {
-          expr = (Literal 123).getLiteral;
-          expected = 123;
+        instantiate = {
+          Literal = expect.equal (Literal 123).getLiteral 123;
         };
 
         field = {
-          untyped = solo {
+          untyped = {
             expr = let f = Field.new 0 "name" null;
                     in [f.fieldName f.fieldType f.fieldStatic f.fieldDefault f.index];
             expected = ["name" null false null 0];
@@ -1709,233 +1672,304 @@ in rec {
         };
       });
 
+      typedUniverseTests = testInUniverses typedUniverses (U: with U;
+        let
+          A = Type.new "A" {
+            fields = Fields.new [
+              { a = "int"; }
+              { b = Int; }
+              { c = Default Int 5; }
+              { d = Default Int (Int.new 10); }
+            ];
+          };
+        in {
+          new = solo {
+            expr = (A.new 1 2 3 4).get;
+            expected = {a = 1; b = 2; c = 3; d = 4;};
+          };
+          mkDefault = solo {
+            expr = (A.mk {a = 1; b = 2;}).get;
+            expected = {a = 1; b = 2; c = 5; d = 10;};
+          };
+          wrongType = solo {
+            expr = (A.new "no" 2 3 4).get;
+            expected = expect.failure;
+          };
+        });
+
+      untypedUniverseTests = testInUniverses typedUniverses (U: {
+      });
+
       finalUniverseTests = testInUniverses finalUniverses (U: {
       });
 
-      allUniverseTests = testInUniverses allUniverses (U: with U; {
-        Null = mkBuiltinTest Null "Null" null;
-        Int = mkBuiltinTest Int "Int" 123;
-        Float = mkBuiltinTest Float "Float" 12.3;
-        String = mkBuiltinTest String "String" "Hello, world!";
-        Path = mkBuiltinTest Path "Path" ./.;
-        Bool = mkBuiltinTest Bool "Bool" true;
-        List = mkBuiltinTest List "List" [1 2 3];
-        Set = mkBuiltinTest Set "Set" {a = 1; b = 2; c = 3;};
-        Lambda = mkBuiltinTest Lambda "Lambda" (a: b: 123);
-
-        RootType = {
-          expr = Type.name;
-          expected = "Type";
-        };
-
-        builtinValueCheck = {
-          Type = {
-            expr = builtinValueCheck Type;
-            expected = false;
-          };
-          int = {
-            expr = builtinValueCheck 123;
-            expected = true;
-          };
-          set = {
-            expr = builtinValueCheck {abc="xyz";};
-            expected = true;
-          };
-          Bool = {
-            expr = builtinValueCheck (Bool.new true);
-            expected = false;
-          };
-        };
-
-        MyString = {
-          mk = {
-            typed = {
-              expr = (MyString.mk { value = String.mk {value = "hello";}; }).value.value;
-              expected = "hello";
-            };
-
-            raw = {
-              expr = (MyString.mk { value = "hello"; }).value.value;
-              expected = "hello";
+      allUniverseTests = testInUniverses allUniverses (U: with U;
+        let
+          mkBuiltinTest = T: name: rawValue: {
+            expr =
+              let x = T.new rawValue;
+              in {
+                name = x.Type.name;
+                value = if name == "Lambda" then null else x.value;
+                newIsBuiltin = builtinValueCheck x;
+                rawIsBuiltin = builtinValueCheck x.value;
+              };
+            expected = {
+              inherit name;
+              value = if name == "Lambda" then null else rawValue;
+              newIsBuiltin = false;
+              rawIsBuiltin = true;
             };
           };
 
-          new = {
-            typed = {
-              expr = (MyString.new (String.new "hello")).value.value;
-              expected = "hello";
-            };
+          MyString = Type.new "MyString" {
+            fields = Fields.new [{ value = String; }];
+          };
 
-            raw = {
-              expr = (MyString.new "hello").value;
-              expected = String.new "hello";
-              compare = Compare.Fields;
+          MyType = Type.new "MyType" {
+            fields = Fields.new [{ myField = String; }];
+            methods = {
+              helloMyField = this: extra:
+                "Hello, ${this.myField.value}${extra}";
             };
           };
-        };
 
-        MyType_mk = {
-          expr = (MyType.mk { myField = "World"; }).myField.value;
-          expected = "World";
-        };
-
-        MyType_new = {
-          expr = (MyType.new "World").myField.value;
-          expected = "World";
-        };
-
-        MyType_call = {
-          expr =
-            let this = MyType.new "World";
-              in this.helloMyField "!";
-          expected = "Hello, World!";
-        };
-
-        MyType_set = {
-          expr =
-            let this = MyType.new "";
-            in [
-              (this.helloMyField "!")
-              ((this.set.myField "World").helloMyField "!")
+          MyType2 = Type.new "MyType2" {
+            fields = Fields.new [
+              { stringField = String; }
+              { intField = Int; }
+              { defaultIntField = Default Int 666; }
+              { staticIntField = Static Int; }
+              { staticDefaultIntField = Static (Default Int 666); }
             ];
-          expected = [ "Hello, !" "Hello, World!" ];
-        };
-
-        MyType2_mk_overrideDefault = {
-          expr =
-            let this = MyType2.mk {
-                  stringField = "hi";
-                  intField = 123;
-                  defaultIntField = 7;
-                };
-            in [this.stringField.value this.intField.value this.defaultIntField.value];
-          expected = ["hi" 123 7];
-        };
-
-        MyType2_mk_missingRequired = {
-          expr =
-            let this = MyType2.mk {
-                  intField = 123;
-                  defaultIntField = 7;
-                };
-            in builtins.tryEval this;
-          expected = expect.failure;
-        };
-
-        MyType2_mk_missingDefault = {
-          expr =
-            let this = MyType2.mk {
-                  intField = 123;
-                  stringField = "hi";
-                };
-            in this.defaultIntField.value;
-          expected = 666;
-        };
-
-        MyType2_mk_wrongType = {
-          expr =
-            let this = MyType2.mk {
-                  intField = 123;
-                  stringField = true;
-                  defaultIntField = 7;
-                };
-            in builtins.tryEval this;
-          expected = expect.failure;
-        };
-
-        cast =
-          let
-            testX = {
-              Null = null;
-              Int = 123;
-              Float = 12.3;
-              String = "abc";
-              Path = ./.;
-              Bool = true;
-              List = [1 2 3];
-              Set = { a = 1; b = 2; c = 3; };
-            };
-            mkToTypedBuiltinTest = T: x: {
-              expr = cast T x;
-              expected = T.new x;
-              compare = Compare.Fields;
-            };
-          in {
-            toTypedBuiltin = mapAttrs (name: v: mkToTypedBuiltinTest U.${name} v) testX;
           };
 
-        inheritance =
-          let
-            A = Type.new "A" { fields = { a = String; }; };
-            B = Type.new "B" { Super = A; fields = { b = Int; }; };
-          in {
+        in {
+          Null = mkBuiltinTest Null "Null" null;
+          Int = mkBuiltinTest Int "Int" 123;
+          Float = mkBuiltinTest Float "Float" 12.3;
+          String = mkBuiltinTest String "String" "Hello, world!";
+          Path = mkBuiltinTest Path "Path" ./.;
+          Bool = mkBuiltinTest Bool "Bool" true;
+          List = mkBuiltinTest List "List" [1 2 3];
+          Set = mkBuiltinTest Set "Set" {a = 1; b = 2; c = 3;};
+          Lambda = mkBuiltinTest Lambda "Lambda" (a: b: 123);
 
-            newA = {
-              expr = A.new "a";
-              expected = A.mk { a = "a"; };
-              compare = Compare.Fields;
+          RootType = {
+            expr = Type.name;
+            expected = "Type";
+          };
+
+          builtinValueCheck = {
+            Type = {
+              expr = builtinValueCheck Type;
+              expected = false;
             };
-
-            isSuperTypeOf = {
-              parentChild = expect.True (isSuperTypeOf A B);
-              childParent = expect.False (isSuperTypeOf B A);
-              parentParent = expect.False (isSuperTypeOf A A);
-              childChild = expect.False (isSuperTypeOf B B);
-              typeParent = expect.True (isSuperTypeOf Type A);
-              typeChild = expect.True (isSuperTypeOf Type B);
-              typeType = expect.False (isSuperTypeOf Type Type);
+            int = {
+              expr = builtinValueCheck 123;
+              expected = true;
             };
-
-            isSubTypeOf = {
-              parentChild = expect.False (isSubTypeOf A B);
-              childParent = expect.True (isSubTypeOf B A);
-              parentParent = expect.False (isSubTypeOf A A);
-              childChild = expect.False (isSubTypeOf B B);
-              typeParent = expect.False (isSubTypeOf Type A);
-              typeChild = expect.False (isSubTypeOf Type B);
-              typeType = expect.False (isSubTypeOf Type Type);
+            set = {
+              expr = builtinValueCheck {abc="xyz";};
+              expected = true;
             };
+            Bool = {
+              expr = builtinValueCheck (Bool.new true);
+              expected = false;
+            };
+          };
 
-            hasThisFields = {
-              expr = B.fields;
-              expected = {
-                b = {
-                  index = 0;
-                  fieldType = Int;
-                  name = "b";
-                };
+          MyString = {
+            mk = {
+              typed = {
+                expr = (MyString.mk { value = String.mk {value = "hello";}; }).value.value;
+                expected = "hello";
+              };
+
+              raw = {
+                expr = (MyString.mk { value = "hello"; }).value.value;
+                expected = "hello";
               };
             };
 
-            hasSuperFields = {
-              expr = B.__allFields;
-              expected = {
-                a = {
-                  index = 0;
-                  fieldType = String;
-                  name = "a";
-                };
-                b = {
-                  index = 0;
-                  fieldType = Int;
-                  name = "b";
-                };
+            new = {
+              typed = {
+                expr = (MyString.new (String.new "hello")).value.value;
+                expected = "hello";
+              };
+
+              raw = {
+                expr = (MyString.new "hello").value;
+                expected = String.new "hello";
+                compare = Compare.Fields;
               };
             };
+          };
 
-            fieldsCompose = {
-              expr = B.new "a" 2;
-              expected = B.mk { a = "a"; b = 2; };
-              compare = Compare.Fields;
+          MyType_mk = {
+            expr = (MyType.mk { myField = "World"; }).myField.value;
+            expected = "World";
+          };
+
+          MyType_new = {
+            expr = (MyType.new "World").myField.value;
+            expected = "World";
+          };
+
+          MyType_call = {
+            expr =
+              let this = MyType.new "World";
+                in this.helloMyField "!";
+            expected = "Hello, World!";
+          };
+
+          MyType_set = {
+            expr =
+              let this = MyType.new "";
+              in [
+                (this.helloMyField "!")
+                ((this.set.myField "World").helloMyField "!")
+              ];
+            expected = [ "Hello, !" "Hello, World!" ];
+          };
+
+          MyType2_mk_overrideDefault = {
+            expr =
+              let this = MyType2.mk {
+                    stringField = "hi";
+                    intField = 123;
+                    defaultIntField = 7;
+                  };
+              in [this.stringField.value this.intField.value this.defaultIntField.value];
+            expected = ["hi" 123 7];
+          };
+
+          MyType2_mk_missingRequired = {
+            expr =
+              let this = MyType2.mk {
+                    intField = 123;
+                    defaultIntField = 7;
+                  };
+              in builtins.tryEval this;
+            expected = expect.failure;
+          };
+
+          MyType2_mk_missingDefault = {
+            expr =
+              let this = MyType2.mk {
+                    intField = 123;
+                    stringField = "hi";
+                  };
+              in this.defaultIntField.value;
+            expected = 666;
+          };
+
+          MyType2_mk_wrongType = {
+            expr =
+              let this = MyType2.mk {
+                    intField = 123;
+                    stringField = true;
+                    defaultIntField = 7;
+                  };
+              in builtins.tryEval this;
+            expected = expect.failure;
+          };
+
+          cast =
+            let
+              testX = {
+                Null = null;
+                Int = 123;
+                Float = 12.3;
+                String = "abc";
+                Path = ./.;
+                Bool = true;
+                List = [1 2 3];
+                Set = { a = 1; b = 2; c = 3; };
+              };
+              mkToTypedBuiltinTest = T: x: {
+                expr = cast T x;
+                expected = T.new x;
+                compare = Compare.Fields;
+              };
+            in {
+              toTypedBuiltin = mapAttrs (name: v: mkToTypedBuiltinTest U.${name} v) testX;
             };
 
-        };
-      });
+          inheritance =
+            let
+              A = Type.new "A" { fields = { a = String; }; };
+              B = Type.new "B" { Super = A; fields = { b = Int; }; };
+            in {
+
+              newA = {
+                expr = A.new "a";
+                expected = A.mk { a = "a"; };
+                compare = Compare.Fields;
+              };
+
+              isSuperTypeOf = {
+                parentChild = expect.True (isSuperTypeOf A B);
+                childParent = expect.False (isSuperTypeOf B A);
+                parentParent = expect.False (isSuperTypeOf A A);
+                childChild = expect.False (isSuperTypeOf B B);
+                typeParent = expect.True (isSuperTypeOf Type A);
+                typeChild = expect.True (isSuperTypeOf Type B);
+                typeType = expect.False (isSuperTypeOf Type Type);
+              };
+
+              isSubTypeOf = {
+                parentChild = expect.False (isSubTypeOf A B);
+                childParent = expect.True (isSubTypeOf B A);
+                parentParent = expect.False (isSubTypeOf A A);
+                childChild = expect.False (isSubTypeOf B B);
+                typeParent = expect.False (isSubTypeOf Type A);
+                typeChild = expect.False (isSubTypeOf Type B);
+                typeType = expect.False (isSubTypeOf Type Type);
+              };
+
+              hasThisFields = {
+                expr = B.fields;
+                expected = {
+                  b = {
+                    index = 0;
+                    fieldType = Int;
+                    name = "b";
+                  };
+                };
+              };
+
+              hasSuperFields = {
+                expr = B.__allFields;
+                expected = {
+                  a = {
+                    index = 0;
+                    fieldType = String;
+                    name = "a";
+                  };
+                  b = {
+                    index = 0;
+                    fieldType = Int;
+                    name = "b";
+                  };
+                };
+              };
+
+              fieldsCompose = {
+                expr = B.new "a" 2;
+                expected = B.mk { a = "a"; b = 2; };
+                compare = Compare.Fields;
+              };
+
+          };
+        });
 
     in cutils.tests.suite {
       types = {
         inherit
           precursorUniverseTests
+          untypedUniverseTests
+          typedUniverseTests
           allUniverseTests
           finalUniverseTests;
       };

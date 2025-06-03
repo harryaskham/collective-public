@@ -14,6 +14,7 @@ let
       ignoreToString = false;
       # Default here to leave indentation markers in until the top level call
       formatBlock = trimNewlines;
+      formatLines = indent.linesSep "\n";
       compact = true;
       depth = 0;
       maxDepth = 10;
@@ -25,7 +26,7 @@ let
       formatBlock (
         let pxLines = splitLines (formatBlock (joinLines px));
         in ''
-          ${braceL} ${indent.here (indent.lines pxLines)} ${braceR}
+          ${braceL} ${indent.here (formatLines pxLines)} ${braceR}
         '');
 
     printAttrs_ = args: x:
@@ -39,11 +40,11 @@ let
           in
             if length px == 1 && lineCount pxLine == 1 then pxLine
             else if compact then (compactBlock args "{" "}" px)
-            else ''
-              {
-                ${indent.here (indent.lines px)}
-              }
-            '');
+            else formatLines [
+              "{"
+              "  ${indent.here (formatLines px)}"
+              "}"
+            ]);
 
     printAttrs = xs: indent.block (printAttrs_ mkPrintArgs xs);
 
@@ -57,11 +58,11 @@ let
         in
           if lineCount pxLine <= 1 then pxLine
           else if compact then formatBlock (compactBlock args "[" "]" px)
-          else formatBlock ''
-            [
-              ${indent.here (indent.lines px)}
-            ]
-          '';
+          else formatBlock (formatLines [
+            "["
+            "  ${indent.here (formatLines px)}"
+            "]"
+          ]);
 
     printList = xs: indent.block (printList_ mkPrintArgs xs);
 
@@ -100,6 +101,7 @@ let
       here = x: Variadic.compose indent.here (put x);
       using = {
         raw = { ignoreToString = true; };
+        oneLine = { formatLines = indent.linesSep " "; };
         depth = n: { depth = n; };
         maxDepth = n: { maxDepth = n; };
       };

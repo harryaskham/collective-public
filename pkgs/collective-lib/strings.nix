@@ -173,7 +173,8 @@ in rec {
   # Trims newlines from the list before handling indentation on the combined block
   # to avoid failing to trim lines that now contain only an indent.
   # Handles any markers left in the text by embedded to-indent blocks.
-  codeBlockLines = lines: setIndent 0 (indent.markers.handle (joinOptionalLines (trimNewlinesList lines)));
+  codeBlockLines = codeBlockLinesSep "\n";
+  codeBlockLinesSep = sep: lines: setIndent 0 (indent.markers.handle (joinOptionalsSep sep (trimNewlinesList lines)));
 
   # Combine a list of code blocks with a separator
   codeBlocksSep = sep: blocks: joinOptionalsSep sep (map codeBlock blocks);
@@ -325,6 +326,7 @@ in rec {
     blocks = codeBlocks;
     blocksSep = codeBlocksSep;
     lines = codeBlockLines;
+    linesSep = codeBlockLinesSep;
     linesHeader = codeBlockLinesHeader;
 
     # Indented block affecting only the tail, with an f that operates on a block.
