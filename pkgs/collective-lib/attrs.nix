@@ -40,6 +40,26 @@ rec {
   # Swap an attrset keys and values.
   swap = concatMapAttrs (k: v: { ${v} = k; });
 
+  # Diff two attrsets, returning any divergent keys and their values.
+  diff = a: b:
+    if isAttrs a && isAttrs b
+      then
+        (zipAttrsWith
+          (name: values:
+            if length values == 1
+            then {
+              missing = {
+                value = elemAt values 0;
+              };
+            }
+            else
+              diff
+                (elemAt values 0)
+                (elemAt values 1))
+          [a b])
+    else if a == b then "<equal>"
+    else { unequal = { inherit a b; }; };
+
   _tests =
     cutils.tests.suite {
       attrs = {

@@ -101,6 +101,7 @@ let
     # print x using a function of the default print options
     printWith = f: x: indent.block (print_ (f mkPrintArgs) x);
     print = printWith id;
+    vprintD = n: printWith (args: args // prints.using.raw // prints.using.depth n);
     prints = rec {
       ___ = cutils.functions.___;
       put = x: Variadic.mkSetFromThen mkPrintArgs (args: print_ args x);

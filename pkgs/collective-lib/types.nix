@@ -119,7 +119,13 @@ in rec {
       if T == null
         then mkCastError "Cannot cast to null: T = ${log.print T}, x = ${log.print x}"
       else if !(isTypeSet T || builtinNameCheck T)
-        then mkCastError "Invalid target type provided for cast: T = ${log.print T}, x = ${log.print x}"
+        then mkCastError (indent.block ''
+          Invalid target type provided for cast:
+
+            T = ${indent.here (log.print T)}
+
+            x = ${indent.here (log.print x)}
+        '')
       else let
         printT = T: log.print T;
 
@@ -347,20 +353,6 @@ in rec {
     #        This.Super.Super...methods // ... // This.Super.methods // This.methods;
     mergeSuper = f: foldUpward (acc: This: let xs = f This |> def {}; in acc // xs) {};
 
-    # Modify an argument set to inherit from a supertype.
-    # If a ctor is set in args, it is used, otherwise the Super's ctor is inherited.
-    # Fields and methods are also inherited, with any new ones overriding any previously defined.
-    inheritFrom = Super: ctorArgs:
-      if !(isTypeSet Super) then throw "inheritFrom: Super must be a Type, got ${log.print Super}"
-      else
-        ctorArgs // {
-          inherit Super;  # Not a thunk here; Type ctor converts it.
-          ctor = ctorArgs.ctor or Super.ctor;
-          fields = Super.fields.update (ctorArgs.fields or {});
-          methods = Super.methods // (ctorArgs.methods or {});
-          staticMethods = Super.staticMethods // (ctorArgs.staticMethods or {});
-        };
-
     # Construct the fields for a universe using the types of the universe above.
     mkTypeFieldListFor = opts: U:
       let
@@ -371,8 +363,8 @@ in rec {
           # The name of the type.
           {name = maybeTyped (SU.String);}
           # The type of the instance as a thunk.
-          # Defaults to this universe's U.Type, as types in this universe will be
-          # created using U.Type and this field's default dictates their Type.
+          # Defaults to this universe's SU.Type, as types in this universe will be
+          # created using SU.Type and this field's default dictates their Type.
           {Type = maybeTyped (SU.Default "lambda" (_: U.Type));}
           # The supertype of the type.
           {Super = maybeTyped (SU.Default (SU.NullOr "lambda") null);}
@@ -414,27 +406,30 @@ in rec {
 
       # Get the full templated name of the type.
       boundName = This:
-        if This.tvars == {} then This.name
-        else
-          let
-            printBinding = tvarName:
-              let C = This.tvars.${tvarName} or (
-                    throw "No type variable ${tvarName} on ${This.name}");
-                  T = This.tvarBindings.${tvarName} or Void;
-              in
-                # Unbound
-                if typeEq Universe.Void T
-                  then tvarName
+        with log.vtrace.call "boundName" "<This>" ___;
+        return (
+          if This.tvars == {} then This.name
+          else
+            let
+              printBinding = tvarName:
+                let C = This.tvars.${tvarName} or (
+                      throw "No type variable ${tvarName} on ${This.name}");
+                    T = This.tvarBindings.${tvarName} or Void;
+                in
+                  # Unbound
+                  if typeEq Universe.Void T
+                    then tvarName
 
-                # Bound to a type
-                else if isTyped T
-                  then T.boundName
+                  # Bound to a type
+                  else if isTypeSet T
+                    then T.boundName
 
-                # Bound to a literal or builtin
-                else
-                  with log.prints; put T _line ___;
-            printBindings = joinSep ", " (map printBinding (attrNames This.tvars));
-          in "${This.name}<${printBindings}>";
+                  # Bound to a literal or builtin
+                  else
+                    with log.prints; put T _line ___;
+              printBindings = joinSep ", " (map printBinding (attrNames This.tvars));
+            in "${This.name}<${printBindings}>"
+        );
 
       # Construct the type resulting from applying the given bindings to the parameterized This type.
       # TODO: TypeVar object plus bootstraps
@@ -542,7 +537,8 @@ in rec {
     };
 
     mkTypeArgsFor = opts: U:
-      rec {
+      let SU = U._SU.get {};
+      in rec {
         name = opts.typeName;
         Super = null;
         # The defaults here are only required for universes with typechecking disabled.
@@ -551,7 +547,7 @@ in rec {
           inherit name;
           Super = if args ? Super then (_: args.Super) else null;
           ctor = args.ctor or Ctors.Fields;
-          fields = args.fields or (U.Fields.new []);
+          fields = args.fields or (SU.Fields.new []);
           methods = args.methods or {};
           staticMethods = args.staticMethods or {};
           tvars = args.tvars or {};
@@ -664,15 +660,21 @@ in rec {
     #     xs.set.value [10 20 -30] -> Type error via SortedListOf.checkValue
     #     valid = xs.set.value [10 20 30] -> ok
     setByName = This: this: fieldName: uncastValue:
-      let field = (This.fields.indexed or {}).${fieldName} or null;
-          castRequired = 
+      with log.vtrace.call "setByName" This this fieldName uncastValue ___;
+
+      let field = assign "field" (
+            (This.fields.indexed or {}).${fieldName} or null);
+
+          castRequired = assign "castRequired" (
             field.fieldType != null
             && !((isTypeSet field.fieldType && field.fieldType.check uncastValue)
-                 || (hasType uncastValue field.fieldType));
-          castValue =
+                 || (hasType uncastValue field.fieldType)));
+
+          castValue = assign "castValue" (
             if castRequired
               then cast field.fieldType uncastValue
-              else mkCastSuccess uncastValue "id";
+              else mkCastSuccess uncastValue "id");
+
       in assert (predChecks [
           { pred = (field: field != null);
             msg = joinLines [
@@ -683,7 +685,10 @@ in rec {
           { pred = field: (!castRequired) || isCastSuccess castValue;
             msg = indent.block ''
               Error casting field assignment:
-                ${This.__TypeId}.${fieldName} = ${log.print uncastValue}
+
+                ${This.__TypeId}.${fieldName} =
+                  ${indent.here (log.print uncastValue)}
+
                 ${indent.here castValue.castError}
             '';
           }
@@ -758,7 +763,7 @@ in rec {
       foldl'
         (this: field:
           let shouldSetValue = args ? ${field.fieldName} || (field.fieldDefault or null) != null;
-              value = args.${field.fieldName} or field.fieldDefault.defaultValue;
+              value = args.${field.fieldName} or field.fieldDefault;
           in
             if !(isAttrs field) || !(isString field.fieldName) then with indent; throws.block ''
               Invalid field encountered in setFields:
@@ -767,7 +772,7 @@ in rec {
 
                 field = ${here (print field)}
             ''
-            else if this ? ${field.fieldName} && shouldSetValue then throw ''
+            else if this ? ${field.fieldName} && args ? ${field.fieldName} then throw ''
               Field ${field.fieldName} already set to ${log.print this.${field.fieldName}}
               (when setting to ${log.print args.${field.fieldName}})
             ''
@@ -915,7 +920,7 @@ in rec {
         with log.vtrace.call "Ctors.Fields" { inherit This; } ___;
         let
           # Sort non-static fields manually to avoid a new call to Ordered
-          fields = assign "fields" (filterAttrs (_: f: !f.fieldStatic) This.fields.indexed);
+          fields = assign "fields" (filterAttrs (_: f: !f.fieldStatic) (This.fields.indexed or {}));
           sortedFields = assign "sortedFields" (sortOn (f: f.index) (attrValues fields));
           sortedFieldNames = assign "sortedFieldNames" (map (f: f.fieldName) sortedFields);
         in return (
@@ -967,29 +972,26 @@ in rec {
     #      parseFieldSpec Static<Int> -> {fieldStatic = true; fieldType = Int; }
     #      parseFieldSpec Default<Int, 123> -> {fieldDefault = 123; fieldType = Int; }
     #      parseFieldSpec Int -> { fieldType = Int; }
-    parseFieldSpec = Spec:
-      with log.vtrace.call "parseFieldSpec" Spec ___;
-      return ({
+    parseFieldSpec = spec:
+      with log.vtrace.call "parseFieldSpec" spec ___;
+      return (
         # Unwrap Static types.
-        # If not a Static<T>, defaultType is not of type T
-        Static =
-          (parseFieldSpec Spec.staticType)
-          // {fieldStatic = true;};
+        # Duck-typed to support bootstrap.
+        if spec ? staticType
+          then (parseFieldSpec spec.staticType) // {fieldStatic = true;}
+
         # Unwrap Default types.
-        # If defaultType is not of type T
-        Default =
-          (parseFieldSpec Spec.defaultType)
-          // {fieldDefault = Spec.defaultValue;};
-      }.${ # getTypeName here to match all Default/Static, not Default<Int> etc
-          getTypeName Spec
-        }
-        # When reaching a non-Static/Default, treat as the type.
-        # Defaults here are overridden above when Static/Default are encountered.
-        or {
-          fieldType = Spec;
+        # Duck-typed to support bootstrap.
+        else if (spec ? defaultType) && (spec ? defaultValue)
+          then (parseFieldSpec spec.defaultType) // {fieldDefault = spec.defaultValue;}
+
+        # Return unwrapped types.
+        else {
+          fieldType = spec;
           fieldStatic = false;
           fieldDefault = null;
-        });
+        }
+      );
 
     # Universe-independent types that only depend on Type.
     mkTrivialTypes = Type: rec {
@@ -1002,6 +1004,49 @@ in rec {
     };
 
     mkTemplating = U: rec {
+
+      # Modify an argument set to inherit from a supertype.
+      # If a ctor is set in args, it is used, otherwise the Super's ctor is inherited.
+      # Fields and methods are also inherited, with any new ones overriding any previously defined.
+      inheritFrom = Super: ctorArgs:
+        with log.vtrace.call "inheritFrom" Super ctorArgs ___;
+
+        if !(isTypeSet Super) then throw "inheritFrom: Super must be a Type, got ${log.print Super}"
+        else return (ctorArgs // {
+          # Not a thunk here; Type ctor converts it.
+          inherit Super;
+
+          # Override or inherit the ctor
+          ctor = ctorArgs.ctor or Super.ctor;
+
+          # Merge fields
+          fields = assign "fields" (
+            if ctorArgs ? fields
+            then
+              let
+                sortedFields = assign "sortedFields" (
+                  sortOn
+                    (fieldNameToIndexAndSpec: (head (attrValues fieldNameToIndexAndSpec)).index)
+                    (mapAttrsToList
+                      (fieldName: field: { ${fieldName} = { inherit (field) index fieldSpec; }; })
+                      ctorArgs.fields.indexed));
+
+                fieldList = assign "fieldList" (
+                  map
+                    (mapAttrs (fieldName: {index, fieldSpec}: fieldSpec))
+                    sortedFields);
+              in
+                Super.fields.update fieldList
+            else Super.fields
+          );
+
+          # Merge methods
+          methods = Super.methods // (ctorArgs.methods or {});
+
+          # Merge static methods
+          staticMethods = Super.staticMethods // (ctorArgs.staticMethods or {});
+        });
+
       # For a given type, create a new type of the same Type with the given name and args, inheriting any
       # unspecified fields, ctor, and non-overridden methods.
       newSubType = This: name: args:
@@ -1262,26 +1307,30 @@ in rec {
       let fx = f x;
           x_NL = NoLambdas x;
           fx_NL = NoLambdas fx;
+          depth = 6;
       in
         with intermediate "x" x;
         with intermediate "fx" fx;
         with intermediate "x_NL" x_NL;
         with intermediate "fx_NL" fx_NL;
-        assertMsg (x_NL == fx_NL) (with log.prints; ''
+        assertMsg (x_NL == fx_NL) (indent.block ''
           ${xLabel} is not fixed under ${fLabel}:
 
             ${xLabel} (original):
-            ${here x using.raw ___}
+            ${indent.here (log.vprintD depth x)}
 
             ${xLabel} (under ${fLabel}):
-            ${here fx using.raw ___}
+            ${indent.here (log.vprintD depth fx)}
 
           Comparing lambda-free:
             ${xLabel} (lambda-free, original):
-            ${here x_NL using.raw ___}
+            ${indent.here (log.vprintD depth x_NL)}
 
             ${xLabel} (lambda-free, under ${fLabel}):
-            ${here fx_NL using.raw ___}
+            ${indent.here (log.vprintD depth fx_NL)}
+
+          Diff:
+            ${indent.here (log.vprintD depth (diff x_NL fx_NL))}
         '');
 
     assertTypeFixedUnderNew = T: typeName: typeArgs:
@@ -1355,14 +1404,27 @@ in rec {
         # Expose only the final fixed Type.
         Type = assign "Type" __Bootstrap.Type;
 
+        # Create shim types appearing as instances of Type.
+        mkTypeShim = attrs: attrs // {
+          Type = _: Type;
+          __TypeId = "Type";
+          boundName = "Type";
+          # TODO: Move check to a field
+          check = _: true;
+        };
+
+        # Create shim instances appearing as instances of pseudotype T.
+        mkShim = Type: attrs: attrs // { inherit Type; };
+
         # Shim out all types used in the construction of Type s.t. Type can be created
         # with U == SU == Quasiverse.
-        Field = {
-          inherit Type;
+        Field = mkTypeShim {
           new = index: fieldName: fieldSpec: parseFieldSpec fieldSpec // {
             inherit index fieldName fieldSpec;
-            # Disable typechecking in base case but retain static / default indicators.
-            fieldType = null;
+            # # No type information in the shim.
+            # fieldType = null;
+            # fieldStatic = false;
+            # fieldDefault = null;
           };
         };
 
@@ -1380,29 +1442,31 @@ in rec {
               set = mapAttrsToList (k: v: {${k} = v;}) nameToSpec;
               list = nameToSpec;
             }.${typeOf nameToSpec};
-          in {
-            inherit Type;
+          in mkTypeShim {
             new = nameToSpec_:
-              let nameToSpec = toNameToSpecList nameToSpec_;
-              in rec {
-                # Store the original arguments in [{...}] form for easy extension.
-                __nameToSpec = nameToSpec;
-                indexed = mergeAttrsList (imap0 mkIndexed __nameToSpec);
-                update = newNameToSpec_:
-                  let newNameToSpec = toNameToSpecList newNameToSpec_;
-                  in Fields.new (__nameToSpec ++ newNameToSpec);
-              };
+              with log.vtrace.call "U_0.Fields.new" nameToSpec_ ___;
+              return (
+                let nameToSpec = toNameToSpecList nameToSpec_;
+                in mkShim (_: Fields) rec {
+                  # Store the original arguments in [{...}] form for easy extension.
+                  indexed = mergeAttrsList (imap0 mkIndexed nameToSpec);
+                  update = newNameToSpec_:
+                    let newNameToSpec = toNameToSpecList newNameToSpec_;
+                    in Fields.new (nameToSpec ++ newNameToSpec);
+                }
+              );
           };
 
-        SetOf = T: {new = U.Set.new;};
-        ListOf = T: {new = U.List.new; tvars = { T = U.Type; }; tvarBindings = { inherit T; };};
-        OrderedOf = T: {new = (U.ListOf (U.Sized 1 (U.SetOf T))).new;};
-        Constraint = {new = x: {value = x; satisfiedBy = _: true;};};
-        Static = T: { tvarBindings = { inherit T; }; };
-        Default = T: V: { tvarBindings = { inherit T; V = { tvarBindings = { inherit V; }; }; }; };
-        NullOr = T: { new = id; };
-        Literal = V: {new = { value = V; }; tvarBindings = { inherit V; }; getLiteral = V; };
-        Sized = _: T: {new = T.new;};
+        SetOf = T: mkTypeShim { new = U.Set.new; };
+        ListOf = T: mkTypeShim { new = U.List.new; };
+        OrderedItem = T: U.Sized 1 (U.SetOf T);
+        OrderedOf = T: mkTypeShim { new = (U.ListOf (OrderedItem T)).new;};
+        Constraint = mkTypeShim { new = x: mkShim (_: Constraint) {value = x; satisfiedBy = _: true;};};
+        Static = T: mkTypeShim { staticType = T; };
+        Default = T: V: mkTypeShim { defaultType = T; defaultValue = V; };
+        NullOr = T: mkTypeShim { new = id; };
+        Literal = V: mkTypeShim { getLiteral = V; };
+        Sized = n: T: mkTypeShim { new = x: mkShim (_: Sized n T) { getSized = x; }; };
       });
 
     # Create a new universe descending from SU.
@@ -1415,7 +1479,7 @@ in rec {
         # Construct the Type type in terms of the SU, set Type.Type to Type, and ensure it
         # is fixed under further bootstrapping.
         __Bootstrap = rec {
-          Type__args = assign "__Bootstrap.Type__args" (mkTypeArgsFor opts SU);
+          Type__args = assign "__Bootstrap.Type__args" (mkTypeArgsFor opts U);
           Type__new = assign "__Bootstrap.Type__new" (SU.Type.new opts.typeName Type__args);
           Type = assign "__Bootstrap.Type" (groundTypeAndAssertFixed opts Type__args Type__new);
         };
@@ -1445,7 +1509,10 @@ in rec {
           # Throws if builtinType is not a builtin type string.
           FromT = builtinType:
             let T = maybeFromT builtinType;
-            in if T == null then (throw "Invalid T argument for Builtin.FromT: ${log.print builtinType}")
+            in if T == null then (throw ''
+              Invalid T argument for Builtin.FromT:
+              ${with log.prints; here builtinType ___}
+            '')
             else T;
 
           From = x:
@@ -1459,13 +1526,16 @@ in rec {
                   list = List;
                   set = assert !(x ? Type); Set;
                   lambda = Lambda;
-                }."${typeOf x}" or (throw "Invalid type for Builtin.From: ${getTypeName x}"));
+                }."${typeOf x}" or (throw ''
+                  Invalid type for Builtin.From:
+                  ${with log.prints; here (getTypeName x) ___}
+                ''));
             in T.mk { value = x; };  # mk not new here so new can use From
         };
 
         # A constraint on a type variable.
         Constraint = Type.new "Constraint" {
-          fields = SU.Fields.new [
+          fields = U.Fields.new [
             { constraintType = Type; }
           ];
           methods = {
@@ -1481,28 +1551,29 @@ in rec {
 
         # Subtype of List that enforces homogeneity of element types.
         ListOf_ = U.List.subTemplate "ListOf" {T = Type;} (_: {
-          fields = U.List.fields;
           checkValue = that: all (x: hasType _.T x) that.value;
         });
         ListOf = T: U.ListOf_.bind { inherit T; };
 
         # Subtype of Set that enforces homogeneity of value types.
         SetOf_ = U.Set.subTemplate "SetOf" {T = Type;} (_: {
-          fields = U.Set.fields;
           checkValue = that: all (x: hasType _.T x) that.attrValues;
         });
         SetOf = T: U.SetOf_.bind { inherit T; };
 
         # A type that enforces a size on the value.
-        Sized_ = Type.subTemplateOf (_: _.T) "Sized" {N = U.Literal_; T = Type;} (_: {
-          fields = _.T.fields;
+        Sized_ = Type.template "Sized" {N = Type; T = Type;} (_: {
+          fields = U.Fields.new [
+            { getSized = _.T; }
+          ];
           checkValue = that:
-            (Super.checkValue or (const true)) that
-            && that.size == _.N.literal;
+            (_.T.checkValue or (const true)) that
+            && that.size == _.N.getLiteral;
         });
         Sized = n: T:
           let N = U.Literal n;
           in U.Sized_.bind { inherit N T; };
+        sized = n: T: (Sized n T).new;
 
         # A type satisfied by any value of the given list of types.
         Union_ = Type.template "Union" {Ts = U.ListOf Type;} (_: {
@@ -1519,6 +1590,7 @@ in rec {
         # xs.names == [ "c" "b" "a" ] (in order of definition)
         # xs.values == [ 1 2 3 ] (in order of definition)
         OrderedItem = T: U.Sized 1 (U.SetOf T);
+        mkOrderedItem = T: sized 1 T;
         OrderedOf_ = Type.subTemplateOf (_: U.ListOf (U.OrderedItem _.T)) "OrderedOf" {T = Type;} (_: {
           methods = {
             # The unordered merged attribute set
@@ -1528,10 +1600,9 @@ in rec {
             # its place in the order.
             indexed = this:
               mergeAttrsList
-                (this.imap (i: k: v:
-                  # TODO: 'Has' constraint
-                  assert assertMsg v.has.index "OrderedItem: index field must be present";
-                  {${k} = v.set.index i; }));
+                (this.imap (i: k: v: {
+                  ${k} = (v |> def {}) // { index = i; };
+                }));
 
             # The ordered attribute names.
             attrNames = this: this.imap (_: k: _: k);
@@ -1545,13 +1616,17 @@ in rec {
             # Map over the underlying ListOf (Sized 1 (SetOf T)) with an index.
             # This -> (int -> string -> T -> a) -> [a]
             imap = this: f:
-              imap0
-                (index: item:
-                  let kvs = mapAttrsToList (k: v: {inherit k v;}) item.value;
-                  in
-                    assert assertMsg (size kvs == 1) "OrderedItem: Sized 1 SetOf with size != 1 (${log.print kv})";
-                    let kv = head kvs; in f index kv.k kv.v)
-                  this.value;
+              let thisList = this.value;
+              in
+                imap0
+                  (index: item:
+                    let
+                      vset = item.getSized.value;
+                      kvs = mapAttrsToList (k: v: {inherit k v;}) vset;
+                    in
+                      assert assertMsg (size kvs == 1) "OrderedItem: Sized 1 SetOf with size != 1 (${log.print kvs})";
+                      let kv = head kvs; in f index kv.k kv.v)
+                  thisList;
 
             # Modify the value at the given key via this.modifyAt.name f, preserving order and type.
             modifyAt = this:
@@ -1571,8 +1646,8 @@ in rec {
             # If the key does not exist, it will be added at the end of the order.
             setAtName = this: name: value:
               if this.setAt ? ${name}
-              then this.setAt.name value
-              else this.append (U.OrderedItem.new {${name} = value;});
+              then this.setAt.${name} value
+              else this.append (mkOrderedItem _.T {${name} = value;});
 
             # Get the value with the given key via this.getAt.name
             getAt = this: this.indexed;
@@ -1582,15 +1657,19 @@ in rec {
 
             # Update by inserting the given items sequentially at the end of the order.
             # If any already appear, they update the item in its original order.
-            update = this: items:
-              foldl' (this: item:
-                let
-                  name = head (attrNames xs);
-                in
-                  assert item.size == 1;
-                  this.setAtName (head (item.attrNames)) (head (item.attrValues)))
-                this
-                items;
+            update = this: items_:
+              let items =
+                    { list = items_;
+                      set = mapAttrsToList (k: v: {${k} = v;}) items_;
+                    }.${typeOf items_} or
+                      (throw "Need list or set of items for OrderedOf.update, got: ${log.print items_}");
+              in foldl'
+                  (this: item:
+                    let name = head (attrNames xs);
+                    in assert size item == 1;
+                       this.setAtName (head (attrNames item)) (head (attrValues item)))
+                   this
+                   items;
           };
 
           checkValue = that:
@@ -1626,8 +1705,12 @@ in rec {
               };
           in Item;
 
+        Any = Type.new "Any" {
+          overrideCheck = _: true;
+        };
+
         # A type inhabited by only one value.
-        Literal_ = Type.template "Literal" {V = Type;} (_: rec {
+        Literal_ = Type.template "Literal" {V = Any;} (_: rec {
           ctor = Ctors.Nullary;
           staticMethods = {
             getLiteral = This: _.V;
@@ -1641,11 +1724,11 @@ in rec {
 
         # A type indicating a default value.
         Default_ = Type.template "Default" {T = Type; V = Type;} (_: {
-          staticMethods.defaultType = This: This.tvarBindings.T;
-          staticMethods.defaultValue = This: This.tvarBindings.V.tvarBindings.V;
+          staticMethods.defaultType = This: _.T;
+          staticMethods.defaultValue = This: _.V.getLiteral;
         });
         Default = T: v:
-          let V = SU.Literal v;
+          let V = U.Literal v;
           in U.Default_.bind { inherit T V; };
 
         # Newtype wrapper
@@ -1695,7 +1778,7 @@ in rec {
                 # Produce a valid (Sized 1 (SetOf Field))
                 # ctor must return args for the supertype's mk; in this case,
                 # ultimately a ListOf (...), which constructs with {value = list}.
-                (U.OrderedItem U.Field).new {${fieldName} = U.Field.new 0 fieldName T;};
+                mkOrderedItem U.Field {${fieldName} = U.Field.new 0 fieldName T;};
 
               mkFieldList = fieldListOrSet: {
                 # Raw set converted to raw list of field singletons.
@@ -1733,61 +1816,37 @@ in rec {
     let
       testInUniverse = test: U: test U;
       testInUniverses = Us: test: mapAttrs (_: testInUniverse test) Us;
-      allUniverses = Universe;
-      untypedUniverses = {inherit (allUniverses) Quasiverse QuasiType HyperType;};
-      typedUniverses = {inherit (allUniverses) MetaType ProtoType Type;};
-      precursorUniverses = {inherit (allUniverses) Quasiverse QuasiType HyperType MetaType ProtoType;};
-      finalUniverses = {inherit (allUniverses) Type;};
+      allUniverses = Universe // { inherit TS; };
+      untypedUniverses = {inherit (allUniverses) U_0 U_1 U_2;};
+      typedUniverses = {inherit (allUniverses) U_3 U_4; inherit TS; };
 
-      precursorUniverseTests = testInUniverses precursorUniverses (U: with U; {
-        instantiate = {
-          Literal = expect.equal (Literal 123).getLiteral 123;
-        };
+      MyType = Type.new "MyType" {
+        fields = Fields.new [{ myField = String; }];
+        methods.helloMyField = this: extra: "Hello, ${this.myField.value}${extra}";
+      };
 
+      MyType2 = Type.new "MyType2" {
+        fields = Fields.new [
+          { stringField = String; }
+          { intField = Int; }
+          { defaultIntField = Default Int 666; }
+          { staticIntField = Static Int; }
+          { staticDefaultIntField = Static (Default Int 666); }
+        ];
+      };
+
+      instantiationTests = U: with U; {
+        Literal = expect.equal (Literal 123).getLiteral 123;
         field = {
-          untyped = {
-            expr = let f = Field.new 0 "name" null;
-                    in [f.fieldName f.fieldType f.fieldStatic f.fieldDefault f.index];
-            expected = ["name" null false null 0];
-          };
+          expr = let f = Field.new 0 "name" null;
+                  in [f.fieldName f.fieldType f.fieldStatic f.fieldDefault f.index];
+          expected = ["name" null false null 0];
         };
-      });
+      };
 
-      typedUniverseTests = testInUniverses typedUniverses (U: with U;
+      builtinTests = U: with U;
         let
-          A = Type.new "A" {
-            fields = Fields.new [
-              { a = "int"; }
-              { b = Int; }
-              { c = Default Int 5; }
-              { d = Default Int (Int.new 10); }
-            ];
-          };
-        in {
-          Int = {
-            expr = Int.new 123;
-            expected = 123;
-          };
-          new = {
-            expr = (A.new 1 2 3 4).get;
-            expected = {a = 1; b = 2; c = 3; d = 4;};
-          };
-          mk = {
-            expr = (A.mk {a = 1; b = 2;}).get;
-            expected = {a = 1; b = 2; c = 5; d = 10;};
-          };
-          wrongType = expect.error (A.new "no" 2 3 4).get;
-        });
-
-      untypedUniverseTests = testInUniverses typedUniverses (U: {
-      });
-
-      finalUniverseTests = testInUniverses finalUniverses (U: {
-      });
-
-      allUniverseTests = testInUniverses allUniverses (U: with U;
-        let
-          mkBuiltinTest = T: name: rawValue: {
+          mkBuiltinTest = U: T: name: rawValue: {
             expr =
               let x = T.new rawValue;
               in {
@@ -1803,246 +1862,267 @@ in rec {
               rawIsBuiltin = true;
             };
           };
-
-          MyType = Type.new "MyType" {
-            fields = Fields.new [{ myField = String; }];
-            methods = {
-              helloMyField = this: extra:
-                "Hello, ${this.myField.value}${extra}";
-            };
+        in
+          {
+            Null = mkBuiltinTest Null "Null" null;
+            Int = mkBuiltinTest Int "Int" 123;
+            Float = mkBuiltinTest Float "Float" 12.3;
+            String = mkBuiltinTest String "String" "Hello, world!";
+            Path = mkBuiltinTest Path "Path" ./.;
+            Bool = mkBuiltinTest Bool "Bool" true;
+            List = mkBuiltinTest List "List" [1 2 3];
+            Set = mkBuiltinTest Set "Set" {a = 1; b = 2; c = 3;};
+            Lambda = mkBuiltinTest Lambda "Lambda" (a: b: 123);
           };
 
-          MyType2 = Type.new "MyType2" {
+      untypedFieldTests = U: with U;
+        let
+          fieldsFromList = Fields.new [
+            { c = null; }
+            { b = null; }
+            { a = null; }
+          ];
+          fieldsFromSet = Fields.new {
+            c = null;
+            b = null;
+            a = null;
+          };
+        in {
+          fromListEqFromSet = solo (expect.eq fieldsFromList fieldsFromSet);
+        };
+
+      typeCheckingTests = (U: with U;
+        let
+          A = Type.new "A" {
             fields = Fields.new [
-              { stringField = String; }
-              { intField = Int; }
-              { defaultIntField = Default Int 666; }
-              { staticIntField = Static Int; }
-              { staticDefaultIntField = Static (Default Int 666); }
+              { a = "int"; }
+              { b = Int; }
+              { c = Default Int 5; }
+              { d = Default Int (Int.new 10); }
             ];
           };
-
         in {
-          Null = mkBuiltinTest Null "Null" null;
-          Int = mkBuiltinTest Int "Int" 123;
-          Float = mkBuiltinTest Float "Float" 12.3;
-          String = mkBuiltinTest String "String" "Hello, world!";
-          Path = mkBuiltinTest Path "Path" ./.;
-          Bool = mkBuiltinTest Bool "Bool" true;
-          List = mkBuiltinTest List "List" [1 2 3];
-          Set = mkBuiltinTest Set "Set" {a = 1; b = 2; c = 3;};
-          Lambda = mkBuiltinTest Lambda "Lambda" (a: b: 123);
+          Int = expect.eq (Int.new 123) 123;
+          A.new = expect.eq (A.new 1 2 3 4).get {a = 1; b = 2; c = 3; d = 4;};
+          A.mk = expect.eq (A.mk {a = 1; b = 2;}).get {a = 1; b = 2; c = 5; d = 10;};
+          A.wrongType = expect.error (A.new "no" 2 3 4).get;
+        });
 
-          RootType = {
-            expr = Type.name;
-            expected = "Type";
+      miscTests = U: with U; {
+        RootType = {
+          expr = Type.name;
+          expected = "Type";
+        };
+
+        builtinValueCheck = {
+          Type = {
+            expr = builtinValueCheck Type;
+            expected = false;
+          };
+          int = {
+            expr = builtinValueCheck 123;
+            expected = true;
+          };
+          set = {
+            expr = builtinValueCheck {abc="xyz";};
+            expected = true;
+          };
+          Bool = {
+            expr = builtinValueCheck (Bool.new true);
+            expected = false;
+          };
+        };
+
+        MyString = let MyString = Type.new "MyString" {
+                          fields = Fields.new [{ value = String; }];
+                        };
+                        WrapString = String.subType "WrapString" {};
+                    in {
+          MyString = {
+            mkFromString = expect.eq (MyString.mk { value = String.new "hello"; }).value.value "hello";
+            mkFromstring = expect.eq (MyString.mk { value = "hello"; }).value.value "hello";
+            newFromString = expect.eq (MyString.new (String.new "hello")).value.value "hello";
+            newFromstring = expect.eq (MyString.new "hello").value.value "hello";
+            eqString = expect.eqOn Compare.Fields (MyString.new "hello").value (String.new "hello");
           };
 
-          builtinValueCheck = {
-            Type = {
-              expr = builtinValueCheck Type;
-              expected = false;
-            };
-            int = {
-              expr = builtinValueCheck 123;
-              expected = true;
-            };
-            set = {
-              expr = builtinValueCheck {abc="xyz";};
-              expected = true;
-            };
-            Bool = {
-              expr = builtinValueCheck (Bool.new true);
-              expected = false;
-            };
+          WrapString = {
+            mkFromString = expect.eq (WrapString.mk { value = String.new "hello"; }).value "hello";
+            mkFromstring = expect.eq (WrapString.mk { value = "hello"; }).value "hello";
+            newFromString = expect.eq (WrapString.new (String.new "hello")).value "hello";
+            newFromstring = expect.eq (WrapString.new "hello").value "hello";
+            eqString = expect.eqOn Compare.Fields (WrapString.new "hello") (String.new "hello");
           };
+        };
 
-          MyString = let MyString = Type.new "MyString" {
-                           fields = Fields.new [{ value = String; }];
-                         };
-                         WrapString = String.subType "WrapString" {};
-                     in {
-            MyString = {
-              mkFromString = expect.eq (MyString.mk { value = String.new "hello"; }).value.value "hello";
-              mkFromstring = expect.eq (MyString.mk { value = "hello"; }).value.value "hello";
-              newFromString = expect.eq (MyString.new (String.new "hello")).value.value "hello";
-              newFromstring = expect.eq (MyString.new "hello").value.value "hello";
-              eqString = expect.eqOn Compare.Fields (MyString.new "hello").value (String.new "hello");
-            };
+        MyType_mk = {
+          expr = (MyType.mk { myField = "World"; }).myField.value;
+          expected = "World";
+        };
 
-            WrapString = {
-              mkFromString = expect.eq (WrapString.mk { value = String.new "hello"; }).value "hello";
-              mkFromstring = expect.eq (WrapString.mk { value = "hello"; }).value "hello";
-              newFromString = expect.eq (WrapString.new (String.new "hello")).value "hello";
-              newFromstring = expect.eq (WrapString.new "hello").value "hello";
-              eqString = expect.eqOn Compare.Fields (WrapString.new "hello") (String.new "hello");
-            };
-          };
+        MyType_new = {
+          expr = (MyType.new "World").myField.value;
+          expected = "World";
+        };
 
-          MyType_mk = {
-            expr = (MyType.mk { myField = "World"; }).myField.value;
-            expected = "World";
-          };
+        MyType_call = {
+          expr =
+            let this = MyType.new "World";
+              in this.helloMyField "!";
+          expected = "Hello, World!";
+        };
 
-          MyType_new = {
-            expr = (MyType.new "World").myField.value;
-            expected = "World";
-          };
+        MyType_set = {
+          expr =
+            let this = MyType.new "";
+            in [
+              (this.helloMyField "!")
+              ((this.set.myField "World").helloMyField "!")
+            ];
+          expected = [ "Hello, !" "Hello, World!" ];
+        };
 
-          MyType_call = {
-            expr =
-              let this = MyType.new "World";
-                in this.helloMyField "!";
-            expected = "Hello, World!";
-          };
-
-          MyType_set = {
-            expr =
-              let this = MyType.new "";
-              in [
-                (this.helloMyField "!")
-                ((this.set.myField "World").helloMyField "!")
-              ];
-            expected = [ "Hello, !" "Hello, World!" ];
-          };
-
-          MyType2_mk_overrideDefault = {
-            expr =
-              let this = MyType2.mk {
-                    stringField = "hi";
-                    intField = 123;
-                    defaultIntField = 7;
-                  };
-              in [this.stringField.value this.intField.value this.defaultIntField.value];
-            expected = ["hi" 123 7];
-          };
-
-          MyType2_mk_missingRequired = expect.error (
+        MyType2_mk_overrideDefault = {
+          expr =
             let this = MyType2.mk {
+                  stringField = "hi";
                   intField = 123;
                   defaultIntField = 7;
                 };
-              in builtins.tryEval this
-          );
+            in [this.stringField.value this.intField.value this.defaultIntField.value];
+          expected = ["hi" 123 7];
+        };
 
-          MyType2_mk_missingDefault = {
-            expr =
-              let this = MyType2.mk {
-                    intField = 123;
-                    stringField = "hi";
-                  };
-              in this.defaultIntField.value;
-            expected = 666;
+        MyType2_mk_missingRequired = expect.error (
+          let this = MyType2.mk {
+                intField = 123;
+                defaultIntField = 7;
+              };
+            in builtins.tryEval this
+        );
+
+        MyType2_mk_missingDefault = {
+          expr =
+            let this = MyType2.mk {
+                  intField = 123;
+                  stringField = "hi";
+                };
+            in this.defaultIntField.value;
+          expected = 666;
+        };
+
+        MyType2_mk_wrongType = expect.error (
+            let this = MyType2.mk {
+                  intField = 123;
+                  stringField = true;
+                  defaultIntField = 7;
+                };
+            in builtins.tryEval this
+        );
+
+        cast =
+          let
+            testX = {
+              Null = null;
+              Int = 123;
+              Float = 12.3;
+              String = "abc";
+              Path = ./.;
+              Bool = true;
+              List = [1 2 3];
+              Set = { a = 1; b = 2; c = 3; };
+            };
+            mkToTypedBuiltinTest = T: x: {
+              expr = cast T x;
+              expected = T.new x;
+              compare = Compare.Fields;
+            };
+          in {
+            toTypedBuiltin = mapAttrs (name: v: mkToTypedBuiltinTest U.${name} v) testX;
           };
 
-          MyType2_mk_wrongType = expect.error (
-              let this = MyType2.mk {
-                    intField = 123;
-                    stringField = true;
-                    defaultIntField = 7;
-                  };
-              in builtins.tryEval this
-          );
+        inheritance =
+          let
+            A = Type.new "A" { fields = { a = String; }; };
+            B = Type.new "B" { Super = A; fields = { b = Int; }; };
+          in {
 
-          cast =
-            let
-              testX = {
-                Null = null;
-                Int = 123;
-                Float = 12.3;
-                String = "abc";
-                Path = ./.;
-                Bool = true;
-                List = [1 2 3];
-                Set = { a = 1; b = 2; c = 3; };
-              };
-              mkToTypedBuiltinTest = T: x: {
-                expr = cast T x;
-                expected = T.new x;
-                compare = Compare.Fields;
-              };
-            in {
-              toTypedBuiltin = mapAttrs (name: v: mkToTypedBuiltinTest U.${name} v) testX;
+            newA = {
+              expr = A.new "a";
+              expected = A.mk { a = "a"; };
+              compare = Compare.Fields;
             };
 
-          inheritance =
-            let
-              A = Type.new "A" { fields = { a = String; }; };
-              B = Type.new "B" { Super = A; fields = { b = Int; }; };
-            in {
+            isSuperTypeOf = {
+              parentChild = expect.True (isSuperTypeOf A B);
+              childParent = expect.False (isSuperTypeOf B A);
+              parentParent = expect.False (isSuperTypeOf A A);
+              childChild = expect.False (isSuperTypeOf B B);
+              typeParent = expect.True (isSuperTypeOf Type A);
+              typeChild = expect.True (isSuperTypeOf Type B);
+              typeType = expect.False (isSuperTypeOf Type Type);
+            };
 
-              newA = {
-                expr = A.new "a";
-                expected = A.mk { a = "a"; };
-                compare = Compare.Fields;
-              };
+            isSubTypeOf = {
+              parentChild = expect.False (isSubTypeOf A B);
+              childParent = expect.True (isSubTypeOf B A);
+              parentParent = expect.False (isSubTypeOf A A);
+              childChild = expect.False (isSubTypeOf B B);
+              typeParent = expect.False (isSubTypeOf Type A);
+              typeChild = expect.False (isSubTypeOf Type B);
+              typeType = expect.False (isSubTypeOf Type Type);
+            };
 
-              isSuperTypeOf = {
-                parentChild = expect.True (isSuperTypeOf A B);
-                childParent = expect.False (isSuperTypeOf B A);
-                parentParent = expect.False (isSuperTypeOf A A);
-                childChild = expect.False (isSuperTypeOf B B);
-                typeParent = expect.True (isSuperTypeOf Type A);
-                typeChild = expect.True (isSuperTypeOf Type B);
-                typeType = expect.False (isSuperTypeOf Type Type);
-              };
-
-              isSubTypeOf = {
-                parentChild = expect.False (isSubTypeOf A B);
-                childParent = expect.True (isSubTypeOf B A);
-                parentParent = expect.False (isSubTypeOf A A);
-                childChild = expect.False (isSubTypeOf B B);
-                typeParent = expect.False (isSubTypeOf Type A);
-                typeChild = expect.False (isSubTypeOf Type B);
-                typeType = expect.False (isSubTypeOf Type Type);
-              };
-
-              hasThisFields = {
-                expr = B.fields;
-                expected = {
-                  b = {
-                    index = 0;
-                    fieldType = Int;
-                    name = "b";
-                  };
+            hasThisFields = {
+              expr = B.fields;
+              expected = {
+                b = {
+                  index = 0;
+                  fieldType = Int;
+                  name = "b";
                 };
               };
+            };
 
-              hasSuperFields = {
-                expr = B.__allFields;
-                expected = {
-                  a = {
-                    index = 0;
-                    fieldType = String;
-                    name = "a";
-                  };
-                  b = {
-                    index = 0;
-                    fieldType = Int;
-                    name = "b";
-                  };
+            hasSuperFields = {
+              expr = B.__allFields;
+              expected = {
+                a = {
+                  index = 0;
+                  fieldType = String;
+                  name = "a";
+                };
+                b = {
+                  index = 0;
+                  fieldType = Int;
+                  name = "b";
                 };
               };
+            };
 
-              fieldsCompose = {
-                expr = B.new "a" 2;
-                expected = B.mk { a = "a"; b = 2; };
-                compare = Compare.Fields;
-              };
+            fieldsCompose = {
+              expr = B.new "a" 2;
+              expected = B.mk { a = "a"; b = 2; };
+              compare = Compare.Fields;
+            };
 
-          };
-        });
-
-    in cutils.tests.suite {
-      types = {
-        inherit
-          precursorUniverseTests
-          untypedUniverseTests
-          typedUniverseTests
-          allUniverseTests
-          finalUniverseTests;
+        };
       };
-    };
 
+    in
+      cutils.tests.suite {
+        types =
+          mergeAttrsList [
+            (testInUniverses allUniverses (U:
+              instantiationTests U
+              // builtinTests U
+              // fieldTests U
+              // miscTests U))
+
+            (testInUniverses untypedUniverses untypedFieldTests)
+
+            (testInUniverses typedUniverses typeCheckingTests)
+          ];
+        };
 
 }
