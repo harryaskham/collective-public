@@ -25,15 +25,28 @@ in rec {
   };
 
   Compare = rec {
+    # Compare test outputs only on recursively extracted field values.
     Fields = this:
       if typeOf this == "set"
       then mapAttrs (_: Fields) (this.get or this)
       else this;
+
     # Produce a version of the this-set with replaced lambdas, enabling deep comparison.
     NoLambdas = this:
-      if typeOf this == "lambda" then { __lambda = true; }
-      else if typeOf this == "set" then mapAttrs (_: NoLambdas) this
+      if typeOf this == "lambda" then
+        { __lambda = true; }
+
+      else if typeOf this == "set" then
+        concatMapAttrs
+          (k: v:
+            if k == "__toString"
+            then { __toString__NoLambdas = "<__toString>"; }
+            else { ${k} = NoLambdas v; })
+          this
+
       else this;
+
+    # Compare test outputs only on their canonical stringified form.
     Print = this: log.print this;
   };
 
@@ -60,9 +73,13 @@ in rec {
       success = false;
       value = false;
     };
-    error = failure;
+
+    error = expr: { inherit expr; expected = failure; };
 
     equal = expr: expected: { inherit expr expected; };
+    equalOn = compare: expr: expected: { inherit expr expected compare; };
+    eq = equal;
+    eqOn = equalOn;
 
     True = expr: {
       inherit expr;

@@ -101,7 +101,7 @@ in rec {
     # Whether or not x is an uppercase Builtin type
     # All builtins are attrs. The short-circuit stops recursive inspection of Type.
     BuiltinValueCheck = x:
-      (x ? Type) && (BuiltinNameCheck x.Type.name or "");
+      (x ? Type) && (BuiltinNameCheck (x.Type {}).name or "");
 
     # Cast between types.
     # Returns a set with a 'castError' attribute if the cast is not possible
@@ -126,7 +126,7 @@ in rec {
         TName = printT T;
         xTName = getTypeBoundName x;
 
-        xFields = if isTyped x then filterAttrs (_: f: !f.fieldStatic) x.Type.fields.indexed else
+        xFields = if isTyped x then filterAttrs (_: f: !f.fieldStatic) (x.Type {}).fields.indexed else
           mkCastError ''
             Cannot get fields from untyped uncast value: T = ${log.print T}, x = ${log.print x}
             '';
@@ -348,24 +348,28 @@ in rec {
     mergeSuper = f: foldUpward (acc: This: let xs = f This |> def {}; in acc // xs) {};
 
     # Modify an argument set to inherit from a supertype.
+    # If a ctor is set in args, it is used, otherwise the Super's ctor is inherited.
+    # Fields and methods are logically inherited and set as part of mkInstance.
     inheritFrom = Super: args:
       if !(isTypeSet Super) then throw "inheritFrom: Super must be a Type, got ${log.print Super}"
       else args // {
         inherit Super;
-        ctor = args.ctor or Super.ctor or (Ctors.Fields false);
+        ctor = args.ctor or Super.ctor;
       };
 
     # Construct the fields for a universe using the types of the universe above.
-    mkTypeFieldListFor_ = withTypes: U:
+    mkTypeFieldListFor = opts: U:
       let
         SU = U._SU.get {};
-        maybeTyped = T: if withTypes then T else null;
+        maybeTyped = T: if opts.enableTypeChecking then T else null;
       in
         [
           # The name of the type.
           {name = maybeTyped (SU.String);}
           # The type of the instance as a thunk.
-          {Type = maybeTyped (SU.Default SU.Type SU.Type);}
+          # Defaults to this universe's U.Type, as types in this universe will be
+          # created using U.Type and this field's default dictates their Type.
+          {Type = maybeTyped (SU.Default "lambda" (_: U.Type));}
           # The supertype of the type.
           {Super = maybeTyped (SU.Default (SU.NullOr SU.Type) null);}
           # The type parameters of the type.
@@ -385,17 +389,12 @@ in rec {
           # If set, ignore all other checks and use this check function only.
           {overrideCheck = maybeTyped (SU.Default (SU.NullOr "lambda") null);}
         ];
-    mkTypeFieldListFor = mkTypeFieldListFor_ true;
-    mkUntypedTypeFieldListFor = mkTypeFieldListFor_ false;
 
-    mkTypeFieldsFor_ = withTypes: U:
+    mkTypeFieldsFor = opts: U:
       let
         SU = U._SU.get {};
-        fieldList = mkTypeFieldListFor_ withTypes U;
+        fieldList = mkTypeFieldListFor opts U;
       in SU.Fields.new fieldList;
-
-    mkTypeFieldsFor = mkTypeFieldsFor_ true;
-    mkUntypedTypeFieldsFor = mkTypeFieldsFor_ false;
 
     # Map a function over the supplied type levels, producing a set keyed
     # by Type name. Can be used to construct the same type in multiple different
@@ -406,7 +405,7 @@ in rec {
     typeMethodsFor = Universe: {
       # Is this instance an instance of type That, or inherits from it?
       isInstance = This: That:
-        typeEq This.Type That
+        typeEq (This.Type {}) That
         || (This.Super != null && This.Super.isInstance That);
 
       # Get the full templated name of the type.
@@ -429,7 +428,7 @@ in rec {
 
                 # Bound to a literal or builtin
                 else
-                  with log.prints; put T using.oneLine ___;
+                  with log.prints; put T _line ___;
             printBindings = joinSep ", " (map printBinding (attrNames This.tvars));
           in "${This.name}<${printBindings}>";
 
@@ -508,7 +507,7 @@ in rec {
 
       # Create a new subType inheriting from This
       # TODO: Compose checkValue / overrideCheck if they appear in args
-      subType = newSubType;
+      subType = Universe.newSubType;
 
       # For a given This type, create a new template whose eventual bound type subtypes This.
       subTemplate = This: Universe.newTemplate_ This This;
@@ -538,9 +537,9 @@ in rec {
         in log.print_ (log.mkPrintArgs // { ignoreToString = true; }) truncated;
     };
 
-    mkTypeArgsFor_ = withTypes: typeName: U:
+    mkTypeArgsFor = opts: U:
       rec {
-        name = typeName;
+        name = opts.typeName;
         Super = null;
         ctor = This: name: args: {
           inherit name;
@@ -554,7 +553,7 @@ in rec {
           checkValue = args.checkValue or null;
           overrideCheck = args.overrideCheck or null;
         };
-        fields = mkTypeFieldsFor_ withTypes U;
+        fields = mkTypeFieldsFor opts U;
         methods = typeMethodsFor U;
         staticMethods = {};
         tvars = {};
@@ -562,110 +561,39 @@ in rec {
         checkValue = null;
         overrideCheck = null;
       };
-    mkTypeArgsFor = mkTypeArgsFor_ true;
-    mkUntypedTypeArgsFor = mkTypeArgsFor_ false;
-
-    PreBootstrap = with log.vtrace.call "Bootstrap" ___; rec {
-      # HyperType is constructed such that it is both:
-      #
-      # - a valid type input to mkInstance for the creation of MetaType
-      # - a minimal subset of the output from mkInstance HyperType, manually created.
-      #
-      # This allows us to ground the infinite recurse we'd otherwise get by needing to actually create HyperType as an instance
-      # of itself or of a higher type.
-      #
-      # - HyperType.Type is manually set to be self-referential, as it would be if HyperType was created via 'mkInstance HyperType'
-      # - Method HyperType.__TypeId is manually set, rather than relying on binding staticMethods.boundName, which in turn relies on the template machinery.
-      # - HyperType.fields is a manually constructed set mirroring the ordered interface to Fields, exposing a manually precomputed Fields.indexed result for field inspection.
-      # - HyperType.methods are restricted only to a Universe-independent set:
-      #   - These independent methods are callable when bound on MetaType.
-      #   - Further method construction requires reference to the Universe
-      #     - These are added in MetaType and bound in ProtoType.
-      # - HyperType.get/set/modify/call accessors are missing owing to having not itself gone through mkInstance (this happens in MetaType creation).
-      # - Other defaults are manually set.
-
-      # HyperType acts as its own SuperUniverse.
-      HyperType__args =
-        assign "HyperType__args"
-          (mkTypeArgsFor "HyperType" Universe.HyperType);
-
-      # As subtype, supertype and instance of itself.
-      HyperType__fixedPoint =
-        let toQuasiType = T: T // { __TypeId = T.name; };
-            toFixedPointType = T: newInstance (toQuasiType T) (T.name) T;
-        in toFixedPointType HyperType__args;
-
-      # HyperType instances still come from the HyperType__precursor, meaning you can
-      # follow instance.Type.Type.Type back to { name = "HyperType" }. We take one last
-      # subtype here.
-      HyperType__selfHosted = newInstance HyperType__fixedPoint "HyperType" HyperType__args;
-
-      # Now, finally we bind HyperType's methods manually one time, with all future types
-      # taken care of by the mkInstance binding.
-      HyperType__bound =
-        HyperType__selfHosted
-          |> reinitThis HyperType__selfHosted;
-
-      # Lastly set Type to Self to fix the type chain
-      # HyperType = HyperType__bound;
-
-      QuasiType = Quasiverse.Type;
-      HyperType = QuasiType.new "HyperType" (mkTypeArgsFor "HyperType" Quasiverse);
-
-      # MetaType is an instantiated HyperType.
-      # This validates HyperType can instantiate another fully fledged universe,
-      # which does not need to depend on Quasiverse and the shims at all.
-      MetaType = HyperType.new "MetaType" (mkTypeArgsFor "MetaType" Universe.MetaType);
-
-      # ProtoType is an instantiated MetaType.
-      # The only difference here is that the Fields of the base ProtoType Type are
-      # set via Fields.new, so that when we create Type from ProtoType,
-      # Type will have been created in a typesafe way, and anything downstream of
-      # it will have the same checks.
-      ProtoType = MetaType.new "ProtoType" (mkTypeArgsFor "ProtoType" Universe.ProtoType);
-
-      # Construct the base Type to use from here on out.
-      # Override 'fields' to contain the actual field specifiers.
-      Type__fromProtoType = ProtoType.new "Type" (mkTypeArgsFor "Type" Universe.Type);
-
-      # Lastly, bootstrap Type inside its own universe by instancing
-      # and eliding the superuniverse-dependent Type__fromProtoType
-      Type = Type__fromProtoType.new "Type" (mkTypeArgsFor "Type" Universe.Type);
-    };
-
-    # inherit (Bootstrap) HyperType MetaType ProtoType Type;
 
     # Check if a given argument is a custom Type.
     isTyped = x: isAttrs x && x ? Type;
 
     # Check if a given argument is a Type.
+    # 'isType' collides with lib.isType.
     isTypeSet = T: T ? __TypeId;
 
     # Gets the type of a value, whether it is a Type or a builtin type.
     getRawType = x:
-      if isTyped x then x.Type
+      if isTyped x then x.Type {}
       else typeOf x;
 
     # Gets the type of a value, whether it is a Type or a builtin type.
     getType = x:
-      if isTyped x then x.Type
+      if isTyped x then x.Type {}
       else Builtin.FromT (typeOf x);
 
     # Get the name of a type whether builtin or Type.
     getTypeName = x:
       if isTyped x
-        then x.Type.name or (throw ''
+        then (x.Type {}).name or (throw ''
           Type is missing name in getTypeName:
-          ${indent.here (log.print x.Type)}
+          ${indent.here (log.print (x.Type {}))}
         '')
         else typeOf x;
 
     # Get the bound name of a type whether builtin or Type.
     getTypeBoundName = x:
       if isTyped x
-        then x.Type.boundName or throw ''
+        then (x.Type {}).boundName or throw ''
           Type is missing boundName in getTypeBoundName:
-          ${indent.here (log.print x.Type)}
+          ${indent.here (log.print (x.Type {}))}
         ''
         else typeOf x;
 
@@ -715,27 +643,33 @@ in rec {
         in mkInstance Super args
       );
 
-    setType = This: this: this // { Type = This;};
+    setType = This: this: this // { Type = _: This;};
 
-    # Set the super value such that instance methods can access this.super
-    # when overriding superclass methods, as well as any field values on the
-    # superclass that may behave differently (i.e. different defaults).
-    # this.super essentially acts as though we instantiated Super directly
-    # with the subset of the This fields that are not overridden.
-    # If This == Super then terminate with super = this.
+    # Set fields from the supertype and merge with this.
     setSuper = This: args: this:
       with log.vtrace.call "setSuper" This args this ___;
-      return (
-        # If this is a Type, it already has Super on account of it being a field setting
-        if (this.Super or null) != null then this
+
+      let
+        # TODO: This requires that args are valid all the way up the chain
+        # If we override a field with a different type, mkSuperInstance
+        # will erroneously fail. We can just inherit fields/methods directly.
+        withSuper = Super:
+          let super = mkSuperInstance Super args;
+          in super // this;
+      in
+        # TODO: Revisit: why can 'this' ever have Super already set?
+        if (this.Super or null) != null then
+          with warning "this.Super already set in setSuper" This args this ___;
+          return (withSuper this.Super)
+
+        # If we are creating a type as an instance of Type, and that type is
+        # a subtype, then args.Super contains the supertype to inherit from.
         else if (args.Super or null) != null then
-          (let super = mkSuperInstance args.Super args;
-           in super // this // {
-            inherit super;
-            inherit (args) Super;
-           })
-        else this
-      );
+          return (withSuper args.Super)
+
+        # Otherwise there is no supertype to inherit from.
+        else
+          return this;
 
     # Set the value of a field on an instance 'this' of type 'This'
     #
@@ -873,9 +807,7 @@ in rec {
     setFields = This: args: this:
       foldl'
         (this: field:
-          let shouldSetValue =
-                args ? ${field.fieldName}
-                || (field.fieldDefault or null) != null;
+          let shouldSetValue = args ? ${field.fieldName} || (field.fieldDefault or null) != null;
               value = args.${field.fieldName} or field.fieldDefault.defaultValue;
           in
             if !(isAttrs field) || !(isString field.fieldName) then with indent; throws.block ''
@@ -885,7 +817,7 @@ in rec {
 
                 field = ${here (print field)}
             ''
-            else if this ? ${field.fieldName} && args ? ${field.fieldName} then throw ''
+            else if this ? ${field.fieldName} && shouldSetValue then throw ''
               Field ${field.fieldName} already set to ${log.print this.${field.fieldName}}
               (when setting to ${log.print args.${field.fieldName}})
             ''
@@ -948,16 +880,6 @@ in rec {
               "(mkInstance This)" "(This.ctor This)"
               (mkInstance This)   (This.ctor This);
       in traceVariadic mkViaCtor;
-
-    # For a given type, create a new type of the same Type with the given name and args, inheriting any
-    # unspecified fields, ctor, and non-overridden methods.
-    newSubType = This: name: args:
-      with log.vtrace.call "newSubType" { inherit This name args; } ___;
-
-      return (
-        if !(isTypeSet This) then throw "Cannot subtype non-Type or Type-precursor: ${log.print This}"
-        else This.Type.new name (inheritFrom This args)
-      );
 
     # Build a new instance from a single dict of field values.
     # Construct an instance from a This type and attrset of field-to-value assignments.
@@ -1146,6 +1068,16 @@ in rec {
     };
 
     mkTemplating = U: rec {
+      # For a given type, create a new type of the same Type with the given name and args, inheriting any
+      # unspecified fields, ctor, and non-overridden methods.
+      newSubType = This: name: args:
+        with log.vtrace.call "newSubType" { inherit This name args; } ___;
+
+        return (
+          if !(isTypeSet This) then throw "Cannot subtype non-Type or Type-precursor: ${log.print This}"
+          else U.Type.new name (inheritFrom This args)
+        );
+
       # Create a new template of a type accepting type parameters.
       # The parameters can be accessed via the _ argument surrounding the type specification.
       # Returns a function from {bindings} to a new bound type.
@@ -1232,33 +1164,205 @@ in rec {
         newTemplate_ This null name tvars bindingsToArgs;
     };
 
-    # Universe of related types, enabling building the Type type in terms of types in the superuniverse.
-    Universe = {
-      Quasiverse = Types.Quasiverse;
-      QuasiType = mkUniverse "QuasiType" Universe.Quasiverse mkUntypedTypeArgsFor;
-      HyperType = mkUniverse "HyperType" Universe.QuasiType mkUntypedTypeArgsFor;
-      MetaType = mkUniverse "MetaType" Universe.HyperType mkUntypedTypeArgsFor;
-      ProtoType = mkUniverse "ProtoType" Universe.MetaType mkTypeArgsFor;
-      Type = mkUniverse "Type" Universe.ProtoType mkTypeArgsFor;
-    };
+    # Universe of related types, enabling building the Type type and its constituent types in
+    # terms of types in the superuniverse.
+    #
+    # If U_0 = Quasiverse then:
+    #
+    #   U_0:
+    #     - Type checking disabled by options.
+    #     - U_0.Type bootstrapped from U_0 constituents.
+    #     - U_0 constituents built from U_0.Type and U_0 constituents.
+    #     - Type checking unsupported in construction of U_0.Type.
+    #     - Type-checking unsupported in construction of U_0 constituent types.
+    #     - Type-checking unsupported in instantiation of U_0 constituent types.
+    #     - U_0.Type behaves correctly to create new types.
+    #       Created types are not type-checked.
+    #       U_0.Type is not itself type-checked.
+    #     - U_0 constituents behave according to minimally implemented shims, mimicking
+    #       the behaviour of the U_1+ constituents but without any checks, type enforcement
+    #       or casting.
+    #
+    #   U_1:
+    #     - Type checking disabled by options.
+    #     - U_1.Type built from U_0 constituents.
+    #     - U_1 constituents built from U_1.Type and mixture of U_0 and U_1 constituent types,
+    #       preferring U_1 but falling back to U_0 to break circularity.
+    #     - Type-checking unsupported in construction of U_1.Type.
+    #     - Type-checking unsupported in construction of U_1 constituent types that have U_0 dependencies.
+    #     - Type-checking supported but disabled in construction of U_1 constituent types that have no U_0 dependencies.
+    #     - Type-checking unsupported in instantiation of U_0 constituent types.
+    #     - Type-checking unsupported in instantiation of U_1 constituent types.
+    #     - U_1.Type behaves correctly to create new types.
+    #       U_1.Type is not itself type-checked.
+    #       Created types are not type-checked.
+    #     - U_1 constituent types behave correctly to create new constituents
+    #       U_1 constituent types are not themselves type-checked
+    #       Created constituents are not type-checked.
+    #
+    #   U_2:
+    #     - Type checking enabled by options.
+    #     - U_2.Type built from U_1 constituents.
+    #     - U_2 constituents built from U_2.Type and mixture of U_1 and U_2 constituent types,
+    #       preferring U_2 but falling back to U_1 to break circularity.
+    #     - Type-checking supported and performed in construction of U_2.Type.
+    #     - Type-checking supported and performed in construction of U_2 constituent types.
+    #     - Type-checking unsupported in instantiation of U_1 constituent types.
+    #     - Type-checking supported and performed in instantiation of U_2 constituent types.
+    #     - U_2.Type behaves correctly to create new types.
+    #       U_2.Type is not itself type-checked.
+    #       Created types are type-checked.
+    #     - U_2 constituent types behave correctly to create new constituents
+    #       U_2 constituent types are type-checked.
+    #       Created constituents are not type-checked.
+    #
+    #   U_3:
+    #     - Type checking enabled by options.
+    #     - U_3.Type built from U_2 constituents.
+    #     - U_3 constituents built from U_3.Type and mixture of U_2 and U_3 constituents,
+    #       preferring U_3 but falling back to U_2 to break circularity.
+    #     - Type-checking supported and performed in construction of U_3.Type.
+    #     - Type-checking supported and performed in construction of U_3 constituents.
+    #     - Type-checking supported and performed in instantiation of U_2 constituent types.
+    #     - Type-checking supported and performed in instantiation of U_3 constituent types.
+    #     - U_3.Type behaves correctly to create new types.
+    #       U_3.Type is partially type-checked (its U_2 constituent instances are not).
+    #       Created types are type-checked.
+    #     - U_3 constituent types behave correctly to create new constituents
+    #       U_3 constituent types are partially type-checked (their U_2 constituent instances are not)
+    #       Created constituents are type-checked.
+    #
+    #   U_4:
+    #     - Type checking enabled by options.
+    #     - U_4.Type built from U_3 constituents.
+    #     - U_4 constituents built from U_4.Type and mixture of U_3 and U_4 constituents,
+    #       preferring U_4 but falling back to U_3 to break circularity.
+    #     - Type-checking supported and performed in construction of U_4.Type.
+    #     - Type-checking supported and performed in construction of U_4 constituents.
+    #     - Type-checking supported and performed in instantiation of U_3 constituent types.
+    #     - Type-checking supported and performed in instantiation of U_4 constituent types.
+    #     - U_4.Type behaves correctly to create new types.
+    #       U_4.Type is type-checked (including its U_3 constituent instances).
+    #       Created types are type-checked.
+    #     - U_4 constituent types behave correctly to create new constituents
+    #       U_4 constituent types are type-checked (including their U_3 constituent instances)
+    #       Created constituents are type-checked.
+    #
+    # Universe.U_0 == Quasiverse
+    # Universe.U_1 == mkSubUniverse (Universe 0)
+    # ...
+    Universe =
+      let
+        # Generate a list of n universes, starting with Quasiverse.
+        # The first universe is Quasiverse, the rest are generated from the previous one.
+        genUniverses = maxLevel:
+          let go = level: SU:
+                if level > maxLevel then {}
+                else let U = mkSubUniverse SU;
+                    in { ${SU.opts.name} = SU; }
+                        // go (level + 1) U;
+          in go 0 Quasiverse;
+      in
+        genUniverses 4;
 
-    withCommonUniverse = SU: U:
+    #  We can then expose U_4 as a self-consistent base typesystem comprised of:
+    #    - The U_4 constituent types, instances of U_4.Type
+    #    - The U_4.Type, itself already grounded by setting U_4.Type.Type to U_4.Type
+    #
+    # This type system then has the following properties:
+    #   - All types in TS have type TS.Type, including TS.Type
+    #   - TS is fixed under subuniverse creation: deriving a subuniverse from TS gives
+    #     exactly TS, modulo lambda equality
+    # The final type system is then U_4 with any U_*, U, SU or opts references removed.
+    TS = removeAttrs Universe.U_4 [
+      "opts"
+      "_U"
+      "_SU"
+    ];
+
+    # Cause a Type to have itself as its own Type, eliding any information about
+    # either bootstrap pseudo-types or the Type of its superuniverse.
+    groundType = Type:
+      let Type__grounded = Type // { Type = _: Type__grounded; };
+      in Type__grounded;
+
+    # Cause a Type to have itself as its own Type, eliding any information about
+    # either bootstrap pseudo-types or the Type of its superuniverse.
+    # Also asserts that recreating the grounded Type using itself, via Type.new,
+    # creates an identical Type (modulo lambda equality).
+    groundTypeAndAssertFixed = opts: Type__args: Type:
+      with log.vtrace.call "groundTypeAndAssertFixed" { inherit Type; } ___;
+      let Type__grounded = assign "Type__grounded" (groundType Type);
+      in
+        assert assertTypeFixedUnderNew Type__grounded opts.typeName Type__args;
+        return Type__grounded;
+
+    withCommonUniverse = opts: SU: U:
       mergeAttrsList [
         U
+        {inherit opts;}
+        (mkUniverseReferences opts U SU)
         (mkBuiltins SU)
         (mkTemplating SU)
         (mkTrivialTypes U.Type)
       ];
-    withCommonUniverseSelf = U: withCommonUniverse U U;
+    withCommonUniverseSelf = opts: U: withCommonUniverse opts U U;
 
-    mkUniverseReference = tag: U:
+    mkUniverseReference = opts: tag: U:
       {
-        __toString = _: "<${tag}-universe reference>";
+        __toString = _: "<${tag}-universe ref: ${opts.name}>";
         get = _: U;
       };
 
+    mkUniverseReferences = opts: U: SU: {
+      _U = mkUniverseReference opts "self" U;
+      _SU = mkUniverseReference opts "super" SU;
+    };
+
     printUniverse = U:
       with log.prints; put U using.raw (using.maxDepth 3) ___;
+
+    assertFixedUnderF = fLabel: xLabel: f: x:
+      with log.vtrace.call "assertFixedUnderF" { inherit fLabel xLabel f x; } ___;
+      with cutils.tests.Compare;
+      let fx = f x;
+          x_NL = NoLambdas x;
+          fx_NL = NoLambdas fx;
+      in
+        with intermediate "x" x;
+        with intermediate "fx" fx;
+        with intermediate "x_NL" x_NL;
+        with intermediate "fx_NL" fx_NL;
+        assertMsg (x_NL == fx_NL) (with log.prints; ''
+          ${xLabel} is not fixed under ${fLabel}:
+
+            ${xLabel} (original):
+            ${here x using.raw ___}
+
+            ${xLabel} (under ${fLabel}):
+            ${here fx using.raw ___}
+
+          Comparing lambda-free:
+            ${xLabel} (lambda-free, original):
+            ${here x_NL using.raw ___}
+
+            ${xLabel} (lambda-free, under ${fLabel}):
+            ${here fx_NL using.raw ___}
+        '');
+
+    assertTypeFixedUnderNew = T: typeName: typeArgs:
+      assertFixedUnderF "new" "Type" (T: T.new typeName typeArgs) T;
+
+    # Lazily cascading options that disable typechecking at levels U_0 and U_1.
+    # Options for the next universe can be produced via opts.descend {}.
+    UniverseOpts_0 =
+      let mkOpts = level: enableTypeChecking: enableTypeCheckingInSubUniverse: {
+            inherit level enableTypeChecking enableTypeCheckingInSubUniverse;
+            name = "U_${toString level}";
+            typeName = "Type";
+            descend = _: mkOpts (level + 1) enableTypeCheckingInSubUniverse true;
+          };
+      in mkOpts 0 false false;
 
     # The barest minimum universe to bootstrap the type system.
     # Constructs a bootstrapped Quasitype from a hand-build GroundType instance, which has no
@@ -1266,45 +1370,59 @@ in rec {
     Quasiverse =
       with log.vtrace.attrs "Quasiverse" ___;
       with msg "Constructing Quasiverse";
-      let U = Quasiverse; SU = Quasiverse;
-      in withCommonUniverseSelf (rec {
 
+      let
         # Quasiverse is its own self- and super-universe, enabled by containing no circular dependencies
         # in quasitype construction.
-        _U = mkUniverseReference "self" U;
-        _SU = mkUniverseReference "super" SU;
+        U = Quasiverse;
+        SU = Quasiverse;
+
+        # Take on the intial options for a root universe.
+        opts = UniverseOpts_0;
+
+      in withCommonUniverseSelf opts (rec {
 
         # Bootstrap the Type type.
-        Bootstrap = rec {
+        __Bootstrap = rec {
           # Create simple untyped arguments using the pseuedotypes below for containers,
           # fields, literals, etc.
-          typeArgs = mkUntypedTypeArgsFor "QuasiType" Quasiverse;
+          Type__args = assign "__Bootstrap.Type__args" (mkTypeArgsFor opts U);
 
           # Bootstrap a handmade type by treating typeArgs as though it was already created
           # via Type.new.
-          Type__handmade = typeArgs;
+          Type__handmade = assign "__Bootstrap.Type__handmade" Type__args;
 
           # Convert the handmade type into a bona-fide type by instantiating it as though
           # 'Type__handmade.new "QuasiType" typeArgs' was called.
           # Must be newInstance rather than mkInstance here, as we need to push typeArgs through
           # PseudoType.ctor.
-          Type__bootstrapped = newInstance Type__handmade "QuasiType" typeArgs;
+          Type__bootstrapped =
+            assign "__Bootstrap.Type__bootstrapped"
+              (newInstance Type__handmade opts.typeName Type__args);
 
-          # Finally, construct Type through an actual application of the .new constructor.
-          # This should have reached a fixed point in terms of further bootstrapping, modulo lambda equality.
-          # An assertion checks this is the case.
+          # Construct Type through an actual application of the .new constructor.
+          # This is valid besides Type__new.(Type {}).(Type {}).Type {} == Type__args, and after that,
+          # Type__args ? Type == false.
+          # We fix this in the next stage.
+          Type__new =
+            assign "__Bootstrap.Type__new"
+              (Type__bootstrapped.new opts.typeName Type__args);
+
+          # Finally, ground this Type by setting Type.Type to return itself, eliding any information
+          # about the bootstrap types.
+          # This should now have reached a fixed point in terms of further bootstrapping by Type.new,
+          # modulo lambda equality on created Type instances.
+          # An assertion checks that Type is fixed under further bootstrapping.
           Type =
-            let Type__final = Type__bootstrapped.new "QuasiType" typeArgs;
-                Type__next = Type__final.new "QuasiType" typeArgs;
-                comparable = mapAttrs (_: cutils.tests.Compare.NoLambdas) { inherit Type__final Type__next; };
-            in
-              with intermediate "Type__final" Type__final;
-              with intermediate "Type__next" Type__next;
-              #assert comparable.Type__final == comparable.Type__next;
-              assign "Type" Type__final;
+            assign "__Bootstrap.Type"
+              (groundTypeAndAssertFixed opts Type__args Type__new);
         };
-        Type = Bootstrap.Type;
 
+        # Expose only the final fixed Type.
+        Type = assign "Type" __Bootstrap.Type;
+
+        # Shim out all types used in the construction of Type s.t. Type can be created
+        # with U == SU == Quasiverse.
         Field = {
           inherit Type;
           new = index: fieldName: fieldSpec: parseFieldSpec fieldSpec // {
@@ -1339,22 +1457,25 @@ in rec {
         Sized = _: T: {new = T.new;};
       });
 
-    # Create a new universe descending from the SuperUniverse, with the root Type named
-    # according to typeName.
-    mkUniverse = typeName: SU: mkTypeArgsForFn:
-      with log.vtrace.call "mkUniverse" typeName ___;
-      with msg "Constructing ${typeName} universe";
+    # Create a new universe descending from SU.
+    mkSubUniverse = SU:
+      let opts = SU.opts.descend {}; in
+      with log.vtrace.call "mkSubUniverse" opts "<SU>" ___;
+      with msg "Constructing ${opts.name} universe";
+      let U = withCommonUniverse opts SU rec {
 
-      let U = withCommonUniverse SU rec {
-
-        _U = mkUniverseReference "self" U;
-        _SU = mkUniverseReference "super" SU;
-
-        typeArgs = mkTypeArgsForFn typeName SU;
-        Type = SU.Type.new typeName typeArgs;
+        # Construct the Type type in terms of the SU, set Type.Type to Type, and ensure it
+        # is fixed under further bootstrapping.
+        __Bootstrap = rec {
+          Type__args = assign "__Bootstrap.Type__args" (mkTypeArgsFor opts SU);
+          Type__new = assign "__Bootstrap.Type__new" (SU.Type.new opts.typeName Type__args);
+          Type = assign "__Bootstrap.Type" (groundTypeAndAssertFixed opts Type__args Type__new);
+        };
+        Type = assign "Type" __Bootstrap.Type;
 
         # Wrap up some builtin constructors.
         # TODO: Builtin to a base type for all builtins.
+        # TODO: Move to common
         Builtin = {
           # Get the Builtin type corresponding to the given builtin type.
           # Returns null if builtinType is not a builtin type string.
@@ -1683,18 +1804,19 @@ in rec {
             ];
           };
         in {
-          new = solo {
+          Int = {
+            expr = Int.new 123;
+            expected = 123;
+          };
+          new = {
             expr = (A.new 1 2 3 4).get;
             expected = {a = 1; b = 2; c = 3; d = 4;};
           };
-          mkDefault = solo {
+          mk = {
             expr = (A.mk {a = 1; b = 2;}).get;
             expected = {a = 1; b = 2; c = 5; d = 10;};
           };
-          wrongType = solo {
-            expr = (A.new "no" 2 3 4).get;
-            expected = expect.failure;
-          };
+          wrongType = expect.error (A.new "no" 2 3 4).get;
         });
 
       untypedUniverseTests = testInUniverses typedUniverses (U: {
@@ -1709,7 +1831,7 @@ in rec {
             expr =
               let x = T.new rawValue;
               in {
-                name = x.Type.name;
+                name = (x.Type {}).name;
                 value = if name == "Lambda" then null else x.value;
                 newIsBuiltin = builtinValueCheck x;
                 rawIsBuiltin = builtinValueCheck x.value;
@@ -1720,10 +1842,6 @@ in rec {
               newIsBuiltin = false;
               rawIsBuiltin = true;
             };
-          };
-
-          MyString = Type.new "MyString" {
-            fields = Fields.new [{ value = String; }];
           };
 
           MyType = Type.new "MyType" {
@@ -1779,30 +1897,25 @@ in rec {
             };
           };
 
-          MyString = {
-            mk = {
-              typed = {
-                expr = (MyString.mk { value = String.mk {value = "hello";}; }).value.value;
-                expected = "hello";
-              };
-
-              raw = {
-                expr = (MyString.mk { value = "hello"; }).value.value;
-                expected = "hello";
-              };
+          MyString = let MyString = Type.new "MyString" {
+                           fields = Fields.new [{ value = String; }];
+                         };
+                         WrapString = String.subType "WrapString" {};
+                     in {
+            MyString = {
+              mkFromString = expect.eq (MyString.mk { value = String.new "hello"; }).value.value "hello";
+              mkFromstring = expect.eq (MyString.mk { value = "hello"; }).value.value "hello";
+              newFromString = expect.eq (MyString.new (String.new "hello")).value.value "hello";
+              newFromstring = expect.eq (MyString.new "hello").value.value "hello";
+              eqString = expect.eqOn Compare.Fields (MyString.new "hello").value (String.new "hello");
             };
 
-            new = {
-              typed = {
-                expr = (MyString.new (String.new "hello")).value.value;
-                expected = "hello";
-              };
-
-              raw = {
-                expr = (MyString.new "hello").value;
-                expected = String.new "hello";
-                compare = Compare.Fields;
-              };
+            WrapString = {
+              mkFromString = expect.eq (WrapString.mk { value = String.new "hello"; }).value "hello";
+              mkFromstring = expect.eq (WrapString.mk { value = "hello"; }).value "hello";
+              newFromString = expect.eq (WrapString.new (String.new "hello")).value "hello";
+              newFromstring = expect.eq (WrapString.new "hello").value "hello";
+              eqString = expect.eqOn Compare.Fields (WrapString.new "hello") (String.new "hello");
             };
           };
 
@@ -1844,15 +1957,13 @@ in rec {
             expected = ["hi" 123 7];
           };
 
-          MyType2_mk_missingRequired = {
-            expr =
-              let this = MyType2.mk {
-                    intField = 123;
-                    defaultIntField = 7;
-                  };
-              in builtins.tryEval this;
-            expected = expect.failure;
-          };
+          MyType2_mk_missingRequired = expect.error (
+            let this = MyType2.mk {
+                  intField = 123;
+                  defaultIntField = 7;
+                };
+              in builtins.tryEval this
+          );
 
           MyType2_mk_missingDefault = {
             expr =
@@ -1864,16 +1975,14 @@ in rec {
             expected = 666;
           };
 
-          MyType2_mk_wrongType = {
-            expr =
+          MyType2_mk_wrongType = expect.error (
               let this = MyType2.mk {
                     intField = 123;
                     stringField = true;
                     defaultIntField = 7;
                   };
-              in builtins.tryEval this;
-            expected = expect.failure;
-          };
+              in builtins.tryEval this
+          );
 
           cast =
             let

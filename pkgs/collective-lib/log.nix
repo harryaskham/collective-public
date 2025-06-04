@@ -17,7 +17,7 @@ let
       formatLines = indent.linesSep "\n";
       compact = true;
       depth = 0;
-      maxDepth = 10;
+      maxDepth = 20;
     };
     descend = args: args // { depth = args.depth + 1; };
 
@@ -99,12 +99,15 @@ let
       put = x: Variadic.mkSetFromThen mkPrintArgs (args: print_ args x);
       block = x: Variadic.compose indent.block (put x);
       here = x: Variadic.compose indent.here (put x);
+      putDepth = n: x: put x (using.maxDepth n);
       using = {
         raw = { ignoreToString = true; };
-        oneLine = { formatLines = indent.linesSep " "; };
-        depth = n: { depth = n; };
-        maxDepth = n: { maxDepth = n; };
+        line = { formatLines = indent.linesSep " "; };
+        depth = n: { maxDepth = n; };
       };
+      _raw = using.raw;
+      _line = using.line;
+      _depth = using.depth;
     };
     vprint = x: with prints; put x using.raw ___;
 
@@ -208,6 +211,16 @@ let
                     { msg = print value; }
                   ];
                 }; in assert over (tagged "MSG:${groupType}:${groupName}" xs'); xs;
+
+              # Print a warning message
+              # When used with 'with', accrues logs by modifying the groupUtils in scope.
+              warning = message:
+                Variadic.mkListThen
+                  (extra: let xs' = xs // {
+                            group = xs.group ++ [
+                              { warning = {inherit message;} // optionalAttrs (size extra > 0) {inherit extra;}; }
+                            ];
+                          }; in assert over (tagged "WARNING:${groupType}:${groupName}" xs'); xs);
 
               # Trace an assignment inline.
               # Does not accrue logs, and returns the assignment.
