@@ -349,13 +349,17 @@ in rec {
 
     # Modify an argument set to inherit from a supertype.
     # If a ctor is set in args, it is used, otherwise the Super's ctor is inherited.
-    # Fields and methods are logically inherited and set as part of mkInstance.
-    inheritFrom = Super: args:
+    # Fields and methods are also inherited, with any new ones overriding any previously defined.
+    inheritFrom = Super: ctorArgs:
       if !(isTypeSet Super) then throw "inheritFrom: Super must be a Type, got ${log.print Super}"
-      else args // {
-        inherit Super;
-        ctor = args.ctor or Super.ctor;
-      };
+      else
+        ctorArgs // {
+          inherit Super;  # Not a thunk here; Type ctor converts it.
+          ctor = ctorArgs.ctor or Super.ctor;
+          fields = Super.fields.update (ctorArgs.fields or {});
+          methods = Super.methods // (ctorArgs.methods or {});
+          staticMethods = Super.staticMethods // (ctorArgs.staticMethods or {});
+        };
 
     # Construct the fields for a universe using the types of the universe above.
     mkTypeFieldListFor = opts: U:
@@ -371,13 +375,13 @@ in rec {
           # created using U.Type and this field's default dictates their Type.
           {Type = maybeTyped (SU.Default "lambda" (_: U.Type));}
           # The supertype of the type.
-          {Super = maybeTyped (SU.Default (SU.NullOr SU.Type) null);}
+          {Super = maybeTyped (SU.Default (SU.NullOr "lambda") null);}
           # The type parameters of the type.
           {tvars = maybeTyped (SU.Default "set" {});}
           # The type parameter bindings of the type.
           {tvarBindings = maybeTyped (SU.Default "set" {});}
           # The constructor function creating the fields of the type as a set to pass to mk.
-          {ctor = maybeTyped (SU.Default "lambda" (Ctors.Fields false));}
+          {ctor = maybeTyped (SU.Default "lambda" Ctors.Fields);}
           # A set of ordered fields to make available as this.___ and this.get.___, this.set.___, etc
           {fields = maybeTyped (SU.Default SU.Fields (SU.Fields.new []));}
           # A set of methods from this to make available as this.___
@@ -406,7 +410,7 @@ in rec {
       # Is this instance an instance of type That, or inherits from it?
       isInstance = This: That:
         typeEq (This.Type {}) That
-        || (This.Super != null && This.Super.isInstance That);
+        || (This.Super != null && (This.Super {}).isInstance That);
 
       # Get the full templated name of the type.
       boundName = This:
@@ -473,7 +477,7 @@ in rec {
       # Does this type inherit from That?
       inheritsFrom = This: That:
         typeEq This That
-        || (This.Super != null && This.Super.inheritsFrom That);
+        || (This.Super != null && (This.Super {}).inheritsFrom That);
 
       check = This: that:
         let
@@ -530,7 +534,7 @@ in rec {
         if isTypeSet this && isString this.__TypeId then
           this.__TypeId
         else
-          log.print_ (log.mkPrintArgs // { ignoreToString = true; }) this;
+          with log.prints; put this _raw ___;
 
       __print = this: maxDepth:
         let truncated = deepMapWith (depth: x: if depth >= maxDepth then "..." else x) this;
@@ -541,10 +545,12 @@ in rec {
       rec {
         name = opts.typeName;
         Super = null;
+        # The defaults here are only required for universes with typechecking disabled.
+        # Otherwise they are set per the Default values in mkTypeFieldListFor.
         ctor = This: name: args: {
           inherit name;
-          Super = args.Super or null;
-          ctor = args.ctor or (Ctors.Fields false);
+          Super = if args ? Super then (_: args.Super) else null;
+          ctor = args.ctor or Ctors.Fields;
           fields = args.fields or (U.Fields.new []);
           methods = args.methods or {};
           staticMethods = args.staticMethods or {};
@@ -609,67 +615,11 @@ in rec {
     # Check a string or custom type against a value.
     hasType = T: x: typeEq T (getRawType x);
 
-    combinedFields = This:
-      if isNull (This.Super or null)
-      then This.fields.indexed or {}
-      else mergeSuper (T: T.fields.indexed or {}) This;
-
-    # Get all methods as Lambdas
-    combinedMethods = This:
-      if isNull (This.Super or null)
-      then This.methods or {}
-      else mergeSuper (T: T.methods) This;
-
-    # Get all static methods as Lambdas
-    combinedStaticMethods = This:
-      if isNull (This.Super or null)
-      then This.staticMethods or {}
-      else mergeSuper (T: T.staticMethods) This;
-
-    staticFields = This:
-      filterAttrs (_: f: f.fieldStatic or false) (combinedFields This);
-
-    instanceFields = This:
-      filterAttrs (_: f: !(f.fieldStatic or false)) (combinedFields This);
-
-    # Construct the parent instance for merging with the new instance.
-    # Any still-unknown fields provided will be caught by checking the expected
-    # fields of the entire inheritance chain after 'this' is created.
-    mkSuperInstance = Super: args:
-      with log.vtrace.call "mkSuperInstance" Super args ___;
-      return (
-        let superFields = mergeSuper (T: T.fields.indexed) Super;
-            superArgs = filterAttrs (name: _: superFields ? name) args;
-        in mkInstance Super args
-      );
+    # TODO: Unused
+    staticFields = This: filterAttrs (_: f: f.fieldStatic or false) (This.fields.indexed or {});
+    instanceFields = This: filterAttrs (_: f: !(f.fieldStatic or false)) (This.fields.indexed or {});
 
     setType = This: this: this // { Type = _: This;};
-
-    # Set fields from the supertype and merge with this.
-    setSuper = This: args: this:
-      with log.vtrace.call "setSuper" This args this ___;
-
-      let
-        # TODO: This requires that args are valid all the way up the chain
-        # If we override a field with a different type, mkSuperInstance
-        # will erroneously fail. We can just inherit fields/methods directly.
-        withSuper = Super:
-          let super = mkSuperInstance Super args;
-          in super // this;
-      in
-        # TODO: Revisit: why can 'this' ever have Super already set?
-        if (this.Super or null) != null then
-          with warning "this.Super already set in setSuper" This args this ___;
-          return (withSuper this.Super)
-
-        # If we are creating a type as an instance of Type, and that type is
-        # a subtype, then args.Super contains the supertype to inherit from.
-        else if (args.Super or null) != null then
-          return (withSuper args.Super)
-
-        # Otherwise there is no supertype to inherit from.
-        else
-          return this;
 
     # Set the value of a field on an instance 'this' of type 'This'
     #
@@ -714,7 +664,7 @@ in rec {
     #     xs.set.value [10 20 -30] -> Type error via SortedListOf.checkValue
     #     valid = xs.set.value [10 20 30] -> ok
     setByName = This: this: fieldName: uncastValue:
-      let field = (combinedFields This).${fieldName} or null;
+      let field = (This.fields.indexed or {}).${fieldName} or null;
           castRequired = 
             field.fieldType != null
             && !((isTypeSet field.fieldType && field.fieldType.check uncastValue)
@@ -727,7 +677,7 @@ in rec {
           { pred = (field: field != null);
             msg = joinLines [
               "Setting unknown field: ${This.name}.${fieldName}"
-              "Known fields: ${joinSep ", " (attrNames (combinedFields This))}"
+              "Known fields: ${joinSep ", " (attrNames (This.fields.indexed or {}))}"
             ];
           }
           { pred = field: (!castRequired) || isCastSuccess castValue;
@@ -774,7 +724,7 @@ in rec {
         get =
           concatMapAttrs
             (fieldName: _: optionalAttrs (this ? ${fieldName}) { ${fieldName} = this.${fieldName}; })
-            (combinedFields This);
+            (This.fields.indexed or {});
 
         # Field checking interface.
         # e.g. this.has.someInt -> true
@@ -782,7 +732,7 @@ in rec {
         #      this.has.notAField -> throws error
         #      this.has ? notAField -> false
         #      this.has.notAField or default -> default
-        has = mapAttrs (_: _: true) (combinedFields This);
+        has = mapAttrs (_: _: true) (This.fields.indexed or {});
 
         # Field setting interface
         # e.g. this.set.someInt 123 -> this'
@@ -790,7 +740,7 @@ in rec {
         set =
           mapAttrs
             (fieldName: _: x: setByName This this fieldName x)
-            (combinedFields This);
+            (This.fields.indexed or {});
 
         # Field modification interface
         # e.g. this.modify.someInt (x: x+1) -> this'
@@ -798,7 +748,7 @@ in rec {
         modify =
           mapAttrs
             (fieldName: _: f: set.${fieldName} (f this.${fieldName}))
-            (combinedFields This);
+            (This.fields.indexed or {});
       };
     in this_;
 
@@ -825,18 +775,18 @@ in rec {
             else this
         )
         this
-        (attrValues (instanceFields This)); # Not combinedFields as these will be set in Super init
+        (attrValues (instanceFields This));
 
     # Get all the static methods for a given type.
     boundStaticMethods = This:
       mapAttrs
         (name: staticMethod: staticMethod This)
-        (combinedStaticMethods This);
+        (This.staticMethods or {});
 
     # Bind the methods of a This instance this, given a reference to the bound
     # instance as this_.
     boundMethods = This: this_:
-      mapAttrs (_: method: method this_) (combinedMethods This);
+      mapAttrs (_: method: method this_) (This.methods or {});
 
     # Bind this instances' Type's static methods to the instance.
     setTypeStaticMethods = This: this:
@@ -855,7 +805,6 @@ in rec {
     initThis = This: this: args:
       this
         |> (setType This)
-        |> (setSuper This args)
         |> (setAccessors This)
         |> (setFields This args)
         |> (setTypeStaticMethods This)
@@ -888,17 +837,17 @@ in rec {
     # Build a new instance from a single dict of field values.
     mkInstance = This: args:
       with log.vtrace.call "mkInstance" This args ___;
-      # with intermediate "This" This;
-      # with intermediate "args" args;
-
       let
-        # Construct the final instance
+        # Construct 'this' as an instance of 'This'.
         this = {} |> initThis This args;
 
+        # Check the validity of the constructed instance.
         checks =
           let
             # Get any supplied non-static fields not present in this or any supertype.
-            allFieldNames = attrNames (mergeSuper (T: T.fields.indexed or {}) This);
+            # TODO: Remove mergeSuper ref
+            # allFieldNames = attrNames (mergeSuper (T: T.fields.indexed or {}) This);
+            allFieldNames = attrNames (This.fields.indexed or {});
             unknownFieldNames = attrNames (removeAttrs args allFieldNames);
 
             # Get any fields not populated in this or any supertype.
@@ -915,15 +864,14 @@ in rec {
               msg = ''
                 ${This.__TypeId}: Missing fields in mkInstance call: ${joinSep ", " missingFieldNames}
                 args: ${log.print args}
-                Super: ${log.print This.Super}
-                super: ${log.print super}
                 This: ${log.printAttrs This}
                 this: ${log.print this}
               '';
             }
           ];
-
-      in assert (doChecks checks); return this;
+      in
+        assert (doChecks checks);
+        return this;
 
     # Inline assertion for runtime type assertion.
     must = T: x:
@@ -939,8 +887,8 @@ in rec {
     # isSuperTypeOf Type A == true
     # isSuperTypeOf Type B == true
     isSuperTypeOf = Super: T:
-      if T == null then false
-      else typeEq Super T.Super || isSuperTypeOf Super T.Super;
+      if T == null || (T.Super or null) == null then false
+      else typeEq Super (T.Super {}) || isSuperTypeOf Super (T.Super {});
 
     isSubTypeOf = flip isSuperTypeOf;
 
@@ -963,30 +911,16 @@ in rec {
       # Then:
       #
       # This.new "a" 2 true == This { a = "a"; b = 2; c = true; }
-      Fields = cascadeToSuper: This:
-        with log.vtrace.call "Ctors.Fields" { inherit cascadeToSuper This; } ___;
-
+      Fields = This:
+        with log.vtrace.call "Ctors.Fields" { inherit This; } ___;
         let
-          # Here 'indexed' is manually set on the ProtoType
-          fields = assign "fields" (
-            filterAttrs (_: f: !f.fieldStatic) This.fields.indexed);
-          # Do manually to avoid a new call
-          sortedFields = assign "sortedFields" (
-            sortOn (f: f.index) (attrValues fields));
-          sortedFieldNames = assign "sortedFieldNames" (
-            map (f: f.fieldName) sortedFields);
+          # Sort non-static fields manually to avoid a new call to Ordered
+          fields = assign "fields" (filterAttrs (_: f: !f.fieldStatic) This.fields.indexed);
+          sortedFields = assign "sortedFields" (sortOn (f: f.index) (attrValues fields));
+          sortedFieldNames = assign "sortedFieldNames" (map (f: f.fieldName) sortedFields);
         in return (
-          if size fields == 0
-          then if cascadeToSuper && (This.Super or null) != null
-                # Dig into Super to apply the wrapped Ctor
-                then This.Super.ctor This
-                else {}
-          else
-            let thisCtor = Variadic.mkOrdered sortedFieldNames;
-            in
-              if cascadeToSuper && (This.Super or null) != null
-              then fjoin mergeAttrs thisCtor This.Super.ctor
-              else thisCtor
+          if size fields == 0 then {}
+          else Variadic.mkOrdered sortedFieldNames
         );
     };
 
@@ -1431,21 +1365,35 @@ in rec {
             fieldType = null;
           };
         };
-        Fields = {
-          inherit Type;
-          new = nameToSpec: {
-            indexed =
-              let mkIndexed = index: nameSpec:
-                    assert size nameSpec == 1;
-                    let fieldName = head (attrNames nameSpec);
-                        fieldSpec = head (attrValues nameSpec);
-                    in { ${fieldName} = U.Field.new index fieldName fieldSpec; };
-              in mergeAttrsList {
-                set = imap0 mkIndexed (mapAttrsToList (k: v: {${k} = v;}) nameToSpec);
-                list = imap0 mkIndexed nameToSpec;
-              }.${typeOf nameToSpec};
+
+        Fields =
+          let
+            # Make a single indexed field from a {name = spec} entry.
+            mkIndexed = index: nameSpec:
+              assert size nameSpec == 1;
+              let fieldName = head (attrNames nameSpec);
+                  fieldSpec = head (attrValues nameSpec);
+              in { ${fieldName} = U.Field.new index fieldName fieldSpec; };
+
+            # Convert incoming set arguments to list form.
+            toNameToSpecList = nameToSpec: {
+              set = mapAttrsToList (k: v: {${k} = v;}) nameToSpec;
+              list = nameToSpec;
+            }.${typeOf nameToSpec};
+          in {
+            inherit Type;
+            new = nameToSpec_:
+              let nameToSpec = toNameToSpecList nameToSpec_;
+              in rec {
+                # Store the original arguments in [{...}] form for easy extension.
+                __nameToSpec = nameToSpec;
+                indexed = mergeAttrsList (imap0 mkIndexed __nameToSpec);
+                update = newNameToSpec_:
+                  let newNameToSpec = toNameToSpecList newNameToSpec_;
+                  in Fields.new (__nameToSpec ++ newNameToSpec);
+              };
           };
-        };
+
         SetOf = T: {new = U.Set.new;};
         ListOf = T: {new = U.List.new; tvars = { T = U.Type; }; tvarBindings = { inherit T; };};
         OrderedOf = T: {new = (U.ListOf (U.Sized 1 (U.SetOf T))).new;};
@@ -1631,6 +1579,18 @@ in rec {
 
             # Get the value with the given key and index set via this.getIndexedAt.name
             getUnindexedAt = this: this.unindexed;
+
+            # Update by inserting the given items sequentially at the end of the order.
+            # If any already appear, they update the item in its original order.
+            update = this: items:
+              foldl' (this: item:
+                let
+                  name = head (attrNames xs);
+                in
+                  assert item.size == 1;
+                  this.setAtName (head (item.attrNames)) (head (item.attrValues)))
+                this
+                items;
           };
 
           checkValue = that:

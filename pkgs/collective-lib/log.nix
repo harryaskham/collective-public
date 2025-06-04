@@ -18,6 +18,9 @@ let
       compact = true;
       depth = 0;
       maxDepth = 20;
+      # A set of attribute names to replace, with functions from the value
+      # to replace to the string value to display instead.
+      replaceAttrs = {};
     };
     descend = args: args // { depth = args.depth + 1; };
 
@@ -34,8 +37,12 @@ let
       if depth >= maxDepth then "..."
       else if x == {} then "{}"
       else
-        formatBlock (
-          let px = mapAttrsToList (k: v: "${k} = ${(print_ (descend args) v)};") x;
+        let maybePrintValue = k: v:
+              if replaceAttrs ? ${k}
+              then let f = replaceAttrs.${k}; in f v
+              else print_ (descend args) v;
+        in formatBlock (
+          let px = mapAttrsToList (k: v: "${k} = ${maybePrintValue k v};") x;
               pxLine = "{ ${head px} }";
           in
             if length px == 1 && lineCount pxLine == 1 then pxLine
@@ -99,15 +106,20 @@ let
       put = x: Variadic.mkSetFromThen mkPrintArgs (args: print_ args x);
       block = x: Variadic.compose indent.block (put x);
       here = x: Variadic.compose indent.here (put x);
-      putDepth = n: x: put x (using.maxDepth n);
+      putD = n: x: put x (using.depth n);
       using = {
         raw = { ignoreToString = true; };
         line = { formatLines = indent.linesSep " "; };
         depth = n: { maxDepth = n; };
+        mask = names: {
+          replaceAttrs =
+            mergeAttrsList (map (name: v: "<masked: ${name}>") names);
+        };
       };
       _raw = using.raw;
       _line = using.line;
       _depth = using.depth;
+      _mask = using.mask;
     };
     vprint = x: with prints; put x using.raw ___;
 
