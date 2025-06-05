@@ -106,8 +106,8 @@ in rec {
   # Add an attribute name to each attrset in the list containing its index.
   # Defaults to "__index"
   indexed = xs: ifmapSolos (index: _: value: { inherit index value; }) xs;
-  indices = fmapSolos (x: x.index);
-  unindexed = xs: mergeAttrsList (fmapSolos (x: x.value) xs);
+  indices = fmapSolos (_: x: x.index);
+  unindexed = xs: fmapSolos (_: x: x.value) xs;
 
   # Diff two attrsets, returning any divergent keys and their values.
   diff = a: b:
