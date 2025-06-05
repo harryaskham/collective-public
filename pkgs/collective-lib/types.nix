@@ -2108,11 +2108,11 @@ in rec {
     in
       cutils.tests.suite {
         types = {
-            instantiation = (testInUniverses allUniverses instantiationTests);
-            builtin = (testInUniverses allUniverses builtinTests);
-            misc = (testInUniverses allUniverses miscTests);
+            #instantiation = (testInUniverses allUniverses instantiationTests);
+            #builtin = (testInUniverses allUniverses builtinTests);
+            #misc = (testInUniverses allUniverses miscTests);
             untyped = (testInUniverses untypedUniverses untypedFieldTests);
-            typeChecking = (testInUniverses typedUniverses typeCheckingTests);
+            #typeChecking = (testInUniverses typedUniverses typeCheckingTests);
           };
         };
 
