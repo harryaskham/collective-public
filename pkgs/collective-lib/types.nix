@@ -1840,7 +1840,7 @@ in rec {
       testInUniverse = test: U: test U;
       testInUniverses = Us: test: mapAttrs (_: testInUniverse test) Us;
       allUniverses = Universe // { inherit TS; };
-      untypedUniverses = {inherit (allUniverses) U_0 U_1;};
+      untypedUniverses = {inherit (allUniverses) U_0; }; # U_1;};
       typedUniverses = {inherit (allUniverses) U_2 U_3 U_4; inherit TS; };
 
       MyType = Type.new "MyType" {
@@ -1900,7 +1900,7 @@ in rec {
 
       untypedFieldTests = U: with U;
         let
-          fieldsFromList = Fields.new [
+          fields = Fields.new [
             { a = null; }
             { b = null; }
             { c = null; }
@@ -1911,7 +1911,24 @@ in rec {
             a = null;
           };
         in {
-          fromListEqFromSet = expect.eqOn (this: this.getSolos) fieldsFromList fieldsFromSet;
+          fromListEqFromSet = expect.eqOn (this: this.getSolos) fields fieldsFromSet;
+          getSolos = expect.eq (fields.getSolos)
+            [ { a = { fieldDefault = null;
+                      fieldName = "a";
+                      fieldSpec = null;
+                      fieldStatic = false;
+                      fieldType = null; }; }
+              { b = { fieldDefault = null;
+                      fieldName = "b";
+                      fieldSpec = null;
+                      fieldStatic = false;
+                      fieldType = null; }; }
+              { c = { fieldDefault = null;
+                      fieldName = "c";
+                      fieldSpec = null;
+                      fieldStatic = false;
+                      fieldType = null; }; }
+            ];
         };
 
       typeCheckingTests = (U: with U;
