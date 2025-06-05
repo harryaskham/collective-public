@@ -1419,54 +1419,35 @@ in rec {
         # Shim out all types used in the construction of Type s.t. Type can be created
         # with U == SU == Quasiverse.
         Field = mkTypeShim {
-          new = index: fieldName: fieldSpec: parseFieldSpec fieldSpec // {
-            inherit index fieldName fieldSpec;
-            # # No type information in the shim.
-            # fieldType = null;
-            # fieldStatic = false;
-            # fieldDefault = null;
+          new = fieldName: fieldSpec: parseFieldSpec fieldSpec // {
+            inherit fieldName fieldSpec;
           };
         };
 
+        # TODO: One implementation
         Fields =
-          let
-            # Make a single indexed field from a {name = spec} entry.
-            mkIndexed = index: nameSpec:
-              assert size nameSpec == 1;
-              let fieldName = head (attrNames nameSpec);
-                  fieldSpec = head (attrValues nameSpec);
-              in { ${fieldName} = U.Field.new index fieldName fieldSpec; };
-
-            # Convert incoming set arguments to list form.
-            toNameToSpecList = nameToSpec: {
-              set = mapAttrsToList (k: v: {${k} = v;}) nameToSpec;
-              list = nameToSpec;
-            }.${typeOf nameToSpec};
-          in mkTypeShim {
-            new = nameToSpec_:
-              with log.vtrace.call "U_0.Fields.new" nameToSpec_ ___;
+          mkTypeShim {
+            new = nameToSpec:
+              with log.vtrace.call "U_0.Fields.new" nameToSpec ___;
               return (
-                let nameToSpec = toNameToSpecList nameToSpec_;
-                in mkShim (_: Fields) rec {
-                  # Store the original arguments in [{...}] form for easy extension.
-                  indexed = mergeAttrsList (imap0 mkIndexed nameToSpec);
-                  update = newNameToSpec_:
-                    let newNameToSpec = toNameToSpecList newNameToSpec_;
-                    in Fields.new (nameToSpec ++ newNameToSpec);
+                mkShim (_: Fields) rec {
+                  indexed = mergeAttrsList (addIndex_ "index" (mapSolos (solo: { value = solo; }) nameToSpec));
+                  update = newNameToSpec:
+                    Fields.new (solos nameToSpec ++ solos newNameToSpec);
                 }
               );
           };
 
         SetOf = T: mkTypeShim { new = U.Set.new; };
         ListOf = T: mkTypeShim { new = U.List.new; };
-        OrderedItem = T: U.Sized 1 (U.SetOf T);
-        OrderedOf = T: mkTypeShim { new = (U.ListOf (OrderedItem T)).new;};
+        # OrderedItem = T: mkTypeShim { new = x: mkShim (_: OrderedItem T) { value = x; getName = soloName x; getValue = soloValue x; }; };
+        # OrderedOf = T: mkTypeShim { new = (U.ListOf (OrderedItem T)).new;};
         Constraint = mkTypeShim { new = x: mkShim (_: Constraint) {value = x; satisfiedBy = _: true;};};
         Static = T: mkTypeShim { staticType = T; };
         Default = T: V: mkTypeShim { defaultType = T; defaultValue = V; };
         NullOr = T: mkTypeShim { new = id; };
         Literal = V: mkTypeShim { getLiteral = V; };
-        Sized = n: T: mkTypeShim { new = x: mkShim (_: Sized n T) { getSized = x; }; };
+        Sized = n: T: mkTypeShim { new = x: mkShim (_: Sized T n) { getSized  = x; }; };
       });
 
     # Create a new universe descending from SU.
@@ -1563,9 +1544,7 @@ in rec {
 
         # A type that enforces a size on the value.
         Sized_ = Type.template "Sized" {N = Type; T = Type;} (_: {
-          fields = U.Fields.new [
-            { getSized = _.T; }
-          ];
+          fields = SU.Fields.new [{ getSized = _.T; }];
           checkValue = that:
             (_.T.checkValue or (const true)) that
             && that.size == _.N.getLiteral;
@@ -1573,7 +1552,6 @@ in rec {
         Sized = n: T:
           let N = U.Literal n;
           in U.Sized_.bind { inherit N T; };
-        sized = n: T: (Sized n T).new;
 
         # A type satisfied by any value of the given list of types.
         Union_ = Type.template "Union" {Ts = U.ListOf Type;} (_: {
@@ -1589,44 +1567,52 @@ in rec {
         # xs.value == { a = 1; b = 2; c = 3; } (arbitrary order)
         # xs.names == [ "c" "b" "a" ] (in order of definition)
         # xs.values == [ 1 2 3 ] (in order of definition)
-        OrderedItem = T: U.Sized 1 (U.SetOf T);
-        mkOrderedItem = T: sized 1 T;
+        OrderedItem_ = Type.template "OrderedItem" { T = Type; } (_: {
+          fields = U.Fields.new [
+            { index = "int"; }
+            { solo = U.Sized 1 (U.SetOf _.T); }
+          ];
+          methods = {
+            getSetOf = this: this.solo.getSized.value;
+            getSolo = this: this.getSetOf.value;
+            getName = this: soloName this.getSolo;
+            getValue = this: soloValue this.getSetOf;
+          };
+        });
+        OrderedItem = T: OrderedItem_.bind { inherit T; };
         OrderedOf_ = Type.subTemplateOf (_: U.ListOf (U.OrderedItem _.T)) "OrderedOf" {T = Type;} (_: {
+          ctor = _: xs: { value = imap0 (i: x: OrderedItem.new i x) (solos xs); };
           methods = {
             # The unordered merged attribute set
-            unindexed = this: mergeAttrsList (this.imap (_: k: v: { ${k} = v; }));
+            unindexed = this: mergeAttrsList (this.mapSolos (_: k: v: { ${k} = v; }));
 
             # The merged attribute set with an additional 'index' field indicating
             # its place in the order.
             indexed = this:
               mergeAttrsList
-                (this.imap (i: k: v: {
-                  ${k} = (v |> def {}) // { index = i; };
+                (this.mapSolos (i: k: v: {
+                  ${k} =
+                    assert assertMsg (isAttrs v && v != null)
+                      "Invalid OrderedItem value (must be non-null set): ${log.print v}";
+                    v // { index = i; };
                 }));
 
             # The ordered attribute names.
-            attrNames = this: this.imap (_: k: _: k);
+            attrNames = this: this.mapItems (item: item.getName);
 
             # The ordered attribute values.
-            attrValues = this: this.imap (_: _: v: v);
+            attrValues = this: this.mapItems (item: item.getValue);
 
             # A set from name to index.
-            indexes = this: mapAttrs (name: xs: xs.index) this.indexed;
+            indexes = this: this.mapSolos (i: k: { ${k} = i; });
 
-            # Map over the underlying ListOf (Sized 1 (SetOf T)) with an index.
-            # This -> (int -> string -> T -> a) -> [a]
-            imap = this: f:
-              let thisList = this.value;
-              in
-                imap0
-                  (index: item:
-                    let
-                      vset = item.getSized.value;
-                      kvs = mapAttrsToList (k: v: {inherit k v;}) vset;
-                    in
-                      assert assertMsg (size kvs == 1) "OrderedItem: Sized 1 SetOf with size != 1 (${log.print kvs})";
-                      let kv = head kvs; in f index kv.k kv.v)
-                  thisList;
+            # Map over the underlying [OrderedItem T]
+            # f :: (OrderedItem T -> a) -> [a]
+            mapItems = this: f: imap0 f this.value;
+
+            # Map over the underlying [solo T]
+            # f :: (int -> string -> T -> a) -> [a]
+            mapSolos = this: f: this.mapItems (item: f item.index item.getName item.getValue);
 
             # Modify the value at the given key via this.modifyAt.name f, preserving order and type.
             modifyAt = this:
@@ -1647,7 +1633,7 @@ in rec {
             setAtName = this: name: value:
               if this.setAt ? ${name}
               then this.setAt.${name} value
-              else this.append (mkOrderedItem _.T {${name} = value;});
+              else this.append ((OrderedItem _.T).new {${name} = value;});
 
             # Get the value with the given key via this.getAt.name
             getAt = this: this.indexed;
@@ -1746,13 +1732,12 @@ in rec {
         Untagged = Spec: (parseFieldSpec Spec).fieldType;
 
         # Either:
-        # (Field.new index "myField" Int
-        # (Field.new index "myField" (Static Int)) -> Field<Static<Int>>.fieldType == Int
-        # (Field.new index "myField" (Default Int 123)) -> Field<Default<Int, 123>>.fieldType == Int
-        # (Field.new index "myField" (Static (Default Int 123))) -> Field<Static<Default<Int, 123>>>.fieldType == Int
+        # (Field.new "myField" Int
+        # (Field.new "myField" (Static Int)) -> Field<Static<Int>>.fieldType == Int
+        # (Field.new "myField" (Default Int 123)) -> Field<Default<Int, 123>>.fieldType == Int
+        # (Field.new "myField" (Static (Default Int 123))) -> Field<Static<Default<Int, 123>>>.fieldType == Int
         Field = Type.new "Field" {
           fields = SU.Fields.new [
-            {index = "int";}
             {fieldName = U.String;}
             {fieldSpec = U.NullOr Type;}
           ];
@@ -1766,44 +1751,17 @@ in rec {
 
         # Fields is an OrderedOf that first converts any RHS values into Field types.
         Fields = (U.OrderedOf U.Field).subType "Fields" {
+          # Fields ctor just converts the incoming list or set of field specs into
+          # the list of Field that OrderedOf Field expects.
+          #
           # Fields.new { field = FieldType; ... }
           # Fields.new { field = Default FieldType defaultValue; ... }
           # Fields.new { field = Static FieldType; ... }
           # Fields.new [ { field = FieldType; ... } ... ]
           # Fields.new [ { field = Default FieldType defaultValue; ... } ... ]
           # Fields.new [ { field = Static FieldType; ... } ... ]
-          ctor = This: fieldListOrSet:
-            let
-              mkFieldItem = fieldName: T:
-                # Produce a valid (Sized 1 (SetOf Field))
-                # ctor must return args for the supertype's mk; in this case,
-                # ultimately a ListOf (...), which constructs with {value = list}.
-                mkOrderedItem U.Field {${fieldName} = U.Field.new 0 fieldName T;};
-
-              mkFieldList = fieldListOrSet: {
-                # Raw set converted to raw list of field singletons.
-                # Arbitrarily ordered.
-                set =
-                  mkFieldList
-                    (mapAttrsToList (k: v: { ${k} = v; }) fieldListOrSet);
-
-                # Raw list of field singletons converted to Ordered
-                # [ { fieldName: fieldType; } ... ] assignments
-                # -> [ Sized 1 (SetOf Field) { fieldName = Field.new 0 fieldName fieldType; } ...]
-                list =
-                  map
-                    (set1Field:
-                      if size set1Field != 1 then throw "Non-singleton field in Fields list: ${log.print set1Field}"
-                      else head (mapAttrsToList mkFieldItem set1Field))
-                    fieldListOrSet;
-              }.${typeOf fieldListOrSet}
-                or (throw (indent.block ''
-                      Invalid Fields.new argument (${typeOf fieldListOrSet}):
-                      ${indent.here (log.print fieldListOrSet)}
-                    ''));
-            in {
-              value = mkFieldList fieldListOrSet;
-            };
+          ctor = This: fieldSpecs:
+            (This.Super {}).ctor This (mapSolos U.Field.new fieldSpecs);
         };
       };
       in U;

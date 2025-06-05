@@ -2,8 +2,10 @@
 
 with lib;
 with cutils.strings;
+with cutils.functions;
 
-rec {
+let log = cutils.log;
+in rec {
   # Convert a list of attrs single attrset using a function of the attrs to compute the key
   keyByF = f: xs: mergeAttrsList (map (x: { ${f x} = x; }) xs);
 
@@ -40,6 +42,73 @@ rec {
   # Swap an attrset keys and values.
   swap = concatMapAttrs (k: v: { ${v} = k; });
 
+  # Get only attribute in an attrset or item in a list.
+  # Returns {name, value}.
+  getSolo =
+    dispatch {
+      list = xs:
+        if size xs == 1
+        then { name = null; value = head xs; }
+        else throw "solo(list): Expected exactly one list element, got ${log.print xs}";
+      set = xs:
+        if size xs == 1
+        then { name = head (attrNames xs); value = head (attrValues xs); }
+        else throw "solo(set): Expected exactly one attribute, got ${log.print xs}";
+  };
+
+  # Make a solo.
+  mkSolo = name: value: { ${name} = value; };
+
+  # Get only attribute in an attrset. Null for a list.
+  soloName = xs: (getSolo xs).name;
+
+  # Get only value in an attrset or item in list.
+  soloValue = xs: (getSolo xs).value;
+
+  # Check if an attribute is solo.
+  isSolo = xs: isAttrs xs && size xs == 1;
+
+  # Convert:
+  # - an attribute set to a list of solo attributes.
+  # - a list of attributes to itself, with assertions that they are solo.
+  solos = dispatch {
+    list = xs:
+      if any (x: !isSolo x) xs
+        then throw "Expected solos, got: ${log.print xs}"
+        else xs;
+    set = mapAttrsToList (k: v: { ${k} = v; });
+  };
+
+  # Map an (f :: k -> a -> b) over a list of solos [{k -> a}], returning another list of solos [{k -> b}].
+  # If xs is a set, it is first converted to solos.
+  mapSolos = f: xs: map (mapAttrs f) (solos xs);
+
+  # Map an (f :: k -> a -> b) over a collection of solos {k -> a}.
+  # Preserve the type s.t. a set is converted to solos, has f applied, and is then merged back.
+  fmapSolos = f: dispatch {
+    list = mapSolos f;
+    set = xs: mergeAttrsList (mapSolos f xs);
+  };
+
+  # Map an (f :: int -> k -> a -> b) over a list of solos [{k -> a}], returning another list of solos [{k -> b}].
+  # f has access to the index in the list.
+  # If xs is a set, it is first converted to solos.
+  imapSolos = f: xs: imap0 (i: mapAttrs (f i)) (solos xs);
+
+  # Map an (f :: int -> k -> a -> b) over a collection of solos {k -> a}.
+  # f has access to the index in the list.
+  # Preserve the type s.t. a set is converted to solos, has f applied, and is then merged back.
+  ifmapSolos = f: dispatch {
+    list = imapSolos f;
+    set = xs: mergeAttrsList (imapSolos f xs);
+  };
+
+  # Add an attribute name to each attrset in the list containing its index.
+  # Defaults to "__index"
+  indexed = xs: ifmapSolos (index: _: value: { inherit index value; }) xs;
+  indices = fmapSolos (x: x.index);
+  unindexed = xs: mergeAttrsList (fmapSolos (x: x.value) xs);
+
   # Diff two attrsets, returning any divergent keys and their values.
   diff = a: b:
     if isAttrs a && isAttrs b
@@ -60,27 +129,98 @@ rec {
     else if a == b then "<equal>"
     else { unequal = { inherit a b; }; };
 
-  _tests =
-    cutils.tests.suite {
-      attrs = {
-        flatten = {
-          sep = {
-            expr = flattenSep "-" {
-              a = {
-                b = {
-                  c = 123;
-                  d = {
-                    e = 456;
-                  };
+  _tests = with cutils.tests; suite {
+    attrs = {
+      flatten = {
+        sep = {
+          expr = flattenSep "-" {
+            a = {
+              b = {
+                c = 123;
+                d = {
+                  e = 456;
                 };
               };
             };
-            expected = {
-              a-b-c = 123;
-              a-b-d-e = 456;
-            };
+          };
+          expected = {
+            a-b-c = 123;
+            a-b-d-e = 456;
           };
         };
       };
+
+      solos =
+      let
+        s0 = mkSolo "abc" 123;
+        s1 = mkSolo "def" 456;
+        notSolo = { a = 1; b = 2; };
+        soloSet = { abc = 123; def = 456; };
+        soloList = [ { abc = 123; } { def = 456; } ];
+        notSoloList = [ s0 notSolo s1 ];
+      in {
+        mkSolo = expect.eq s0 { abc = 123; };
+        getSolo = {
+          s0 = expect.eq (getSolo s0) { name = "abc"; value = 123; };
+          notSolo = expect.error (getSolo notSolo);
+        };
+        soloName = {
+          s0 = expect.eq (soloName s0) "abc";
+          notSolo = expect.error (soloName notSolo);
+        };
+        soloValue = {
+          s0 = expect.eq (soloValue s0) 123;
+          notSolo = expect.error (soloValue notSolo);
+        };
+        solos = {
+          setToList = expect.eq (sortOn soloName (solos soloSet)) soloList;
+          listToList = expect.eq (solos soloList) soloList;
+          string = expect.error (solos "notSolo");
+        };
+        isSolo = {
+          s0 = expect.True (isSolo s0);
+          s1 = expect.True (isSolo s1);
+          notSolo = expect.False (isSolo notSolo);
+          emptySet = expect.False (isSolo {});
+          emptyList = expect.False (isSolo []);
+          int = expect.False (isSolo 123);
+          intList = expect.False (isSolo [123]);
+          soloList = expect.False (isSolo [s0]);
+          setOfSolos = expect.False (isSolo {inherit s0 s1;});
+          string = expect.False (isSolo "notSolo");
+        };
+        mapSolos = {
+          setToList = expect.eq (sortOn soloName (mapSolos (_: x: x+1) soloSet)) [ {abc = 124;} {def = 457;} ];
+          listToList = expect.eq (mapSolos (_: x: x+1) soloList) [ {abc = 124;} {def = 457;} ];
+          notSoloList = expect.error (mapSolos (_: x: x+1) notSoloList);
+          withName = expect.eq (mapSolos (n: x: "${n}${toString x}") soloList) [ {abc = "abc123";} {def = "def456";} ];
+        };
+        fmapSolos = {
+          setToSet = expect.eq (fmapSolos (_: x: x+1) soloSet) {abc = 124; def = 457;};
+          listToList = expect.eq (fmapSolos (_: x: x+1) soloList) [ {abc = 124;} {def = 457;} ];
+          notSolo = expect.eq (fmapSolos (_: x: x+1) notSolo) { a = 2; b = 3; };
+          notSoloList = expect.error (fmapSolos (_: x: x+1) notSoloList);
+        };
+        ifmapSolos = {
+          setToSet = expect.eq (ifmapSolos (i: _: x: x+(1000*(i+1))) soloSet) {abc = 1123; def = 2456;};
+          listToList = expect.eq (ifmapSolos (i: _: x: x+(1000*(i+1))) soloList) [ {abc = 1123;} {def = 2456;} ];
+          notSolo = expect.eq (ifmapSolos (i: _: x: x+(10*(i+1))) notSolo) { a = 11; b = 22; };
+          notSoloList = expect.error (ifmapSolos (_: _: x: x) notSoloList);
+          withName =
+            expect.eq
+              (ifmapSolos (i: n: x: "${toString i}, ${n}, ${toString x}") soloSet)
+              {abc = "0, abc, 123"; def = "1, def, 456";};
+        };
+      };
+
+      index = {
+        addToList = expect.eq (indexed [ {a = 1;} {b = 2;} ]) [{ a = { index = 0; value = 1; }; } { b = { index = 1; value = 2; }; }];
+        addToSet = expect.eq (indexed {a = 1; b = 2;}) { a = {index = 0; value = 1;}; b = { index = 1; value = 2; }; };
+        unindexedList = expect.eq (unindexed (indexed [ {a = 1;} {b = 2;} ])) [ {a = 1;} {b = 2;} ];
+        unindexedSet = expect.eq (unindexed (indexed {a = 1; b = 2;})) {a = 1; b = 2;};
+        indicesList = expect.eq (indices (indexed [ {a = 1;} {b = 2;} ])) [ {a = 0;} {b = 1;} ];
+        indicesSet = expect.eq (indices (indexed {a = 1; b = 2;})) {a = 0; b = 1;};
+      };
     };
+  };
 }

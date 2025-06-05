@@ -112,7 +112,7 @@ in rec {
     status =
       if test.skip then Status.Skipped
       else if evalStatus == EvalStatus.Error then
-        if test.expected == expect.error then Status.Passed
+        if test.expected == expect.failure then Status.Passed
         else Status.Failed  # Failure due to tryEval
       else if results == [] then Status.Passed
       else Status.Failed;  # Failure due to mismatch
@@ -120,8 +120,10 @@ in rec {
       let mkActual = msg: result: {
             inherit status evalStatus result;
             __toString = _:
-              if result == null then "<${msg}>"
-              else "<${msg}: ${log.print result}>";
+              if result == null then msg
+              else indent.block ''
+                ${msg}: ${indent.here (log.print result)}
+              '';
           };
 
       in
@@ -161,7 +163,7 @@ in rec {
             ])}
 
           Actual:
-            ${indent.here (log.print actual)}
+            ${indent.here (toString actual)}
         '')
         ""
       ];

@@ -11,6 +11,13 @@ let
   log = cutils.log;
 in rec {
 
+  # Polymorphic map.
+  fmap = f: dispatch {
+    list = map f;
+    set = mapAttrs (_: f);
+    lambda = compose f;
+  };
+
   # Compose two functions left-to-right
   compose = g: f: a: g (f a);
   composeMany = foldl' compose id;
