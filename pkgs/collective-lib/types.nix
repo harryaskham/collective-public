@@ -132,11 +132,11 @@ in rec {
         TName = printT T;
         xTName = getTypeBoundName x;
 
-        xFields = if isTyped x then filterAttrs (_: f: !f.fieldStatic) (x.Type {}).fields.indexed else
+        xFields = if isTyped x then mergeAttrsList (x.Type {}).instanceFields else
           mkCastError ''
             Cannot get fields from untyped uncast value: T = ${log.print T}, x = ${log.print x}
             '';
-        TFields = if isTypeSet T then filterAttrs (_: f: !f.fieldStatic) T.fields.indexed else mkCastError ''
+        TFields = if isTypeSet T then mergeAttrsList T.instanceFields else mkCastError ''
             Cannot get fields from non-Type target type: T = ${log.print T}, x = ${log.print x}
             '';
 
@@ -155,8 +155,8 @@ in rec {
         xUnaryFieldTName = castErrorOr xUnaryFieldT printT;
         TUnaryFieldTName = castErrorOr TUnaryFieldT printT;
 
-        xFieldNames = castErrorOr xFields (fs: sortOn (f: f.index) (mapAttrsToList (fieldName: _: fieldName) fs));
-        TFieldNames = castErrorOr TFields (fs: sortOn (f: f.index) (mapAttrsToList (fieldName: _: fieldName) fs));
+        xFieldNames = castErrorOr xFields (map (f: f.fieldName));
+        TFieldNames = castErrorOr TFields (map (f: f.fieldName));
 
         castStr = "${xTName} -> ${TName}";
 
@@ -250,11 +250,29 @@ in rec {
                 Target fields: ${log.print TFieldNames}
               '';
             result =
-              let castTArgs = zipListsWith (xFieldName: TFieldName: { ${TFieldName} = cast T.fields.indexed.${TFieldName}.fieldType x.${xFieldName}; }) xFieldNames TFieldNames;
+              let castTArgs =
+                    zipListsWith
+                      (xFieldName: TFieldName: {
+                        ${TFieldName} =
+                          cast
+                            (T.fields.getField TFieldName).fieldType
+                            x.${xFieldName};
+                      })
+                      xFieldNames
+                      TFieldNames;
                   castErrors = filterAttrs (_: isCastError) castTArgs;
-                  castArgs = mapAttrs (_: castResult: castResult.castSuccess) castTArgs;
-                  castErrorMsgs = joinLines (mapAttrsToList (name: castResult: "${name}: ${castResult.castError}") castTArgs);
-                  castSuccessMsgs = joinLines (mapAttrsToLIst (name: castResult: "${name}: ${castResult.castSuccessMsg}") castTArgs);
+                  castArgs =
+                    mapAttrs (_: castResult: castResult.castSuccess) castTArgs;
+                  castErrorMsgs =
+                    joinLines
+                      (mapAttrsToList
+                        (name: castResult: "${name}: ${castResult.castError}")
+                        castTArgs);
+                  castSuccessMsgs =
+                    joinLines
+                      (mapAttrsToLIst
+                        (name: castResult: "${name}: ${castResult.castSuccessMsg}")
+                        castTArgs);
               in if size castErrors > 0
                  then mkCastError castErrorMsgs
                  else mkCastSuccess (T.mk castArgs) castSuccessMsgs;
@@ -611,10 +629,6 @@ in rec {
     # Check a string or custom type against a value.
     hasType = T: x: typeEq T (getRawType x);
 
-    # TODO: Unused
-    staticFields = This: filterAttrs (_: f: f.fieldStatic or false) (This.fields.indexed or {});
-    instanceFields = This: filterAttrs (_: f: !(f.fieldStatic or false)) (This.fields.indexed or {});
-
     setType = This: this: this // { Type = _: This;};
 
     # Set the value of a field on an instance 'this' of type 'This'
@@ -663,23 +677,26 @@ in rec {
       with log.vtrace.call "setByName" This this fieldName uncastValue ___;
 
       let field = assign "field" (
-            (This.fields.indexed or {}).${fieldName} or null);
+            This.fields.getField fieldName
+          );
 
           castRequired = assign "castRequired" (
             field.fieldType != null
             && !((isTypeSet field.fieldType && field.fieldType.check uncastValue)
-                 || (hasType uncastValue field.fieldType)));
+                 || (hasType uncastValue field.fieldType))
+          );
 
           castValue = assign "castValue" (
             if castRequired
               then cast field.fieldType uncastValue
-              else mkCastSuccess uncastValue "id");
+              else mkCastSuccess uncastValue "id"
+          );
 
       in assert (predChecks [
           { pred = (field: field != null);
             msg = joinLines [
               "Setting unknown field: ${This.name}.${fieldName}"
-              "Known fields: ${joinSep ", " (attrNames (This.fields.indexed or {}))}"
+              "Known fields: ${joinSep ", " (attrNames This.fields.imstanceFields)}"
             ];
           }
           { pred = field: (!castRequired) || isCastSuccess castValue;
@@ -727,9 +744,10 @@ in rec {
         #      this.get.notAField or default -> default
         # Defined with optionalAttrs for the first pass to define .set, where .get will be empty
         get =
-          concatMapAttrs
-            (fieldName: _: optionalAttrs (this ? ${fieldName}) { ${fieldName} = this.${fieldName}; })
-            (This.fields.indexed or {});
+          mergeAttrsList
+            (mapSolos
+              (fieldName: _: optionalAttrs (this ? ${fieldName}) { ${fieldName} = this.${fieldName}; })
+              (This.fields.instanceFields));
 
         # Field checking interface.
         # e.g. this.has.someInt -> true
@@ -737,7 +755,7 @@ in rec {
         #      this.has.notAField -> throws error
         #      this.has ? notAField -> false
         #      this.has.notAField or default -> default
-        has = mapAttrs (_: _: true) (This.fields.indexed or {});
+        has = mergeAttrsList (mapSolos (_: _: true) This.fields.instanceFields);
 
         # Field setting interface
         # e.g. this.set.someInt 123 -> this'
@@ -751,9 +769,10 @@ in rec {
         # e.g. this.modify.someInt (x: x+1) -> this'
         #      this.modify.someInt toString -> throws Type error
         modify =
-          mapAttrs
-            (fieldName: _: f: set.${fieldName} (f this.${fieldName}))
-            (This.fields.indexed or {});
+          mergeAttrsList
+            (mapSolos
+               (fieldName: _: f: set.${fieldName} (f this.${fieldName}))
+                This.fields.imstanceFields);
       };
     in this_;
 
@@ -780,7 +799,7 @@ in rec {
             else this
         )
         this
-        (attrValues (instanceFields This));
+        This.fields.instanceFields;
 
     # Get all the static methods for a given type.
     boundStaticMethods = This:
@@ -850,15 +869,19 @@ in rec {
         checks =
           let
             # Get any supplied non-static fields not present in this or any supertype.
-            # TODO: Remove mergeSuper ref
-            # allFieldNames = attrNames (mergeSuper (T: T.fields.indexed or {}) This);
-            allFieldNames = attrNames (This.fields.indexed or {});
-            unknownFieldNames = attrNames (removeAttrs args allFieldNames);
+            fieldNames = map (f: f.fieldName) This.fields.instanceFields;
+            populatedFieldNames = filter (name: this ? ${name}) fieldNames;
+
+            unknownFieldNames =
+              map (f: f.fieldName)
+                (filter (f: !(elem f.fieldName fieldNames))
+                  This.fields.instanceFields);
 
             # Get any fields not populated in this or any supertype.
-            populatedFieldNames = filter (name: this ? ${name}) allFieldNames;
-            requiredFields = filterAttrs (_: field: (field.fieldDefault or null) != null) (This.fields.indexed or {});
-            missingFieldNames = attrNames (removeAttrs requiredFields populatedFieldNames);
+            missingFieldNames =
+              map (f: f.fieldName)
+                (filter (f: !(elem f.fieldName populatedFieldNames))
+                  This.fields.requiredFields);
           in [
             {
               cond = unknownFieldNames == [];
@@ -1429,11 +1452,24 @@ in rec {
           mkTypeShim {
             new = nameToSpec:
               with log.vtrace.call "U_0.Fields.new" nameToSpec ___;
-              return (
+              let fieldSpecs = mapSolos Field.new nameToSpec;
+              in return (
                 mkShim (_: Fields) rec {
-                  indexed = mergeAttrsList (addIndex_ "index" (mapSolos (solo: { value = solo; }) nameToSpec));
+                  indexed = mergeAttrsList (cutils.attrs.indexed fieldSpecs);
                   update = newNameToSpec:
                     Fields.new (solos nameToSpec ++ solos newNameToSpec);
+                  # getField = name: x.indexed.${name}.value;
+                  instanceFields =
+                    map soloValue
+                      (filter (x: !(soloValue x).fieldStatic) fieldSpecs);
+                  staticFields = this:
+                    map soloValue
+                      (filter (x: (soloValue x).fieldStatic) fieldSpecs);
+                  requiredFields = this:
+                    map soloValue
+                      (filter
+                        (x: !(soloValue x).fieldStatic && !(soloValue x).fieldDefault != null)
+                        fieldSpecs);
                 }
               );
           };
@@ -1569,33 +1605,28 @@ in rec {
         # xs.values == [ 1 2 3 ] (in order of definition)
         OrderedItem_ = Type.template "OrderedItem" { T = Type; } (_: {
           fields = U.Fields.new [
-            { index = "int"; }
             { solo = U.Sized 1 (U.SetOf _.T); }
           ];
           methods = {
-            getSetOf = this: this.solo.getSized.value;
-            getSolo = this: this.getSetOf.value;
+            getSet = this: this.solo.getSized.value;
+            getSolo = this: this.getSet.value;
             getName = this: soloName this.getSolo;
             getValue = this: soloValue this.getSetOf;
           };
         });
         OrderedItem = T: OrderedItem_.bind { inherit T; };
         OrderedOf_ = Type.subTemplateOf (_: U.ListOf (U.OrderedItem _.T)) "OrderedOf" {T = Type;} (_: {
-          ctor = _: xs: { value = imap0 (i: x: OrderedItem.new i x) (solos xs); };
+          ctor = _: xs: { value = map (x: OrderedItem.new x) (solos xs); };
           methods = {
+            # Get the solo attr list in order.
+            getSolos = this: map (item: item.getSolo) this.value;
+
             # The unordered merged attribute set
-            unindexed = this: mergeAttrsList (this.mapSolos (_: k: v: { ${k} = v; }));
+            unindexed = this: mergeAttrsList this.getSolos;
 
             # The merged attribute set with an additional 'index' field indicating
             # its place in the order.
-            indexed = this:
-              mergeAttrsList
-                (this.mapSolos (i: k: v: {
-                  ${k} =
-                    assert assertMsg (isAttrs v && v != null)
-                      "Invalid OrderedItem value (must be non-null set): ${log.print v}";
-                    v // { index = i; };
-                }));
+            indexed = this: mergeAttrsList (indexed this.getSolos);
 
             # The ordered attribute names.
             attrNames = this: this.mapItems (item: item.getName);
@@ -1762,6 +1793,22 @@ in rec {
           # Fields.new [ { field = Static FieldType; ... } ... ]
           ctor = This: fieldSpecs:
             (This.Super {}).ctor This (mapSolos U.Field.new fieldSpecs);
+          methods = {
+            getIndexedField = this: name: this.indexed.${name};
+            getField = this: name: (this.getIndexedField name).value;
+            getFieldIndex = this: name: (this.getIndexedField name).index;
+            instanceFields = this:
+              map soloValue
+                (filter (x: !(soloValue x).fieldStatic) this.getSolos);
+            staticFields = this:
+              map soloValue
+                (filterAttts (x: (soloValue x).fieldStatic) this.getSolos);
+            requiredFields = this:
+              map soloValue
+                (filterAttts
+                  (x: !(soloValue x).fieldStatic && (soloValue x).fieldDefault != null)
+                  this.getSolos);
+          };
         };
       };
       in U;
@@ -1796,9 +1843,9 @@ in rec {
       instantiationTests = U: with U; {
         Literal = expect.equal (Literal 123).getLiteral 123;
         field = {
-          expr = let f = Field.new 0 "name" null;
-                  in [f.fieldName f.fieldType f.fieldStatic f.fieldDefault f.index];
-          expected = ["name" null false null 0];
+          expr = let f = Field.new "name" null;
+                  in [f.fieldName f.fieldType f.fieldStatic f.fieldDefault];
+          expected = ["name" null false null];
         };
       };
 
@@ -2029,33 +2076,6 @@ in rec {
               typeParent = expect.False (isSubTypeOf Type A);
               typeChild = expect.False (isSubTypeOf Type B);
               typeType = expect.False (isSubTypeOf Type Type);
-            };
-
-            hasThisFields = {
-              expr = B.fields;
-              expected = {
-                b = {
-                  index = 0;
-                  fieldType = Int;
-                  name = "b";
-                };
-              };
-            };
-
-            hasSuperFields = {
-              expr = B.__allFields;
-              expected = {
-                a = {
-                  index = 0;
-                  fieldType = String;
-                  name = "a";
-                };
-                b = {
-                  index = 0;
-                  fieldType = Int;
-                  name = "b";
-                };
-              };
             };
 
             fieldsCompose = {
