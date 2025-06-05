@@ -1840,8 +1840,8 @@ in rec {
       testInUniverse = test: U: test U;
       testInUniverses = Us: test: mapAttrs (_: testInUniverse test) Us;
       allUniverses = Universe // { inherit TS; };
-      untypedUniverses = {inherit (allUniverses) U_0 U_1 U_2;};
-      typedUniverses = {inherit (allUniverses) U_3 U_4; inherit TS; };
+      untypedUniverses = {inherit (allUniverses) U_0 U_1;};
+      typedUniverses = {inherit (allUniverses) U_2 U_3 U_4; inherit TS; };
 
       MyType = Type.new "MyType" {
         fields = Fields.new [{ myField = String; }];
@@ -2107,18 +2107,13 @@ in rec {
 
     in
       cutils.tests.suite {
-        types =
-          mergeAttrsList [
-            (testInUniverses allUniverses (U:
-              instantiationTests U
-              // builtinTests U
-              // fieldTests U
-              // miscTests U))
-
-            (testInUniverses untypedUniverses untypedFieldTests)
-
-            (testInUniverses typedUniverses typeCheckingTests)
-          ];
+        types = {
+            instantiation = (testInUniverses allUniverses instantiationTests);
+            builtin = (testInUniverses allUniverses builtinTests);
+            misc = (testInUniverses allUniverses miscTests);
+            untyped = (testInUniverses untypedUniverses untypedFieldTests);
+            typeChecking = (testInUniverses typedUniverses typeCheckingTests);
+          };
         };
 
 }

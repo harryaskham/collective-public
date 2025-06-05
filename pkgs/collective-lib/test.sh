@@ -98,6 +98,14 @@ with types; _tests.run
 </nix>
 
 <nix>
+with types; attrNames _tests.runOne
+</nix>
+
+<nix>
+with types; _tests.runOne.test-types__U_0__fromListEqFromSet
+</nix>
+
+<nix>
 with types; _tests.debug
 </nix>
 
