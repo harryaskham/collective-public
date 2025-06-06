@@ -21,7 +21,7 @@
           packages = import ./pkgs { inherit pkgs; };
           devShells = { default = pkgs.mkShell {}; };
         }) // rec {
-          overlays = import ./overlays { inherit inputs; };
+          overlays = import ./overlays { inherit inputs; inherit (nixpkgs) lib; };
           nixosModules = import ./modules/nixos;
         };
 }
