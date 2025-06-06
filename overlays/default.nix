@@ -22,6 +22,4 @@ let
     packagesOverlay = final: prev: import ../pkgs { pkgs = prev; };
   };
 in
-overlays // {
-  all = lib.composeManyExtensions (lib.attrValues overlays);
-}
+overlays
