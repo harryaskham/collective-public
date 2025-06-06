@@ -3,15 +3,18 @@
 with cutils.functions;
 
 # List utils and aliases.
-rec {
+let log = cutils.log;
+in rec {
   inherit (lib)
   length
-  foldr
   head tail
   take drop
   concatLists
   mergeAttrsList
   min max
+  assertMsg
+  isFunction
+  isList
   ;
 
   # Append element to end of list
@@ -31,12 +34,13 @@ rec {
   };
 
   # Custom foldr implementation.
-  foldl' = f: acc: xs:
-    assert assertMsg (isFunction f) "foldl': Not a function: ${log.print f}";
-    assert assertMsg (isList xs) "foldl': Not a list: ${log.print xs}";
+  foldr = f: acc: xs:
+    assert assertMsg (isFunction f) "foldr: Not a function: ${log.print f}";
+    assert assertMsg (isList xs) "foldr: Not a list: ${log.print xs}";
     let ht = maybeSnoc xs;
     in if ht == null then acc
-    else foldl' f (strict (f acc ht.head)) ht.tail;
+    else f ht.head (foldr f acc ht.tail);
+
   # Custom foldl' implementation.
   foldl' = f: acc: xs:
     assert assertMsg (isFunction f) "foldl': Not a function: ${log.print f}";
@@ -91,6 +95,26 @@ rec {
   _tests =
     cutils.tests.suite {
       lists = {
+        foldl' = {
+          sum = {
+            expr = foldl' (a: b: a + b) 4 [1 2 3];
+            expected = 10;
+          };
+          reverse = {
+            expr = foldl' (xs: x: [x] ++ xs) [] [1 2 3];
+            expected = [3 2 1];
+          };
+        };
+        foldr = {
+          sum = {
+            expr = foldr (a: b: a + b) 4 [1 2 3];
+            expected = 10;
+          };
+          reverse = {
+            expr = foldr (x: xs: xs ++ [x]) [] [1 2 3];
+            expected = [3 2 1];
+          };
+        };
         append = {
           expr = append 5 [1 2 3];
           expected = [1 2 3 5];
