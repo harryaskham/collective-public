@@ -94,6 +94,10 @@ U_1
 </nix>
 
 <nix>
+_tests.run
+</nix>
+
+<nix>
 with types; _tests.run
 </nix>
 
