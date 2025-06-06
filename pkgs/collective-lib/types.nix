@@ -369,7 +369,7 @@ in rec {
     #
     # e.g. mergeSuper (This: This.methods) This ==
     #        This.Super.Super...methods // ... // This.Super.methods // This.methods;
-    mergeSuper = f: foldUpward (acc: This: let xs = f This |> def {}; in acc // xs) {};
+    mergeSuper = f: foldUpward (acc: This: let xs = def (f This) {}; in acc // xs) {};
 
     # Construct the fields for a universe using the types of the universe above.
     mkTypeFieldListFor = opts: U:
@@ -836,19 +836,21 @@ in rec {
 
     # Initialise a type from its This type, its partial this set, and any args.
     initThis = This: this: args:
-      this
-        |> (setType This)
-        |> (setAccessors This)
-        |> (setFields This args)
-        |> (setTypeStaticMethods This)
-        |> setInstanceStaticMethods
-        |> (setMethods This);
+      pipe this
+      (setType This)
+      (setAccessors This)
+      (setFields This args)
+      (setTypeStaticMethods This)
+      setInstanceStaticMethods
+      (setMethods This)
+      ___;
 
     # Reconstruct the This instance after change.
     reinitThis = This: this:
-      this
-        |> (setAccessors This)
-        |> (setMethods This);
+      pipe this
+      (setAccessors This)
+      (setMethods This)
+      ___;
 
     # Create a new instance of a type by calling its constructor.
     # The constructor's output arguments are then passed into mkInstance.
@@ -872,7 +874,10 @@ in rec {
       with log.vtrace.call "mkInstance" This args ___;
       let
         # Construct 'this' as an instance of 'This'.
-        this = {} |> initThis This args;
+        this = 
+          pipe {} 
+          (initThis This args)
+          ___;
 
         # Check the validity of the constructed instance.
         checks =

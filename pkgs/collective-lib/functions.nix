@@ -43,6 +43,12 @@ in rec {
   # Evaluate 'a' strictly, forcing all of its components, and return the final value.
   strict = a: deepSeq a a;
 
+  # Create a composition pipe
+  # pipe x doA doB ___;
+  pipe = x:
+    Variadic.mkListThen
+      (fs: let f = foldl1 compose (reverseList fs); in f x);
+
   # Compose two functions left-to-right and merge their outputs.
   # For example:
   # f = sequentialWith mergeAttrs (b: c: {inherit b c;}) (a: b: {inherit a b;});
@@ -289,7 +295,7 @@ in rec {
           string_0 = { expr = size ""; expected = 0; };
           string_1 = { expr = size "a"; expected = 1; };
           string_2 = { expr = size "ab"; expected = 2; };
-          null_0 = { expr = size null; expected = expect.error; };
+          null_0 = expect.error (size null);
         };
 
         dispatch = {
@@ -491,6 +497,16 @@ in rec {
               };
             };
 
+          };
+
+          pipe = {
+            simple = expect.eq
+              (pipe 123
+                (x: x + 1)
+                toString
+                (s: "${s} is 124")
+                ___)
+              "124 is 124";
           };
 
           fjoin = {

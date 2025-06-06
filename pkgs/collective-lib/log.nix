@@ -2,7 +2,6 @@
 
 with lib;
 with cutils.strings;
-with cutils.types;
 with cutils.lists;
 with cutils.functions;
 
