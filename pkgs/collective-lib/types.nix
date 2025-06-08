@@ -10,6 +10,12 @@ with cutils.errors;
 with cutils.strings;
 
 # TODO:
+# - Universe via merge
+#   - Build global type repository
+#   - Meyhods loook up in there
+#   - Laziness lets us recurse
+#
+# - TypeClasses using mkMerge
 # - SetOf
 # - LambdaOf
 # - OrderedOf
@@ -118,7 +124,7 @@ in rec {
     cast = T: x:
       if T == null
         then mkCastError "Cannot cast to null: T = ${log.print T}, x = ${log.print x}"
-      else if !(isTypeSet T || builtinNameCheck T)
+      else if !(isTypeLike T)
         then mkCastError (indent.block ''
           Invalid target type provided for cast:
 
@@ -132,7 +138,7 @@ in rec {
         TName = printT T;
         xTName = getTypeBoundName x;
 
-        xFields = if isTyped x then mergeAttrsList (x.Type {}).instanceFields else
+        xFields = if isTyped x then mergeAttrsList (x.Type {}).fields.instanceFields else
           mkCastError ''
             Cannot get fields from untyped uncast value: T = ${log.print T}, x = ${log.print x}
             '';
@@ -155,8 +161,8 @@ in rec {
         xUnaryFieldTName = castErrorOr xUnaryFieldT printT;
         TUnaryFieldTName = castErrorOr TUnaryFieldT printT;
 
-        xFieldNames = castErrorOr xFields (map (f: f.fieldName));
-        TFieldNames = castErrorOr TFields (map (f: f.fieldName));
+        xFieldNames = castErrorOr xFields (mapAttrs (fieldName: _: fieldName));
+        TFieldNames = castErrorOr TFields (mapAttrs (fieldName: _: fieldName));
 
         castStr = "${xTName} -> ${TName}";
 
@@ -393,7 +399,7 @@ in rec {
           # The constructor function creating the fields of the type as a set to pass to mk.
           {ctor = maybeTyped (SU.Default "lambda" Ctors.Fields);}
           # A set of ordered fields to make available as this.___ and this.get.___, this.set.___, etc
-          {fields = maybeTyped (SU.Default SU.Fields (SU.Fields.new []));}
+          {fields = maybeTyped (SU.Default (SU.NullOr SU.Fields) null);}
           # A set of methods from this to make available as this.___
           {methods = maybeTyped (SU.Default "set" {});}
           # A set of methods from This to make available as This.___ and this.___
@@ -589,6 +595,10 @@ in rec {
     # 'isType' collides with lib.isType.
     isTypeSet = T: T ? __TypeId;
 
+    # Check if a given argument is a Type or a builtin type.
+    isTypeLike = T:
+      isTypeSet T || builtinNameCheck T;
+
     # Gets the type of a value, whether it is a Type or a builtin type.
     getRawType = x:
       if isTyped x then x.Type {}
@@ -682,8 +692,7 @@ in rec {
 
           castRequired = assign "castRequired" (
             field.fieldType != null
-            && !((isTypeSet field.fieldType && field.fieldType.check uncastValue)
-                 || (hasType uncastValue field.fieldType))
+            && !(hasType field.fieldType uncastValue)
           );
 
           castValue = assign "castValue" (
@@ -1019,7 +1028,11 @@ in rec {
           then (parseFieldSpec spec.defaultType) // {fieldDefault = spec.defaultValue;}
 
         # Return unwrapped types.
-        else {
+        else
+          with check "isTypeLike spec" (isTypeLike spec)
+               "Got a non-type spec in parseFieldSpec: ${log.print spec}";
+
+          {
           fieldType = spec;
           fieldStatic = false;
           fieldDefault = null;
@@ -1461,23 +1474,11 @@ in rec {
                   indexed = mergeAttrsList (cutils.attrs.indexed soloFields);
                   update = newNameToSpec:
                     Fields.new (solos nameToSpec ++ solos newNameToSpec);
-                  # getField = name: x.indexed.${name}.value;
-                  instanceFields =
-                    map soloValue
-                      (filter (x: let f = soloValue x;
-                                  in !f.fieldStatic)
-                        soloFields);
-                  staticFields =
-                    map soloValue
-                      (filter (x: let f = soloValue x;
-                                  in f.fieldStatic)
-                        soloFields);
-                  requiredFields =
-                    map soloValue
-                      (filter
-                        (x: let f = soloValue x;
-                            in f != null && !f.fieldStatic && !(f.fieldDefault != null))
-                        soloFields);
+                  getField = name: indexed.${name}.value;
+                  getFields = map soloValue getSolos;
+                  getFieldsWhere = pred: filter pred getFields;
+                  instanceFields = getFieldsWhere (field: !field.fieldStatic);
+                  requiredFields = getFieldsWhere (field: !field.fieldStatic && field.fieldDefault != null);
                 }
               );
           };
@@ -1614,11 +1615,9 @@ in rec {
         OrderedItem_ = Type.template "OrderedItem" { T = Type; } (_: {
           # TODO: Could be a unary cast
           ctor = This: x: {
-            value = (U.Sized 1 (U.SetOf _.T)).new ((U.SetOf _.T).new x);
+            value = (SU.Sized 1 (SU.SetOf _.T)).new ((SU.SetOf _.T).new x);
           };
-          fields = SU.Fields.new [
-            { value = U.Sized 1 (U.SetOf _.T); }
-          ];
+          fields = SU.Fields.new [{ value = SU.Sized 1 (SU.SetOf _.T); }];
           methods = {
             getSolo = this: this.value.getSized.value;
             getName = this: soloName this.getSolo;
@@ -1629,7 +1628,7 @@ in rec {
         OrderedOf_ = Type.subTemplateOf (_: U.ListOf (U.OrderedItem _.T)) "OrderedOf" {T = Type;} (_: {
 
           # Pass OrderedItems to the underlying ListOf
-          ctor = This: xs: { value = map (x: (OrderedItem _.T).new x) (solos xs); };
+          ctor = This: xs: { value = map (x: (U.OrderedItem _.T).new x) (solos xs); };
 
           methods = {
             # Get the solo attr list in order.
@@ -1743,7 +1742,7 @@ in rec {
         };
 
         # A type inhabited by only one value.
-        Literal_ = Type.template "Literal" {V = Any;} (_: rec {
+        Literal_ = Type.template "Literal" {V = U.Any;} (_: rec {
           ctor = Ctors.Nullary;
           staticMethods = {
             getLiteral = This: _.V;
@@ -1812,25 +1811,10 @@ in rec {
           methods = {
             getIndexedField = this: name: this.indexed.${name};
             getField = this: name: (this.getIndexedField name).value;
-            getFieldIndex = this: name: (this.getIndexedField name).index;
-            instanceFields = this:
-              map soloValue
-                (filter
-                  (x: let f = soloValue x;
-                          in !f.fieldStatic)
-                  this.getSolos);
-            staticFields = this:
-              map soloValue
-                (filter
-                  (x: let f = soloValue x;
-                      in f.fieldStatic)
-                  this.getSolos);
-            requiredFields = this:
-              map soloValue
-                (filter
-                  (x: let f = soloValue x;
-                      in !f.fieldStatic && (f.fieldDefault != null))
-                  this.getSolos);
+            getFields = this: map soloValue this.getSolos;
+            getFieldsWhere = this: pred: filter pred this.getFields;
+            instanceFields = this: this.getFieldsWhere (field: !field.fieldStatic);
+            requiredFields = this: this.getFieldsWhere (field: !field.fieldStatic && field.fieldDefault != null);
           };
         };
       };
@@ -1848,19 +1832,27 @@ in rec {
       untypedUniverses = {inherit (allUniverses) U_0; }; # U_1;};
       typedUniverses = {inherit (allUniverses) U_2 U_3 U_4; inherit TS; };
 
-      MyType = Type.new "MyType" {
-        fields = Fields.new [{ myField = String; }];
-        methods.helloMyField = this: extra: "Hello, ${this.myField.value}${extra}";
-      };
+      TestTypes = U: with U; {
+        MyType = Type.new "MyType" {
+          fields = Fields.new [{ myField = String; }];
+          methods.helloMyField = this: extra: "Hello, ${this.myField.value}${extra}";
+        };
 
-      MyType2 = Type.new "MyType2" {
-        fields = Fields.new [
-          { stringField = String; }
-          { intField = Int; }
-          { defaultIntField = Default Int 666; }
-          { staticIntField = Static Int; }
-          { staticDefaultIntField = Static (Default Int 666); }
-        ];
+        MyType2 = Type.new "MyType2" {
+          fields = Fields.new [
+            { stringField = String; }
+            { intField = Int; }
+            { defaultIntField = Default Int 666; }
+            { staticIntField = Static Int; }
+            { staticDefaultIntField = Static (Default Int 666); }
+          ];
+        };
+
+        MyString = Type.new "MyString" {
+          fields = Fields.new [{ value = String; }];
+        };
+
+        WrapString = String.subType "WrapString" {};
       };
 
       instantiationTests = U: with U; {
@@ -1874,7 +1866,7 @@ in rec {
 
       builtinTests = U: with U;
         let
-          mkBuiltinTest = U: T: name: rawValue: {
+          mkBuiltinTest = T: name: rawValue: {
             expr =
               let x = T.new rawValue;
               in {
@@ -1903,7 +1895,7 @@ in rec {
             Lambda = mkBuiltinTest Lambda "Lambda" (a: b: 123);
           };
 
-      untypedFieldTests = U: with U;
+      untypedTests = U: with U;
         let
           fields = Fields.new [
             { a = null; }
@@ -1936,7 +1928,7 @@ in rec {
             ];
         };
 
-      typeCheckingTests = (U: with U;
+      typeCheckingTests = U: with U;
         let
           A = Type.new "A" {
             fields = Fields.new [
@@ -1951,9 +1943,60 @@ in rec {
           A.new = expect.eq (A.new 1 2 3 4).get {a = 1; b = 2; c = 3; d = 4;};
           A.mk = expect.eq (A.mk {a = 1; b = 2;}).get {a = 1; b = 2; c = 5; d = 10;};
           A.wrongType = expect.error (A.new "no" 2 3 4).get;
-        });
 
-      miscTests = U: with U; {
+          castInMk = with TestTypes U; {
+            MyString = {
+              mkFromstring = expect.eq (MyString.mk { value = "hello"; }).value.value "hello";
+              newFromstring = expect.eq (MyString.new "hello").value.value "hello";
+            };
+
+            WrapString = {
+              mkFromstring = expect.eq (WrapString.mk { value = "hello"; }).value "hello";
+              newFromstring = expect.eq (WrapString.new "hello").value "hello";
+            };
+
+            MyType2_mk_overrideDefault = {
+              expr =
+                let this = MyType2.mk {
+                      stringField = "hi";
+                      intField = 123;
+                      defaultIntField = 7;
+                    };
+                in [this.stringField.value this.intField.value this.defaultIntField.value];
+              expected = ["hi" 123 7];
+            };
+
+            MyType2_mk_missingRequired = expect.error (
+              let this = MyType2.mk {
+                    intField = 123;
+                    defaultIntField = 7;
+                  };
+                in builtins.tryEval this
+            );
+
+            MyType2_mk_missingDefault = {
+              expr =
+                let this = MyType2.mk {
+                      intField = 123;
+                      stringField = "hi";
+                    };
+                in this.defaultIntField.value;
+              expected = 666;
+            };
+
+            MyType2_mk_wrongType = expect.error (
+                let this = MyType2.mk {
+                      intField = 123;
+                      stringField = true;
+                      defaultIntField = 7;
+                    };
+                in builtins.tryEval this
+            );
+          };
+        };
+
+      miscTests = U: with U; with TestTypes U; {
+
         RootType = {
           expr = Type.name;
           expected = "Type";
@@ -1978,92 +2021,44 @@ in rec {
           };
         };
 
-        MyString = let MyString = Type.new "MyString" {
-                          fields = Fields.new [{ value = String; }];
-                        };
-                        WrapString = String.subType "WrapString" {};
-                    in {
-          MyString = {
-            mkFromString = expect.eq (MyString.mk { value = String.new "hello"; }).value.value "hello";
-            mkFromstring = expect.eq (MyString.mk { value = "hello"; }).value.value "hello";
-            newFromString = expect.eq (MyString.new (String.new "hello")).value.value "hello";
-            newFromstring = expect.eq (MyString.new "hello").value.value "hello";
-            eqString = expect.eqOn Compare.Fields (MyString.new "hello").value (String.new "hello");
-          };
-
-          WrapString = {
-            mkFromString = expect.eq (WrapString.mk { value = String.new "hello"; }).value "hello";
-            mkFromstring = expect.eq (WrapString.mk { value = "hello"; }).value "hello";
-            newFromString = expect.eq (WrapString.new (String.new "hello")).value "hello";
-            newFromstring = expect.eq (WrapString.new "hello").value "hello";
-            eqString = expect.eqOn Compare.Fields (WrapString.new "hello") (String.new "hello");
-          };
+        MyString = {
+          mkFromString = expect.eq (MyString.mk { value = String.new "hello"; }).value.value "hello";
+          newFromString = expect.eq (MyString.new (String.new "hello")).value.value "hello";
+          eqString = expect.eqOn Compare.Fields (MyString.new "hello").value (String.new "hello");
         };
 
-        MyType_mk = {
-          expr = (MyType.mk { myField = "World"; }).myField.value;
+        WrapString = {
+          mkFromString = expect.eq (WrapString.mk { value = String.new "hello"; }).value "hello";
+          newFromString = expect.eq (WrapString.new (String.new "hello")).value "hello";
+          eqString = expect.eqOn Compare.Fields (WrapString.new "hello") (String.new "hello");
+        };
+
+        MyType_mk_nocast= {
+          expr = (MyType.mk { myField = String.new "World"; }).myField.value;
           expected = "World";
         };
 
-        MyType_new = {
-          expr = (MyType.new "World").myField.value;
+        MyType_new_nocast = {
+          expr = (MyType.new (String.new "World")).myField.value;
           expected = "World";
         };
 
         MyType_call = {
           expr =
-            let this = MyType.new "World";
+            let this = MyType.new (String.new "World");
               in this.helloMyField "!";
           expected = "Hello, World!";
         };
 
         MyType_set = {
           expr =
-            let this = MyType.new "";
+            let this = MyType.new (String.new "");
             in [
               (this.helloMyField "!")
               ((this.set.myField "World").helloMyField "!")
             ];
           expected = [ "Hello, !" "Hello, World!" ];
         };
-
-        MyType2_mk_overrideDefault = {
-          expr =
-            let this = MyType2.mk {
-                  stringField = "hi";
-                  intField = 123;
-                  defaultIntField = 7;
-                };
-            in [this.stringField.value this.intField.value this.defaultIntField.value];
-          expected = ["hi" 123 7];
-        };
-
-        MyType2_mk_missingRequired = expect.error (
-          let this = MyType2.mk {
-                intField = 123;
-                defaultIntField = 7;
-              };
-            in builtins.tryEval this
-        );
-
-        MyType2_mk_missingDefault = {
-          expr =
-            let this = MyType2.mk {
-                  intField = 123;
-                  stringField = "hi";
-                };
-            in this.defaultIntField.value;
-          expected = 666;
-        };
-
-        MyType2_mk_wrongType = expect.error (
-            let this = MyType2.mk {
-                  intField = 123;
-                  stringField = true;
-                  defaultIntField = 7;
-                };
-            in builtins.tryEval this
-        );
 
         cast =
           let
@@ -2088,8 +2083,8 @@ in rec {
 
         inheritance =
           let
-            A = Type.new "A" { fields = { a = String; }; };
-            B = Type.new "B" { Super = A; fields = { b = Int; }; };
+            A = Type.new "A" { fields = Fields.new { a = String; }; };
+            B = A.subType "B" { fields = Fields.new { b = Int; }; };
           in {
 
             newA = {
@@ -2129,11 +2124,36 @@ in rec {
 
     in
       cutils.tests.suite {
-        types = {
-          instantiation = (testInUniverses allUniverses instantiationTests);
-            #builtin = (testInUniverses allUniverses builtinTests);
+        types = with Universe; {
+          # instantiation = (testInUniverses allUniverses instantiationTests);
+          instantiation = testInUniverses {
+            inherit
+              U_0
+              U_1
+              # U_2
+              ;
+          } instantiationTests;
+          builtin = testInUniverses {
+            inherit
+              U_0
+              U_1
+              # U_2
+              ;
+          } builtinTests;
+          misc = testInUniverses {
+            inherit
+              U_0
+              U_1
+              # U_2
+              ;
+          } miscTests;
             #misc = (testInUniverses allUniverses miscTests);
-          untyped = (testInUniverses untypedUniverses untypedFieldTests);
+          untyped = testInUniverses {
+            inherit
+              U_0
+              # U_1
+              ;
+          } untypedTests;
             #typeChecking = (testInUniverses typedUniverses typeCheckingTests);
           };
         };

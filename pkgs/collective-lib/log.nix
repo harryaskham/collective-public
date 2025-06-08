@@ -213,7 +213,8 @@ let
                     { intermediate = name; }
                     { inherit value; }
                   ];
-                }; in assert over (tagged "TRACE:${groupType}:${groupName}" xs'); xs';
+                }; in assert over (tagged "TRACE:${groupType}:${groupName}" xs');
+                  xs';
 
               # Trace a message by printing the given value.
               # When used with 'with', accrues logs by modifying the groupUtils in scope.
@@ -222,7 +223,27 @@ let
                   group = xs.group ++ [
                     { msg = print value; }
                   ];
-                }; in assert over (tagged "MSG:${groupType}:${groupName}" xs'); xs;
+                }; in assert over (tagged "MSG:${groupType}:${groupName}" xs');
+                  xs';
+
+              # Trace a message by printing the given value.
+              # When used with 'with', accrues logs by modifying the groupUtils in scope.
+              check = name: p: msg:
+                if p then
+                  let xs' = xs // {
+                    group = xs.group ++ [
+                      { check = { ${name} = "OK"; }; }
+                    ];
+                  }; in assert over (tagged "MSG:${groupType}:${groupName}" xs');
+                    xs'
+                else
+                  let xs' = xs // {
+                    group = xs.group ++ [
+                      { check = { ${name} = "FAIL";
+                                  inherit msg;
+                                }; }
+                    ];
+                  }; in throw (log.print (tagged "MSG:${groupType}:${groupName}" xs'));
 
               # Print a warning message
               # When used with 'with', accrues logs by modifying the groupUtils in scope.
@@ -232,7 +253,7 @@ let
                             group = xs.group ++ [
                               { warning = {inherit message;} // optionalAttrs (size extra > 0) {inherit extra;}; }
                             ];
-                          }; in assert over (tagged "WARNING:${groupType}:${groupName}" xs'); xs);
+                          }; in assert over (tagged "WARNING:${groupType}:${groupName}" xs'); xs');
 
               # Trace an assignment inline.
               # Does not accrue logs, and returns the assignment.
