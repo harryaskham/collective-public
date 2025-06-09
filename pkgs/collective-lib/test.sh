@@ -115,7 +115,7 @@ with types; attrNames _tests.runOne
 </nix>
 
 <nix>
-with types; _tests.runOne.test-types__untyped__U_1__fromListEqFromSet
+with types; _tests.runOne.test-types__cast__U_0__toTypedBuiltin__Bool
 </nix>
 
 <nix>

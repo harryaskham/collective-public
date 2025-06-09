@@ -80,6 +80,17 @@ in rec {
     equalOn = compare: expr: expected: { inherit expr expected compare; };
     eq = equal;
     eqOn = equalOn;
+    asserts = {
+      ok = expr_: {
+        expr = assert expr_; { asserts = "ok"; };
+        expected = { asserts = "ok"; };
+      };
+      fail = expr_: {
+        expr = assert expr_; { asserts = "ok"; };
+        expected = failure;
+      };
+    };
+
 
     True = expr: {
       inherit expr;
@@ -172,9 +183,12 @@ in rec {
 
   # Run the given test as a singleton test suite, formatting its results.
   evalOneTest = evalFn: test:
-    let tests = { ${test.name} = test; };
-        result = evalFn (runTests tests);
-    in strict (runOneTest test result);
+    with log.vtrace.test test.name ___;
+    with letrec (_: with _; {
+      tests = { ${test.name} = test; };
+      result = evalFn (runTests tests);
+    });
+    return (strict (runOneTest test result));
 
   # Create a test attribute set adding extra functionality to a runTests-style
   # test of format { expr = ...; expected = ...; }

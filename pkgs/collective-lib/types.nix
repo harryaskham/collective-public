@@ -119,77 +119,70 @@ in rec {
     isCastError = x: x ? castError;
     isCastSuccess = x: x ? castSuccess;
     castErrorOr = xOrError: f:
-      if isCastError xOrError then xOrError else f xOrError;
+      if isCastError xOrError
+      then xOrError
+      else f xOrError;
 
     cast = T: x:
       with log.vtrace.call "cast" T x ___;
 
-      if T == null
-      then return (mkCastError "Cannot cast to null: T = ${log.print T}, x = ${log.print x}")
-      else if !(isTypeLike T)
-      then return (mkCastError (indent.block ''
-        Invalid target type provided for cast:
+      if T == null then
+        return (mkCastError "Cannot cast to null: T = ${log.print T}, x = ${log.print x}")
 
-          T = ${indent.here (log.print T)}
+      else if !(isTypeLike T) then
+        return (mkCastError (indent.block ''
+          Invalid target type provided for cast:
 
-          x = ${indent.here (log.print x)}
-      ''))
-      else
-        with letrec (_: with _; {
-          printT = T: log.print T;
-          TName = (printT T);
-          xTName = (getTypeBoundName x);
+            T = ${indent.here (log.print T)}
 
-          xFields = (
-            if isTyped x then mergeAttrsList (x.Type {}).fields.instanceFields else
-            mkCastError ''
-              Cannot get fields from untyped uncast value: T = ${log.print T}, x = ${log.print x}
-            '');
-          TFields = (
-            if isTypeSet T then mergeAttrsList T.fields.instanceFields else mkCastError ''
-              Cannot get fields from non-Type target type: T = ${log.print T}, x = ${log.print x}
-            '');
+            x = ${indent.here (log.print x)}
+        ''))
 
-          xIsUnary = (
-            !(isCastError xFields) && size xFields == 1);
-          TIsUnary = (
-            !(isCastError TFields) && size TFields == 1);
+      else with letrec (_: with _; {
 
-          xUnaryField = (
-            castErrorOr xFields (fs: head (attrValues fs)));
-          TUnaryField = (
-            castErrorOr TFields (fs: head (attrValues fs)));
+        printT = T: log.print T;
 
-          xUnaryFieldName = (
-            castErrorOr xUnaryField (field: field.fieldName));
-          TUnaryFieldName = (
-            castErrorOr TUnaryField (field: field.fieldName));
+        TName = printT T;
+        xTName = getTypeBoundName x;
 
-          xUnaryFieldT = (
-            castErrorOr xUnaryField (field: field.fieldType));
-          TUnaryFieldT = (
-            castErrorOr TUnaryField (field: field.fieldType));
+        xFields = (
+          if isTyped x then (x.Type {}).fields.instanceFields else
+          mkCastError ''
+            Cannot get fields from untyped uncast value: T = ${log.print T}, x = ${log.print x}
+          '');
+        TFields = (
+          if isTypeSet T then T.fields.instanceFields else mkCastError ''
+            Cannot get fields from non-Type target type: T = ${log.print T}, x = ${log.print x}
+          '');
 
-          xUnaryFieldTName = (
-            castErrorOr xUnaryFieldT printT);
-          TUnaryFieldTName = (
-            castErrorOr TUnaryFieldT printT);
+        xIsUnary = castErrorOr xFields (fields: size fields == 1) == true;
+        TIsUnary = castErrorOr TFields (fields: size fields == 1) == true;
 
-          xFieldNames = (
-            castErrorOr xFields (mapAttrs (fieldName: _: fieldName)));
-          TFieldNames = (
-            castErrorOr TFields (mapAttrs (fieldName: _: fieldName)));
+        xUnaryField = castErrorOr xFields head;
+        TUnaryField = castErrorOr TFields head;
 
-          castStr = "${xTName} -> ${TName}";
+        xUnaryFieldName = castErrorOr xUnaryField (field: field.fieldName);
+        TUnaryFieldName = castErrorOr TUnaryField (field: field.fieldName);
 
-          mkCast = cast:
-            if cast.when then cast
-            else cast // { result = mkCastError "'when' condition not satisfied"; };
+        xUnaryFieldT = castErrorOr xUnaryField (field: field.fieldType or null);
+        TUnaryFieldT = castErrorOr TUnaryField (field: field.fieldType or null);
 
-          # A list of casts to attempt in order.
-          # The first cast satisfying 'when == true && isCastSuccess result' will be returned.
-          # If no cast satisfies, then a cast error set is returned with the collated errors.
-          casts = assign "casts" (map mkCast [
+        xUnaryFieldTName = castErrorOr xUnaryFieldT printT;
+        TUnaryFieldTName = castErrorOr TUnaryFieldT printT;
+
+        xFieldNames = castErrorOr xFields (map (fieldName: _: fieldName));
+        TFieldNames = castErrorOr TFields (map (fieldName: _: fieldName));
+
+        castStr = "${xTName} -> ${TName}";
+
+        # A list of casts to attempt in order.
+        # The first cast satisfying 'when == true && isCastSuccess result' will be returned.
+        # If no cast satisfies, then a cast error set is returned with the collated errors.
+        casts =
+          let mkCast = cast: if cast.when then cast else cast // {
+                result = mkCastError "'when' condition not satisfied";
+              };
+          in map mkCast [
             # No-op cast if x is already an instance of T.
             # This does not call T.check, so if the value has been manipulated
             # to be invalid through modification outside of the type-checked x.set and x.modify
@@ -334,29 +327,31 @@ in rec {
                   ${indent.here castSuccessMsg}
               '';
             }
-          ]);
-        });
+          ];
+      });
 
-        let
-
+      let
         getOrMsg = castResult:
           assert !castResult.when;
           indent.block ''
             ${castResult.name}:
               ${indent.here castResult.orMsg}
           '';
+
         getFailMsg = castResult:
           assert isCastError castResult.result;
           indent.block ''
             ${castResult.name}:
               ${indent.here (castResult.failMsg castResult.result.castError)}
           '';
+
         getSuccessMsg = castResult:
           assert isCastSuccess castResult.result;
           indent.block ''
             ${castResult.name}:
               ${indent.here (castResult.successMsg castResult.result.castSuccessMsg)}
           '';
+
         tryCasts = msgs: casts:
           let
             castResult = head casts;
@@ -375,7 +370,7 @@ in rec {
                     ${indent.here (indent.blocks msgs)}
 
                   Log State:
-                    ${indent.here (log.print logState)}
+                    ${indent.here (log.print __logState)}
                 ''))
 
             # Skip non-matching casts with a note message
@@ -383,23 +378,29 @@ in rec {
               then let msgs' = msgs ++ [(getOrMsg castResult)]; in tryCasts msgs' casts'
 
             # Record nested cast errors
-            else if isCastError castResult
+            else if isCastError castResult.result
               then let msgs' = msgs ++ [(getFailMsg castResult)]; in tryCasts msgs' casts'
 
             # Cast succeeded
+            else if isCastSuccess castResult.result
+              then
+                let msgs' = msgs ++ [(getSuccessMsg castResult)];
+                in
+                  mkCastSuccess castResult.result.castSuccess (indent.block ''
+                    Cast succeeded: ${xTName} -> ${TName}
+
+                    ${xTName} instance:
+                      ${indent.here (log.print x)}
+
+                    Attempted casts:
+                      ${indent.here (joinLines msgs')}
+                  '')
             else
-              let
-                msgs' = msgs ++ [(getSuccessMsg castResult)];
-              in
-                mkCastSuccess castResult.castSuccess ''
-                  Cast succeeded: ${xTName} -> ${TName}
+              throw (indent.block ''
+                Cast result is neither castSuccess nor castError (malformed 'casts = [ ... ]' entry?):
+                  ${indent.here (log.print castResult)}
+              '');
 
-                  ${xTName} instance:
-                    ${indent.here (log.print x)}
-
-                  Attempted casts:
-                    ${indent.here (joinLines msgs')}
-                '';
 
         in return (tryCasts [] casts);
 
@@ -1366,7 +1367,7 @@ in rec {
     # Also asserts that recreating the grounded Type using itself, via Type.new,
     # creates an identical Type (modulo lambda equality).
     groundTypeAndAssertFixed = opts: Type__args: Type:
-      with log.vtrace.call "groundTypeAndAssertFixed" { inherit Type; } ___;
+      with log.vtrace.call "groundTypeAndAssertFixed" { inherit opts Type__args Type; } ___;
       let Type__grounded = assign "Type__grounded" (groundType Type);
       in
         assert assertTypeFixedUnderNew Type__grounded opts.typeName Type__args;
@@ -1400,34 +1401,32 @@ in rec {
     assertFixedUnderF = fLabel: xLabel: f: x:
       with log.vtrace.call "assertFixedUnderF" { inherit fLabel xLabel f x; } ___;
       with cutils.tests.Compare;
-      let fx = f x;
-          x_NL = NoLambdas x;
-          fx_NL = NoLambdas fx;
-          depth = 6;
-      in
-        with intermediate "x" x;
-        with intermediate "fx" fx;
-        with intermediate "x_NL" x_NL;
-        with intermediate "fx_NL" fx_NL;
-        assertMsg (x_NL == fx_NL) (indent.block ''
+      with letrec (_: with _; {
+        fx = f x;
+        x_NL = NoLambdas x;
+        fx_NL = NoLambdas fx;
+        printDepth = 6;
+        assertion = assertMsg (x_NL == fx_NL) (indent.block ''
           ${xLabel} is not fixed under ${fLabel}:
 
             ${xLabel} (original):
-            ${indent.here (log.vprintD depth x)}
+            ${indent.here (log.vprintD printDepth x)}
 
             ${xLabel} (under ${fLabel}):
-            ${indent.here (log.vprintD depth fx)}
+            ${indent.here (log.vprintD printDepth fx)}
 
           Comparing lambda-free:
             ${xLabel} (lambda-free, original):
-            ${indent.here (log.vprintD depth x_NL)}
+            ${indent.here (log.vprintD printDepth x_NL)}
 
             ${xLabel} (lambda-free, under ${fLabel}):
-            ${indent.here (log.vprintD depth fx_NL)}
+            ${indent.here (log.vprintD printDepth fx_NL)}
 
           Diff:
-            ${indent.here (log.vprintD depth (diff x_NL fx_NL))}
+            ${indent.here (log.vprintD printDepth (diff x_NL fx_NL))}
         '');
+      });
+      return assertion;
 
     assertTypeFixedUnderNew = T: typeName: typeArgs:
       assertFixedUnderF "new" "Type" (T: T.new typeName typeArgs) T;
@@ -1914,6 +1913,7 @@ in rec {
       };
 
       instantiationTests = U: with U; {
+        Type = expect.equal (Type.new "SomeType" {}).__TypeId "SomeType";
         Literal = expect.equal (Literal 123).getLiteral 123;
         field = {
           expr = let f = Field.new "name" null;
@@ -1986,6 +1986,27 @@ in rec {
             ];
         };
 
+      castTests = U: with U;
+        let
+          testX = {
+            Null = null;
+            Int = 123;
+            Float = 12.3;
+            String = "abc";
+            Path = ./.;
+            Bool = true;
+            List = [1 2 3];
+            Set = { a = 1; b = 2; c = 3; };
+          };
+          mkToTypedBuiltinTest = T: x: {
+            expr = (cast T x).castSuccess;
+            expected = T.new x;
+            compare = Compare.Fields;
+          };
+        in {
+          toTypedBuiltin = mapAttrs (name: v: mkToTypedBuiltinTest U.${name} v) testX;
+        };
+
       typeCheckingTests = U: with U;
         let
           A = Type.new "A" {
@@ -2006,11 +2027,13 @@ in rec {
             MyString = {
               mkFromstring = expect.eq (MyString.mk { value = "hello"; }).value.value "hello";
               newFromstring = expect.eq (MyString.new "hello").value.value "hello";
+              eqString = expect.eqOn Compare.Fields (MyString.new "hello").value (String.new "hello");
             };
 
             WrapString = {
               mkFromstring = expect.eq (WrapString.mk { value = "hello"; }).value "hello";
               newFromstring = expect.eq (WrapString.new "hello").value "hello";
+              eqString = expect.eqOn Compare.Fields (WrapString.new "hello") (String.new "hello");
             };
 
             MyType2_mk_overrideDefault = {
@@ -2079,19 +2102,17 @@ in rec {
           };
         };
 
-        MyString = {
+        MyString_nocast = {
           mkFromString = expect.eq (MyString.mk { value = String.new "hello"; }).value.value "hello";
           newFromString = expect.eq (MyString.new (String.new "hello")).value.value "hello";
-          eqString = expect.eqOn Compare.Fields (MyString.new "hello").value (String.new "hello");
         };
 
-        WrapString = {
-          mkFromString = expect.eq (WrapString.mk { value = String.new "hello"; }).value "hello";
-          newFromString = expect.eq (WrapString.new (String.new "hello")).value "hello";
-          eqString = expect.eqOn Compare.Fields (WrapString.new "hello") (String.new "hello");
+        WrapString_nocast = {
+          mkFromString = expect.eq (WrapString.mk { value = "hello"; }).value "hello";
+          newFromString = expect.eq (WrapString.new "hello").value "hello";
         };
 
-        MyType_mk_nocast= {
+        MyType_mk_nocast = {
           expr = (MyType.mk { myField = String.new "World"; }).myField.value;
           expected = "World";
         };
@@ -2108,7 +2129,7 @@ in rec {
           expected = "Hello, World!";
         };
 
-        MyType_set = {
+        MyType_set_nocast = {
           expr =
             let this = MyType.new (String.new "");
             in [
@@ -2117,27 +2138,6 @@ in rec {
             ];
           expected = [ "Hello, !" "Hello, World!" ];
         };
-
-        cast =
-          let
-            testX = {
-              Null = null;
-              Int = 123;
-              Float = 12.3;
-              String = "abc";
-              Path = ./.;
-              Bool = true;
-              List = [1 2 3];
-              Set = { a = 1; b = 2; c = 3; };
-            };
-            mkToTypedBuiltinTest = T: x: {
-              expr = cast T x;
-              expected = T.new x;
-              compare = Compare.Fields;
-            };
-          in {
-            toTypedBuiltin = mapAttrs (name: v: mkToTypedBuiltinTest U.${name} v) testX;
-          };
 
         inheritance =
           let
@@ -2188,7 +2188,21 @@ in rec {
     in
       cutils.tests.suite {
         types = with Universe; {
-          # instantiation = (testInUniverses allUniverses instantiationTests);
+
+          peripheral = {
+            fixing = {
+              intUnderId = expect.asserts.ok (assertFixedUnderF "f" "x" id 123);
+              intUnderPlus1 = expect.asserts.fail (assertFixedUnderF "f" "x" (x: x+1) 123);
+              intUnderPlus0 = expect.asserts.ok (assertFixedUnderF "f" "x" (x: x+0) 123);
+              Type =
+                let FakeType = name: { inherit name; new = name: args: FakeType name; };
+                in {
+                  fixed = expect.asserts.ok (assertTypeFixedUnderNew (FakeType "FakeType") "FakeType" {});
+                  unfixed = expect.asserts.fail (assertTypeFixedUnderNew (FakeType "FakeType") "NextFakeType" {});
+                };
+            };
+          };
+
           instantiation = testInUniverses {
             inherit
               U_0
@@ -2196,6 +2210,7 @@ in rec {
               # U_2
               ;
           } instantiationTests;
+
           builtin = testInUniverses {
             inherit
               U_0
@@ -2203,6 +2218,15 @@ in rec {
               # U_2
               ;
           } builtinTests;
+
+          cast = testInUniverses {
+            inherit
+              U_0
+              # U_1
+              # U_2
+              ;
+          } castTests;
+
           misc = testInUniverses {
             inherit
               U_0
@@ -2210,15 +2234,23 @@ in rec {
               # U_2
               ;
           } miscTests;
-            #misc = (testInUniverses allUniverses miscTests);
+
           untyped = testInUniverses {
             inherit
               U_0
               # U_1
               ;
           } untypedTests;
-            #typeChecking = (testInUniverses typedUniverses typeCheckingTests);
-          };
+
+          typeChecking = testInUniverses {
+            inherit
+              # U_0
+              # U_1
+              # U_2
+              ;
+          } typeCheckingTests;
+
         };
+      };
 
 }
