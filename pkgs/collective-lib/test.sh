@@ -102,6 +102,11 @@ with types; _tests.run
 </nix>
 
 <nix>
+with types.Types.Universe.U_1;
+String.new []
+</nix>
+
+<nix>
 with types; attrNames _tests.runOne
 </nix>
 

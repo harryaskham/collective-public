@@ -206,6 +206,9 @@ let
               assert vtrace.over (tagged "START:${groupType}:${groupName}" xs);
 
               rec {
+              # Returm accumulated log state.
+              logState = xs;
+
               # Trace an intermediate value
               intermediate = name: value:
                 let xs' = xs // {
@@ -264,6 +267,20 @@ let
                   }];
                 }));
                 value;
+
+              assigns = mkVars:
+                let closure = mkVars { __closure = closure; };
+                    vars = closure.__closure;
+                    xs' =
+                      xs // {
+                        group = xs.group ++ [{
+                          assigns = closure;
+                        }];
+                      };
+                in
+                  assert over (tagged "ASSIGN:${groupType}:${groupName}" xs');
+                  # Return the combined log closure and vars for with to provide cccess
+                  (xs' // vars);
 
               # Return a value from the group, tracing the value.
               return = x:

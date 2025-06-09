@@ -122,218 +122,276 @@ in rec {
       if isCastError xOrError then xOrError else f xOrError;
 
     cast = T: x:
+      with log.vtrace.call "cast" T x ___;
+
       if T == null
-        then mkCastError "Cannot cast to null: T = ${log.print T}, x = ${log.print x}"
+      then return (mkCastError "Cannot cast to null: T = ${log.print T}, x = ${log.print x}")
       else if !(isTypeLike T)
-        then mkCastError (indent.block ''
-          Invalid target type provided for cast:
+      then return (mkCastError (indent.block ''
+        Invalid target type provided for cast:
 
-            T = ${indent.here (log.print T)}
+          T = ${indent.here (log.print T)}
 
-            x = ${indent.here (log.print x)}
-        '')
-      else let
-        printT = T: log.print T;
+          x = ${indent.here (log.print x)}
+      ''))
+      else
+        with assigns (_: with _.__closure; {
+          printT = T: log.print T;
+          TName = (printT T);
+          xTName = (getTypeBoundName x);
 
-        TName = printT T;
-        xTName = getTypeBoundName x;
+          xFields = (
+            if isTyped x then mergeAttrsList (x.Type {}).fields.instanceFields else
+            mkCastError ''
+              Cannot get fields from untyped uncast value: T = ${log.print T}, x = ${log.print x}
+            '');
+          TFields = (
+            if isTypeSet T then mergeAttrsList T.fields.instanceFields else mkCastError ''
+              Cannot get fields from non-Type target type: T = ${log.print T}, x = ${log.print x}
+            '');
 
-        xFields = if isTyped x then mergeAttrsList (x.Type {}).fields.instanceFields else
-          mkCastError ''
-            Cannot get fields from untyped uncast value: T = ${log.print T}, x = ${log.print x}
-            '';
-        TFields = if isTypeSet T then mergeAttrsList T.fields.instanceFields else mkCastError ''
-            Cannot get fields from non-Type target type: T = ${log.print T}, x = ${log.print x}
-            '';
+          xIsUnary = (
+            !(isCastError xFields) && size xFields == 1);
+          TIsUnary = (
+            !(isCastError TFields) && size TFields == 1);
 
-        xIsUnary = !(isCastError xFields) && size xFields == 1;
-        TIsUnary = !(isCastError TFields) && size TFields == 1;
+          xUnaryField = (
+            castErrorOr xFields (fs: head (attrValues fs)));
+          TUnaryField = (
+            castErrorOr TFields (fs: head (attrValues fs)));
 
-        xUnaryField = castErrorOr xFields (fs: head (attrValues fs));
-        TUnaryField = castErrorOr TFields (fs: head (attrValues fs));
+          xUnaryFieldName = (
+            castErrorOr xUnaryField (field: field.fieldName));
+          TUnaryFieldName = (
+            castErrorOr TUnaryField (field: field.fieldName));
 
-        xUnaryFieldName = castErrorOr xUnaryField (field: field.fieldName);
-        TUnaryFieldName = castErrorOr TUnaryField (field: field.fieldName);
+          xUnaryFieldT = (
+            castErrorOr xUnaryField (field: field.fieldType));
+          TUnaryFieldT = (
+            castErrorOr TUnaryField (field: field.fieldType));
 
-        xUnaryFieldT = castErrorOr xUnaryField (field: field.fieldType);
-        TUnaryFieldT = castErrorOr TUnaryField (field: field.fieldType);
+          xUnaryFieldTName = (
+            castErrorOr xUnaryFieldT printT);
+          TUnaryFieldTName = (
+            castErrorOr TUnaryFieldT printT);
 
-        xUnaryFieldTName = castErrorOr xUnaryFieldT printT;
-        TUnaryFieldTName = castErrorOr TUnaryFieldT printT;
+          xFieldNames = (
+            castErrorOr xFields (mapAttrs (fieldName: _: fieldName)));
+          TFieldNames = (
+            castErrorOr TFields (mapAttrs (fieldName: _: fieldName)));
 
-        xFieldNames = castErrorOr xFields (mapAttrs (fieldName: _: fieldName));
-        TFieldNames = castErrorOr TFields (mapAttrs (fieldName: _: fieldName));
+          castStr = "${xTName} -> ${TName}";
 
-        castStr = "${xTName} -> ${TName}";
+          mkCast = cast:
+            if cast.when then cast
+            else cast // { result = mkCastError "'when' condition not satisfied"; };
 
-        # A list of casts to attempt in order.
-        # The first cast satisfying 'when == true && isCastSuccess result' will be returned.
-        # If no cast satisfies, then a cast error set is returned with the collated errors.
-        casts = [
-          # No-op cast if x is already an instance of T.
-          # This does not call T.check, so if the value has been manipulated
-          # to be invalid through modification outside of the type-checked x.set and x.modify
-          # interfaces, this will not be caught here.
-          {
-            name = "Identity";
-            when = hasType T x;
-            orMsg = indent.block ''
-              Not an identity cast:
-                ${indent.here castStr}
-            '';
-            result = mkCastSuccess x "";
-            failMsg = _: null;
-            successMsg = _: "Identity cast succeeded: ${xTName} -> ${TName}";
-          }
-
-          # {
-          #   name = "Coerce";
-          #   when = (T.checkValue or (const false)) x;
-          #   orMsg = indent.block ''
-          #     No value-check or not directly checkValue-coercible:
-          #       ${indent.here castStr}
-          #   '';
-          #   result = mkCastSuccess (T.mk x.get) "";
-          #   failMsg = _: null;
-          #   successMsg = _: "Coercion cast succeeded: ${xTName} -> ${TName}";
-          # }
-
-          # Downcasting for unary x types via a nested cast
-          # This includes Builtins and other value types.
-          # Careful not to use other attrs of 'fields' here besides 'indexed' to
-          # be bootstrap-compatible.
-          {
-            name = "Downcast from Unary";
-            when = xIsUnary;
-            orMsg = "Cannot downcast from an instance of non-unary type: ${xTName} -> ${TName}";
-            result = cast T x.${xUnaryField.fieldName};
-            failMsg = castErrorMsg: indent.block ''
-              Downcast failed from unary field ${xTName}.${xUnaryFieldName}: ${xUnaryFieldTName} -> ${TName}
-
-              ${indent.here "Downcast error: ${castErrorMsg}"}
-            '';
-            successMsg = castSuccessMsg: ''
-              Downcast succeeded from unary field ${xTName}.${xUnaryFieldName}: ${xUnaryFieldTName} -> ${TName}";
-
-              ${indent.here "Upcast success: ${castSuccessMsg}"}
-            '';
-          }
-
-          # Upcasting for unary x types via a nested cast
-          # This includes Builtins and other value types.
-          # Careful not to use other attrs of 'fields' here besides 'indexed' to
-          # be bootstrap-compatible.
-          {
-            name = "Upcast to Unary";
-            when = TIsUnary;
-            orMsg = "Cannot upcast to a non-unary type: ${xTName} -> ${TName}";
-            result =
-              let xCast = cast TUnaryFieldT x;
-              in if isCastError xCast then xCast
-              else mkCastSuccess (T.mk { ${TUnaryFieldName} = xCast.castSuccess; }) xCast.castSuccessMsg;
-            failMsg = castErrorMsg: indent.block ''
-              Upcast failed to unary field ${TName}.${TUnaryFieldName}: ${xTName} -> ${TUnaryFieldTName})
-
-              ${indent.here "Upcast error: ${castErrorMsg}"}
-            '';
-            successMsg = castSuccessMsg: indent.block ''
-              Upcast succeeded to unary field ${TName}.${TUnaryFieldName}: ${xTName} -> ${TUnaryFieldTName})
-
-              ${indent.here "Upcast success: ${castSuccessMsg}"}
-            '';
-          }
-
-          # Sidecasting types via a nested cast
-          # Careful not to use other attrs of 'fields' here besides 'indexed' to
-          # be bootstrap-compatible.
-          {
-            name = "Sidecast Fields";
-            when = !(isCastError xFieldNames) && !(isCastError TFieldNames)
-                   && (length xFieldNames == length TFieldNames);
-            orMsg = ''
-              Cannot sidecast unless from a typed instance to a Type with the same field count: ${xTName} -> ${TName}
-                Source fields: ${log.print xFieldNames}
-                Target fields: ${log.print TFieldNames}
+          # A list of casts to attempt in order.
+          # The first cast satisfying 'when == true && isCastSuccess result' will be returned.
+          # If no cast satisfies, then a cast error set is returned with the collated errors.
+          casts = assign "casts" (map mkCast [
+            # No-op cast if x is already an instance of T.
+            # This does not call T.check, so if the value has been manipulated
+            # to be invalid through modification outside of the type-checked x.set and x.modify
+            # interfaces, this will not be caught here.
+            {
+              name = "Identity";
+              when = hasType T x;
+              orMsg = indent.block ''
+                Not an identity cast:
+                  ${indent.here castStr}
               '';
-            result =
-              let castTArgs =
-                    zipListsWith
-                      (xFieldName: TFieldName: {
-                        ${TFieldName} =
-                          cast
-                            (T.fields.getField TFieldName).fieldType
-                            x.${xFieldName};
-                      })
-                      xFieldNames
-                      TFieldNames;
-                  castErrors = filterAttrs (_: isCastError) castTArgs;
-                  castArgs =
-                    mapAttrs (_: castResult: castResult.castSuccess) castTArgs;
-                  castErrorMsgs =
-                    joinLines
-                      (mapAttrsToList
-                        (name: castResult: "${name}: ${castResult.castError}")
-                        castTArgs);
-                  castSuccessMsgs =
-                    joinLines
-                      (mapAttrsToLIst
-                        (name: castResult: "${name}: ${castResult.castSuccessMsg}")
-                        castTArgs);
-              in if size castErrors > 0
-                 then mkCastError castErrorMsgs
-                 else mkCastSuccess (T.mk castArgs) castSuccessMsgs;
-            failMsg = castErrorMsg: indent.block ''
-              Sidecast failed: ${xTName} -> ${TName}
+              result = mkCastSuccess x "";
+              failMsg = _: null;
+              successMsg = _: ''
+                Identity cast succeeded: ${castStr}
+              '';
+            }
 
-              Field cast errors:
-                ${indent.here castErrorMsg}
-            '';
-            successMsg = castSuccessMsg: indent.block ''
-              Sidecast succeeded: ${xTName} -> ${TName}
+            # {
+            #   name = "Coerce";
+            #   when = (T.checkValue or (const false)) x;
+            #   orMsg = indent.block ''
+            #     No value-check or not directly checkValue-coercible:
+            #       ${indent.here castStr}
+            #   '';
+            #   result = mkCastSuccess (T.mk x.get) "";
+            #   failMsg = _: null;
+            #   successMsg = _: "Coercion cast succeeded: ${xTName} -> ${TName}";
+            # }
 
-              Field casts successes:
-                ${indent.here castSuccessMsg}
-            '';
-          }
-        ];
+            # Downcasting for unary x types via a nested cast
+            # This includes Builtins and other value types.
+            # Careful not to use other attrs of 'fields' here besides 'indexed' to
+            # be bootstrap-compatible.
+            {
+              name = "Downcast from Unary";
+              when = xIsUnary;
+              orMsg = indent.block ''
+                Cannot downcast from an instance of non-unary type:
+                  ${xTName}
+              '';
+              result = cast T x.${xUnaryField.fieldName};
+              failMsg = castErrorMsg: indent.block ''
+                Downcast failed from unary field ${xTName}.${xUnaryFieldName}: ${xUnaryFieldTName} -> ${TName}
 
-        getOrMsg = cast: "${cast.name}: ${cast.orMsg}";
-        getFailMsg = cast: assert isCastError cast.result; "${cast.name}: ${cast.failMsg cast.result.castError}";
-        getSuccessMsg = cast: assert isCastSuccess cast.result; "${cast.name}: ${cast.successMsg cast.result.castSuccessMsg}";
+                ${indent.here "Downcast error: ${castErrorMsg}"}
+              '';
+              successMsg = castSuccessMsg: ''
+                Downcast succeeded from unary field ${xTName}.${xUnaryFieldName}: ${xUnaryFieldTName} -> ${TName}";
 
+                ${indent.here "Upcast success: ${castSuccessMsg}"}
+              '';
+            }
+
+            # Upcasting for unary x types via a nested cast
+            # This includes Builtins and other value types.
+            # Careful not to use other attrs of 'fields' here besides 'indexed' to
+            # be bootstrap-compatible.
+            {
+              name = "Upcast to Unary";
+              when = TIsUnary;
+              orMsg = "Cannot upcast to a non-unary type: ${xTName} -> ${TName}";
+              result =
+                let xCast = cast TUnaryFieldT x;
+                in if isCastError xCast then xCast
+                else
+                  mkCastSuccess
+                    (T.mk { ${TUnaryFieldName} = xCast.castSuccess; })
+                    xCast.castSuccessMsg;
+              failMsg = castErrorMsg: indent.block ''
+                Upcast failed to unary field ${TName}.${TUnaryFieldName}:
+                  ${xTName} -> ${TUnaryFieldTName}
+
+                Upcast error:
+                  ${indent.here castErrorMsg}
+              '';
+              successMsg = castSuccessMsg: indent.block ''
+                Upcast succeeded to unary field ${TName}.${TUnaryFieldName}:
+                  ${xTName} -> ${TUnaryFieldTName})
+
+                Upcast success:
+                  ${indent.here castSuccessMsg}
+              '';
+            }
+
+            # Sidecasting types via a nested cast
+            # Careful not to use other attrs of 'fields' here besides 'indexed' to
+            # be bootstrap-compatible.
+            {
+              name = "Sidecast Fields";
+              when = !(isCastError xFieldNames) && !(isCastError TFieldNames)
+                    && (length xFieldNames == length TFieldNames);
+              orMsg = indent.block ''
+                Cannot sidecast unless from a typed instance to a Type with the same field count:
+                  ${xTName} -> ${TName}
+
+                Source fields:
+                  ${indent.here (log.print xFieldNames)}
+
+                Target fields:
+                  ${indent.here (log.print TFieldNames)}
+                '';
+              result =
+                let castTArgs =
+                      zipListsWith
+                        (xFieldName: TFieldName: {
+                          ${TFieldName} =
+                            cast
+                              (T.fields.getField TFieldName).fieldType
+                              x.${xFieldName};
+                        })
+                        xFieldNames
+                        TFieldNames;
+                    castErrors = filterAttrs (_: isCastError) castTArgs;
+                    castArgs =
+                      mapAttrs (_: castResult: castResult.castSuccess) castTArgs;
+                    castErrorMsgs =
+                      indent.blocks
+                        (mapAttrsToList
+                          (name: castResult: "${name}: ${castResult.castError}")
+                          castTArgs);
+                    castSuccessMsgs =
+                      indent.blocks
+                        (mapAttrsToLIst
+                          (name: castResult: "${name}: ${castResult.castSuccessMsg}")
+                          castTArgs);
+                in if size castErrors > 0
+                  then mkCastError castErrorMsgs
+                  else mkCastSuccess (T.mk castArgs) castSuccessMsgs;
+              failMsg = castErrorMsg: indent.block ''
+                Sidecast failed:
+                  ${xTName} -> ${TName}
+
+                Field cast errors:
+                  ${indent.here castErrorMsg}
+              '';
+              successMsg = castSuccessMsg: indent.block ''
+                Sidecast succeeded:
+                  ${xTName} -> ${TName}
+
+                Field casts successes:
+                  ${indent.here castSuccessMsg}
+              '';
+            }
+          ]);
+        });
+
+        let
+
+        getOrMsg = castResult:
+          assert !castResult.when;
+          indent.block ''
+            ${castResult.name}:
+              ${indent.here castResult.orMsg}
+          '';
+        getFailMsg = castResult:
+          assert isCastError castResult.result;
+          indent.block ''
+            ${castResult.name}:
+              ${indent.here (castResult.failMsg castResult.result.castError)}
+          '';
+        getSuccessMsg = castResult:
+          assert isCastSuccess castResult.result;
+          indent.block ''
+            ${castResult.name}:
+              ${indent.here (castResult.successMsg castResult.result.castSuccessMsg)}
+          '';
         tryCasts = msgs: casts:
           let
-            cast = head casts;
+            castResult = head casts;
             casts' = tail casts;
           in
             # If we exhausted all casts, terminate with a combined castError
             if casts == []
               then (
-                mkCastError ''
+                mkCastError (indent.block ''
                   Cast failed: ${xTName} -> ${TName}
 
                   ${xTName} instance:
                     ${indent.here (log.print x)}
 
                   Attempted casts:
-                    ${indent.here (joinLines msgs)}
-                '')
+                    ${indent.here (indent.blocks msgs)}
+
+                  Log State:
+                    ${indent.here (log.print logState)}
+                ''))
 
             # Skip non-matching casts with a note message
-            else if !cast.when
-              then let msgs' = msgs ++ [(getOrMsg cast)]; in tryCasts msgs' casts'
+            else if !castResult.when
+              then let msgs' = msgs ++ [(getOrMsg castResult)]; in tryCasts msgs' casts'
 
             # Record nested cast errors
-            else if isCastError cast.result
-              then let msgs' = msgs ++ [(getFailMsg cast)]; in tryCasts msgs' casts'
+            else if isCastError castResult
+              then let msgs' = msgs ++ [(getFailMsg castResult)]; in tryCasts msgs' casts'
 
             # Cast succeeded
             else
-              assert isCastSuccess cast.result;
               let
-                msgs' = msgs ++ [(getSuccessMsg cast)];
+                msgs' = msgs ++ [(getSuccessMsg castResult)];
               in
-                mkCastSuccess cast.result.castSuccess ''
+                mkCastSuccess castResult.castSuccess ''
                   Cast succeeded: ${xTName} -> ${TName}
 
                   ${xTName} instance:
@@ -343,7 +401,7 @@ in rec {
                     ${indent.here (joinLines msgs')}
                 '';
 
-      in tryCasts [] casts;
+        in return (tryCasts [] casts);
 
     # Fold over a chain of inheritance, calling a function of (acc: This: acc') on each
     # type and returning the final acc.
@@ -2084,7 +2142,12 @@ in rec {
         inheritance =
           let
             A = Type.new "A" { fields = Fields.new { a = String; }; };
-            B = A.subType "B" { fields = Fields.new { b = Int; }; };
+            B = A.subType "B" {
+              ctor = This: a: b: {
+                a = a;
+                b = b;
+              };
+              fields = Fields.new { b = Int; }; };
           in {
 
             newA = {
@@ -2098,8 +2161,8 @@ in rec {
               childParent = expect.False (isSuperTypeOf B A);
               parentParent = expect.False (isSuperTypeOf A A);
               childChild = expect.False (isSuperTypeOf B B);
-              typeParent = expect.True (isSuperTypeOf Type A);
-              typeChild = expect.True (isSuperTypeOf Type B);
+              typeParent = expect.False (isSuperTypeOf Type A);
+              typeChild = expect.False (isSuperTypeOf Type B);
               typeType = expect.False (isSuperTypeOf Type Type);
             };
 
@@ -2116,7 +2179,7 @@ in rec {
             fieldsCompose = {
               expr = B.new "a" 2;
               expected = B.mk { a = "a"; b = 2; };
-              compare = Compare.Fields;
+              compare = Compare.Print;
             };
 
         };
