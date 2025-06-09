@@ -135,7 +135,7 @@ in rec {
           x = ${indent.here (log.print x)}
       ''))
       else
-        with assigns (_: with _.__closure; {
+        with letrec (_: with _; {
           printT = T: log.print T;
           TName = (printT T);
           xTName = (getTypeBoundName x);

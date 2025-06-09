@@ -102,6 +102,10 @@ with types; _tests.run
 </nix>
 
 <nix>
+log._tests.run
+</nix>
+
+<nix>
 with types.Types.Universe.U_1;
 String.new []
 </nix>

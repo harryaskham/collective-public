@@ -123,12 +123,17 @@ let
     };
     vprint = x: with prints; put x using.raw ___;
 
+    # Either print to string or return an already-string
+    show = dispatchDef print {
+      string = id;
+    };
+
     mkTrace = traceFn:
       let self = rec {
         # log.trace.show [ 456 { a = 2; }] 123
         # -> trace: [ 456 { a = 2; }]
         # 123
-        show = x: a: traceFn "\n\n[log.trace.show]\n${print x}\n" a;
+        show = x: a: traceFn "\n\n[log.trace.show]\n${log.show x}\n" a;
 
         # log.trace.showId 123
         # -> trace: 123
@@ -163,17 +168,17 @@ let
         # with log.trace; assert call "callName" arg1 arg2
         buildCall = callName:
           Variadic.compose
-            (l: { group = [ {call = callName;} {args = l;} ]; })
+            (l: { events = [ {call = [{name = callName;} {args = l;}]; }]; })
             Variadic.mkList;
 
         buildMethodCall = this: methodName:
           Variadic.compose
-            (l: { group = [ {method = methodName;} { T = this.name; } {args = l;} ]; })
+            (l: { events = [ {method = [{name = methodName;} { T = this.name; } {args = l;}]; }]; })
             Variadic.mkList;
 
         buildAttrs = attrsName:
           Variadic.compose
-            (l: { group = [ {attrs = attrsName;} ] ++ (optionals (size l > 0) [{extra = l;}]); })
+            (l: { events = [ {attrs = attrsName;} ] ++ (optionals (size l > 0) [{extra = l;}]); })
             Variadic.mkList;
 
         traceCall = callName:
@@ -199,127 +204,151 @@ let
         #   return x;
         #   ...
         #   return y;
-        group_ = groupType: buildGroup_: groupName:
+        mkEventGroup = groupType: buildGroup_: groupName:
           let
             groupBuilder = buildGroup_ groupName;
-            groupUtils = xs:
-              assert vtrace.over (tagged "START:${groupType}:${groupName}" xs);
-
+            mkGroupClosure = first: xs:
+              assert (if first
+                      then vtrace.over (tagged "START:${groupType}:${groupName}" xs)
+                      else true);
               rec {
-              # Returm accumulated log state.
-              logState = xs;
+                # Returm accumulated log state.
+                logState = xs;
 
-              # Trace an intermediate value
-              intermediate = name: value:
-                let xs' = xs // {
-                  group = xs.group ++ [
-                    { intermediate = name; }
-                    { inherit value; }
-                  ];
-                }; in assert over (tagged "TRACE:${groupType}:${groupName}" xs');
-                  xs';
+                # Returm accumulated log events.
+                logEvents = xs.events;
 
-              # Trace a message by printing the given value.
-              # When used with 'with', accrues logs by modifying the groupUtils in scope.
-              msg = value:
-                let xs' = xs // {
-                  group = xs.group ++ [
-                    { msg = print value; }
-                  ];
-                }; in assert over (tagged "MSG:${groupType}:${groupName}" xs');
-                  xs';
-
-              # Trace a message by printing the given value.
-              # When used with 'with', accrues logs by modifying the groupUtils in scope.
-              check = name: p: msg:
-                if p then
+                # Trace an intermediate value
+                intermediate = name: value:
                   let xs' = xs // {
-                    group = xs.group ++ [
-                      { check = { ${name} = "OK"; }; }
+                    events = xs.events ++ [
+                      { intermediate = name; }
+                      { inherit value; }
+                    ];
+                  }; in assert over (tagged "TRACE:${groupType}:${groupName}" xs');
+                    mkGroupClosure false xs';
+
+                # Trace a message by showing the given value.
+                # When used with 'with', accrues logs by modifying the mkGroupClosure in scope.
+                msg = value:
+                  let xs' = xs // {
+                    events = xs.events ++ [
+                      { msg = log.show value; }
                     ];
                   }; in assert over (tagged "MSG:${groupType}:${groupName}" xs');
-                    xs'
-                else
-                  let xs' = xs // {
-                    group = xs.group ++ [
-                      { check = { ${name} = "FAIL";
-                                  inherit msg;
-                                }; }
-                    ];
-                  }; in throw (log.print (tagged "MSG:${groupType}:${groupName}" xs'));
+                    mkGroupClosure false xs';
 
-              # Print a warning message
-              # When used with 'with', accrues logs by modifying the groupUtils in scope.
-              warning = message:
-                Variadic.mkListThen
-                  (extra: let xs' = xs // {
-                            group = xs.group ++ [
-                              { warning = {inherit message;} // optionalAttrs (size extra > 0) {inherit extra;}; }
-                            ];
-                          }; in assert over (tagged "WARNING:${groupType}:${groupName}" xs'); xs');
+                # Trace a message by printing the given value.
+                # When used with 'with', accrues logs by modifying the mkGroupClosure in scope.
+                check = name: p: msg:
+                  if p then
+                    let xs' = xs // {
+                      events = xs.events ++ [
+                        { check = { ${name} = "OK"; }; }
+                      ];
+                    }; in assert over (tagged "MSG:${groupType}:${groupName}" xs');
+                      xs'
+                  else
+                    let xs' = xs // {
+                      events = xs.events ++ [
+                        { check = { ${name} = "FAIL";
+                                    inherit msg;
+                                  }; }
+                      ];
+                    }; in throw (log.print (tagged "MSG:${groupType}:${groupName}" xs'));
 
-              # Trace an assignment inline.
-              # Does not accrue logs, and returns the assignment.
-              assign = name: value:
-                assert over (tagged "ASSIGN:${groupType}:${groupName}" (xs // {
-                  group = xs.group ++ [{
-                    assign = [{ inherit name; } {inherit value;}];
-                  }];
-                }));
-                value;
+                # Print a warning message
+                # When used with 'with', accrues logs by modifying the mkGroupClosure in scope.
+                warning = message: Variadic.mkListThen (extra:
+                  let
+                    xs' = xs // {
+                      events = xs.events ++ [
+                        { warning = {inherit message;} // optionalAttrs (size extra > 0) {inherit extra;}; }
+                      ];
+                    };
+                  in
+                    assert over (tagged "WARNING:${groupType}:${groupName}" xs');
+                    mkGroupClosure false xs'
+                );
 
-              assigns = mkVars:
-                let closure = mkVars { __closure = closure; };
-                    vars = closure.__closure;
-                    xs' =
-                      xs // {
-                        group = xs.group ++ [{
-                          assigns = closure;
+                # Trace an assignment inline.
+                # Does not accrue logs, and returns the assignment.
+                assign = name: value:
+                  assert over (tagged "ASSIGN:${groupType}:${groupName}" (xs // {
+                    events = xs.events ++ [{
+                      assign = [{ inherit name; } {inherit value;}];
+                    }];
+                  }));
+                  value;
+
+                # Trace a group of assignments and provide access to the results.
+                # Accrues logs for e.g.
+                # with (letrec (_: { ... })); ...
+                lets = vars: letrec (_: vars);
+
+                # Trace a group of assignments and provide access to the results.
+                # Can recursively refer to the finally-assigned attributes via
+                # the function self argument.
+                # Accrues logs for e.g.
+                # with (letrec (_: { ... })); ...
+                letrec = mkVars:
+                  let vars = mkVars vars;
+                      xs' =
+                        xs // {
+                          events = xs.events ++ [{
+                            assigns = vars;
+                          }];
+                        };
+                  in
+                    assert over (tagged "ASSIGN:${groupType}:${groupName}" xs');
+                    # Return the combined log closure and vars for with to provide access
+                    # Name collisions prefer the vars
+                    (mkGroupClosure false xs') // vars;
+
+                # Return a value from the group, tracing the value.
+                return = x:
+                  if isFunction x then traceVariadic x
+                  else
+                    let
+                      xs' = xs // {
+                        events = xs.events ++ [{
+                          return = x;
                         }];
                       };
-                in
-                  assert over (tagged "ASSIGN:${groupType}:${groupName}" xs');
-                  # Return the combined log closure and vars for with to provide cccess
-                  (xs' // vars);
+                    in
+                      assert over (tagged "RETURN:${groupType}:${groupName}" xs');
+                      x;
+                                   
 
-              # Return a value from the group, tracing the value.
-              return = x:
-                if isFunction x then traceVariadic x
-                else assert over (tagged "RETURN:${groupType}:${groupName}" (xs // {
-                  group = xs.group ++ [{
-                    return = x;
-                  }];
-                })); x;
+                # Return a variadic function from the group, tracing the function's return value when it is fully invoked.
+                traceVariadic = f:
+                  let traceOut = out:
+                        assert over (tagged "VARIADIC_RETURN:${groupType}:${groupName}" (xs // {
+                          group = xs.group ++ [{
+                            variadicReturn = out;
+                          }];
+                        }));
+                        out;
+                  in Variadic.compose traceOut f;
 
-              # Return a variadic function from the group, tracing the function's return value when it is fully invoked.
-              traceVariadic = f:
-                let traceOut = out:
-                      assert over (tagged "VARIADIC_RETURN:${groupType}:${groupName}" (xs // {
-                        group = xs.group ++ [{
-                          variadicReturn = out;
-                        }];
-                      }));
-                      out;
-                in Variadic.compose traceOut f;
-
-              # Return a variadic composite function from the group, tracing the function's return value when it is fully invoked.
-              traceComposeVariadic = name: gName: fName: g: f:
-                let gTraceVarargs = varargs:
-                      assert over (tagged "VARIADIC_COMPOSE:${groupType}:${groupName}" (xs // {
-                        group = xs.group ++ [{
-                          vcompose = [ { inherit name; } {g = gName;} {f = fName;} { inherit varargs; } ];
-                        }];
-                      }));
-                      g varargs;
-                in Variadic.compose gTraceVarargs f;
+                # Return a variadic composite function from the group, tracing the function's return value when it is fully invoked.
+                traceComposeVariadic = name: gName: fName: g: f:
+                  let gTraceVarargs = varargs:
+                        assert over (tagged "VARIADIC_COMPOSE:${groupType}:${groupName}" (xs // {
+                          events = xs.events ++ [{
+                            vcompose = [ { inherit name; } {g = gName;} {f = fName;} { inherit varargs; } ];
+                          }];
+                        }));
+                        g varargs;
+                  in Variadic.compose gTraceVarargs f;
 
             };
           in
-            Variadic.compose groupUtils groupBuilder;
+            Variadic.compose (mkGroupClosure true) groupBuilder;
 
-        call = group_ "call" buildCall;
-        methodCall = this: group_ "methodCall" (buildMethodCall this);
-        attrs = group_ "attrs" buildAttrs;
+        call = mkEventGroup "call" buildCall;
+        methodCall = this: mkEventGroup "methodCall" (buildMethodCall this);
+        attrs = mkEventGroup "attrs" buildAttrs;
 
 
       }; in self;
@@ -339,8 +368,65 @@ let
     # ];
     vtrace = mkTrace builtins.traceVerbose;
 
-
-
   };
 
-in log
+in log // {
+
+  _tests = with cutils.tests; suite {
+    log = {
+
+      print = {
+        string = expect.eq (log.print "abc") ''"abc"'';
+        int = expect.eq (log.print 123) ''123'';
+      };
+
+      show = {
+        stringToString = expect.eq (log.show "abc") "abc";
+        intToString = expect.eq (log.show 123) "123";
+      };
+      
+      trace = {
+        call = {
+          combined = {
+            expr =
+              with log.vtrace.call "callName" "arg0" "arg1" ___;
+              with msg "test msg";
+              with lets {
+                a = 1;
+                b = 2;
+              };
+              with letrec (_: {
+                c = 3;
+                d = _.c + 1;
+              });
+              let __out = {inherit a b c d;};
+              in { inherit __out logEvents; };
+            expected = {
+              # Assignments exposed raw for use with 'with'
+              __out = {
+                a = 1;
+                b = 2;
+                c = 3;
+                d = 4;
+              };
+              logEvents = [
+                {
+                  call = [
+                    { name = "callName"; }
+                    { args = [ "arg0" "arg1" ]; }
+                  ];
+                }
+                { msg = "test msg"; }
+                { assigns = { a = 1;
+                              b = 2; }; }
+                { assigns = { c = 3;
+                              d = 4; }; }
+              ];
+            };
+          };
+        };
+      };
+
+    };
+  };
+}
