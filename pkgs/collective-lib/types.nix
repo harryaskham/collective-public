@@ -123,6 +123,7 @@ in rec {
       then xOrError
       else f xOrError;
 
+    cast_ = T: x: (cast T x).castSuccess;
     cast = T: x:
       with log.vtrace.call "cast" T x ___;
 
@@ -1067,7 +1068,71 @@ in rec {
         };
 
     mkBuiltins = U:
-      mergeAttrsList (map (name: { ${name} = mkBuiltin U name; }) BuiltinNames);
+      mergeAttrsList (map (name: { ${name} = mkBuiltin U name; }) BuiltinNames) // {
+
+        # Wrap up some builtin constructors.
+        # TODO: Builtin to a base type for all builtins.
+        # TODO: Move to common
+        Builtin = {
+          # Get the Builtin type corresponding to the given builtin type.
+          # Returns null if builtinType is not a builtin type string.
+          maybeFromT = builtinType:
+            if (!isString builtinType) then null
+            else {
+              null = Null;
+              int = Int;
+              float = Float;
+              string = String;
+              path = Path;
+              bool = Bool;
+              list = List;
+              set = Set;
+              lambda = Lambda;
+            }.${builtinType} or null;
+
+          # Get the Builtin type corresponding to the given builtin type.
+          # Throws if builtinType is not a builtin type string.
+          FromT = builtinType:
+            let T = maybeFromT builtinType;
+            in if T == null then (throw ''
+              Invalid T argument for Builtin.FromT:
+              ${with log.prints; here builtinType ___}
+            '')
+            else T;
+
+          From = x:
+            let T = ({
+                  null = Null;
+                  int = Int;
+                  float = Float;
+                  string = String;
+                  path = Path;
+                  bool = Bool;
+                  list = List;
+                  set = assert !(x ? Type); Set;
+                  lambda = Lambda;
+                }."${typeOf x}" or (throw ''
+                  Invalid type for Builtin.From:
+                  ${with log.prints; here (getTypeName x) ___}
+                ''));
+            in T.mk { value = x; };  # mk not new here so new can use From
+
+          getBuiltin = T: {
+            Null = "null";
+            Int = "int";
+            Float = "float";
+            String = "string";
+            Path = "path";
+            Bool = "bool";
+            List = "list";
+            Set = "set";
+            Lambda = "lambda";
+          }."${T.name}" or (throw ''
+            Invalid type for Builtin.getBuiltin:
+            ${with log.prints; here T ___}
+          '');
+        };
+    };
 
     # e.g. parseFieldSpec Static<Default<Int, 123>> -> {fieldStatic = true, fieldDefault = 123; fieldType = Int; }
     #      parseFieldSpec Static<Int> -> {fieldStatic = true; fieldType = Int; }
@@ -1568,54 +1633,6 @@ in rec {
         };
         Type = assign "Type" __Bootstrap.Type;
 
-        # Wrap up some builtin constructors.
-        # TODO: Builtin to a base type for all builtins.
-        # TODO: Move to common
-        Builtin = {
-          # Get the Builtin type corresponding to the given builtin type.
-          # Returns null if builtinType is not a builtin type string.
-          maybeFromT = builtinType:
-            if (!isString builtinType) then null
-            else {
-              null = Null;
-              int = Int;
-              float = Float;
-              string = String;
-              path = Path;
-              bool = Bool;
-              list = List;
-              set = Set;
-              lambda = Lambda;
-            }.${builtinType} or null;
-
-          # Get the Builtin type corresponding to the given builtin type.
-          # Throws if builtinType is not a builtin type string.
-          FromT = builtinType:
-            let T = maybeFromT builtinType;
-            in if T == null then (throw ''
-              Invalid T argument for Builtin.FromT:
-              ${with log.prints; here builtinType ___}
-            '')
-            else T;
-
-          From = x:
-            let T = ({
-                  null = Null;
-                  int = Int;
-                  float = Float;
-                  string = String;
-                  path = Path;
-                  bool = Bool;
-                  list = List;
-                  set = assert !(x ? Type); Set;
-                  lambda = Lambda;
-                }."${typeOf x}" or (throw ''
-                  Invalid type for Builtin.From:
-                  ${with log.prints; here (getTypeName x) ___}
-                ''));
-            in T.mk { value = x; };  # mk not new here so new can use From
-        };
-
         # A constraint on a type variable.
         Constraint = Type.new "Constraint" {
           fields = U.Fields.new [
@@ -1912,36 +1929,58 @@ in rec {
         WrapString = String.subType "WrapString" {};
       };
 
-      instantiationTests = U: with U; {
+      instantiationTests = U: with U; with TestTypes U; {
         Type = expect.equal (Type.new "SomeType" {}).__TypeId "SomeType";
+
         Literal = expect.equal (Literal 123).getLiteral 123;
-        field = {
+
+        Field = {
           expr = let f = Field.new "name" null;
                   in [f.fieldName f.fieldType f.fieldStatic f.fieldDefault];
           expected = ["name" null false null];
         };
+
+        MyString_nocast = {
+          mkFromString = expect.eq (MyString.mk { value = String.new "hello"; }).value.value "hello";
+          newFromString = expect.eq (MyString.new (String.new "hello")).value.value "hello";
+        };
+
+        WrapString_nocast = {
+          mkFromString = expect.eq (WrapString.mk { value = "hello"; }).value "hello";
+          newFromString = expect.eq (WrapString.new "hello").value "hello";
+        };
+
+        MyType_mk_nocast = {
+          expr = (MyType.mk { myField = String.new "World"; }).myField.value;
+          expected = "World";
+        };
+
+        MyType_new_nocast = {
+          expr = (MyType.new (String.new "World")).myField.value;
+          expected = "World";
+        };
       };
 
-      builtinTests = U: with U;
-        let
-          mkBuiltinTest = T: name: rawValue: {
-            expr =
-              let x = T.new rawValue;
-              in {
-                name = (x.Type {}).name;
-                value = if name == "Lambda" then null else x.value;
-                newIsBuiltin = builtinValueCheck x;
-                rawIsBuiltin = builtinValueCheck x.value;
+      builtinTests = U: with U; {
+        mk =
+          let
+            mkBuiltinTest = T: name: rawValue: {
+              expr =
+                let x = T.new rawValue;
+                in {
+                  name = (x.Type {}).name;
+                  value = if name == "Lambda" then null else x.value;
+                  newIsBuiltin = builtinValueCheck x;
+                  rawIsBuiltin = builtinValueCheck x.value;
+                };
+              expected = {
+                inherit name;
+                value = if name == "Lambda" then null else rawValue;
+                newIsBuiltin = false;
+                rawIsBuiltin = true;
               };
-            expected = {
-              inherit name;
-              value = if name == "Lambda" then null else rawValue;
-              newIsBuiltin = false;
-              rawIsBuiltin = true;
             };
-          };
-        in
-          {
+          in {
             Null = mkBuiltinTest Null "Null" null;
             Int = mkBuiltinTest Int "Int" 123;
             Float = mkBuiltinTest Float "Float" 12.3;
@@ -1952,6 +1991,26 @@ in rec {
             Set = mkBuiltinTest Set "Set" {a = 1; b = 2; c = 3;};
             Lambda = mkBuiltinTest Lambda "Lambda" (a: b: 123);
           };
+
+          builtinValueCheck = {
+            Type = {
+              expr = builtinValueCheck Type;
+              expected = false;
+            };
+            int = {
+              expr = builtinValueCheck 123;
+              expected = true;
+            };
+            set = {
+              expr = builtinValueCheck {abc="xyz";};
+              expected = true;
+            };
+            Bool = {
+              expr = builtinValueCheck (Bool.new true);
+              expected = false;
+            };
+          };
+        };
 
       untypedTests = U: with U;
         let
@@ -1999,12 +2058,20 @@ in rec {
             Set = { a = 1; b = 2; c = 3; };
           };
           mkToTypedBuiltinTest = T: x: {
-            expr = (cast T x).castSuccess;
+            expr = cast_ T x;
             expected = T.new x;
             compare = Compare.Fields;
           };
+          mkToUntypedBuiltinTest = T: x: {
+            expr = cast_ (Builtin.getBuiltin T) (T.new x);
+            expected = x;
+            compare = Compare.Fields;
+          };
         in {
-          toTypedBuiltin = mapAttrs (name: v: mkToTypedBuiltinTest U.${name} v) testX;
+          to = {
+            typedBuiltin = mapAttrs (name: v: mkToTypedBuiltinTest U.${name} v) testX;
+            untypedBuiltin = mapAttrs (name: v: mkToUntypedBuiltinTest U.${name} v) testX;
+          };
         };
 
       typeCheckingTests = U: with U;
@@ -2076,67 +2143,44 @@ in rec {
           };
         };
 
-      miscTests = U: with U; with TestTypes U; {
+      typeFunctionalityTests = U: with U; with TestTypes U; {
 
-        RootType = {
-          expr = Type.name;
-          expected = "Type";
-        };
-
-        builtinValueCheck = {
-          Type = {
-            expr = builtinValueCheck Type;
-            expected = false;
-          };
-          int = {
-            expr = builtinValueCheck 123;
-            expected = true;
-          };
-          set = {
-            expr = builtinValueCheck {abc="xyz";};
-            expected = true;
-          };
-          Bool = {
-            expr = builtinValueCheck (Bool.new true);
-            expected = false;
+        checks = {
+          RootType = {
+            expr = Type.name;
+            expected = "Type";
           };
         };
 
-        MyString_nocast = {
-          mkFromString = expect.eq (MyString.mk { value = String.new "hello"; }).value.value "hello";
-          newFromString = expect.eq (MyString.new (String.new "hello")).value.value "hello";
+        methodCalls = {
+          MyType_call = {
+            expr =
+              let this = MyType.new (String.new "World");
+                in this.helloMyField "!";
+            expected = "Hello, World!";
+          };
         };
 
-        WrapString_nocast = {
-          mkFromString = expect.eq (WrapString.mk { value = "hello"; }).value "hello";
-          newFromString = expect.eq (WrapString.new "hello").value "hello";
+        setField = {
+          MyType_set_nocast = {
+            expr =
+              let this = MyType.new (String.new "");
+              in [
+                (this.helloMyField "!")
+                ((this.set.myField "World").helloMyField "!")
+              ];
+            expected = [ "Hello, !" "Hello, World!" ];
+          };
         };
 
-        MyType_mk_nocast = {
-          expr = (MyType.mk { myField = String.new "World"; }).myField.value;
-          expected = "World";
-        };
-
-        MyType_new_nocast = {
-          expr = (MyType.new (String.new "World")).myField.value;
-          expected = "World";
-        };
-
-        MyType_call = {
-          expr =
-            let this = MyType.new (String.new "World");
-              in this.helloMyField "!";
-          expected = "Hello, World!";
-        };
-
-        MyType_set_nocast = {
-          expr =
-            let this = MyType.new (String.new "");
-            in [
-              (this.helloMyField "!")
-              ((this.set.myField "World").helloMyField "!")
-            ];
-          expected = [ "Hello, !" "Hello, World!" ];
+        modifyField = {
+          MyType_modify = {
+            expr =
+              let this = MyType.new (String.new "Hello");
+              in (this.modify.myField (x: String.new "${x.value}, World!"));
+            expected = MyType.new (String.new "Hello, World!");
+            compare = Compare.Fields;
+          };
         };
 
         inheritance =
@@ -2203,6 +2247,14 @@ in rec {
             };
           };
 
+          typeFunctionality = testInUniverses {
+            inherit
+              U_0
+              U_1
+              # U_2
+              ;
+          } typeFunctionalityTests;
+
           instantiation = testInUniverses {
             inherit
               U_0
@@ -2222,18 +2274,10 @@ in rec {
           cast = testInUniverses {
             inherit
               U_0
-              # U_1
-              # U_2
-              ;
-          } castTests;
-
-          misc = testInUniverses {
-            inherit
-              U_0
               U_1
               # U_2
               ;
-          } miscTests;
+          } castTests;
 
           untyped = testInUniverses {
             inherit
