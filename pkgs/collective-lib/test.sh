@@ -26,7 +26,7 @@ function main() {
 
   FULL_EXPR="let pkgs = import <nixpkgs> {}; in with pkgs.lib; with (import ~/collective/collective-public/pkgs/collective-lib {}); ${PRINT} (${EXPR})"
 
-  CMD="nix eval --extra-experimental-features pipe-operators --impure --expr '$FULL_EXPR' --raw $FLAGS"
+  CMD="nix eval --option max-call-depth 1000000000 --extra-experimental-features pipe-operators --impure --expr '$FULL_EXPR' --raw $FLAGS"
 
   echo "Running: ${CMD}" >&2
   bash -c "$CMD"
@@ -106,9 +106,10 @@ with functions; _tests.run
 </nix>
 
 <nix>
+with functions;
 with types.Types;
 with Universe.U_0;
-log.print (TypeThunk String)
+(resolve (Fields.new { wat = null; }).Type)
 </nix>
 
 <nix>

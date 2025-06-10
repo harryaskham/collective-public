@@ -53,7 +53,38 @@ in rec {
   thunk = x: _: x;
 
   # Resolve a thunk, throwing an error if the resolving value is used.
-  resolve = x: x (throw ''Resolved thunk made use of its thunk-argument.'');
+  resolve = x:
+    if isThunk x then x.get {}
+    else if isFunction x then x (throw ''Resolved thunk made use of its thunk-argument.'')
+    else throw ''Invalid type to resolve: ${typeOf x}'';
+
+  # Object wrapping a thunk with metadata.
+  Thunk = x:
+    let
+      # Make a new TT with the given depth and Type T.
+      mkThunk = x: rec {
+          # Marker for identifying TTs, since they live outside the type system.
+        __isThunk = true;
+
+        # Display thunks
+        __show = self: self.do log.show;
+
+        # Before resolving the type.
+        __x = thunk x;
+
+        # Run a function over the resolved Type.
+        do = f: f (resolve __x);
+
+        # Get the resolved Type. Must be a regular thunk itself to avoid recursion.
+        get = __x;
+
+        # Run a function over the resolved Type, retaining structure.
+        fmap = f: Thunk (do f);
+      };
+    in
+      mkThunk x;
+  isThunk = x: isAttrs x && (x.__isThunk or false);
+
 
   # Compose two functions left-to-right and merge their outputs.
   # For example:
@@ -526,6 +557,30 @@ in rec {
                 mkX_0_next = expect.eq (resolve (mkX 0).next).i 1;
                 mkX_0_next_next = expect.eq (resolve (resolve (mkX 0).next).next).i 2;
               };
+          };
+          Thunk = {
+            isThunkLambda = expect.eq (isThunk (_: 123)) false;
+            isThunkSet = expect.eq (isThunk {}) false;
+            isThunkThunk = expect.eq (isThunk (Thunk 123)) true;
+            mk = expect.eq (resolve (Thunk 123)) 123;
+            mk2 = expect.eq (resolve (resolve (Thunk (Thunk 123)))) 123;
+            mk5 = expect.eq
+              (resolve (resolve (resolve (resolve (resolve
+                (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
+              )))))
+              123;
+            print5 = expect.eq
+              (log.print
+                (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
+              )
+              "123";
+            show5 = expect.eq
+              (log.show
+                (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
+              )
+              "123";
+            do = expect.eq ((Thunk 123).do (x: x+1)) 124;
+            fmap = expect.eq (resolve ((Thunk 123).fmap (x: x+1))) 124;
           };
 
           fjoin = {

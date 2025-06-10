@@ -33,18 +33,28 @@ in rec {
 
     # Produce a version of the this-set with replaced lambdas, enabling deep comparison.
     NoLambdas = this:
-      if typeOf this == "lambda" then
-        { __lambda = true; }
+      let
+        maxD = 20;
+        go = d: this:
+          if d >= maxD then { __NoLambdas_maxDepth = true; }
+          else
+            if typeOf this == "lambda" then
+              { __lambda = true; }
 
-      else if typeOf this == "set" then
-        concatMapAttrs
-          (k: v:
-            if k == "__toString"
-            then { __toString__NoLambdas = "<__toString>"; }
-            else { ${k} = NoLambdas v; })
-          this
+            else if typeOf this == "set" then
+              concatMapAttrs
+                (k: v:
+                  if k == "__toString"
+                  then { __toString__NoLambdas = "<__toString>"; }
+                  else { ${k} = go (d + 1) v; })
+                this
 
-      else this;
+            else if typeOf this == "list" then
+              map (go (d + 1)) this
+
+            else this;
+
+      in go 0 this;
 
     # Compare test outputs only on their canonical stringified form.
     Print = this: log.print this;

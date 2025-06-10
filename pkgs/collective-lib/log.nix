@@ -12,6 +12,7 @@ let
 
     mkPrintArgs = {
       ignoreToString = false;
+      ignoreShow = false;
       # Default here to leave indentation markers in until the top level call
       formatBlock = trimNewlines;
       formatLines = indent.linesSep "\n";
@@ -82,6 +83,10 @@ let
       let
         block =
           if depth >= maxDepth then "..."
+          else if (x ? __show) && !ignoreShow then
+            let showX = x.__show x;
+                showXRemoved = if isAttrs showX then removeAttrs showX ["__show"] else showX;
+            in show showXRemoved
           else if (x ? __toString) && !ignoreToString then
             toString x
           else {
@@ -109,7 +114,7 @@ let
       here = x: Variadic.compose indent.here (put x);
       putD = n: x: put x (using.depth n);
       using = {
-        raw = { ignoreToString = true; };
+        raw = { ignoreToString = true; ignoreShow = true; };
         line = { formatLines = indent.linesSep " "; };
         depth = n: { maxDepth = n; };
         mask = names: {
@@ -124,10 +129,12 @@ let
     };
     vprint = x: with prints; put x using.raw ___;
 
-    # Either print to string or return an already-string
-    show = dispatchDef print {
-      string = id;
-    };
+    # Either print to string using __show if it exists, or return an already-string
+    show = x_:
+      let x = if x_ ? __show then x_.__show x_ else x_;
+      in dispatchDef print {
+           string = id;
+         } x;
 
     mkTrace = traceFn:
       let self = rec {
@@ -279,7 +286,7 @@ let
                 # Trace a group of assignments and provide access to the results.
                 # Accrues logs for e.g.
                 # with (letrec (_: { ... })); ...
-                lets = vars: letrec_ "LETS" (_: vars);
+                lets = vars: letrec_ "LETS" vars;
 
                 # Trace a group of assignments and provide access to the results.
                 # Can recursively refer to the finally-assigned attributes via
@@ -288,8 +295,11 @@ let
                 # with (letrec (_: { ... })); ...
                 letrec = letrec_ "LETREC";
                 letrec_ = tag: mkVars:
-                  let vars = mkVars vars;
-                      xs' = withEvents xs [{assigns = vars;}];
+                  let vars =
+                        if isAttrs mkVars then mkVars
+                        else if isFunction mkVars then mkVars vars
+                        else throw ''Invalid mkVars in letrec_: ${log.print mkVars}'';
+                      xs' = withEvents xs [{lets = vars;}];
                   in
                     assert over (tagged "${tag}:${groupType}:${groupName}" xs');
                     # Return the combined log closure and vars for with to provide access
