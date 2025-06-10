@@ -102,12 +102,13 @@ with types; _tests.run
 </nix>
 
 <nix>
-log._tests.run
+with functions; _tests.run
 </nix>
 
 <nix>
-with types.Types.Universe.U_1;
-String.new []
+with types.Types;
+with Universe.U_0;
+log.print (TypeThunk String)
 </nix>
 
 <nix>
@@ -115,7 +116,7 @@ with types; attrNames _tests.runOne
 </nix>
 
 <nix>
-with types; _tests.runOne.test-types__cast__U_0__toTypedBuiltin__Bool
+with types; _tests.runOne.test-types__builtin__U_0__builtinValueCheck__Bool
 </nix>
 
 <nix>

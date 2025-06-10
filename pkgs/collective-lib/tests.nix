@@ -80,6 +80,9 @@ in rec {
     equalOn = compare: expr: expected: { inherit expr expected compare; };
     eq = equal;
     eqOn = equalOn;
+    printEq = equalOn Compare.Print;
+    fieldsEq = equalOn Compare.Fields;
+    anyLambda = _: throw ''expect.anyLambda was called; should only be used in placeholder for Print/NoLambdas expectations.'';
     asserts = {
       ok = expr_: {
         expr = assert expr_; { asserts = "ok"; };
@@ -106,40 +109,41 @@ in rec {
   # Is x the result of calling builtins.tryEval
   isTryEvalResult = x: isAttrs x && x ? success && x ? value;
 
-  runOneTest = test: results_: rec {
-    evalStatus =
-      if test.skip then EvalStatus.Skipped
-      else if isTryEvalResult results_ && !results_.success then EvalStatus.Error
-      else EvalStatus.OK;
-    results =
-      if test.skip then null
-      else if evalStatus == EvalStatus.Error then
-        # Surface the raw results of an eval failure so we can expect against them
-        results_
-      else if isTryEvalResult results_ then
-        # Otherwise unwrap the successful result for comparison
-        results_.value
-      else results_;
-    status =
-      if test.skip then Status.Skipped
-      else if evalStatus == EvalStatus.Error then
-        if test.expected == expect.failure then Status.Passed
-        else Status.Failed  # Failure due to tryEval
-      else if results == [] then Status.Passed
-      else Status.Failed;  # Failure due to mismatch
-    actual =
-      let mkActual = msg: result: {
-            inherit status evalStatus result;
-            __toString = _:
-              if result == null then msg
-              else indent.block ''
-                ${msg}: ${indent.here (log.print result)}
-              '';
-          };
-
-      in
+  runOneTest = test: results_:
+    with log.vtrace.test test.name results_ ___;
+    return rec {
+      evalStatus =
+        if test.skip then EvalStatus.Skipped
+        else if isTryEvalResult results_ && !results_.success then EvalStatus.Error
+        else EvalStatus.OK;
+      results =
+        if test.skip then null
+        else if evalStatus == EvalStatus.Error then
+          # Surface the raw results of an eval failure so we can expect against them
+          results_
+        else if isTryEvalResult results_ then
+          # Otherwise unwrap the successful result for comparison
+          results_.value
+        else results_;
+      status =
+        if test.skip then Status.Skipped
+        else if evalStatus == EvalStatus.Error then
+          if test.expected == expect.failure then Status.Passed
+          else Status.Failed  # Failure due to tryEval
+        else if results == [] then Status.Passed
+        else Status.Failed;  # Failure due to mismatch
+      actual =
+        let mkActual = msg: result: {
+              inherit status evalStatus result;
+              __toString = _:
+                if result == null then msg
+                else indent.block ''
+                  ${msg}: ${indent.here (log.print result)}
+                '';
+            };
+       in
         if test.skip
-         then mkActual "SKIP" null
+          then mkActual "SKIP" null
 
         else if evalStatus == EvalStatus.Error
           then
@@ -183,12 +187,9 @@ in rec {
 
   # Run the given test as a singleton test suite, formatting its results.
   evalOneTest = evalFn: test:
-    with log.vtrace.test test.name ___;
-    with letrec (_: with _; {
-      tests = { ${test.name} = test; };
-      result = evalFn (runTests tests);
-    });
-    return (strict (runOneTest test result));
+    let tests = { ${test.name} = test; };
+        result = evalFn (runTests tests);
+    in strict (runOneTest test result);
 
   # Create a test attribute set adding extra functionality to a runTests-style
   # test of format { expr = ...; expected = ...; }

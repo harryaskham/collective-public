@@ -49,6 +49,12 @@ in rec {
     Variadic.mkListThen
       (fs: let f = foldl1 compose (reverseList fs); in f x);
 
+  # Make a thunk out of a value
+  thunk = x: _: x;
+
+  # Resolve a thunk, throwing an error if the resolving value is used.
+  resolve = x: x (throw ''Resolved thunk made use of its thunk-argument.'');
+
   # Compose two functions left-to-right and merge their outputs.
   # For example:
   # f = sequentialWith mergeAttrs (b: c: {inherit b c;}) (a: b: {inherit a b;});
@@ -507,6 +513,19 @@ in rec {
                 (s: "${s} is 124")
                 ___)
               "124 is 124";
+          };
+
+          thunk = {
+            manual = expect.eq ((thunk 123) {}) 123;
+            resolve = expect.eq (resolve (thunk 123)) 123;
+            recursive =
+              let mkX = i: { inherit i; next = thunk (mkX (i + 1)); };
+              in {
+                mkXPrints = expect.printEq (mkX 0) { i = 0; next = expect.anyLambda; };
+                mkX_0 = expect.eq (mkX 0).i 0;
+                mkX_0_next = expect.eq (resolve (mkX 0).next).i 1;
+                mkX_0_next_next = expect.eq (resolve (resolve (mkX 0).next).next).i 2;
+              };
           };
 
           fjoin = {

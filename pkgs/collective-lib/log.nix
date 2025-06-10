@@ -82,7 +82,7 @@ let
       let
         block =
           if depth >= maxDepth then "..."
-          else if (x ? Type) && (x ? __toString) && !ignoreToString then
+          else if (x ? __toString) && !ignoreToString then
             toString x
           else {
             null = "null";
