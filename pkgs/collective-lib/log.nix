@@ -83,10 +83,8 @@ let
       let
         block =
           if depth >= maxDepth then "..."
-          else if (x ? __show) && !ignoreShow then
-            let showX = x.__show x;
-                showXRemoved = if isAttrs showX then removeAttrs showX ["__show"] else showX;
-            in show showXRemoved
+          else if hasShow x && !ignoreShow then
+            show x
           else if (x ? __toString) && !ignoreToString then
             toString x
           else {
@@ -130,11 +128,13 @@ let
     vprint = x: with prints; put x using.raw ___;
 
     # Either print to string using __show if it exists, or return an already-string
+    hasShow = x: x ? __show && isFunction x.__show;
     show = x_:
-      let x = if x_ ? __show then x_.__show x_ else x_;
+      let x = if hasShow x_ then x_.__show x_ else x_;
+          xRemoved = if isAttrs x then removeAttrs x [ "__show" ] else x;
       in dispatchDef print {
            string = id;
-         } x;
+         } xRemoved;
 
     mkTrace = traceFn:
       let self = rec {
@@ -408,10 +408,10 @@ in log // {
                   ];
                 }
                 { msg = "test msg"; }
-                { assigns = { a = 1;
-                              b = 2; }; }
-                { assigns = { c = 3;
-                              d = 4; }; }
+                { lets = { a = 1;
+                           b = 2; }; }
+                { lets = { c = 3;
+                           d = 4; }; }
               ];
             };
           };

@@ -34,7 +34,7 @@ in rec {
     # Produce a version of the this-set with replaced lambdas, enabling deep comparison.
     NoLambdas = this:
       let
-        maxD = 20;
+        maxD = 50;
         go = d: this:
           if d >= maxD then { __NoLambdas_maxDepth = true; }
           else
@@ -46,6 +46,8 @@ in rec {
                 (k: v:
                   if k == "__toString"
                   then { __toString__NoLambdas = "<__toString>"; }
+                  else if k == "__show"
+                  then { __show__NoLambdas = "<__show>"; }
                   else { ${k} = go (d + 1) v; })
                 this
 

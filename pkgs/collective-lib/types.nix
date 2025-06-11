@@ -7,6 +7,7 @@ with cutils.clib;
 with cutils.attrs;
 with cutils.functions;
 with cutils.errors;
+with cutils.lists;
 with cutils.strings;
 
 # TODO:
@@ -159,8 +160,8 @@ in rec {
         xIsUnary = castErrorOr xFields (fields: size fields == 1) == true;
         TIsUnary = castErrorOr TFields (fields: size fields == 1) == true;
 
-        xUnaryField = castErrorOr xFields head;
-        TUnaryField = castErrorOr TFields head;
+        xUnaryField = castErrorOr xFields maybeHead;
+        TUnaryField = castErrorOr TFields maybeHead;
 
         xUnaryFieldName = castErrorOr xUnaryField (field: field.fieldName);
         TUnaryFieldName = castErrorOr TUnaryField (field: field.fieldName);
@@ -458,9 +459,8 @@ in rec {
           # The name of the type.
           {name = maybeAny (SU.String);}
           # The type of the instance as a thunk.
-          # Defaults to this universe's SU.Type, as types in this universe will be
-          # created using SU.Type and this field's default dictates their Type.
-          {Type = maybeAny (SU.Default "set" (Thunk SU.Type));}
+          # Set in mkInstance to the This type.
+          {Type = maybeAny "set";}
           # The supertype of the type.
           {Super = maybeAny (SU.Default "set" (Thunk null));}
           # The type parameters of the type.
@@ -638,7 +638,7 @@ in rec {
 
       __show = This: this:
         if isTypeSet this && isString this.__TypeId then
-          "Type<${this.__TypeId}>"
+          this.__TypeId
         else
           this;
     };
@@ -650,18 +650,19 @@ in rec {
         Super = Thunk null;
         # The defaults here are only required for universes with typechecking disabled.
         # Otherwise they are set per the Default values in mkTypeFieldListFor.
-        ctor = This: name: args: {
-          inherit name;
-          Super = args.Super or (Thunk null);
-          ctor = args.ctor or Ctors.Fields;
-          fields = args.fields or (This: SU.Fields.new []);
-          methods = args.methods or {};
-          staticMethods = args.staticMethods or {};
-          tvars = args.tvars or {};
-          tvarBindings = args.tvarBindings or {};
-          checkValue = args.checkValue or null;
-          overrideCheck = args.overrideCheck or null;
-        };
+        ctor =
+          This: name: args: {
+            inherit name;
+            Super = args.Super or (Thunk null);
+            ctor = args.ctor or Ctors.Fields;
+            fields = args.fields or (This: SU.Fields.new []);
+            methods = args.methods or {};
+            staticMethods = args.staticMethods or {};
+            tvars = args.tvars or {};
+            tvarBindings = args.tvarBindings or {};
+            checkValue = args.checkValue or null;
+            overrideCheck = args.overrideCheck or null;
+          };
         fields = This: mkTypeFieldsFor opts U;
         methods = typeMethodsFor U;
         staticMethods = {};
@@ -704,10 +705,10 @@ in rec {
     # Get the bound name of a type whether builtin or Type.
     getTypeBoundName = x:
       if isTyped x
-        then x.Type.do (T: T.boundName or throw ''
+      then x.Type.do (T: T.boundName or (throw ''
           Type is missing boundName in getTypeBoundName:
           ${indent.here (log.print (resolve x.Type))}
-        '')
+        ''))
         else typeOf x;
 
     # Check two types for equality, supporting both Types and builtin type-name strings.
@@ -721,8 +722,6 @@ in rec {
 
     # Check a string or custom type against a value.
     hasType = T: x: typeEq T (getRawType x);
-
-    setType = This: this: this // { Type = Thunk This;};
 
     # Set the value of a field on an instance 'this' of type 'This'
     #
@@ -798,7 +797,7 @@ in rec {
             msg = indent.block ''
               Error casting field assignment:
 
-                ${This.__TypeId}.${fieldName} =
+                ${This.__TypeId or "This"}.${fieldName} =
                   ${indent.here (log.print uncastValue)}
 
                 ${indent.here castValue.castError}
@@ -937,7 +936,6 @@ in rec {
     # Initialise a type from its This type, its partial this set, and any args.
     initThis = This: this: args:
       pipe this
-      (setType This)
       (setAccessors This)
       (setFields This args)
       (setTypeStaticMethods This)
@@ -970,9 +968,12 @@ in rec {
     # arg = { fieldName = value, ... } for all fields.
     # Fields with defaults can be omitted.
     # Build a new instance from a single dict of field values.
-    mkInstance = This: args:
-      with log.vtrace.call "mkInstance" This args ___;
+    mkInstance = This: args_:
+      with log.vtrace.call "mkInstance" This args_ ___;
       let
+        # Set Type always.
+        args = args_ // { Type = Thunk This; };
+
         # Construct 'this' as an instance of 'This'.
         this = 
           pipe {} 
@@ -1157,29 +1158,26 @@ in rec {
     #      parseFieldSpec Default<Int, 123> -> {fieldDefault = 123; fieldType = Int; }
     #      parseFieldSpec Int -> { fieldType = Int; }
     parseFieldSpec = spec:
-      with log.vtrace.call "parseFieldSpec" spec ___;
-      return (
-        # Unwrap Static types.
-        # Duck-typed to support bootstrap.
-        if spec ? staticType
-          then (parseFieldSpec spec.staticType) // {fieldStatic = true;}
+      # Unwrap Static types.
+      # Duck-typed to support bootstrap.
+      if spec ? staticType
+        then (parseFieldSpec spec.staticType) // {fieldStatic = true;}
 
-        # Unwrap Default types.
-        # Duck-typed to support bootstrap.
-        else if (spec ? defaultType) && (spec ? defaultValue)
-          then (parseFieldSpec spec.defaultType) // {fieldDefault = spec.defaultValue;}
+      # Unwrap Default types.
+      # Duck-typed to support bootstrap.
+      else if (spec ? defaultType) && (spec ? defaultValue)
+        then (parseFieldSpec spec.defaultType) // {fieldDefault = spec.defaultValue;}
 
-        # Return unwrapped types.
-        else
-          with check "isTypeLike spec" (isTypeLike spec)
-               "Got a non-type spec in parseFieldSpec: ${log.print spec}";
+      # Return unwrapped types.
+      else
+        with check "isTypeLike spec" (isTypeLike spec)
+              "Got a non-type spec in parseFieldSpec: ${log.print spec}";
 
-          {
-            fieldType = spec;
-            fieldStatic = false;
-            fieldDefault = null;
-          }
-      );
+        {
+          fieldType = spec;
+          fieldStatic = false;
+          fieldDefault = null;
+        };
 
     # Universe-independent types that only depend on Type.
     mkTrivialTypes = Type: rec {
@@ -1202,6 +1200,7 @@ in rec {
       inheritFrom = Super: ctorArgs:
         with log.vtrace.call "inheritFrom" Super ctorArgs ___;
         with check "isThunk Super" (isThunk Super) "inheritFrom: Super must be a Thunk, got ${log.print Super}";
+        with check "!(Super.do isNull)" (!(Super.do isNull)) "inheritFrom: Super must not be null, ${log.print (resolve Super)}";
 
         return (ctorArgs // {
           # Already a Thunk.
@@ -1449,20 +1448,18 @@ in rec {
 
     # Cause a Type to have itself as its own Type, eliding any information about
     # either bootstrap pseudo-types or the Type of its superuniverse.
-    groundTypeThunk = TypeThunk:
-      let TypeThunk__grounded = TypeThunk.fmap (Type: Type // { Type = TypeThunk__grounded; });
-      in TypeThunk__grounded;
+    groundType = Type:
+      let Type__grounded = Type // { Type = Thunk Type__grounded; };
+      in Type__grounded;
 
     # Cause a Type to have itself as its own Type, eliding any information about
     # either bootstrap pseudo-types or the Type of its superuniverse.
     # Also asserts that recreating the grounded Type using itself, via Type.new,
     # creates an identical Type (modulo lambda equality).
-    groundTypeThunkAndAssertFixed = opts: Type__args: TypeThunk:
-      with log.vtrace.call "groundTypeAndAssertFixed" { inherit opts Type__args TypeThunk; } ___;
-      let TypeThunk__grounded = assign "Type__grounded" (groundTypeThunk TypeThunk);
-      in
-        assert assertTypeThunkFixedUnderNew TypeThunk__grounded opts.typeName Type__args;
-        return TypeThunk__grounded;
+    groundTypeAndAssertFixed = opts: Type__args: Type:
+      let Type__grounded = groundType Type;
+      in assert assertTypeFixedUnderNew Type__grounded opts.typeName Type__args;
+        Type__grounded;
 
     withCommonUniverse = opts: SU: U:
       mergeAttrsList [
@@ -1490,13 +1487,12 @@ in rec {
       with log.prints; put U using.raw (using.maxDepth 3) ___;
 
     assertFixedUnderF = fLabel: xLabel: f: x:
-      with log.vtrace.call "assertFixedUnderF" { inherit fLabel xLabel f x; } ___;
       with cutils.tests.Compare;
-      with letrec (_: with _; {
+      let
         fx = f x;
         x_NL = NoLambdas x;
         fx_NL = NoLambdas fx;
-        printDepth = 6;
+        printDepth = 10;
         assertion = assertMsg (x_NL == fx_NL) (indent.block ''
           ${xLabel} is not fixed under ${fLabel}:
 
@@ -1516,15 +1512,14 @@ in rec {
           Diff:
             ${indent.here (log.vprintD printDepth (diff x_NL fx_NL))}
         '');
-      });
-      return assertion;
+      in assertion;
 
-    assertTypeThunkFixedUnderNew = TypeThunk: typeName: typeArgs:
+    assertTypeFixedUnderNew = T: typeName: typeArgs:
       assertFixedUnderF
         "new"
         "Type"
-        (Type: Type.new typeName typeArgs)
-        (resolve TypeThunk);
+        (T: T.new typeName typeArgs)
+        T;
 
     # Lazily cascading options that disable typechecking at levels U_0 and U_1.
     # Options for the next universe can be produced via opts.descend {}.
@@ -1605,16 +1600,19 @@ in rec {
               # This should now have reached a fixed point in terms of further bootstrapping by Type.new,
               # modulo lambda equality on created Type instances.
               # An assertion checks that Type is fixed under further bootstrapping.
-              TypeThunk = groundTypeThunkAndAssertFixed opts Type__args (Thunk Type__new);
+              Type = groundTypeAndAssertFixed opts Type__args Type__new;
+
+              # Expose the unsafe one for debugging
+              Type__unsafe = groundType Type__new;
             };
 
             # Expose only the final fixed Type.
-            Type = resolve __Bootstrap.TypeThunk;
+            Type = __Bootstrap.Type;
 
             # Create shim instances appearing as instances of pseudotype T.
             mkShim = T: attrs: attrs // {
-              Type = Thunk T;
-              Super = Thunk null;
+              # Type = Thunk T;
+              # Super = Thunk null;
             };
 
             # Create shim types appearing as instances of Type.
@@ -1642,9 +1640,8 @@ in rec {
             Fields =
               mkTypeShim "Fields" {
                 new = nameToSpec:
-                  with log.vtrace.call "U_0.Fields.new" nameToSpec ___;
-                  with lets { soloFields = mapSolos Field.new (solos nameToSpec); };
-                  mkShim Fields rec {
+                  let soloFields = mapSolos Field.new (solos nameToSpec);
+                  in mkShim Fields rec {
                     getSolos = soloFields;
                     indexed = mergeAttrsList (cutils.attrs.indexed soloFields);
                     update = newNameToSpec:
@@ -1676,14 +1673,20 @@ in rec {
       with msg "Constructing ${opts.name} universe";
       let U = withCommonUniverse opts SU rec {
 
-        # Construct the Type type in terms of the SU, set Type.Type to Type, and ensure it
-        # is fixed under further bootstrapping.
+        # Construct the Type type in terms of the SU, then in terms of itself.
+        # Set Type.Type to Type, and ensure it is fixed under further bootstrapping.
         __Bootstrap = rec {
-          Type__args = assign "__Bootstrap.Type__args" (mkTypeArgsFor opts U);
-          Type__new = assign "__Bootstrap.Type__new" (SU.Type.new opts.typeName Type__args);
-          Type = assign "__Bootstrap.Type" (groundTypeThunkAndAssertFixed opts Type__args (Thunk Type__new));
+          Type__args = mkTypeArgsFor opts U;
+
+          Type__bootstrapped = SU.Type.new opts.typeName Type__args;
+          Type__new = Type__bootstrapped.new opts.typeName Type__args;
+          #Type__new = SU.Type.new opts.typeName Type__args;
+          Type = groundTypeAndAssertFixed opts Type__args Type__new;
+
+          # Expose the unsafe thunk for debugging
+          Type__unsafe = groundType Type__new;
         };
-        Type = assign "Type" (resolve __Bootstrap.Type);
+        Type = __Bootstrap.Type;
 
         # A constraint on a type variable.
         Constraint = Type.new "Constraint" {
@@ -1912,7 +1915,7 @@ in rec {
         Field = Type.new "Field" {
           fields = This: SU.Fields.new [
             {fieldName = U.String;}
-            {fieldSpec = U.NullOr Type;}
+            {fieldSpec = SU.NullOr Type;}
           ];
           methods = {
             parsedT = this: parseFieldSpec this.fieldSpec;
@@ -2303,8 +2306,8 @@ in rec {
               Type =
                 let FakeType = name: { inherit name; new = name: args: FakeType name; };
                 in {
-                  fixed = expect.asserts.ok (assertTypeThunkFixedUnderNew (Thunk (FakeType "FakeType")) "FakeType" {});
-                  unfixed = expect.asserts.fail (assertTypeThunkFixedUnderNew (Thunk (FakeType "FakeType")) "NextFakeType" {});
+                  fixed = expect.asserts.ok (assertTypeFixedUnderNew (FakeType "FakeType") "FakeType" {});
+                  unfixed = expect.asserts.fail (assertTypeFixedUnderNew (FakeType "FakeType") "NextFakeType" {});
                 };
             };
           };
@@ -2344,7 +2347,7 @@ in rec {
           untyped = testInUniverses {
             inherit
               U_0
-              # U_1
+              U_1
               ;
           } untypedTests;
 

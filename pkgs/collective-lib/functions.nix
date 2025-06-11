@@ -67,7 +67,9 @@ in rec {
         __isThunk = true;
 
         # Display thunks
-        __show = self: self.do log.show;
+        __show = self: self.do (x: indent.block ''
+          Thunk(${indent.here (with log.prints; put x _line ___)})
+        '');
 
         # Before resolving the type.
         __x = thunk x;
@@ -573,12 +575,12 @@ in rec {
               (log.print
                 (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
               )
-              "123";
+              "Thunk(Thunk(Thunk(Thunk(Thunk(123)))))";
             show5 = expect.eq
               (log.show
                 (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
               )
-              "123";
+              "Thunk(Thunk(Thunk(Thunk(Thunk(123)))))";
             do = expect.eq ((Thunk 123).do (x: x+1)) 124;
             fmap = expect.eq (resolve ((Thunk 123).fmap (x: x+1))) 124;
           };

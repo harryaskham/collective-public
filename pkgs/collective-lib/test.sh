@@ -9,6 +9,11 @@ function main() {
         shift
         ;;
       vv)
+        PRINT="log.print"
+        FLAGS="--trace-verbose --show-trace"
+        shift
+        ;;
+      vvv)
         PRINT="log.vprint"
         FLAGS="--trace-verbose --show-trace"
         shift
@@ -64,6 +69,7 @@ function noop() {
 
   (defun run-nix-v () (interactive) (run-nix "v"))
   (defun run-nix-vv () (interactive) (run-nix "vv"))
+  (defun run-nix-vvv () (interactive) (run-nix "vvv"))
   (defun run-nix-vt () (interactive) (run-nix "vt"))
 
   (map!
@@ -71,6 +77,7 @@ function noop() {
    :n "SPC c n" #'run-nix
    :n "SPC c v n" #'run-nix-v
    :n "SPC c v v n" #'run-nix-vv
+   :n "SPC c v v v n" #'run-nix-vvv
    :n "SPC c v t n" #'run-nix-vt
   )
 )
@@ -108,8 +115,9 @@ with functions; _tests.run
 <nix>
 with functions;
 with types.Types;
-with Universe.U_0;
-(resolve (Fields.new { wat = null; }).Type)
+with Universe.U_2;
+with __Bootstrap;
+(Type__args.ctor)
 </nix>
 
 <nix>
