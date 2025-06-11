@@ -353,6 +353,14 @@ in rec {
   # Adds a line to a list if the list is not empty
   maybePrefixLines = prefix: maybePrefixList [prefix];
 
+  # Truncate a long line with an ellipsis
+  ellipsis = maxLength: s:
+    let
+      ellipsis = "...";
+      len = stringLength s;
+    in if len <= maxLength then s
+       else "${substring 0 (maxLength - stringLength ellipsis) s}${ellipsis}";
+
   # Escape doublequotes in a string and wrap in doublequotes
   # Like strings.escapeShellArg but allowing for $VAR interpolation
   shellQuote = arg:

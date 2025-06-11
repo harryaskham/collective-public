@@ -462,7 +462,7 @@ in rec {
           # Set in mkInstance to the This type.
           {Type = maybeAny "set";}
           # The supertype of the type.
-          {Super = maybeAny (SU.Default "set" (Thunk null));}
+          {Super = maybeAny (SU.Default "set" (NamedThunk "Super[fieldDefault]" null));}
           # The type parameters of the type.
           {tvars = maybeAny (SU.Default "set" {});}
           # The type parameter bindings of the type.
@@ -647,13 +647,13 @@ in rec {
       let SU = U._SU.get {};
       in rec {
         name = opts.typeName;
-        Super = Thunk null;
+        Super = NamedThunk "Super[TypeArgs]" null;
         # The defaults here are only required for universes with typechecking disabled.
         # Otherwise they are set per the Default values in mkTypeFieldListFor.
         ctor =
           This: name: args: {
             inherit name;
-            Super = args.Super or (Thunk null);
+            Super = setThunkName "Super[Type.ctor]" (args.Super or (Thunk null));
             ctor = args.ctor or Ctors.Fields;
             fields = args.fields or (This: SU.Fields.new []);
             methods = args.methods or {};
@@ -955,7 +955,9 @@ in rec {
     # For types, the constructor just merges a name parameter with an arguments
     # parameter and delegates to mkInstance.
     newInstance = This:
-      with log.vtrace.call "newInstance" { This = Thunk This; } ___;
+      with log.vtrace.call "newInstance" This ___;
+      with check "This.ctor present" (This ? ctor) "This.ctor is not set";
+      with check "This.tvars present" (This ? tvars) "This.tvars is not set";
 
       let mkViaCtor =
             traceComposeVariadic "mkViaCtor"
@@ -972,7 +974,7 @@ in rec {
       with log.vtrace.call "mkInstance" This args_ ___;
       let
         # Set Type always.
-        args = args_ // { Type = Thunk This; };
+        args = args_ // { Type = NamedThunk "Type[mkInstance.This]" This; };
 
         # Construct 'this' as an instance of 'This'.
         this = 
@@ -1241,7 +1243,7 @@ in rec {
 
         return (
           if !(isTypeSet This) then throw "Cannot subtype non-Type or Type-precursor: ${log.print This}"
-          else U.Type.new name (inheritFrom (Thunk This) args)
+          else U.Type.new name (inheritFrom (NamedThunk "Type[inheritFrom.This]" This) args)
         );
 
       # Create a new template of a type accepting type parameters.
@@ -1449,7 +1451,7 @@ in rec {
     # Cause a Type to have itself as its own Type, eliding any information about
     # either bootstrap pseudo-types or the Type of its superuniverse.
     groundType = Type:
-      let Type__grounded = Type // { Type = Thunk Type__grounded; };
+      let Type__grounded = Type // { Type = NamedThunk "Type[grounded]" Type__grounded; };
       in Type__grounded;
 
     # Cause a Type to have itself as its own Type, eliding any information about
@@ -1609,19 +1611,11 @@ in rec {
             # Expose only the final fixed Type.
             Type = __Bootstrap.Type;
 
-            # Create shim instances appearing as instances of pseudotype T.
-            mkShim = T: attrs: attrs // {
-              # Type = Thunk T;
-              # Super = Thunk null;
-            };
-
             # Create shim types appearing as instances of Type.
             mkTypeShim = name: attrs:
-              mkShim Type attrs // {
+              attrs // {
                 __TypeId = name;
                 boundName = name;
-                # TODO: Move check to a field
-                overrideCheck = _: true;
               };
 
             # Shim out all types used in the construction of Type s.t. Type can be created
@@ -1629,11 +1623,11 @@ in rec {
             Field = mkTypeShim "Field" {
               new = fieldName: fieldSpec:
                 let
-                  get = (parseFieldSpec fieldSpec // {inherit fieldName fieldSpec;});
-                in mkShim Field (get // {
+                  get = {inherit fieldName fieldSpec;};
+                in get // parseFieldSpec fieldSpec // {
                   inherit get;
                   getSolo = { ${fieldName} = get; };
-                });
+                };
             };
 
             # TODO: One implementation
@@ -1641,7 +1635,7 @@ in rec {
               mkTypeShim "Fields" {
                 new = nameToSpec:
                   let soloFields = mapSolos Field.new (solos nameToSpec);
-                  in mkShim Fields rec {
+                  in rec {
                     getSolos = soloFields;
                     indexed = mergeAttrsList (cutils.attrs.indexed soloFields);
                     update = newNameToSpec:
@@ -1656,12 +1650,12 @@ in rec {
 
             SetOf = T: mkTypeShim "SetOf" { new = U.Set.new; };
             ListOf = T: mkTypeShim "ListOf" { new = U.List.new; };
-            Constraint = mkTypeShim "Constraint" { new = x: mkShim Constraint {value = x; satisfiedBy = _: true;};};
+            Constraint = mkTypeShim "Constraint" { new = x: {value = x; satisfiedBy = _: true;};};
             Static = T: mkTypeShim "Static" { staticType = T; };
             Default = T: V: mkTypeShim "Default" { defaultType = T; defaultValue = V; };
             NullOr = T: mkTypeShim "NullOr" { new = id; };
             Literal = V: mkTypeShim "Literal" { getLiteral = V; };
-            Sized = n: T: mkTypeShim "Sized" { new = x: mkShim (Sized T n) { getSized  = x; }; };
+            Sized = n: T: mkTypeShim "Sized" { new = x: { getSized  = x; }; };
             Any = mkTypeShim "Any" {};
           }
         );
@@ -1961,7 +1955,7 @@ in rec {
       testInUniverse = test: U: test U;
       testInUniverses = Us: test: mapAttrs (_: testInUniverse test) Us;
       allUniverses = Universe // { inherit TS; };
-      untypedUniverses = {inherit (allUniverses) U_0; }; # U_1;};
+      untypedUniverses = {inherit (allUniverses) U_0 U_1;};
       typedUniverses = {inherit (allUniverses) U_2 U_3 U_4; inherit TS; };
 
       TestTypes = U: with U; {
@@ -1985,6 +1979,39 @@ in rec {
         };
 
         WrapString = String.subType "WrapString" {};
+      };
+
+
+      smokeTests = U: with U; {
+
+        Bootstrap = with __Bootstrap; {
+          Type__args = {
+            ctor.defaults =
+              expect.printEq
+                (Type__args.ctor Type__args "A" {})
+                {
+                  Super = NamedThunk "Super[Type.ctor]" null;
+                  checkValue = null;
+                  ctor = Ctors.Fields;
+                  fields = This: U.Fields.new [];
+                  methods = {};
+                  name = "A";
+                  overrideCheck = null;
+                  staticMethods = {};
+                  tvarBindings = {};
+                  tvars = {};
+                };
+          };
+        };
+
+        Type = {
+          new = {
+            id = expect.eq (Type.new "A" {}).__TypeId "A";
+            name = expect.eq (Type.new "A" {}).name "A";
+            boundName = expect.eq (Type.new "A" {}).boundName "A";
+          };
+        };
+
       };
 
       instantiationTests = U: with U; with TestTypes U; {
@@ -2092,21 +2119,25 @@ in rec {
           getSolos =
             expect.eq
               (mapSolos (_: field: field.get) fields.getSolos)
-              [ { a = { fieldDefault = null;
-                        fieldName = "a";
-                        fieldSpec = null;
-                        fieldStatic = false;
-                        fieldType = null; }; }
-                { b = { fieldDefault = null;
-                        fieldName = "b";
-                        fieldSpec = null;
-                        fieldStatic = false;
-                        fieldType = null; }; }
-                { c = { fieldDefault = null;
-                        fieldName = "c";
-                        fieldSpec = null;
-                        fieldStatic = false;
-                        fieldType = null; }; }
+              [
+                {
+                  a = {
+                    fieldName = "a";
+                    fieldSpec = null;
+                  };
+                }
+                {
+                  b = {
+                    fieldName = "b";
+                    fieldSpec = null;
+                  };
+                }
+                {
+                  c = {
+                    fieldName = "c";
+                    fieldSpec = null;
+                  };
+                }
               ];
         };
 
@@ -2311,6 +2342,14 @@ in rec {
                 };
             };
           };
+
+          smoke = testInUniverses {
+            inherit
+              U_0
+              U_1
+              # U_2
+              ;
+          } smokeTests;
 
           typeFunctionality = testInUniverses {
             inherit

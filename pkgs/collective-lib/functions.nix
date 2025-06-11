@@ -67,9 +67,11 @@ in rec {
         __isThunk = true;
 
         # Display thunks
-        __show = self: self.do (x: indent.block ''
-          Thunk(${indent.here (with log.prints; put x _line ___)})
-        '');
+        __show = self:
+          let name = optionalString (self ? __ThunkName) "[${resolve self.__ThunkName}]";
+          in self.do (x: indent.block ''
+            Thunk${name}<${ellipsis 20 (with log.prints; put x _line ___)}>
+          '');
 
         # Before resolving the type.
         __x = thunk x;
@@ -85,7 +87,14 @@ in rec {
       };
     in
       mkThunk x;
+
   isThunk = x: isAttrs x && (x.__isThunk or false);
+
+  setThunkName = name: x:
+    assert isThunk x;
+    x // { __ThunkName = thunk name; };
+  NamedThunk = name: x: setThunkName name (Thunk x);
+  isNamedThunk = x: isThunk x && x ? __ThunkName;
 
 
   # Compose two functions left-to-right and merge their outputs.

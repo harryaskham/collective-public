@@ -109,6 +109,10 @@ with types; _tests.run
 </nix>
 
 <nix>
+with types; _tests.debug
+</nix>
+
+<nix>
 with functions; _tests.run
 </nix>
 
@@ -117,7 +121,7 @@ with functions;
 with types.Types;
 with Universe.U_2;
 with __Bootstrap;
-(Type__args.ctor)
+attrNames Type__bootstrapped
 </nix>
 
 <nix>
