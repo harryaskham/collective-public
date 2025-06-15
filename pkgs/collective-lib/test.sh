@@ -1,25 +1,43 @@
 function main() {
-  FLAGS=
-  PRINT="log.print"
+  NIX_FLAGS=
+  REPL_FLAGS=
+  TRACE_VERBOSE="false"
+  PRINT="x: x"
   while [[ -n "$1" ]]; do
     case "$1" in
       v)
-        PRINT="log.vprint"
-        FLAGS="--trace-verbose"
+        PRINT="collective-lib.log.print"
+        REPL_FLAGS="--raw"
         shift
         ;;
       vv)
-        PRINT="log.print"
-        FLAGS="--trace-verbose --show-trace"
+        PRINT="collective-lib.log.vprint"
+        REPL_FLAGS="--raw"
+        TRACE_VERBOSE="true"
         shift
         ;;
       vvv)
-        PRINT="log.vprint"
-        FLAGS="--trace-verbose --show-trace"
+        PRINT="collective-lib.log.vprint"
+        REPL_FLAGS="--raw"
+        TRACE_VERBOSE="true"
         shift
         ;;
       vt)
-        FLAGS="--show-trace"
+        PRINT="collective-lib.log.print"
+        REPL_FLAGS="--raw --show-trace"
+        shift
+        ;;
+      vvt)
+        PRINT="collective-lib.log.print"
+        REPL_FLAGS="--raw --show-trace"
+        TRACE_VERBOSE="true"
+        shift
+        ;;
+      vvvt)
+        TRACE_VERBOSE="true"
+        REPL_FLAGS="--raw --show-trace"
+        PRINT="collective-lib.log.vprint"
+        REPL_FLAGS="--show-trace"
         shift
         ;;
       *)
@@ -29,9 +47,25 @@ function main() {
     esac
   done
 
-  FULL_EXPR="let pkgs = import <nixpkgs> {}; in with pkgs.lib; with (import ~/collective/collective-public/pkgs/collective-lib {}); ${PRINT} (${EXPR})"
+  FULL_EXPR=$(cat << EOF
+let
+  pkgs = import <nixpkgs> {};
+  lib = pkgs.lib;
+  collective-lib = import ~/collective/collective-public/pkgs/collective-lib {
+    inherit pkgs lib;
+    trace-verbose = $TRACE_VERBOSE;
+  };
+  __ctx = _:
+    lib // collective-lib // {
+      __replPrint = $PRINT;
+    };
+in
+  with __ctx {};
+  __replPrint (${EXPR})
+EOF
+              )
 
-  CMD="nix eval --option max-call-depth 1000000000 --extra-experimental-features pipe-operators --impure --expr '$FULL_EXPR' --raw $FLAGS"
+  CMD="nix eval --extra-experimental-features pipe-operators --impure --expr '$FULL_EXPR' $REPL_FLAGS"
 
   echo "Running: ${CMD}" >&2
   bash -c "$CMD"
@@ -39,53 +73,16 @@ function main() {
 
 main $@
 
-# C-x C-e on the (progn ...) form below
-function noop() {
-  CONFIG_EL=$(cat << EOF
+NOOP=$(cat << EOF
+(load-file "test.el")
 
-(progn
-  (defun forward-nix-block (&optional n)
-    (interactive)
-    (unless n (setq n 1))
-    (let ((do-search (if (> n 0) 'search-forward 'search-backward))
-          (target (if (> n 0) "</nix>" "<nix>")))
-      (dotimes (_ (abs n)) (funcall do-search target))))
+<nix>
+functions.enumerate [1 2 3]
+</nix>
 
-  (defun current-nix-block ()
-    (interactive)
-    (replace-regexp-in-string "<nix>" ""
-      (replace-regexp-in-string "</nix>" ""
-        (thing-at-point 'nix-block))))
-
-  (defun current-nix-expr ()
-    (interactive)
-    (replace-regexp-in-string "\n" " "
-      (current-nix-block)))
-
-  (defun run-nix (&optional args)
-    (interactive)
-    (let ((nix-code (current-nix-expr)))
-     (shell-command (concat "./test.sh '" args " " nix-code "'"))))
-
-  (defun run-nix-v () (interactive) (run-nix "v"))
-  (defun run-nix-vv () (interactive) (run-nix "vv"))
-  (defun run-nix-vvv () (interactive) (run-nix "vvv"))
-  (defun run-nix-vt () (interactive) (run-nix "vt"))
-
-  (map!
-   :map global-map
-   :n "SPC c n" #'run-nix
-   :n "SPC c v n" #'run-nix-v
-   :n "SPC c v v n" #'run-nix-vv
-   :n "SPC c v v v n" #'run-nix-vvv
-   :n "SPC c v t n" #'run-nix-vt
-  )
-)
-
-EOF
-              )
-
-  NOOP=$(cat << EOF
+<nix>
+"test"
+</nix>
 
 <nix>
 with types.Types;
@@ -113,15 +110,50 @@ with types; _tests.debug
 </nix>
 
 <nix>
-with functions; _tests.run
+with attrs; (_tests.run)
+</nix>
+
+<nix>
+{ a = 123; }
 </nix>
 
 <nix>
 with functions;
 with types.Types;
-with Universe.U_2;
-with __Bootstrap;
-attrNames Type__bootstrapped
+with Universe;
+  let T = (U_2._SU.get {}).Type.new "Type" (U_2.__Bootstrap.Type__args);
+  in groundTypeAndAssertFixed U_2.opts U_2.__Bootstrap.Type__args T
+</nix>
+
+<nix>
+with functions;
+with types.Types;
+with Universe;
+rec {
+  U_0__args = U_0.__Bootstrap.Type__args;
+  U_0__Type = U_0.Type;
+  # U_0__args__fields = U_0.__Bootstrap.Type__args.fields U_0__args;
+  # U_1__args = U_1.__Bootstrap.Type__args;
+  U_1__Type = U_1.__Bootstrap.Type;
+  U_2__Type = U_2.__Bootstrap.Type;
+  # U_3__Type__args = U_3.__Bootstrap.Type__args;
+  # U_0__Type__args__fields = U_0.__Bootstrap.Type__args.fields U_0.__Bootstrap.Type__unsafe;
+  # U_1__Type__args__fields = U_1.__Bootstrap.Type__args.fields U_1.__Bootstrap.Type__unsafe;
+
+  # U_1__Type__fields = U_1.Type.fields U_1.Type;
+  U_1__Fields = U_1.Fields;
+  #U_2__Fields = U_2.Fields.new [];
+  U_1__Set = U_1.Set.new {};
+  U_2__Set = U_2.Set.new {};
+  U_1__Type__fields = U_1.Type.fields U_1.Type;
+  U_1__Type__field = (U_1.Type.fields U_1.Type).getField "name";
+
+  # U_2__Type__args__fields = U_2.__Bootstrap.Type__args.fields U_2.__Bootstrap.Type__unsafe;
+  # U_3__Type__args__fields = U_3.__Bootstrap.Type__args.fields U_3.__Bootstrap.Type__unsafe;
+  # U_3__Type = U_3.__Bootstrap.Type;
+  # U_2__args = U_2.__Bootstrap.Type__args;
+  # U_2__Type__new = U_2.__Bootstrap.Type__new;
+}
 </nix>
 
 <nix>
@@ -129,11 +161,33 @@ with types; attrNames _tests.runOne
 </nix>
 
 <nix>
-with types; _tests.runOne.test-types__builtin__U_0__builtinValueCheck__Bool
+123
+</nix>
+
+<nix>
+with types; _tests.runOne.test-types__instantiation__U_0__Literal__instance
+</nix>
+
+<nix>
+_tests.run
+</nix>
+
+<nix>
+collections._tests.run
+</nix>
+<nix>
+attrs._tests.run
+</nix>
+<nix>
+strings._tests.run
 </nix>
 
 <nix>
 with types; _tests.debug
+</nix>
+
+<nix>
+with types; _tests.run
 </nix>
 
 <nix>
@@ -238,4 +292,3 @@ with types.Types; mkUniverse Quasiverse.Type "Quasiverse"
 
 EOF
       )
-}

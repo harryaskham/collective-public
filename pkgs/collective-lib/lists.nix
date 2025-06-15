@@ -1,5 +1,6 @@
 { pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, cutils ? import ./. { inherit lib; }, ... }:
 
+with cutils.dispatch;
 with cutils.functions;
 
 # List utils and aliases.
@@ -37,17 +38,20 @@ in rec {
   foldr = f: acc: xs:
     assert assertMsg (isFunction f) "foldr: Not a function: ${log.print f}";
     assert assertMsg (isList xs) "foldr: Not a list: ${log.print xs}";
-    let ht = maybeSnoc xs;
-    in if ht == null then acc
-    else f ht.head (foldr f acc ht.tail);
+    lib.lists.foldr f acc xs;
+    # let ht = maybeSnoc xs;
+    # in if ht == null then acc
+    # else f ht.head (foldr f acc ht.tail);
 
   # Custom foldl' implementation.
   foldl' = f: acc: xs:
     assert assertMsg (isFunction f) "foldl': Not a function: ${log.print f}";
     assert assertMsg (isList xs) "foldl': Not a list: ${log.print xs}";
-    let ht = maybeSnoc xs;
-    in if ht == null then acc
-    else foldl' f (strict (f acc ht.head)) ht.tail;
+    # Our version forces too much strictness and causes recursion issues.
+    lib.lists.foldl' f acc xs;
+    # let ht = maybeSnoc xs;
+    # in if ht == null then acc
+    # else foldl' f (strict (f acc ht.head)) ht.tail;
 
   # Left-fold f over x with initial value (head xs).
   # Throws if the list is empty.

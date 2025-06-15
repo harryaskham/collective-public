@@ -2,6 +2,8 @@
 
 with lib;
 with cutils.attrs;
+with cutils.dispatch;
+with cutils.errors;
 with cutils.functions;
 with cutils.lists;
 with cutils.strings;
@@ -118,25 +120,28 @@ in rec {
     };
   };
 
-  # Is x the result of calling builtins.tryEval
-  isTryEvalResult = x: isAttrs x && x ? success && x ? value;
-
   runOneTest = test: results_:
     with log.vtrace.test test.name results_ ___;
     return rec {
       evalStatus =
         if test.skip then EvalStatus.Skipped
-        else if isTryEvalResult results_ && !results_.success then EvalStatus.Error
+        else if isTryEvalFailure results_ then EvalStatus.Error
         else EvalStatus.OK;
       results =
         if test.skip then null
         else if evalStatus == EvalStatus.Error then
           # Surface the raw results of an eval failure so we can expect against them
           results_
-        else if isTryEvalResult results_ then
+        else if isTryEvalSuccess results_ then
           # Otherwise unwrap the successful result for comparison
           results_.value
-        else results_;
+        else if test.mode == "debug" then
+          # If debug mode, we do not tryEval so the result is already unwrapped.
+          results_
+        else throw (indent.block ''
+          Invalid results from non-debug test (neither of isTryEval{Success,Failure} matched):
+            ${indent.here (log.print results_)}
+          '');
       status =
         if test.skip then Status.Skipped
         else if evalStatus == EvalStatus.Error then
@@ -160,8 +165,9 @@ in rec {
         else if evalStatus == EvalStatus.Error
           then
             let errorResult =
-                  assert assertMsg (isTryEvalResult results)
-                    "Eval error handled without being a tryEval result: ${log.print results}";
+                  # TODO: Redundant check
+                  assert assertMsg (isTryEvalFailure results)
+                    "Eval error handled without being a tryEval failure: ${log.print results}";
                   results;
             in mkActual "ERROR" errorResult
 
@@ -236,10 +242,10 @@ in rec {
       solo = test.solo or false;
 
       # Run the test under tryEval, treating eval failure as test failure
-      run = evalOneTest builtins.tryEval test_;
+      run = evalOneTest builtins.tryEval (test_ // { mode = "run"; });
 
       # Run the test propagating eval errors that mask real failures
-      debug = evalOneTest id test_;
+      debug = evalOneTest id (test_ // { mode = "debug"; });
     };
     in test_;
 

@@ -4,6 +4,40 @@ with lib;
 with cutils.strings;
 
 rec {
+  # Is x the result of calling builtins.tryEval
+  isTryEvalResult = x: isAttrs x && x ? success && x ? value;
+
+  # Is x the successful result of calling builtins.tryEval
+  isTryEvalSuccess = x: isTryEvalResult x && x.success;
+
+  # Is x the failed result of calling builtins.tryEval
+  isTryEvalFailure = x: isTryEvalResult x && !x.success;
+
+  # Evaluate the given expression strictly, catching any catchable errors and handling with catch.
+  # Cannot catch language failures, only assertions.
+  # catch is a function (error: continuation). For most assertions, the argument is just error == false.
+  try = expr: catch:
+    let res = builtins.tryEval expr;
+    in if isTryEvalSuccess res then res.value
+       else if isTryEvalFailure res then catch res.value
+       else throw (indent.block ''
+         Unexpected result from builtins.tryEval:
+           ${indent.here (log.print res)}
+       '');
+
+  # Try to evaluate expr and return true iff evaluation succeeds.
+  tryBool = expr:
+    let res = builtins.tryEval expr;
+    in if isTryEvalSuccess res then true
+       else if isTryEvalFailure res then false
+       else throw (indent.block ''
+         Unexpected result from builtins.tryEval:
+           ${indent.here (log.print res)}
+       '');
+
+  # Try to evaluate expr and return either the result, or the defaultValue if evaluation fails.
+  tryOr = defaultValue: expr: try expr (_: defaultValue);
+
   # Take a list of [{cond = bool, msg = string}] and return the errors for false conditions.
   checkCondMsgs = condMsgs: map (x: x.msg) (filter (x: !x.cond) condMsgs);
 

@@ -1,8 +1,10 @@
 { pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, cutils ? import ./. { inherit lib; }, ... }:
 
 with lib;
-with cutils.strings;
+with cutils.dispatch;
+with cutils.errors;
 with cutils.functions;
+with cutils.strings;
 
 let log = cutils.log;
 in rec {
@@ -42,17 +44,16 @@ in rec {
   # Swap an attrset keys and values.
   swap = concatMapAttrs (k: v: { ${v} = k; });
 
-  # Get only attribute in an attrset or item in a list.
+  # Get only attribute in a solo attrset.
   # Returns {name, value}.
   getSolo =
     dispatch {
-      list = xs:
-        if size xs == 1
-        then { name = null; value = head xs; }
-        else throw "solo(list): Expected exactly one list element, got ${log.print xs}";
       set = xs:
         if size xs == 1
-        then { name = head (attrNames xs); value = head (attrValues xs); }
+        then {
+          name = head (attrNames xs);
+          value = head (attrValues xs);
+        }
         else throw "solo(set): Expected exactly one attribute, got ${log.print xs}";
   };
 
@@ -62,20 +63,59 @@ in rec {
   # Get only attribute in an attrset. Null for a list.
   soloName = xs: (getSolo xs).name;
 
+  # Get the ordered list of solo names.
+  soloNames = map soloName;
+
   # Get only value in an attrset or item in list.
   soloValue = xs: (getSolo xs).value;
 
+  # Get the ordered list of solo values.
+  soloValues = map soloValue;
+
   # Check if an attribute is solo.
   isSolo = xs: isAttrs xs && size xs == 1;
+
+  # true iff xs is a valid solo list.
+  isSolos = xs: tryBool (checkSolos xs);
+
+  # Throw if xs is not a valid solo list.
+  # Cannot use mapSolo/filterSolo as they use this for typechecking.
+  checkSolos = xs:
+    let
+      nonSoloXs = filter (x: !isSolo x) xs;
+      names = soloNames xs;
+      nameToCountSolos = map (name: { ${name} = count (name_: name == name_) names; }) names;
+      duplicateNameCountSolos = filter (nameCount: (soloValue nameCount) > 1) nameToCountSolos;
+      duplicateNameBlock =
+        indent.lines
+          (mapAttrsToList
+            (name: count:
+              ''
+                ${name} (${toString count} ${pluralises count "occurence"})
+              '')
+            (mergeAttrsList duplicateNameCountSolos));
+    in
+      assert assertMsg (isList xs) (indent.block ''
+        checkSolos: Not a list
+          xs = ${indent.here (log.print xs)}
+      '');
+      assert assertMsg (nonSoloXs == []) (indent.block ''
+        checkSolos: List contains non-solo items
+                   xs = ${indent.here (log.print xs)}
+          non-solo xs = ${indent.here (log.print nonSoloXs)}
+      '');
+      assert assertMsg (duplicateNameCountSolos == []) (indent.block ''
+        checkSolos: List contains duplicate solo names
+                  xs = ${indent.here (log.print xs)}
+          duplicates = ${indent.here duplicateNameBlock}
+      '');
+      xs;
 
   # Convert:
   # - an attribute set to a list of solo attributes.
   # - a list of attributes to itself, with assertions that they are solo.
   solos = dispatch {
-    list = xs:
-      if any (x: !isSolo x) xs
-        then throw "Expected solos, got: ${log.print xs}"
-        else xs;
+    list = xs: checkSolos xs;
     set = mapAttrsToList (k: v: { ${k} = v; });
   };
 
@@ -83,11 +123,30 @@ in rec {
   # If xs is a set, it is first converted to solos.
   mapSolos = f: xs: map (mapAttrs f) (solos xs);
 
+  # Merge a list of solos [{k -> a}] into a single attrset {k -> a}.
+  # Fails if any element is not a solo.
+  # Duplicates are merged preferring later entries.
+  mergeSolos = xs: mergeAttrsList (checkSolos xs);
+
+  # Concatenates two lists of solos [{k -> a}] into a single list of solos [{k -> a}].
+  # If a solo appears in both lists, the second list is preferred, but the position of the
+  # solo is maintained in the first list.
+  concatSolos = xs: ys:
+    let xsMerged = mergeSolos xs;
+        ysMerged = mergeSolos ys;
+        xsUpdated = mapSolos (xName: x: ysMerged.${xName} or x) xs;
+        ysFiltered = filterSolos (yName: y: !(xsMerged ? ${yName})) ys;
+    in xsUpdated ++ ysFiltered;
+
+  # Map an (f :: k -> a -> b) over a list of solos [{k -> a}], returning an attrset of combined solos {k -> b}.
+  # If xs is a set, it is first converted to solos to map it.
+  concatMapSolos = f: xs: mergeSolos (mapSolos f xs);
+
   # Map an (f :: k -> a -> b) over a collection of solos {k -> a}.
   # Preserve the type s.t. a set is converted to solos, has f applied, and is then merged back.
   fmapSolos = f: dispatch {
     list = mapSolos f;
-    set = xs: mergeAttrsList (mapSolos f xs);
+    set = concatMapSolos f;
   };
 
   # Map an (f :: int -> k -> a -> b) over a list of solos [{k -> a}], returning another list of solos [{k -> b}].
@@ -102,6 +161,10 @@ in rec {
     list = imapSolos f;
     set = xs: mergeAttrsList (imapSolos f xs);
   };
+
+  # Filter a list of solos by a predicate of name and value.
+  # f :: name -> value -> bool
+  filterSolos = f: xs: filter (x: f (soloName x) (soloValue x)) (checkSolos xs);
 
   # Add an attribute name to each attrset in the list containing its index.
   # Defaults to "__index"
@@ -185,15 +248,64 @@ in rec {
           emptyList = expect.False (isSolo []);
           int = expect.False (isSolo 123);
           intList = expect.False (isSolo [123]);
+          string = expect.False (isSolo "notSolo");
           soloList = expect.False (isSolo [s0]);
           setOfSolos = expect.False (isSolo {inherit s0 s1;});
-          string = expect.False (isSolo "notSolo");
+        };
+        isSolos = {
+          validSolos = {
+            emptyList = expect.True (isSolos []);
+            soloList0 = expect.True (isSolos [s0]);
+            soloList1 = expect.True (isSolos [s1]);
+            soloList01 = expect.True (isSolos [s0 s1]);
+          };
+          nonList = {
+            emptySet = expect.False (isSolos {});
+            setOfSolos = expect.False (isSolos {inherit s0 s1;});
+            int = expect.False (isSolos 123);
+            string = expect.False (isSolos "notSolo");
+          };
+          nonSoloEntries = {
+            notSolo = expect.False (isSolos [notSolo]);
+            soloList0N = expect.False (isSolos [s0 notSolo]);
+            soloListN0 = expect.False (isSolos [notSolo s0]);
+            intList = expect.False (isSolos [123]);
+            soloList01I = expect.False (isSolos [s0 s1 123]);
+          };
+          duplicates = {
+            soloList00 = expect.False (isSolos [s0 s0]);
+            soloList11 = expect.False (isSolos [s1 s1]);
+            soloList101 = expect.False (isSolos [s1 s0 s1]);
+            soloList010 = expect.False (isSolos [s0 s1 s0]);
+            soloList000111 = expect.False (isSolos [s0 s0 s0 s1 s1 s1]);
+          };
         };
         mapSolos = {
           setToList = expect.eq (sortOn soloName (mapSolos (_: x: x+1) soloSet)) [ {abc = 124;} {def = 457;} ];
           listToList = expect.eq (mapSolos (_: x: x+1) soloList) [ {abc = 124;} {def = 457;} ];
           notSoloList = expect.error (mapSolos (_: x: x+1) notSoloList);
           withName = expect.eq (mapSolos (n: x: "${n}${toString x}") soloList) [ {abc = "abc123";} {def = "def456";} ];
+        };
+        mergeSolos = {
+          soloList = expect.eq (mergeSolos [s0 s1]) {abc = 123; def = 456;};
+          notSoloList = expect.error (mergeSolos notSoloList);
+        };
+        concatSolos = {
+          concatSolos01 = expect.eq (concatSolos [s0] [s1]) [{abc = 123;} {def = 456;}];
+          concatSolos10 = expect.eq (concatSolos [s1] [s0]) [{def = 456;} {abc = 123;}];
+          concatSolos00 = expect.eq (concatSolos [s0] [s0]) [{abc = 123;}];
+          concatSolos11 = expect.eq (concatSolos [s1] [s1]) [{def = 456;}];
+          preserveOrder = expect.eq (concatSolos [{a = 1;} {b = null;} {c = 3;}] [{b = 2;} {d = 4;}]) [{a = 1;} {b = 2;} {c = 3;} {d = 4;}];
+          concatSolos011 = expect.error (concatSolos [s0] [s1 s1]);
+          nonSoloListLHS = expect.error (concatSolos notSoloList soloList);
+          nonSoloListRHS = expect.error (concatSolos soloList notSoloList);
+          nonSoloListBoth = expect.error (concatSolos notSoloList notSoloList);
+        };
+        concatMapSolos = {
+          setToList = expect.eq (concatMapSolos (_: x: x+1) soloSet) {abc = 124; def = 457;};
+          listToList = expect.eq (concatMapSolos (_: x: x+1) soloList) {abc = 124; def = 457;};
+          notSoloList = expect.error (concatMapSolos (_: x: x+1) notSoloList);
+          withName = expect.eq (concatMapSolos (n: x: "${n}${toString x}") soloList) {abc = "abc123"; def = "def456";};
         };
         fmapSolos = {
           setToSet = expect.eq (fmapSolos (_: x: x+1) soloSet) {abc = 124; def = 457;};
@@ -210,6 +322,11 @@ in rec {
             expect.eq
               (ifmapSolos (i: n: x: "${toString i}, ${n}, ${toString x}") soloSet)
               {abc = "0, abc, 123"; def = "1, def, 456";};
+        };
+        filterSolos = {
+          evens = expect.eq (filterSolos (_: v: mod v 2 == 0) soloList) [ {def = 456;} ];
+          odds = expect.eq (filterSolos (_: v: mod v 2 == 1) soloList) [ {abc = 123;} ];
+          byName = expect.eq (filterSolos (n: _: n == "abc") soloList) [ {abc = 123;} ];
         };
       };
 

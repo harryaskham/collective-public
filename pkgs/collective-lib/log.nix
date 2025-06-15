@@ -1,7 +1,13 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, cutils ? import ./. { inherit lib; }, ... }:
+{ pkgs ? import <nixpkgs> {},
+  lib ? pkgs.lib, cutils ? import ./. { inherit lib; },
+  # Simulate traceVerbose in tvix CLI usage
+  trace-verbose ? false,
+  ...
+}:
 
 with lib;
 with cutils.attrs;
+with cutils.dispatch;
 with cutils.lists;
 with cutils.functions;
 with cutils.strings;
@@ -11,13 +17,19 @@ let
   log = rec {
 
     mkPrintArgs = {
+      printStrictly = true;
+      # If true, do not respect __toString
       ignoreToString = false;
+      # If true, do not respect __show
       ignoreShow = false;
       # Default here to leave indentation markers in until the top level call
       formatBlock = trimNewlines;
       formatLines = indent.linesSep "\n";
+      # If true, parens and braces on same line as first item.
       compact = true;
+      # Tracks the current depth of printing, used to limit recursion depth.
       depth = 0;
+      # Maximum depth to print before truncating.
       maxDepth = 20;
       # A set of attribute names to replace, with functions from the value
       # to replace to the string value to display instead.
@@ -78,9 +90,10 @@ let
     maybeParen = x: if wordCount x <= 1 then x else "(${x})";
 
     # Convert a value of any type to a string, supporting the types module's Type values.
-    print_ = args: x:
+    print_ = args: x_:
       with args;
       let
+        x = if printStrictly then strict x_ else x;
         block =
           if depth >= maxDepth then "..."
           else if hasShow x && !ignoreShow then
@@ -113,6 +126,7 @@ let
       putD = n: x: put x (using.depth n);
       using = {
         raw = { ignoreToString = true; ignoreShow = true; };
+        lazy = { printStrictly = false; };
         line = { formatLines = indent.linesSep " "; };
         depth = n: { maxDepth = n; };
         mask = names: {
@@ -121,6 +135,7 @@ let
         };
       };
       _raw = using.raw;
+      _lazy = using.lazy;
       _line = using.line;
       _depth = using.depth;
       _mask = using.mask;
@@ -128,7 +143,7 @@ let
     vprint = x: with prints; put x using.raw ___;
 
     # Either print to string using __show if it exists, or return an already-string
-    hasShow = x: x ? __show && isFunction x.__show;
+    hasShow = x: (x ? __show) && (isFunction x.__show);
     show = x_:
       let x = if hasShow x_ then x_.__show x_ else x_;
           xRemoved = if isAttrs x then removeAttrs x [ "__show" ] else x;
@@ -136,8 +151,10 @@ let
            string = id;
          } xRemoved;
 
-    mkTrace = traceFn:
-      let self = rec {
+    mkTrace = enableTrace:
+      let
+        traceFn = if enableTrace then traceSeq else (_: id);
+        self = rec {
         # log.trace.show [ 456 { a = 2; }] 123
         # -> trace: [ 456 { a = 2; }]
         # 123
@@ -146,7 +163,7 @@ let
         # log.trace.showId 123
         # -> trace: 123
         # 123
-        showId = x: show x x;
+        showId = x: self.show x x;
         msg = x: over (showId x);
 
         toTraceF = fs: {
@@ -164,7 +181,11 @@ let
         #
         # Can't access expr for e.g. log.trace.id
         # Can mix partially applied traces with raw values, which will be printed.
-        over = fs: (toTraceF fs) true;
+        over = fs:
+          # Short-circuit if trace disabled to save traceF construction.
+          if enableTrace
+            then (toTraceF fs) true
+            else true;
 
         # e.g. with log.trace; assert over (tagged "START_CALL" xs);
         tagged = tag: xs: xs // { _ = tag; };
@@ -217,6 +238,10 @@ let
         #   return x;
         #   ...
         #   return y;
+        #
+        # Note even if tracing is disabled, these are still constructed, because
+        # the function logic then depends upon the constructs here i.e. with lets, return.
+        # We just don't do any print-tracing.
         mkEventGroup = groupType: buildGroup_: groupName:
           let
             groupBuilder = buildGroup_ groupName;
@@ -284,24 +309,13 @@ let
                      value;
 
                 # Trace a group of assignments and provide access to the results.
-                # Accrues logs for e.g.
-                # with (letrec (_: { ... })); ...
-                lets = vars: letrec_ "LETS" vars;
-
-                # Trace a group of assignments and provide access to the results.
-                # Can recursively refer to the finally-assigned attributes via
-                # the function self argument.
-                # Accrues logs for e.g.
-                # with (letrec (_: { ... })); ...
-                letrec = letrec_ "LETREC";
-                letrec_ = tag: mkVars:
-                  let vars =
-                        if isAttrs mkVars then mkVars
-                        else if isFunction mkVars then mkVars vars
-                        else throw ''Invalid mkVars in letrec_: ${log.print mkVars}'';
-                      xs' = withEvents xs [{lets = vars;}];
+                # Accrues logs e.g.
+                # with (lets { x = ... }); ... <use x>
+                lets = vars:
+                  assert assertMsg (isAttrs vars) ''Non-attrset vars in 'lets': ${log.print mkVars}'';
+                  let xs' = withEvents xs [{lets = vars;}];
                   in
-                    assert over (tagged "${tag}:${groupType}:${groupName}" xs');
+                    assert over (tagged "LETS:${groupType}:${groupName}" xs');
                     # Return the combined log closure and vars for with to provide access
                     # Name collisions prefer the vars
                     (mkGroupClosure false xs') // vars;
@@ -349,15 +363,16 @@ let
     #   (msg "newSubType")
     #   ((withMsg "newSubType").show {inherit This name args;})
     # ];
-    trace = mkTrace builtins.trace;
+    trace = mkTrace true;
 
     # Tracing interface using print.
-    # Only log when --trace-verbose is set
+    # Enabled when module arg verbose is true.
+    # Does not use --trace-verbose as it is not available in tvix.
     # with log.vtrace; assert over [
     #   (msg "newSubType")
     #   ((withMsg "newSubType").show {inherit This name args;})
     # ];
-    vtrace = mkTrace builtins.traceVerbose;
+    vtrace = mkTrace trace-verbose;
 
   };
 
@@ -386,10 +401,10 @@ in log // {
                 a = 1;
                 b = 2;
               };
-              with letrec (_: {
+              with lets rec {
                 c = 3;
-                d = _.c + 1;
-              });
+                d = c + 1;
+              };
               let __out = {inherit a b c d;};
               in { inherit __out __logEvents; };
             expected = {
