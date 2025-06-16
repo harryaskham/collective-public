@@ -17,7 +17,7 @@ let
   log = rec {
 
     mkPrintArgs = {
-      printStrictly = true;
+      printStrictly = false;
       # If true, do not respect __toString
       ignoreToString = false;
       # If true, do not respect __show
@@ -93,7 +93,7 @@ let
     print_ = args: x_:
       with args;
       let
-        x = if printStrictly then strict x_ else x;
+        x = if printStrictly then strict x_ else x_;
         block =
           if depth >= maxDepth then "..."
           else if hasShow x && !ignoreShow then
@@ -126,6 +126,7 @@ let
       putD = n: x: put x (using.depth n);
       using = {
         raw = { ignoreToString = true; ignoreShow = true; };
+        strict = { printStrictly = true; };
         lazy = { printStrictly = false; };
         line = { formatLines = indent.linesSep " "; };
         depth = n: { maxDepth = n; };
@@ -135,6 +136,7 @@ let
         };
       };
       _raw = using.raw;
+      _strict = using.strict;
       _lazy = using.lazy;
       _line = using.line;
       _depth = using.depth;
@@ -153,12 +155,12 @@ let
 
     mkTrace = enableTrace:
       let
-        traceFn = if enableTrace then traceSeq else (_: id);
+        traceFn = if enableTrace then builtins.trace else (_: id);
         self = rec {
         # log.trace.show [ 456 { a = 2; }] 123
         # -> trace: [ 456 { a = 2; }]
         # 123
-        show = x: a: traceFn "\n\n[log.trace.show]\n${log.show x}\n" a;
+        show = x: a: traceFn "\n\n[log.trace.show]\n${log.vprintD 6 x}\n" a;
 
         # log.trace.showId 123
         # -> trace: 123

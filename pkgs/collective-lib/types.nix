@@ -1051,7 +1051,7 @@ in rec {
       if hasType T x then x
       else throw "Expected type ${T} (got ${getTypeName x})";
 
-    mkBuiltin = U: name:
+    mkBuiltin = SU: name:
       let
         hasSize = { String = true; Path = true; List = true; Set = true; }.${name} or false;
         withSize = methods:
@@ -1060,8 +1060,8 @@ in rec {
                in methods // { size = sizeFn; }
           else methods;
       in
-        U.Type.new name {
-          fields = This: U.Fields.new [{ value = toLower name; }];
+        SU.Type.new name {
+          fields = This: SU.Fields.new [{ value = toLower name; }];
           methods = withSize ({
             List = {
               fmap = this: f: this.modify.value (map f);
@@ -1101,7 +1101,8 @@ in rec {
 
       Ctors = {
         # Explicit nullary constructor s.t. X.new == X.mk {}
-        CtorNullary = SU.Ctor.new "CtorNullary" (This: {});
+        # Still needs a thunk arg otherwise it will evaluate
+        CtorNullary = SU.Ctor.new "CtorNullary" (This: _: {});
 
         # Default constructor for regular non-NewType/Builtin/Alias types.
         CtorFields = SU.Ctor.new "CtorFields" (This:
@@ -1110,7 +1111,7 @@ in rec {
             fields = assign "fields" (This.fields This);
             sortedFieldNames = assign "sortedFieldNames" (map soloName fields.instanceFields);
           in return (
-            if size fields.instanceFields == 0 then {}
+            if size fields.instanceFields == 0 then _: {} # Thunk to avoid nullary eval loops
             else Variadic.mkOrdered sortedFieldNames
           )
         );
@@ -1134,8 +1135,8 @@ in rec {
       };
     };
 
-    mkBuiltins = U:
-      mergeAttrsList (map (name: { ${name} = mkBuiltin U name; }) BuiltinNames) // {
+    mkBuiltins = SU:
+      mergeAttrsList (map (name: { ${name} = mkBuiltin SU name; }) BuiltinNames) // {
 
         # Wrap up some builtin constructors.
         # TODO: Builtin to a base type for all builtins.
@@ -1237,7 +1238,7 @@ in rec {
       Unit = U.Type.new "Unit" {
         ctor = U.Ctors.CtorNullary;
       };
-      unit = Unit.new;
+      unit = Unit.new {};
 
       # Uninhabited type
       Void = U.Type.new "Void" {
@@ -1750,9 +1751,21 @@ in rec {
             Static = T: mkTypeShim "Static" { staticType = T; };
             Default = T: V: mkTypeShim "Default" { defaultType = T; defaultValue = V; };
             NullOr = T: mkTypeShim "NullOr" { new = id; };
-            Literal = V: mkTypeShim "Literal" { getLiteral = V; new = { getLiteral = V; }; };
-            Sized = n: T: mkTypeShim "Sized" { new = x: { getSized  = x; }; };
+            Literal = V: mkTypeShim "Literal" { getLiteral = V; new = _: { getLiteral = V; }; };
+            Sized = n: T: mkTypeShim "Sized" {
+              new = x: {
+                getSized = T.new x;
+              };
+            };
             Any = mkTypeShim "Any" {};
+            OrderedItem = T: mkTypeShim "OrderedItem" {
+              new = x: mkInstanceShim (OrderedItem T) (rec {
+                value = (Sized 1 (SetOf T)).new x;
+                getSolo = value.getSized.value;
+                getName = soloName getSolo;
+                getValue = soloValue getSolo;
+              });
+            };
           }
         );
 
@@ -1854,7 +1867,7 @@ in rec {
         OrderedOf_ = Type.subTemplateOf (_: U.ListOf (U.OrderedItem _.T)) "OrderedOf" {T = Type;} (_: {
           # Pass OrderedItems to the underlying ListOf
           ctor = SU.Ctor.new "CtorOrderedOf" (This: xs: {
-            value = map (x: (U.OrderedItem _.T).new x) (solos xs);
+            value = map (x: (SU.OrderedItem _.T).new x) (solos xs);
           });
 
           methods = {
@@ -1955,7 +1968,7 @@ in rec {
           };
         });
         Literal = V: U.Literal_.bind { inherit V; };
-        literal = v: (U.Literal v).new;
+        literal = v: (U.Literal v).new {};
 
         # A type inhabited by literals of any of the given list of values
         Literals = Vs: U.Union (map Literal values);
@@ -2121,7 +2134,7 @@ in rec {
 
         Literal = {
           static = expect.equal (Literal 123).getLiteral 123;
-          instance = expect.equal (Literal 123).new.getLiteral 123;
+          instance = expect.equal ((Literal 123).new {}).getLiteral 123;
         };
 
         Field = {
@@ -2217,9 +2230,8 @@ in rec {
         in {
           fromListEqFromSet =
             expect.eqOn
-              (this: mapSolos (_: field: field.get) this.getSolos)
-              fields
-              fieldsFromSet;
+              (this: soloNames this.getSolos)
+              fields fieldsFromSet;
 
           getSolos =
             expect.eq
@@ -2424,8 +2436,7 @@ in rec {
                   };
                 in {
                   fixed = expect.asserts.ok (assertTypeFixedUnderNew (FakeType "FakeType") "FakeType" {});
-                  # unfixed = expect.asserts.fail (assertTypeFixedUnderNew (FakeType "FakeType") "NextFakeType" {});
-                  unfixed = expect.error (assert assertTypeFixedUnderNew (FakeType "FakeType") "NextFakeType" {}; true);
+                  unfixed = expect.asserts.fail (assertTypeFixedUnderNew (FakeType "FakeType") "NextFakeType" {});
                 };
             };
           };
@@ -2473,7 +2484,7 @@ in rec {
           untyped = testInUniverses {
             inherit
               U_0
-              # U_1
+              U_1
               ;
           } untypedTests;
 

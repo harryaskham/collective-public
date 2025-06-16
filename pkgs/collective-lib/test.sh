@@ -65,7 +65,7 @@ in
 EOF
               )
 
-  CMD="nix eval --extra-experimental-features pipe-operators --impure --expr '$FULL_EXPR' $REPL_FLAGS"
+  CMD="nix eval --option max-call-depth 100000000 --extra-experimental-features pipe-operators --impure --expr '$FULL_EXPR' $REPL_FLAGS"
 
   echo "Running: ${CMD}" >&2
   bash -c "$CMD"
@@ -114,7 +114,7 @@ with attrs; (_tests.run)
 </nix>
 
 <nix>
-{ a = 123; }
+with types; with Types.Universe.U_1; Type.new "wat" {}
 </nix>
 
 <nix>
