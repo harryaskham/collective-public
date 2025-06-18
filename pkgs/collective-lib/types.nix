@@ -1164,11 +1164,12 @@ in rec {
       else throw "Expected type ${T} (got ${getTypeName x})";
 
     MkBuiltinFns = {
-      TypeShims = _: _: name:
+      TypeShims = U: _: name:
         let
           BuiltinTypeShim = mkTypeShim name {
             new = x: mkInstanceShim BuiltinTypeShim { value = x; };
             mk = args: mkInstanceShim BuiltinTypeShim args;
+            fields = _: U.Fields.new { value = "string"; };
           };
         in
           BuiltinTypeShim;
@@ -1936,6 +1937,7 @@ in rec {
               parsedSpec = parseFieldSpec fieldSpec;
             in mkInstanceShim Field (get // {
               inherit get;
+              inherit fieldName;
               fieldDefault = _: parsedSpec.fieldDefault;
               fieldType = _: parsedSpec.fieldType;
               fieldStatic = _: parsedSpec.fieldStatic;
@@ -2332,6 +2334,13 @@ in rec {
             fields = This: Fields.new [{ value = String; }];
           };
 
+        Mystring =
+          assert Type ? new;
+          assert Fields ? new;
+          Type.new "Mystring" {
+            fields = This: Fields.new [{ value = "string"; }];
+          };
+
         WrapString =
           assert String ? subType;
           String.subType "WrapString" {};
@@ -2473,42 +2482,42 @@ in rec {
               123;
         };
 
-        Field = {
-          expr =
-            assert Field ? new;
-            let f = Field.new "name" null;
-            in [(f.fieldName.value or f.fieldName) (f.fieldType {}) (f.fieldStatic {}) (f.fieldDefault {})];
-          expected = ["name" null false null];
-        };
+        Field =
+          assert Field ? new;
+          let f = Field.new "name" null; in
+          {
+            name = expect.stringEq f.fieldName "name";
+            fieldType = expect.eq (f.fieldType {}) null;
+            fieldStatic = expect.False (f.fieldStatic {});
+            fieldDefault = expect.eq (f.fieldDefault {}) null;
+          };
 
-        MyString_nocast = {
+        Mystring = {
           mkFromString =
-            expect.eq
+            expect.stringEq
               (assert MyString ? mk;
                assert String ? new;
-               (MyString.mk { value = String.new "hello"; }).value.value)
+               (MyString.mk { value = "hello"; }).value)
               "hello";
           newFromString =
-            expect.eq
+            expect.stringEq
               (assert MyString ? new;
                assert String ? new;
-                (MyString.new (String.new "hello")).value.value)
+                (MyString.new "hello").value)
               "hello";
         };
 
-        MyType_mk_nocast = {
-          expr =
-            assert MyType ? mk;
-            (MyType.mk { myField = String.new "World"; }).myField.value;
-          expected = "World";
-        };
+        MyType_mk_nocast =
+          assert MyType ? mk;
+          expect.stringEq
+            (MyType.mk { myField = String.new "World"; }).myField
+            "World";
 
-        MyType_new_nocast = {
-          expr =
-            assert MyType ? new;
-            (MyType.new (String.new "World")).myField.value;
-          expected = "World";
-        };
+        MyType_new_nocast = 
+          assert MyType ? new;
+          expect.stringEq
+            (MyType.new (String.new "World")).myField
+            "World";
       };
 
       builtinTests = U: with U; {
@@ -2786,7 +2795,7 @@ in rec {
         types = with Universe; {
 
           peripheral =
-            solo
+            #solo
               {
                 checks = {
                   isTyped = {
@@ -2811,7 +2820,7 @@ in rec {
               };
 
           untypedSmoke =
-            solo
+            #solo
               (testInUniverses {
                 inherit
                   U_0
@@ -2820,7 +2829,7 @@ in rec {
               } untypedSmokeTests);
 
           typedSmoke =
-            solo
+            #solo
               (testInUniverses {
                 inherit
                   U_2
@@ -2828,7 +2837,7 @@ in rec {
               } typedSmokeTests);
 
           typeFunctionality =
-            solo
+            #solo
               (testInUniverses {
                 inherit
                   U_0
@@ -2838,7 +2847,7 @@ in rec {
               } typeFunctionalityTests);
 
           inheritance =
-            solo
+            #solo
               (testInUniverses {
                 inherit
                   U_1
@@ -2847,7 +2856,7 @@ in rec {
               } inheritanceTests);
 
           instantiation =
-            solo
+            #solo
               (testInUniverses {
                 inherit
                   U_0
@@ -2857,7 +2866,7 @@ in rec {
               } instantiationTests);
 
           builtin =
-            solo
+            #solo
               (testInUniverses {
                 inherit
                   U_0
@@ -2867,7 +2876,7 @@ in rec {
               } builtinTests);
 
           cast =
-            solo
+            #solo
               (testInUniverses {
                 inherit
                   U_1
@@ -2876,7 +2885,7 @@ in rec {
               } castTests);
 
           untyped =
-            solo
+            #solo
               (testInUniverses {
                 inherit
                   U_0
@@ -2885,7 +2894,7 @@ in rec {
               } untypedTests);
 
           typeChecking =
-            solo
+            #solo
               (testInUniverses {
                 inherit
                   # U_2
