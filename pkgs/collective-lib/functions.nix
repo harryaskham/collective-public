@@ -59,14 +59,30 @@ in rec {
         '');
         tryResolve = resolvedX: errors.try resolvedX propagateResolutionError;
     in
-      if isThunk x then
-        tryResolve (x.__get {})
-      else if isFunction x then
+      if isFunction x then
         tryResolve (x (throw ''Resolved lambda-thunk made use of its thunk-argument.''))
+      else if isThunk x then
+        tryResolve (x.__get {})
       else throw ''resolve: Invalid argument type: ${typeOf x}'';
 
-  # Resolve a thunk if x is one, otherwise do nothing.
+  # Thunkify x if it is not already a thunk.
+  maybeThunk = x: if isThunk x then x else Thunk;
+
+  # Resolve a thunk if x is one, otherwise return x.
   maybeResolve = x: try (resolve x) (_: x);
+
+  # A thunk-like value is either a thunk or a function.
+  isThunkLike = x:
+    isFunction x || isThunk x;
+
+  # Resolve x until it is no longer a thunk.
+  resolveDeep = x:
+    try (
+      if isThunkLike x
+      then let x_ = strict (try (resolve x) (_: throw ''resolveDeep: failed to resolve''));
+           in resolveDeep x_
+      else x
+    ) (_: x);
 
   # Object wrapping a thunk with metadata.
   Thunk = x:

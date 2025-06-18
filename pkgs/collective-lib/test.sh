@@ -206,16 +206,19 @@ with types; _tests.run
 </nix>
 
 <nix>
-empty
+builtins.tryEval ((_: {}.no) x)
 </nix>
 
 
 <nix>
 with functions;
-with types; with Types.Universe.U_1;
-with __Bootstrap;
-#log.vprintD 1 (Type__bootstrapped.new "" {})
-Bool.new
+with types; with Types.Universe.U_0;
+with Types;
+let A = Type.new "A" { fields = This: Fields.new { x = "int"; };}; in
+let a = A.new 123; in
+let B = A.subType "B" {}; in
+let b = B.new 123; in
+log.vprintD 3 (resolve b.Type)
 </nix>
 
 <nix>

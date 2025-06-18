@@ -33,6 +33,9 @@ in rec {
       then mapAttrs (_: Fields) (this.get or this)
       else this;
 
+    # Resolve thunks in the expr and expected.
+    Resolve = this: tryStrict (resolveDeep this) (e: { Compare.Resolve = "Thunk resolution evaluation error"; }) ;
+
     # Produce a version of the this-set with replaced lambdas, enabling deep comparison.
     NoLambdas = this:
       let
@@ -90,13 +93,28 @@ in rec {
 
     error = expr: { inherit expr; expected = failure; };
 
-    equal = expr: expected: { inherit expr expected; };
-    equalOn = compare: expr: expected: { inherit expr expected compare; };
-    eq = equal;
-    eqOn = equalOn;
-    printEq = equalOn Compare.Print;
-    fieldsEq = equalOn Compare.Fields;
+    lazyEq = expr: expected: {
+      expr = NamedThunk "expr" expr;
+      expected = NamedThunk "expected" expected;
+      compare = Compare.Resolve;
+    };
+
+    lazyEqOn = compare_: expr: expected: lazyEq expr expected // {
+      compare = compose compare_ Compare.Resolve;
+    };
+
+    eq = expr: expected: { inherit expr expected; };
+
+    eqOn = compare: expr: expected: { inherit expr expected compare; };
+
+    printEq = eqOn Compare.Print;
+
+    fieldsEq = eqOn Compare.Fields;
+
+    lazyFieldsEq = lazyEqOn Compare.Fields;
+
     anyLambda = _: throw ''expect.anyLambda was called; should only be used in placeholder for Print/NoLambdas expectations.'';
+
     asserts = {
       ok = expr_: {
         expr = assert expr_; { asserts = "ok"; };
@@ -109,15 +127,10 @@ in rec {
     };
 
 
-    True = expr: {
-      inherit expr;
-      expected = true;
-    };
-
-    False = expr: {
-      inherit expr;
-      expected = false;
-    };
+    True = expr: eq expr true;
+    lazyTrue = expr: lazyEq expr true;
+    False = expr: eq expr false;
+    lazyFalse = expr: lazyEq expr false;
   };
 
   runOneTest = test: results_:
@@ -227,12 +240,14 @@ in rec {
       rawExpr = test.expr;
 
       # The expression to evaluate, optionally under a comparison function.
+      # Can't thunkify here - this is the "expr" literally passed to runTests.
       expr = if compare == null then rawExpr else compare rawExpr;
 
       # The raw expected expression to compare with as defined in the test.
       rawExpected = test.expected;
 
       # The expected expression to compare with, optionally under a comparison function.
+      # Can't thunkify here - this is the "expected" literally passed to runTests.
       expected = if compare == null then rawExpected else compare rawExpected;
 
       # Iff true, skip this test and do not treat as failure.
@@ -245,7 +260,7 @@ in rec {
       run = evalOneTest (expr: builtins.tryEval (strict expr)) (test_ // { mode = "run"; });
 
       # Run the test propagating eval errors that mask real failures
-      debug = evalOneTest id (test_ // { mode = "debug"; });
+      debug = evalOneTest (expr: strict expr) (test_ // { mode = "debug"; });
     };
     in test_;
 
@@ -257,7 +272,6 @@ in rec {
           nonSoloTests = filterAttrs (_: t: !t.solo) flatTests;
       in if soloTests == {}
          then flatTests
-         # else soloTests // (mapAttrs (_: t: t // {skip = true;}) nonSoloTests);
          else soloTests;
     overOne = f: mapAttrs (testName: test: f { ${testName} = test; }) tests;
     runOne = overOne (run_ false (test: test.run));

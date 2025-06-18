@@ -153,7 +153,7 @@ in rec {
         result.castSuccess;
 
     cast = T: x:
-      with (log.v 1).call "cast" T x ___;
+      with (log.v 4).call "cast" T x ___;
 
       if T == null then
         return (mkCastError "Cannot cast to null: T = ${log.print T}, x = ${log.print x}")
@@ -176,16 +176,16 @@ in rec {
 
         xFields = (
           if isTyped x then x.Type.__do (T:
-            let getFields = T.fields or throw ''TFields: T.fields does not exist: ${log.print T}'';
-            in (getFields T).instanceFields)
+            let fields = T.fields or (throw ''TFields: T.fields does not exist: ${log.print T}'');
+            in (fields T).instanceFields {})
           else
             mkCastError ''
               Cannot get fields from untyped uncast value: T = ${log.print T}, x = ${log.print x}
             '');
         TFields = (
           if isTypeSet T then
-            let getFields = T.fields or throw ''TFields: T.fields does not exist: ${log.print T}'';
-            in (getFields T).instanceFields
+            let fields = T.fields or (throw ''TFields: T.fields does not exist: ${log.print T}'');
+            in (fields T).instanceFields {}
           else
             mkCastError ''
               Cannot get fields from non-Type target type: T = ${log.print T}, x = ${log.print x}
@@ -206,10 +206,10 @@ in rec {
 
         xUnaryFieldT = castErrorOr xUnaryField (field:
           if field == null then mkCastError ''Unary field is not a solo: ${log.print field}''
-          else (soloValue field).fieldType or null);
+          else maybeResolve ((soloValue field).fieldType or null));
         TUnaryFieldT = castErrorOr TUnaryField (field:
           if field == null then mkCastError ''Unary field is not a solo: ${log.print field}''
-          else (soloValue field).fieldType or null);
+          else maybeResolve ((soloValue field).fieldType or null));
 
         xUnaryFieldTName = castErrorOr xUnaryFieldT printT;
         TUnaryFieldTName = castErrorOr TUnaryFieldT printT;
@@ -290,12 +290,16 @@ in rec {
               when = TIsUnary;
               orMsg = "Cannot upcast to a non-unary type: ${xTName} -> ${TName}";
               result =
-                let xCast = cast TUnaryFieldT x;
-                in if isCastError xCast then xCast
+                if !(T ? mk) then mkCastError (indent.block ''
+                  ${TName} does not have a 'mk' method
+                '')
                 else
-                  mkCastSuccess
-                    (T.mk { ${TUnaryFieldName} = xCast.castSuccess; })
-                    xCast.castSuccessMsg;
+                  let xCast = cast TUnaryFieldT x;
+                  in if isCastError xCast then xCast
+                  else
+                    mkCastSuccess
+                      (T.mk { ${TUnaryFieldName} = xCast.castSuccess; })
+                      xCast.castSuccessMsg;
               failMsg = castErrorMsg: indent.block ''
                 Upcast failed to unary field ${TName}.${TUnaryFieldName}:
                   ${xTName} -> ${TUnaryFieldTName}
@@ -335,7 +339,7 @@ in rec {
                         (xFieldName: TFieldName: {
                           ${TFieldName} =
                             cast
-                              (T.fields.getField TFieldName).fieldType
+                              (((T.fields T).getField TFieldName).fieldType {})
                               x.${xFieldName};
                         })
                         xFieldNames
@@ -512,9 +516,6 @@ in rec {
     # which would mean every subtype created in a chain would ascend a universe until
     # it reached the Quasiverse.
     typeMethodsFor = U: SU: {
-      # If This.Super is defined, get its constructor with 'This'.
-      # Called as (this.__superCtor {}) {..args..}
-      __superCtor = This: thunk (This.Super.__fmap (Super: Super.ctor.bind This));
 
       # Is this instance an instance of type That.
       isInstance = This: that: isTyped that && that.Type.__do (That: That.eq This);
@@ -537,7 +538,7 @@ in rec {
       # Usually would be safe to use U.Void, except for the U.Void.boundName binding,
       # so uses SU.Void.
       boundName = This: thunk (
-        with (log.v 1).methodCall This "boundName" ___;
+        with (log.v 4).methodCall This "boundName" ___;
         return (
           if This.tvars == {} then This.name
           else
@@ -616,7 +617,7 @@ in rec {
           runChecks = errors.tryBool (errors.checks [
             {
               cond = hasType This that;
-              msg = "Type check failed for ${This.__TypeId {}} (got ${That.__TypeId {}})";
+              msg = "Type check failed for ${This.__TypeId {}} (got ${getTypeName that})";
             }
             {
               cond = This.checkValue == null || This.checkValue that;
@@ -635,12 +636,12 @@ in rec {
         in getBoundName {});
 
       # Create a new instance of the type by providing at least all required field values.
-      mk = This: args: mkInstance This args;
+      mk = This: mkInstance This;
 
       # Create a new instance of the type by calling This's constructor
       # When This == Type, creates a new Type.
       # Consumes its first argument to avoid nullaries
-      new = This: arg: newInstance This arg;
+      new = This: newInstance This;
 
       # Create a new subType inheriting from This
       # TODO: Compose checkValue / overrideCheck if they appear in args
@@ -696,6 +697,7 @@ in rec {
       # methods via Ctors.CtorType.
       methods = maybeNamedLazyAttrs "mkTypeArgsFor.methods" (typeMethodsFor U SU);
       staticMethods = maybeNamedLazyAttrs "mkTypeArgsFor.staticMethods" (typeMethodsFor U SU);
+      # staticMethods = maybeNamedLazyAttrs "mkTypeArgsFor.staticMethods" {};
       tvars = {};
       tvarBindings = {};
       checkValue = null;
@@ -704,7 +706,7 @@ in rec {
 
     # Check if a given argument is a custom Type.
     checkTyped = x:
-      with (log.v 1).call "checkTyped" x ___;
+      with (log.v 4).call "checkTyped" x ___;
       assert checks [
         {
           name = "isAttrs x";
@@ -822,23 +824,23 @@ in rec {
     #     xs.set.value [10 20 -30] -> Type error via SortedListOf.checkValue
     #     valid = xs.set.value [10 20 30] -> ok
     mkFieldAssignmentValue = This: fieldName: uncastValue:
-      with (log.v 1).call "mkFieldAssignmentValue" {inherit This fieldName uncastValue;} ___;
+      with (log.v 3).call "mkFieldAssignmentValue" {inherit This fieldName uncastValue;} ___;
 
       with lets rec {
         fields = This.fields This;
         field = fields.getField fieldName;
         castRequired =
           # Field has a type
-          field.fieldType != null
+          (field.fieldType {}) != null
           && (
             # The value provided does not already have this type
-            !(hasType field.fieldType uncastValue)
+            !(hasType (field.fieldType {}) uncastValue)
             # nor does it pass a check on the field type
-            && !(isTypeSet field.fieldType && field.fieldType.check uncastValue)
+            && !(isTypeSet (field.fieldType {}) && (field.fieldType {}).check uncastValue)
           );
         value =
           if castRequired
-            then cast field.fieldType uncastValue
+            then cast (field.fieldType {}) uncastValue
             else mkCastSuccess uncastValue "id";
       };
 
@@ -846,7 +848,7 @@ in rec {
         { pred = (field: field != null);
           msg = joinLines [
             "Setting unknown field: ${This.name}.${fieldName}"
-            "Known fields: ${joinSep ", " (map soloName fields.instanceFields)}"
+            "Known fields: ${joinSep ", " (map soloName (fields.instanceFields {}))}"
           ];
         }
         { pred = field: (!castRequired) || isCastSuccess value;
@@ -862,12 +864,12 @@ in rec {
         # TODO: This check could be O(n) for container types, updating attrsets goes O(1) to O(n)
         # Need item-wise checks
         { pred = field: (!castRequired)
-                        || (isTypeSet field.fieldType && field.fieldType.check value.castSuccess)
-                        || (typeOf value.castSuccess == field.fieldType);
+                        || (isTypeSet (field.fieldType {}) && (field.fieldType {}).check value.castSuccess)
+                        || (typeOf value.castSuccess == (field.fieldType {}));
           msg = indent.block ''
             Cast value did not pass typecheck:
               ${(This.__TypeId or thunk "This") {}}.${fieldName} = ${log.print uncastValue}
-              Cast value of ${log.print (value.castSuccess or null)} is not a valid instance of ${log.print field.fieldType}.
+              Cast value of ${log.print (value.castSuccess or null)} is not a valid instance of ${log.print (field.fieldType {})}.
           '';
         }
       ]
@@ -886,7 +888,7 @@ in rec {
     #   as needed (could also only type-check on access enabling invalid intermediate field
     #   values that can never be seen)
     mkFieldAssignmentSoloFromUncastValue = This: fieldName: field: uncastValue:
-      with (log.v 1).call "mkFieldAssignmentSoloFromUncastValue" {inherit This fieldName field uncastValue; } ___;
+      with (log.v 3).call "mkFieldAssignmentSoloFromUncastValue" {inherit This fieldName field uncastValue; } ___;
       with lets rec {
         castValue =
           if !((resolve field.Type).__TypeId {} == "Field") then with indent; throws.block ''
@@ -901,14 +903,14 @@ in rec {
       return { ${fieldName} = castValue; };
 
     mkFieldAssignmentSoloFromArgs = This: args: fieldName: field:
-      with (log.v 1).call "mkFieldAssignmentSoloFromArgs" {inherit This args fieldName field;} ___;
+      with (log.v 3).call "mkFieldAssignmentSoloFromArgs" {inherit This args fieldName field;} ___;
       with lets rec {
-        defaultValue = field.fieldDefault or (with indent; throws.block ''
+        defaultValue = resolve (field.fieldDefault or (with indent; throws.block ''
           Field ${fieldName} is not set in args and has no default value:
             This = ${here (print This)}
             args = ${here (print args)}
-        '');
-        uncastValue = args.${fieldName} or (try (resolve defaultValue) (_: throw ''
+        ''));
+        uncastValue = args.${fieldName} or (errors.try (resolve defaultValue) (_: throw ''
           Invalid non-Thunk fieldDefault for ${fieldName}: ${log.print defaultValue}''
         ));
       };
@@ -918,12 +920,12 @@ in rec {
 
     # Make all field assignments on the instance
     mkFieldAssignments = This: args:
-      with (log.v 1).call "mkFieldAssignments" This args ___;
+      with (log.v 2).call "mkFieldAssignments" This args ___;
       let fields = This.fields This; in
       return
         (concatMapSolos
           (fieldName: field: soloValue (mkFieldAssignmentSoloFromArgs This args fieldName field))  # soloValue as this produces {name = {name = value;};}
-          fields.instanceFieldsWithType);
+          (fields.instanceFieldsWithType {}));
 
     # Accessors to include on all instances.
     # Where these need binding, they are bound similarly to methods s.t. methods can call
@@ -938,11 +940,11 @@ in rec {
           #      this.has.notAField -> throws error
           #      this.has ? notAField -> false
           #      this.has.notAField or default -> default
-          has = mergeAttrsList (mapSolos (_: _: _: true) fields.instanceFields);
+          has = mergeAttrsList (mapSolos (_: _: _: true) (fields.instanceFields {}));
 
           # Field getting interface
           # e.g. this.get.someInt {} -> 123
-          get = mergeAttrsList (mapSolos (fieldName: _: this: thunk this.${fieldName}) fields.instanceFields);
+          get = mergeAttrsList (mapSolos (fieldName: _: this: thunk this.${fieldName}) (fields.instanceFields {}));
 
           # Field setting interface
           # e.g. this.set.someInt 123 -> this'
@@ -957,7 +959,7 @@ in rec {
                     uncastValue:
                       let assignment = mkFieldAssignmentSoloFromUncastValue This fieldName field uncastValue;
                       in bindThis This (this // assignment))
-                fields.instanceFields);
+                (fields.instanceFields {}));
 
           # Field modification interface
           # e.g. this.modify.someInt (x: x+1) -> this'
@@ -968,7 +970,7 @@ in rec {
                 (fieldName: _:
                   this: f:
                     this.set.${fieldName} (f this.${fieldName}))
-                fields.instanceFields);
+                (fields.instanceFields {}));
         };
 
     checkNoNullaryBindings = check: This: bindings:
@@ -983,19 +985,19 @@ in rec {
             ${indent.here (log.vprintD 2 nullaryBindings)}
           ''));
 
-    mkStaticMethodBindings = This:
-      with (log.v 1).call "mkStaticMethodBindings" "This" ___;
+    mkStaticMethodBindings = This: staticMethods: this_:
+      with (log.v 3).call "mkStaticMethodBindings" This staticMethods "this_" ___;
       let
         bindings =
           mapAttrs
-            (methodName: staticMethod: staticMethod This)
-            (maybeResolve (This.staticMethods or {}));
+            (methodName: staticMethod: staticMethod this_)
+            (maybeResolve staticMethods);
       in
         assert checkNoNullaryBindings check This bindings;
         return bindings;
 
     mkMethodBindings = This: this_:
-      with (log.v 1).call "mkMethodBindings" This "this_" ___;
+      with (log.v 3).call "mkMethodBindings" This "this_" ___;
       let
          bindings =
            mapAttrs
@@ -1007,7 +1009,7 @@ in rec {
         return bindings;
 
     mkAccessorBindings = This: this_:
-      with (log.v 1).call "mkAccessorBindings" This "this_" ___;
+      with (log.v 3).call "mkAccessorBindings" This "this_" ___;
       let
         bindings =
           mapAttrs
@@ -1019,20 +1021,29 @@ in rec {
 
     # Initialise a type from its This type, its partial this set, and any args.
     mkthis = This: args:
-      with (log.v 1).call "mkthis" This args ___;
+      with (log.v 2).call "mkthis" This args ___;
       let
         this = mkFieldAssignments This args;
       in
-        return (bindThis This this);
+        # with safety true;
+        # return (bindThis This this);
+        bindThis This this;
 
     # Bind members that refer to this on construction and after any change.
     bindThis = This: this:
-      #with (log.v 1).call "bindThis" This this ___;
       let
         # If we are creating a Type, we need to bind its static methods too
-        # Otherwise Type.new exists but not Bool.new
-        staticMethodInstanceBindings = mkStaticMethodBindings this;
-        staticMethodBindings = mkStaticMethodBindings This;
+        # When creating Type via Type.new: binds 'new' to the new Type
+        # When creating Bool via Type.new: binds 'new' to Bool
+        # When creating bool via Bool.new: this.Type.staticMethods == Bool.staticMethods == {}
+        staticMethodInstanceBindings = mkStaticMethodBindings This (resolve this.Type).staticMethods this_;
+        # When creating Type via Type.new: binds 'new' to the new Type
+        # When creating Bool via Type.new: this.staticMethods == Bool.staticMethods == {}
+        # When creating bool via Bool.new: this ? staticMethods == false
+        staticMethodBindings =
+          if this ? staticMethods
+            then mkStaticMethodBindings This this.staticMethods this_
+            else {};
         accessorBindings = mkAccessorBindings This this_;
         methodBindings = mkMethodBindings This this_;
         this_ = mergeAttrsList [
@@ -1043,30 +1054,27 @@ in rec {
           methodBindings
         ];
       in
-        #with safety true;
-        #return this_;
         this_;
 
     # Create a new instance of a type by calling its constructor.
     # The constructor's output arguments are then passed into mkInstance.
     # For types, the constructor just merges a name parameter with an arguments
     # parameter and delegates to mkInstance.
-    # Consumes the first argument of the ctor here to avoid early-forcing the checks.
-    newInstance = This: arg:
-      # with (log.v 2).call "newInstance" This arg ___;
-      # assert check "This.ctor present" (This ? ctor) "This.ctor is not set";
-      # assert check "This.tvars present" (This ? tvars) "This.tvars is not set";
-      let boundCtor = This.ctor.bind This arg; in
-      if isFunction boundCtor then Variadic.compose (mkInstance This) boundCtor
-      else mkInstance This boundCtor;
-      # with
+    newInstance = This:
+      with (log.v 2).call "newInstance" "unsafe:This" ___;
+      # let boundCtor = This.ctor.bind This; in
+      # if isFunction boundCtor then Variadic.compose (mkInstance This) boundCtor
+      # else mkInstance This boundCtor;
+      # assert
       #   check
       #     "(This.ctor.bind This) is non-nullary"
       #     (isFunction boundCtor)
       #     (indent.block ''Nullary ctor encountered when creating new instance of ${log.print This}'');
-      # let mkViaCtor = traceComposeVariadic "(mkInstance This)" "(boundCtor arg)"
-      #                                       (mkInstance This)   (boundCtor arg); in
-      # return mkViaCtor;
+      # let mkViaCtor = traceComposeVariadic "(mkInstance This)" "(arg: This.ctor.bind This arg)"
+      #                                       (mkInstance This)   (arg: This.ctor.bind This arg); in
+      # mkViaCtor;
+      # assert (isFunction boundCtor);
+      Variadic.compose (mkInstance This) (arg: This.ctor.bind This arg);
 
     # Build a new instance from a single dict of field values.
     # Construct an instance from a This type and attrset of field-to-value assignments.
@@ -1076,22 +1084,34 @@ in rec {
     mkInstance = mkInstance_ TypeThunk;
     mkInstanceUnsafe = mkInstance_ (UnsafeTypeThunk "mkInstanceUnsafe");
     mkInstance_ = mkTypeThunk: This: args_:
-      with (log.v 1).call "mkInstance" This args_ ___;
+      with (log.v 2).call "mkInstance" This args_ ___;
       let
         # All instances have a common Type field.
         args = args_ // { Type = mkTypeThunk This; };
 
         # Construct 'this' as an instance of 'This'.
-        this = mkthis This args;
+        this = assign "this" (mkthis This args);
 
         # Check the validity of the constructed instance.
         validityChecks =
           let
             fields = This.fields This;
-            suppliedFieldNames = attrNames args;
-            fieldNames = map soloName fields.instanceFieldsWithType;
-            populatedFieldNames = filter (name: this ? ${name}) fieldNames;
-            requiredFieldNames = map soloName fields.requiredFields;
+
+            suppliedFieldNames =
+              assign "suppliedFieldNames" (
+                attrNames args);
+
+            fieldNames =
+              assign "fieldNames" (
+                map soloName (fields.instanceFieldsWithType {}));
+
+            populatedFieldNames =
+              assign "populatedFieldNames" (
+                filter (name: this ? ${name}) fieldNames);
+
+            requiredFieldNames =
+              assign "requiredFieldNames" (
+                map soloName (fields.requiredFields {}));
 
             # Get any supplied non-static fields not present in this or any supertype.
             unknownFieldNames = assign "unknownFieldNames" (
@@ -1100,6 +1120,17 @@ in rec {
             # Get any fields not populated in this or any supertype.
             missingFieldNames = assign "missingFieldNames" (
               subtractLists populatedFieldNames requiredFieldNames);
+
+            staticMethodNames =
+              assign "staticMethodNames" (
+                This.staticMethods.__attrNames);
+
+            populatedStaticMethodNames =
+              assign "populatedStaticMethodNames" (
+                filter (name: this ? ${name}) This.staticMethods.__attrNames);
+
+            missingStaticMethodNames = assign "missingStaticMethodNames" (
+              subtractLists populatedStaticMethodNames staticMethodNames);
           in [
             {
               cond = unknownFieldNames == [];
@@ -1109,6 +1140,15 @@ in rec {
               cond = missingFieldNames == [];
               msg = ''
                 ${log.print This}: Missing fields in mkInstance call: ${joinSep ", " missingFieldNames}
+                args: ${log.print args}
+                This: ${log.printAttrs This}
+                this: ${log.print this}
+              '';
+            }
+            {
+              cond = missingStaticMethodNames == [];
+              msg = ''
+                ${log.print This}: Missing staticMethods in mkInstance call: ${joinSep ", " missingStaticMethodNames}
                 args: ${log.print args}
                 This: ${log.printAttrs This}
                 this: ${log.print this}
@@ -1137,7 +1177,7 @@ in rec {
           hasSize = { String = true; Path = true; List = true; Set = true; }.${name} or false;
           withSize = methods:
             if hasSize
-            then let sizeFn = this: size this.value;
+            then let sizeFn = this: _: size this.value;
                 in methods // { size = sizeFn; }
             else methods;
         in
@@ -1154,8 +1194,8 @@ in rec {
                 values = this: attrValues this.value;
                 # e.g. this.modifyAt.name (x: x+1)
                 getAt = this: this.value;
-                modifyAt = this: mapAttrs (k: v: f: this.modify.value (xs: xs // { ${k} = f v; })) this.value;
-                setAt = this: mapAttrs (k: _: x: this.modify.value (xs: xs // { ${k} = x; })) this.value;
+                modifyAt = this: _: mapAttrs (k: v: f: this.modify.value (xs: xs // { ${k} = f v; })) this.value;
+                setAt = this: _: mapAttrs (k: _: x: this.modify.value (xs: xs // { ${k} = x; })) this.value;
               };
               Lambda = {
                 fmap = this: f: this.modify.value (compose f);
@@ -1191,14 +1231,14 @@ in rec {
 
         # Default constructor for regular non-NewType/Builtin/Alias types.
         CtorFields = SU.Ctor.new "CtorFields" (This:
-          with (log.v 1).call "CtorFields.ctor" { inherit This; } ___;
+          with (log.v 3).call "CtorFields.ctor" { inherit This; } ___;
           let
             fields = assign "fields" (This.fields This);
-            sortedFieldNames = assign "sortedFieldNames" (map soloName fields.instanceFields);
+            sortedFieldNames = assign "sortedFieldNames" (map soloName (fields.instanceFields {}));
           in
           assert check
             "Nonempty fields Ctors.CtorFields"
-            (nonEmpty fields.instanceFields)
+            (nonEmpty (fields.instanceFields {}))
             ''At least one required field must be set for CtorFields to be used'';
           return (Variadic.mkOrdered sortedFieldNames)
         );
@@ -1210,13 +1250,40 @@ in rec {
           __isTypeSet = true;
           inherit name;
           Super = setThunkName "Super[Type.ctor]" (args.Super or (TypeThunk null));
+          # Whatever ctor is given, for universes that don't have access to Field's defaults,
+          # we need to ensure the end result contains values for all Type args.
           ctor = args.ctor or CtorFields;
-          fields = args.fields or (This: SU.Fields.new []);
+            # let ctor_ = args.ctor or CtorFields;
+            # in SU.Ctor.new "CtorType.instance" (This:
+            #   # Apply whatever ctor is given for the type, and ensure that the args it
+            #   # produces are valid for a type like 'Bool. i.e. that 'new' is available
+            #   # as a static method.
+            #   # This is akin to Bool having a supertype of Type but without needing to
+            #   # inherit its fields, members, etc.
+            #   # TODO: But when we create this == Bool, we have this.Type == Type, so
+            #   # can we just bind the static methods of this.Type?
+            #   Variadic.compose
+            #     (args_: args_ // {
+            #       staticMethods = maybeLazyAttrs ((args_.staticMethods or {}) // typeMethodsFor U SU);
+            #     })
+            #     (ctor_.bind This)
+            # );
+          fields =
+            let fields_ = args.fields or (This: SU.Fields.new []);
+            in assert assertMsg (isFunction fields_) (indent.block ''
+                 Non-function Fields provided:
+                   fields = ${indent.here (log.print fields_)}
+                   This = ${indent.here (log.print This)}
+               '');
+               fields_;
           # When a Type is produced i.e. when Type.new is called, we need to ensure
           # the resulting object is type-args-like by injecting the methods in the ctor.
-          # They are static on Type and methods on Bool
-          methods = maybeLazyAttrs ((args.methods or {}) // typeMethodsFor U SU);
+          # They are static on Type and methods on Bool.
+          # So methods here are only those on Bool, and for type we need to provide them again
+          # as args.
+          methods = maybeLazyAttrs (args.methods or {});
           staticMethods = maybeLazyAttrs (args.staticMethods or {});
+          # staticMethods = maybeLazyAttrs ((args.staticMethods or {}) // typeMethodsFor U SU);
           tvars = args.tvars or {};
           tvarBindings = args.tvarBindings or {};
           checkValue = args.checkValue or null;
@@ -1300,7 +1367,7 @@ in rec {
     #      parseFieldSpec Default<Int, 123> -> {fieldDefault = 123; fieldType = Int; }
     #      parseFieldSpec Int -> { fieldType = Int; }
     parseFieldSpec = spec:
-      with (log.v 1).call "parseFieldSpec" spec ___;
+      with (log.v 4).call "parseFieldSpec" spec ___;
 
       # Unwrap Static types.
       # Duck-typed to support bootstrap.
@@ -1379,9 +1446,8 @@ in rec {
       #     this inherited ctor will not produce valid argument sets for consumption by mkInstance.
       #     One can manually call the super ctor when constructing a new ctor by:
       #     (This.Super.do (T: T.ctor.bind This)) args
-      #     which is exposed on Types as the This.__superCtor {} args method.
       inheritFrom = SuperThunk: ctorArgs:
-        with (log.v 1).call "inheritFrom" SuperThunk ctorArgs ___;
+        with (log.v 3).call "inheritFrom" SuperThunk ctorArgs ___;
         assert check "isThunk SuperThunk" (isThunk SuperThunk) "inheritFrom: SuperThunk must be a Thunk, got ${log.print SuperThunk}";
         assert check "!(SuperThunk.__do isNull)" (!(SuperThunk.__do isNull)) "inheritFrom: Super must not be null, ${log.print (resolve SuperThunk)}";
 
@@ -1398,27 +1464,29 @@ in rec {
             let superFields = SuperThunk.__do (Super: Super.fields This);
             in if ctorArgs ? fields
                then let ctorFields = assign "ctorFields" (ctorArgs.fields This);
-                        ctorFieldSolos = assign "ctorFieldSolos" ctorFields.getSolos;
+                        ctorFieldSolos = assign "ctorFieldSolos" (ctorFields.getSolos {});
                     in superFields.update ctorFieldSolos
                else superFields);
 
           # Merge methods with those inside the Super thunk.
           methods =
-            SuperThunk.__do (Super:
-              Super.methods.__fmap (superMethods:
-                superMethods // (ctorArgs.methods or {})));
+            let
+              ctorMethods = maybeResolve (ctorArgs.methods or {});
+              superMethods = SuperThunk.__do (Super: resolve Super.methods);
+            in LazyAttrs (superMethods // ctorMethods);
 
           # Merge static methods with those inside the Super thunk.
           staticMethods =
-            SuperThunk.__do (Super:
-              Super.staticMethods.__fmap (superStaticMethods:
-                superStaticMethods // (ctorArgs.staticMethods or {})));
+            let
+              ctorStaticMethods = maybeResolve (ctorArgs.staticMethods or {});
+              superStaticMethods = SuperThunk.__do (Super: resolve Super.staticMethods);
+            in LazyAttrs (superStaticMethods // ctorStaticMethods);
         });
 
       # For a given type, create a new type in the same universe.
       # Inheritance is performed as per inheritFrom.
       newSubType = This: name: args:
-        with (log.v 1).call "newSubType" { inherit This name args; } ___;
+        with (log.v 2).call "newSubType" { inherit This name args; } ___;
         if !(isTypeSet This)
           then throw (indent.block ''
             Cannot subtype non-Type or Type-precursor:
@@ -1769,7 +1837,7 @@ in rec {
       };
 
     mkBootstrappedType = U: SU:
-      with (log.v 1).call "mkBootstrappedType" U SU ___;
+      with (log.v 3).call "mkBootstrappedType" U SU ___;
       let
         opts = U.opts;
       in rec {
@@ -1824,7 +1892,7 @@ in rec {
     # Constructs a bootstrapped Quasitype from a hand-build GroundType instance, which has no
     # typed fields.
     Quasiverse =
-      with (log.v 1).attrs "Quasiverse" ___;
+      with (log.v 4).attrs "Quasiverse" ___;
       with msg "Constructing Quasiverse";
 
       # Quasiverse is its own self- and super-universe, enabled by containing no circular dependencies
@@ -1859,10 +1927,13 @@ in rec {
                 inherit fieldSpec;
               };
               parsedSpec = parseFieldSpec fieldSpec;
-            in mkInstanceShim Field (get // parsedSpec // {
+            in mkInstanceShim Field (get // {
               inherit get;
-              getSolo = { ${fieldName} = get; };
-              hasDefault = parsedSpec.fieldDefault != null;
+              fieldDefault = _: parsedSpec.fieldDefault;
+              fieldType = _: parsedSpec.fieldType;
+              fieldStatic = _: parsedSpec.fieldStatic;
+              getSolo = _: { ${fieldName} = get; };
+              hasDefault = _: parsedSpec.fieldDefault != null;
             });
         };
 
@@ -1875,25 +1946,26 @@ in rec {
                 fieldSpecs = withCommonFieldSpecs opts SU fieldSpecs_;
                 soloFields = mapSolos U.Field.new fieldSpecs;
               in mkInstanceShim Fields (rec {
-                getSolos = soloFields;
+                getSolos = _: soloFields;
                 indexed = mergeAttrsList (cutils.attrs.indexed soloFields);
                 update = newFieldSpecs:
                   Fields.new (concatSolos (solos fieldSpecs) (solos newFieldSpecs));
                 getField = name: indexed.${name}.value;
-                getFieldsWhere = pred: filterSolos pred getSolos;
-                instanceFields =
+                getFieldsWhere = pred: filterSolos pred (getSolos {});
+                instanceFields = _:
                   getFieldsWhere (fieldName: field:
                     fieldName != "Type"
                     && (field == null
-                        || !field.fieldStatic));
-                instanceFieldsWithType =
+                        || !(field.fieldStatic {})));
+                instanceFieldsWithType = _:
                   getFieldsWhere (fieldName: field:
                     field == null
-                    || !field.fieldStatic);
-                requiredFields = getFieldsWhere (_: field:
-                  field == null
-                  || (!field.fieldStatic
-                      && !field.hasDefault));
+                    || !(field.fieldStatic {}));
+                requiredFields = _:
+                  getFieldsWhere (_: field:
+                    field == null
+                    || (!(field.fieldStatic {})
+                        && !(field.hasDefault {})));
               });
           };
 
@@ -1923,7 +1995,7 @@ in rec {
     # Create a new universe descending from SU.
     mkSubUniverse = SU:
       let opts = resolve SU.opts.descend; in
-      with (log.v 1).call "mkSubUniverse" opts "<SU>" ___;
+      with (log.v 4).call "mkSubUniverse" opts "<SU>" ___;
       with msg "Constructing ${opts.name} universe";
       let U = withCommonUniverse SU rec {
         # Store the opts as U.opts
@@ -1965,7 +2037,7 @@ in rec {
 
         # Subtype of Set that enforces homogeneity of value types.
         SetOf_ = U.Set.subTemplate "SetOf" {T = Type;} (_: {
-          checkValue = that: all (x: hasType _.T x) that.values;
+          checkValue = that: all (x: hasType _.T x) (that.values {});
         });
         SetOf = T: U.SetOf_.bind { inherit T; };
 
@@ -1974,7 +2046,7 @@ in rec {
           fields = This: SU.Fields.new [{ getSized = _.T; }];
           checkValue = that:
             (_.T.checkValue or (const true)) that
-            && that.size == _.N.getLiteral;
+            && (that.size {}) == _.N.getLiteral;
         });
         Sized = n: T:
           let N = U.Literal n;
@@ -2025,23 +2097,23 @@ in rec {
 
           methods = {
             # Get the solo attr list in order.
-            getSolos = this: this.mapItems (item: item.getSolo);
+            getSolos = this: _: this.mapItems (item: item.getSolo);
 
             # The unordered merged attribute set
-            unindexed = this: mergeAttrsList this.getSolos;
+            unindexed = this: _: mergeAttrsList (this.getSolos {});
 
             # The merged attribute set with an additional 'index' field indicating
             # its place in the order.
-            indexed = this: mergeAttrsList (indexed this.getSolos);
+            indexed = this: _: mergeAttrsList (indexed (this.getSolos {}));
 
             # The ordered attribute names.
-            names = this: this.mapItems (item: item.getName);
+            names = this: _: this.mapItems (item: item.getName);
 
             # The ordered attribute values.
-            values = this: this.mapItems (item: item.getValue);
+            values = this: _: this.mapItems (item: item.getValue);
 
             # A set from name to index.
-            indexes = this: this.imapItems (i: item: { ${item.getName} = i; });
+            indexes = this: _: this.imapItems (i: item: { ${item.getName} = i; });
 
             # Map over the underlying [OrderedItem T]
             # f :: (OrderedItem T -> a) -> [a]
@@ -2059,32 +2131,32 @@ in rec {
             # f :: (int -> string -> T -> a) -> [a]
             imapSolos = this: f: this.imapItems (index: item: f index item.getName item.getValue);
 
-            # Modify the value at the given key via this.modifyAt.name f, preserving order and type.
-            modifyAt = this:
+            # Modify the value at the given key via this.modifyAt {}.name f, preserving order and type.
+            modifyAt = this: _:
               mapAttrs
                 (name: _: f:
                   this.fmap
                     (item:
-                      let maybeModifyHere = item.modifyAt.${name} or (const item);
+                      let maybeModifyHere = (item.modifyAt {}).${name} or (const item);
                       in maybeModifyHere f))
-                this.unindexed;
+                (this.unindexed {});
 
-            # Set the value at the given key via this.setAt.name value, preserving order and type.
+            # Set the value at the given key via this.setAt {}.name value, preserving order and type.
             # Key must exist in the Ordered (cannot create new keys).
-            setAt = this: mapAttrs (name: modifyHere: x: modifyHere (const x)) this.modifyAt;
+            setAt = this: _: mapAttrs (name: modifyHere: x: modifyHere (const x)) (this.modifyAt {});
 
             # Update by inserting the given items sequentially at the end of the order.
             # If any already appear, they update the item in its original order.
             update = this: items_:
               let items = solos items;
-              in Fields.new (concatSolos this.getSolos items);
+              in Fields.new (concatSolos (this.getSolos {}) items);
           };
 
           checkValue = that:
             Super.checkValue that
             && assertMsg
-                (size that.names == size that.unindexed)
-                "Duplicate keys in OrderedOf: ${joinSep ", " that.names}";
+                (size (that.names {}) == size (that.unindexed {}))
+                "Duplicate keys in OrderedOf: ${joinSep ", " (that.names {})}";
         });
         OrderedOf = T: U.OrderedOf_.bind { inherit T; };
 
@@ -2161,11 +2233,11 @@ in rec {
             {fieldSpec = SU.NullOr Type;}
           ];
           methods = {
-            parsedT = this: parseFieldSpec this.fieldSpec;
-            fieldType = this: this.parsedT.fieldType;
-            fieldStatic = this: this.parsedT.fieldStatic;
-            hasDefault = this: this.parsedT.fieldDefault != null;
-            fieldDefault = this: this.parsedT.fieldDefault;
+            parsedT = this: _: parseFieldSpec this.fieldSpec;
+            fieldType = this: _: (this.parsedT {}).fieldType;
+            fieldStatic = this: _: (this.parsedT {}).fieldStatic;
+            hasDefault = this: _: (this.fieldDefault {}) != null;
+            fieldDefault = this: _: (this.parsedT {}).fieldDefault;
           };
         };
 
@@ -2186,25 +2258,25 @@ in rec {
               fieldSpecs = withCommonFieldSpecs opts SU fieldSpecs_;
               soloFields = mapSolos U.Field.new fieldSpecs;
               # Call the OrderedOf constructor to construct this subType.
-              args = This.__superCtor {} soloFields;
+              args = This.Super.__do (Super: Super.ctor.bind This soloFields);
             in
               args
           );
           methods = {
-            getIndexedField = this: name: this.indexed.${name};
+            getIndexedField = this: name: (this.indexed {}).${name};
             getField = this: name: (this.getIndexedField name).value;
-            getFieldsWhere = this: pred: filterSolos pred this.getSolos;
-            instanceFields = this: this.getFieldsWhere (fieldName: field:
+            getFieldsWhere = this: pred: filterSolos pred (this.getSolos {});
+            instanceFields = this: _: this.getFieldsWhere (fieldName: field:
               fieldName != "Type"
               && (field == null
-                  || !field.fieldStatic));
-            instanceFieldsWithType = this: this.getFieldsWhere (fieldName: field:
+                  || !(field.fieldStatic {})));
+            instanceFieldsWithType = this: _: this.getFieldsWhere (fieldName: field:
               field == null
-              || !field.fieldStatic);
-            requiredFields = this: this.getFieldsWhere (_: field:
+              || !(field.fieldStatic {}));
+            requiredFields = this: _: this.getFieldsWhere (_: field:
               field == null
-              || (!field.fieldStatic
-                  && !field.hasDefault));
+              || (!(field.fieldStatic {})
+                  && !(field.hasDefault {})));
           };
         };
       };
@@ -2223,28 +2295,39 @@ in rec {
       typedUniverses = {inherit (allUniverses) U_2 U_3 U_4; inherit TS; };
 
       TestTypes = U: with U; {
-        MyType = Type.new "MyType" {
-          fields = This: Fields.new [{ myField = String; }];
-          methods = {
-            helloMyField = this: extra: "Hello, ${this.myField.value}${extra}";
+        MyType =
+          assert Type ? new;
+          assert Fields ? new;
+          Type.new "MyType" {
+            fields = This: Fields.new [{ myField = String; }];
+            methods = {
+              helloMyField = this: extra: "Hello, ${this.myField.value}${extra}";
+            };
           };
-        };
 
-        MyType2 = Type.new "MyType2" {
-          fields = This: Fields.new [
-            { stringField = String; }
-            { intField = Int; }
-            { defaultIntField = Default Int 666; }
-            { staticIntField = Static Int; }
-            { staticDefaultIntField = Static (Default Int 666); }
-          ];
-        };
+        MyType2 =
+          assert Type ? new;
+          assert Fields ? new;
+          Type.new "MyType2" {
+            fields = This: Fields.new [
+              { stringField = String; }
+              { intField = Int; }
+              { defaultIntField = Default Int 666; }
+              { staticIntField = Static Int; }
+              { staticDefaultIntField = Static (Default Int 666); }
+            ];
+          };
 
-        MyString = Type.new "MyString" {
-          fields = This: Fields.new [{ value = String; }];
-        };
+        MyString =
+          assert Type ? new;
+          assert Fields ? new;
+          Type.new "MyString" {
+            fields = This: Fields.new [{ value = String; }];
+          };
 
-        WrapString = String.subType "WrapString" {};
+        WrapString =
+          assert String ? subType;
+          String.subType "WrapString" {};
       };
 
 
@@ -2274,45 +2357,106 @@ in rec {
 
         Type = {
           new = {
-            id = expect.eq ((Type.new "A" {}).__TypeId {}) "A";
-            name = expect.eq (Type.new "A" {}).name "A";
-            boundName = expect.eq ((Type.new "A" {}).boundName {}) "A";
+            Type = expect.eq
+              (assert Type ? new;
+               let A = Type.new "A" {}; in
+               assert A ? Type;
+               assert (resolve A.Type) ? __TypeId;
+               (resolve A.Type).__TypeId {})
+              "Type";
+            id = expect.eq
+              (assert Type ? new;
+               let A = Type.new "A" {}; in
+               assert A ? __TypeId;
+               A.__TypeId {})
+              "A";
+            name = expect.eq
+              (assert Type ? new;
+               let A = Type.new "A" {}; in
+               assert A ? name;
+               A.name)
+              "A";
+            boundName = expect.eq
+              (assert Type ? new;
+               let A = Type.new "A" {}; in
+               assert A ? boundName;
+               A.boundName {})
+              "A";
           };
         };
 
       };
 
       instantiationTests = U: with U; with TestTypes U; {
-        Type = expect.equal ((Type.new "SomeType" {}).__TypeId {}) "SomeType";
+        Type = expect.eq
+          (assert Type ? new;
+           let SomeType = Type.new "SomeType" {}; in
+           assert SomeType ? __TypeId;
+           SomeType.__TypeId {})
+          "SomeType";
 
         Literal = {
-          static = expect.equal (Literal 123).getLiteral 123;
-          instance = expect.equal ((Literal 123).new {}).getLiteral 123;
+          static =
+            expect.eq
+              (let L = Literal 123; in
+               assert L ? getLiteral;
+               L.getLiteral)
+              123;
+          instance =
+            expect.eq
+              (let L = Literal 123; in
+               assert L ? new;
+               (L.new {}).getLiteral)
+              123;
         };
 
         Field = {
-          expr = let f = Field.new "name" null;
-                 in [f.fieldName.value f.fieldType f.fieldStatic f.fieldDefault];
+          expr =
+            assert Field ? new;
+            let f = Field.new "name" null;
+            in [f.fieldName.value (f.fieldType {}) (f.fieldStatic {}) (f.fieldDefault {})];
           expected = ["name" null false null];
         };
 
         MyString_nocast = {
-          mkFromString = expect.eq (MyString.mk { value = String.new "hello"; }).value.value "hello";
-          newFromString = expect.eq (MyString.new (String.new "hello")).value.value "hello";
+          mkFromString =
+            expect.eq
+              (assert MyString ? mk;
+               assert String ? new;
+               (MyString.mk { value = String.new "hello"; }).value.value)
+              "hello";
+          newFromString =
+            expect.eq
+              (assert MyString ? new;
+               assert String ? new;
+                (MyString.new (String.new "hello")).value.value)
+              "hello";
         };
 
         WrapString_nocast = {
-          mkFromString = expect.eq (WrapString.mk { value = "hello"; }).value "hello";
-          newFromString = expect.eq (WrapString.new "hello").value "hello";
+          mkFromString =
+            expect.eq
+              (assert WrapString ? mk;
+               (WrapString.mk { value = "hello"; }).value)
+              "hello";
+          newFromString =
+            expect.eq
+              (assert WrapString ? new;
+               (WrapString.new "hello").value)
+              "hello";
         };
 
         MyType_mk_nocast = {
-          expr = (MyType.mk { myField = String.new "World"; }).myField.value;
+          expr =
+            assert MyType ? mk;
+            (MyType.mk { myField = String.new "World"; }).myField.value;
           expected = "World";
         };
 
         MyType_new_nocast = {
-          expr = (MyType.new (String.new "World")).myField.value;
+          expr =
+            assert MyType ? new;
+            (MyType.new (String.new "World")).myField.value;
           expected = "World";
         };
       };
@@ -2322,6 +2466,7 @@ in rec {
           let
             mkBuiltinTest = T: name: rawValue: {
               expr =
+                assert T ? new;
                 let x = T.new rawValue;
                 in {
                   name = x.Type.__do (T: T.name);
@@ -2361,10 +2506,11 @@ in rec {
               expr = builtinValueCheck {abc="xyz";};
               expected = true;
             };
-            Bool = {
-              expr = builtinValueCheck (Bool.new true);
-              expected = false;
-            };
+            Bool =
+              expect.False (
+                assert Bool ? new;
+                builtinValueCheck (Bool.new true)
+              );
           };
         };
 
@@ -2383,12 +2529,12 @@ in rec {
         in {
           fromListEqFromSet =
             expect.eqOn
-              (this: soloNames this.getSolos)
+              (this: soloNames (this.getSolos {}))
               fields fieldsFromSet;
 
           getSolos =
             expect.eq
-              (soloNames fields.getSolos)
+              (soloNames (fields.getSolos {}))
               [ "Type" "a" "b" "c" ];
         };
 
@@ -2404,12 +2550,18 @@ in rec {
             List = [1 2 3];
             Set = { a = 1; b = 2; c = 3; };
           };
-          mkToTypedBuiltinTest = T: x: expect.fieldsEq (cast_ T x) (T.new x);
-          mkToUntypedBuiltinTest = T: x: {
-            expr = cast_ (Builtin.getBuiltin T) (T.new x);
-            expected = x;
-            compare = Compare.Fields;
-          };
+
+          mkToTypedBuiltinTest = T: x:
+            expect.lazyFieldsEq
+              (cast_ T x)
+              (_: assert T ? new;
+                  T.new x);
+
+          mkToUntypedBuiltinTest = T: x:
+            expect.lazyFieldsEq
+              (Builtin.getBuiltin T)
+              (_: assert T ? new;
+                  T.new x);
         in {
           to = {
             typedBuiltin = mapAttrs (name: v: mkToTypedBuiltinTest U.${name} v) testX;
@@ -2514,7 +2666,7 @@ in rec {
               let this = MyType.new (String.new "");
               in [
                 (this.helloMyField "!")
-                ((this.set.myField "World").helloMyField "!")
+                ((this.set.myField (String.new "World")).helloMyField "!")
               ];
             expected = [ "Hello, !" "Hello, World!" ];
           };
@@ -2547,30 +2699,26 @@ in rec {
             };
           in {
 
-            newA = {
-              expr = A.new "a";
-              expected = A.mk { a = "a"; };
-              compare = Compare.Fields;
-            };
+            newA = expect.lazyEqOn Compare.Fields (_: A.new "a") (_: A.mk { a = "a"; });
 
             isSuperTypeOf = {
-              parentChild = expect.True (A.isSuperTypeOf B);
-              childParent = expect.False (B.isSuperTypeOf A);
-              parentParent = expect.False (A.isSuperTypeOf A);
-              childChild = expect.False (B.isSuperTypeOf B);
-              typeParent = expect.False (Type.isSuperTypeOf A);
-              typeChild = expect.False (Type.isSuperTypeOf B);
-              typeType = expect.False (Type.isSuperTypeOf Type);
+              parentChild = expect.lazyTrue (_: A.isSuperTypeOf B);
+              childParent = expect.lazyFalse (_: B.isSuperTypeOf A);
+              parentParent = expect.lazyFalse (_: A.isSuperTypeOf A);
+              childChild = expect.lazyFalse (_: B.isSuperTypeOf B);
+              typeParent = expect.lazyFalse (_: Type.isSuperTypeOf A);
+              typeChild = expect.lazyFalse (_: Type.isSuperTypeOf B);
+              typeType = expect.lazyFalse (_: Type.isSuperTypeOf Type);
             };
 
             isSubTypeOf = {
-              parentChild = expect.False (A.isSubTypeOf B);
-              childParent = expect.True (B.isSubTypeOf A);
-              parentParent = expect.False (A.isSubTypeOf A);
-              childChild = expect.False (B.isSubTypeOf B);
-              typeParent = expect.False (Type.isSubTypeOf A);
-              typeChild = expect.False (Type.isSubTypeOf B);
-              typeType = expect.False (Type.isSubTypeOf Type);
+              parentChild = expect.lazyFalse (_: A.isSubTypeOf B);
+              childParent = expect.lazyTrue (_: B.isSubTypeOf A);
+              parentParent = expect.lazyFalse (_: A.isSubTypeOf A);
+              childChild = expect.lazyFalse (_: B.isSubTypeOf B);
+              typeParent = expect.lazyFalse (_: Type.isSubTypeOf A);
+              typeChild = expect.lazyFalse (_: Type.isSubTypeOf B);
+              typeType = expect.lazyFalse (_: Type.isSubTypeOf Type);
             };
 
         };
@@ -2580,28 +2728,30 @@ in rec {
       cutils.tests.suite {
         types = with Universe; {
 
-          peripheral = solo {
-            checks = {
-              isTyped = {
-                string = expect.False (isTyped "hello");
-              };
-            };
-            fixing = {
-              intUnderId = expect.asserts.ok (assertFixedUnderF "f" "x" id 123);
-              intUnderPlus1 = expect.asserts.fail (assertFixedUnderF "f" "x" (x: x+1) 123);
-              intUnderPlus0 = expect.asserts.ok (assertFixedUnderF "f" "x" (x: x+0) 123);
-              Type =
-                let
-                  FakeType = name: {
-                    inherit name;
-                    new = name: args: FakeType name;
+          peripheral =
+            #solo
+              {
+                checks = {
+                  isTyped = {
+                    string = expect.False (isTyped "hello");
                   };
-                in {
-                  fixed = expect.asserts.ok (assertTypeFixedUnderNew (FakeType "FakeType") "FakeType" {});
-                  unfixed = expect.asserts.fail (assertTypeFixedUnderNew (FakeType "FakeType") "NextFakeType" {});
                 };
-            };
-          };
+                fixing = {
+                  intUnderId = expect.asserts.ok (assertFixedUnderF "f" "x" id 123);
+                  intUnderPlus1 = expect.asserts.fail (assertFixedUnderF "f" "x" (x: x+1) 123);
+                  intUnderPlus0 = expect.asserts.ok (assertFixedUnderF "f" "x" (x: x+0) 123);
+                  Type =
+                    let
+                      FakeType = name: {
+                        inherit name;
+                        new = name: args: FakeType name;
+                      };
+                    in {
+                      fixed = expect.asserts.ok (assertTypeFixedUnderNew (FakeType "FakeType") "FakeType" {});
+                      unfixed = expect.asserts.fail (assertTypeFixedUnderNew (FakeType "FakeType") "NextFakeType" {});
+                    };
+                };
+              };
 
           smoke =
             solo

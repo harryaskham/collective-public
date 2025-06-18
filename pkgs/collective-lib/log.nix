@@ -172,7 +172,7 @@ let
         traceFn = if enableTrace then builtins.trace else (_: id);
         printFn =
           if enableVerboseTrace
-          then printWith (args: args // prints.using.depth (1+ 3 * traceLevel))
+          then printWith (args: args // prints.using.depth (3 + 3 * traceLevel))
           else log.show;
         self = rec {
         # log.trace.show [ 456 { a = 2; }] 123
