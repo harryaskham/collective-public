@@ -455,9 +455,9 @@ in rec {
       if !opts.retainTypeFieldSpec then null
       else
         if spec ? defaultType then
-          SU.Default (setFieldTypeToNull opts SU spec.defaultType) (spec.defaultValue)
+          SU.Default (setFieldTypeToNull opts SU (spec.defaultType {})) (spec.defaultValue {})
         else if spec ? staticType then
-          SU.Static (setFieldTypeToNull opts SU spec.staticType)
+          SU.Static (setFieldTypeToNull opts SU (spec.staticType {}))
         else
           null;
 
@@ -1168,6 +1168,7 @@ in rec {
         let
           BuiltinTypeShim = mkTypeShim name {
             new = x: mkInstanceShim BuiltinTypeShim { value = x; };
+            mk = args: mkInstanceShim BuiltinTypeShim args;
           };
         in
           BuiltinTypeShim;
@@ -1189,10 +1190,10 @@ in rec {
               };
               Set = {
                 fmap = this: f: this.modify.value (mapAttrs (_: f));
-                names = this: attrNames this.value;
-                values = this: attrValues this.value;
+                names = this: _: attrNames this.value;
+                values = this: _: attrValues this.value;
                 # e.g. this.modifyAt.name (x: x+1)
-                getAt = this: this.value;
+                getAt = this: _: this.value;
                 modifyAt = this: _: mapAttrs (k: v: f: this.modify.value (xs: xs // { ${k} = f v; })) this.value;
                 setAt = this: _: mapAttrs (k: _: x: this.modify.value (xs: xs // { ${k} = x; })) this.value;
               };
@@ -1328,7 +1329,7 @@ in rec {
             else T;
 
           From = x:
-            let T = ({
+            let T = (with BuiltinTypes; {
                   null = Null;
                   int = Int;
                   float = Float;
@@ -1371,16 +1372,16 @@ in rec {
       # Unwrap Static types.
       # Duck-typed to support bootstrap.
       if spec ? staticType
-        then (parseFieldSpec spec.staticType) // {
-          fieldStatic = true;
-        }
+      then (parseFieldSpec (spec.staticType {})) // {
+        fieldStatic = true;
+      }
 
       # Unwrap Default types.
       # Duck-typed to support bootstrap.
       else if (spec ? defaultType) && (spec ? defaultValue)
-        then (parseFieldSpec spec.defaultType) // {
-          fieldDefault = NamedThunk "fieldDefault" spec.defaultValue;
-        }
+      then (parseFieldSpec (spec.defaultType {})) // {
+        fieldDefault = NamedThunk "fieldDefault" (spec.defaultValue {});
+      }
 
       # Return unwrapped types.
       else
@@ -1971,10 +1972,10 @@ in rec {
         SetOf = T: mkTypeShim "SetOf" { new = U.Set.new; };
         ListOf = T: mkTypeShim "ListOf" { new = U.List.new; };
         Constraint = mkTypeShim "Constraint" { new = x: {value = x; satisfiedBy = _: true;};};
-        Static = T: mkTypeShim "Static" { staticType = T; };
-        Default = T: V: mkTypeShim "Default" { defaultType = T; defaultValue = V; };
+        Static = T: mkTypeShim "Static" { staticType = _: T; };
+        Default = T: V: mkTypeShim "Default" { defaultType = _: T; defaultValue = _: V; };
         NullOr = T: mkTypeShim "NullOr" { new = id; };
-        Literal = V: mkTypeShim "Literal" { getLiteral = V; new = _: { getLiteral = V; }; };
+        Literal = V: mkTypeShim "Literal" { getLiteral = _: V; new = _: { getLiteral = _: V; }; };
         Sized = n: T: mkTypeShim "Sized" {
           new = x: {
             getSized = T.new x;
@@ -2045,7 +2046,7 @@ in rec {
           fields = This: SU.Fields.new [{ getSized = _.T; }];
           checkValue = that:
             (_.T.checkValue or (const true)) that
-            && (that.size {}) == _.N.getLiteral;
+            && (that.size {}) == _.N.getLiteral {};
         });
         Sized = n: T:
           let N = U.Literal n;
@@ -2053,7 +2054,7 @@ in rec {
 
         # A type satisfied by any value of the given list of types.
         Union_ = Type.template "Union" {Ts = Type;} (_: {
-          overrideCheck = that: any (T: hasType T that) _.Ts.getLiteral;
+          overrideCheck = that: any (T: hasType T that) _.Ts.getLiteral {};
         });
         Union = Tlist:
           let Ts = U.Literal Tlist;
@@ -2188,7 +2189,7 @@ in rec {
         Literal_ = Type.template "Literal" {V = U.Any;} (_: rec {
           ctor = U.Ctors.CtorNullary;
           staticMethods = {
-            getLiteral = This: _.V;
+            getLiteral = This: thunk _.V;
           };
         });
         Literal = V: U.Literal_.bind { inherit V; };
@@ -2199,8 +2200,8 @@ in rec {
 
         # A type indicating a default value.
         Default_ = Type.template "Default" {T = Type; V = Type;} (_: {
-          staticMethods.defaultType = This: _.T;
-          staticMethods.defaultValue = This: _.V.getLiteral;
+          staticMethods.defaultType = This: thunk _.T;
+          staticMethods.defaultValue = This: thunk (_.V.getLiteral {});
           overrideCheck = that: _.T == null || _.T.check that;
         });
         Default = T: v:
@@ -2209,7 +2210,7 @@ in rec {
 
         # Newtype wrapper
         Static_ = Type.template "Static" {T = Type;} (_: {
-          staticMethods.staticType = _.T;
+          staticMethods.staticType = This: thunk _.T;
         });
         Static = T: U.Static_.bind {inherit T;};
 
@@ -2399,13 +2400,13 @@ in rec {
             expect.eq
               (let L = Literal 123; in
                assert L ? getLiteral;
-               L.getLiteral)
+               L.getLiteral {})
               123;
           instance =
             expect.eq
               (let L = Literal 123; in
                assert L ? new;
-               (L.new {}).getLiteral)
+               (L.new {}).getLiteral {})
               123;
         };
 
@@ -2413,7 +2414,7 @@ in rec {
           expr =
             assert Field ? new;
             let f = Field.new "name" null;
-            in [f.fieldName.value (f.fieldType {}) (f.fieldStatic {}) (f.fieldDefault {})];
+            in [(f.fieldName.value or f.fieldName) (f.fieldType {}) (f.fieldStatic {}) (f.fieldDefault {})];
           expected = ["name" null false null];
         };
 
@@ -2538,16 +2539,16 @@ in rec {
           };
 
           mkToTypedBuiltinTest = T: x:
-            expect.lazyFieldsEq
+            expect.fieldsEq
               (cast_ T x)
-              (_: assert T ? new;
-                  T.new x);
+              (assert T ? new;
+               T.new x);
 
           mkToUntypedBuiltinTest = T: x:
-            expect.lazyFieldsEq
-              (Builtin.getBuiltin T)
-              (_: assert T ? new;
-                  T.new x);
+            expect.fieldsEq
+              (Builtin.From x)
+              (assert T ? new;
+               T.new x);
         in {
           to = {
             typedBuiltin = mapAttrs (name: v: mkToTypedBuiltinTest U.${name} v) testX;
@@ -2787,41 +2788,48 @@ in rec {
               (testInUniverses {
                 inherit
                   U_0
-                  #U_1
+                  U_1
                   # U_2
                   ;
               } instantiationTests);
 
-          builtin = testInUniverses {
-            inherit
-              U_0
-              U_1
-              # U_2
-              ;
-          } builtinTests;
+          builtin =
+            solo
+              (testInUniverses {
+                inherit
+                  U_0
+                  U_1
+                  # U_2
+                  ;
+              } builtinTests);
 
-          cast = testInUniverses {
-            inherit
-              U_0
-              U_1
-              # U_2
-              ;
-          } castTests;
+          cast =
+            solo
+              (testInUniverses {
+                inherit
+                  U_1
+                  # U_2
+                  ;
+              } castTests);
 
-          untyped = testInUniverses {
-            inherit
-              U_0
-              U_1
-              ;
-          } untypedTests;
+          untyped =
+            solo
+              (testInUniverses {
+                inherit
+                  U_0
+                  U_1
+                  ;
+              } untypedTests);
 
-          typeChecking = testInUniverses {
-            inherit
-              # U_0
-              # U_1
-              # U_2
-              ;
-          } typeCheckingTests;
+          typeChecking =
+            solo
+              (testInUniverses {
+                inherit
+                  # U_0
+                  # U_1
+                  # U_2
+                  ;
+              } typeCheckingTests);
 
         };
       };
