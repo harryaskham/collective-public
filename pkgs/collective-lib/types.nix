@@ -696,7 +696,6 @@ in rec {
       # methods via Ctors.CtorType.
       methods = maybeNamedLazyAttrs "mkTypeArgsFor.methods" (typeMethodsFor U SU);
       staticMethods = maybeNamedLazyAttrs "mkTypeArgsFor.staticMethods" (typeMethodsFor U SU);
-      # staticMethods = maybeNamedLazyAttrs "mkTypeArgsFor.staticMethods" {};
       tvars = {};
       tvarBindings = {};
       checkValue = null;
@@ -1261,21 +1260,6 @@ in rec {
           # Whatever ctor is given, for universes that don't have access to Field's defaults,
           # we need to ensure the end result contains values for all Type args.
           ctor = args.ctor or CtorFields;
-            # let ctor_ = args.ctor or CtorFields;
-            # in SU.Ctor.new "CtorType.instance" (This:
-            #   # Apply whatever ctor is given for the type, and ensure that the args it
-            #   # produces are valid for a type like 'Bool. i.e. that 'new' is available
-            #   # as a static method.
-            #   # This is akin to Bool having a supertype of Type but without needing to
-            #   # inherit its fields, members, etc.
-            #   # TODO: But when we create this == Bool, we have this.Type == Type, so
-            #   # can we just bind the static methods of this.Type?
-            #   Variadic.compose
-            #     (args_: args_ // {
-            #       staticMethods = maybeLazyAttrs ((args_.staticMethods or {}) // typeMethodsFor U SU);
-            #     })
-            #     (ctor_.bind This)
-            # );
           fields =
             let fields_ = args.fields or (This: SU.Fields.new []);
             in assert assertMsg (isFunction fields_) (indent.block ''
@@ -1284,14 +1268,8 @@ in rec {
                    This = ${indent.here (log.print This)}
                '');
                fields_;
-          # When a Type is produced i.e. when Type.new is called, we need to ensure
-          # the resulting object is type-args-like by injecting the methods in the ctor.
-          # They are static on Type and methods on Bool.
-          # So methods here are only those on Bool, and for type we need to provide them again
-          # as args.
           methods = maybeLazyAttrs (args.methods or {});
           staticMethods = maybeLazyAttrs (args.staticMethods or {});
-          # staticMethods = maybeLazyAttrs ((args.staticMethods or {}) // typeMethodsFor U SU);
           tvars = args.tvars or {};
           tvarBindings = args.tvarBindings or {};
           checkValue = args.checkValue or null;
@@ -1800,16 +1778,17 @@ in rec {
       name = "U_${toString level}";
       # Type is named identically at all levels.
       typeName = "Type";
+      # TODO: not needed with shims being good 
       # During the bootstrap, do not enable typechecking.
       # All fields have type 'null' and do not make use of builtin types
       # or Default/Static, which are not yet defined.
-      enableTypeChecking = level >= 2;
+      enableTypeChecking = level >= 0;
       # During the bootstrap, do not enable Default/Static structure.
       # When this is retained, if type checking is enabled, the entire field type
       # is kept e.g. Static (Default Int 123)
       # If type checking is disabled in this level, the Static/Default structure is retained
       # but the type is nulled out e.g. Static (Default null 123)
-      retainTypeFieldSpec = level >= 2;
+      retainTypeFieldSpec = level >= 0;
       # We only expect Type to be fixed under Type.new "Type" when it contains and produces
       # no shim elements of the Quasiverse.
       # U_0 is entirely shim elements and a Type made of shims.
@@ -2185,11 +2164,11 @@ in rec {
                 ];
                 staticMethods = {
                   # Enum members live on the Enum type itself.
-                  __items = This: zipListsWith Item.new (range 0 (length itemNames - 1)) names;
-                  __indexToItem = This: keyByF (item: toString item.i) __items;
-                  __nameToItem = This: keyByName __items;
-                  fromIndex = This: i: This.__indexToItem.${toString i} or throw "Invalid index in enum ${enumName}: ${toString i}";
-                  fromName = This: name: This.__nameToItem.${name} or throw "Invalid name in enum ${enumName}: ${name}";
+                  __items = This: _: zipListsWith Item.new (range 0 (length itemNames - 1)) names;
+                  __indexToItem = This: _: keyByF (item: toString item.i) (This.__items {});
+                  __nameToItem = This: _: keyByName (This.__items {});
+                  fromIndex = This: i: (This.__indexToItem {}).${toString i} or throw "Invalid index in enum ${enumName}: ${toString i}";
+                  fromName = This: name: (This.__nameToItem {}).${name} or throw "Invalid name in enum ${enumName}: ${name}";
                 };
               };
           in Item;
@@ -2846,12 +2825,28 @@ in rec {
                   ;
               } typeFunctionalityTests);
 
+          typeFunctionalityBroken =
+            #solo
+              (testInUniverses {
+                inherit
+                  #U_2
+                  ;
+              } typeFunctionalityTests);
+
           inheritance =
             #solo
               (testInUniverses {
                 inherit
                   U_1
-                  # U_2
+                  #U_2
+                  ;
+              } inheritanceTests);
+
+          inheritanceBroken =
+            #solo
+              (testInUniverses {
+                inherit
+                  #U_2
                   ;
               } inheritanceTests);
 
@@ -2863,6 +2858,14 @@ in rec {
                   U_1
                   #U_2
                   ;
+              } instantiationTests);
+
+          instantiationBroken =
+            #solo
+              (testInUniverses {
+                inherit
+                #U_2
+                ;
               } instantiationTests);
 
           builtin =

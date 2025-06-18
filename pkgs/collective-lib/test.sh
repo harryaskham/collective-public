@@ -215,6 +215,14 @@ with types; _tests.run
 builtins.tryEval ((_: {}.no) x)
 </nix>
 
+<nix>
+with functions;
+with types;
+with Types;
+with Universe.U_0;
+Type.fields Type
+</nix>
+
 
 <nix>
 with functions;
