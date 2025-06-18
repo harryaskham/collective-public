@@ -2432,19 +2432,6 @@ in rec {
               "hello";
         };
 
-        WrapString_nocast = {
-          mkFromString =
-            expect.eq
-              (assert WrapString ? mk;
-               (WrapString.mk { value = "hello"; }).value)
-              "hello";
-          newFromString =
-            expect.eq
-              (assert WrapString ? new;
-               (WrapString.new "hello").value)
-              "hello";
-        };
-
         MyType_mk_nocast = {
           expr =
             assert MyType ? mk;
@@ -2637,6 +2624,60 @@ in rec {
           };
         };
 
+      inheritanceTests = U: with U; with TestTypes U;
+      let
+        A = Type.new "A" {
+          fields = This: Fields.new {
+            a = String;
+          };
+        };
+        B = A.subType "B" {
+          ctor = Ctor.new "CtorB" (This: a: b: {
+            inherit a b;
+          });
+          fields = This: Fields.new {
+            b = Int;
+          };
+        };
+      in {
+
+        newA = expect.lazyEqOn Compare.Fields (_: A.new "a") (_: A.mk { a = "a"; });
+
+        isSuperTypeOf = {
+          parentChild = expect.lazyTrue (_: A.isSuperTypeOf B);
+          childParent = expect.lazyFalse (_: B.isSuperTypeOf A);
+          parentParent = expect.lazyFalse (_: A.isSuperTypeOf A);
+          childChild = expect.lazyFalse (_: B.isSuperTypeOf B);
+          typeParent = expect.lazyFalse (_: Type.isSuperTypeOf A);
+          typeChild = expect.lazyFalse (_: Type.isSuperTypeOf B);
+          typeType = expect.lazyFalse (_: Type.isSuperTypeOf Type);
+        };
+
+        isSubTypeOf = {
+          parentChild = expect.lazyFalse (_: A.isSubTypeOf B);
+          childParent = expect.lazyTrue (_: B.isSubTypeOf A);
+          parentParent = expect.lazyFalse (_: A.isSubTypeOf A);
+          childChild = expect.lazyFalse (_: B.isSubTypeOf B);
+          typeParent = expect.lazyFalse (_: Type.isSubTypeOf A);
+          typeChild = expect.lazyFalse (_: Type.isSubTypeOf B);
+          typeType = expect.lazyFalse (_: Type.isSubTypeOf Type);
+        };
+        
+        WrapString_nocast = {
+          mkFromString =
+            expect.eq
+              (assert WrapString ? mk;
+               (WrapString.mk { value = "hello"; }).value)
+              "hello";
+          newFromString =
+            expect.eq
+              (assert WrapString ? new;
+               (WrapString.new "hello").value)
+              "hello";
+        };
+
+      };
+
       typeFunctionalityTests = U: with U; with TestTypes U; {
 
         checks = {
@@ -2681,46 +2722,6 @@ in rec {
           };
         };
 
-        inheritance =
-          let
-            A = Type.new "A" {
-              fields = This: Fields.new {
-                a = String;
-              };
-            };
-            B = A.subType "B" {
-              ctor = Ctor.new "CtorB" (This: a: b: {
-                inherit a b;
-              });
-              fields = This: Fields.new {
-                b = Int;
-              };
-            };
-          in {
-
-            newA = expect.lazyEqOn Compare.Fields (_: A.new "a") (_: A.mk { a = "a"; });
-
-            isSuperTypeOf = {
-              parentChild = expect.lazyTrue (_: A.isSuperTypeOf B);
-              childParent = expect.lazyFalse (_: B.isSuperTypeOf A);
-              parentParent = expect.lazyFalse (_: A.isSuperTypeOf A);
-              childChild = expect.lazyFalse (_: B.isSuperTypeOf B);
-              typeParent = expect.lazyFalse (_: Type.isSuperTypeOf A);
-              typeChild = expect.lazyFalse (_: Type.isSuperTypeOf B);
-              typeType = expect.lazyFalse (_: Type.isSuperTypeOf Type);
-            };
-
-            isSubTypeOf = {
-              parentChild = expect.lazyFalse (_: A.isSubTypeOf B);
-              childParent = expect.lazyTrue (_: B.isSubTypeOf A);
-              parentParent = expect.lazyFalse (_: A.isSubTypeOf A);
-              childChild = expect.lazyFalse (_: B.isSubTypeOf B);
-              typeParent = expect.lazyFalse (_: Type.isSubTypeOf A);
-              typeChild = expect.lazyFalse (_: Type.isSubTypeOf B);
-              typeType = expect.lazyFalse (_: Type.isSubTypeOf Type);
-            };
-
-        };
       };
 
     in
@@ -2728,7 +2729,7 @@ in rec {
         types = with Universe; {
 
           peripheral =
-            #solo
+            solo
               {
                 checks = {
                   isTyped = {
@@ -2772,13 +2773,24 @@ in rec {
                   ;
               } typeFunctionalityTests);
 
-          instantiation = testInUniverses {
-            inherit
-              U_0
-              U_1
-              # U_2
-              ;
-          } instantiationTests;
+          inheritance =
+            solo
+              (testInUniverses {
+                inherit
+                  U_1
+                  # U_2
+                  ;
+              } inheritanceTests);
+
+          instantiation =
+            solo
+              (testInUniverses {
+                inherit
+                  U_0
+                  #U_1
+                  # U_2
+                  ;
+              } instantiationTests);
 
           builtin = testInUniverses {
             inherit

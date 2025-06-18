@@ -127,9 +127,9 @@ with attrs; _tests.run
 </nix>
 
 <nix>
-with types; with Types.Universe.U_1;
-let a = Int.new 1; in
-a.modify.value (x: x + 1)
+with types; with Types.Universe.U_0;
+let B = Int.subType "B" {}; in
+B.new 6
 </nix>
 
 <nix>
