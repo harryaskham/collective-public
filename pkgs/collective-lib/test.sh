@@ -218,13 +218,13 @@ builtins.tryEval ((_: {}.no) x)
 
 <nix>
 with functions;
-with types; with Types.Universe.U_0;
+with types; with Types.Universe.U_1;
 with Types;
 let A = Type.new "A" { fields = This: Fields.new { x = "int"; };}; in
 let a = A.new 123; in
 let B = A.subType "B" {}; in
 let b = B.new 123; in
-log.vprintD 3 (resolve b.Type)
+b
 </nix>
 
 <nix>

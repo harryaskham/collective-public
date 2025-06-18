@@ -553,7 +553,7 @@ in rec {
 
                   # Bound to a type
                   else if isTypeSet T
-                    then T.boundName
+                  then T.boundName {}
 
                   # Bound to a literal or builtin
                   else
@@ -854,7 +854,7 @@ in rec {
           msg = indent.block ''
             Error casting field assignment:
 
-              ${(This.__TypeId or thunk "This") {}}.${fieldName} =
+              ${if This ? __TypeId then This.__TypeId {} else "This"}.${fieldName} =
                 ${indent.here (log.print uncastValue)}
 
               ${indent.here value.castError}
@@ -867,7 +867,7 @@ in rec {
                         || (typeOf value.castSuccess == (field.fieldType {}));
           msg = indent.block ''
             Cast value did not pass typecheck:
-              ${(This.__TypeId or thunk "This") {}}.${fieldName} = ${log.print uncastValue}
+              ${if This ? __TypeId then This.__TypeId {} else "This"}.${fieldName} = ${log.print uncastValue}
               Cast value of ${log.print (value.castSuccess or null)} is not a valid instance of ${log.print (field.fieldType {})}.
           '';
         }
@@ -1175,6 +1175,13 @@ in rec {
       Types = U: SU: name:
         let
           hasSize = { String = true; Path = true; List = true; Set = true; }.${name} or false;
+          hasToString = { String = true; }.${name} or false;
+          withToString = methods:
+            if hasToString
+            then methods // {
+              __toString = this: self: indent.block ''${name}:"${indent.here (toString self.value)}"'';
+            }
+            else methods;
           withSize = methods:
             if hasSize
             then let sizeFn = this: _: size this.value;
@@ -1183,10 +1190,7 @@ in rec {
         in
           U.Type.new name {
             fields = This: SU.Fields.new [{ value = toLower name; }];
-            methods = withSize ({
-              String = {
-                __toString = this: self: ''S:"${self.value}"'';
-              };
+            methods = withToString (withSize ({
               List = {
                 fmap = this: f: this.modify.value (map f);
                 append = this: x: this.modify.value (xs: xs ++ [x]);
@@ -1203,7 +1207,7 @@ in rec {
               Lambda = {
                 fmap = this: f: this.modify.value (compose f);
               };
-            }.${name} or {});
+            }.${name} or {}));
             checkValue = that: {
               # Additional check on sets s.t. we don't accept a typed value when expecting
               # a raw set.
@@ -1988,9 +1992,9 @@ in rec {
         OrderedItem = T: mkTypeShim "OrderedItem" {
           new = x: mkInstanceShim (OrderedItem T) (rec {
             value = (Sized 1 (SetOf T)).new x;
-            getSolo = value.getSized.value;
-            getName = soloName getSolo;
-            getValue = soloValue getSolo;
+            getSolo = _: value.getSized.value;
+            getName = _: soloName (getSolo {});
+            getValue = _: soloValue (getSolo {});
           });
         };
       };
@@ -2057,7 +2061,7 @@ in rec {
 
         # A type satisfied by any value of the given list of types.
         Union_ = Type.template "Union" {Ts = Type;} (_: {
-          overrideCheck = that: any (T: hasType T that) _.Ts.getLiteral {};
+          overrideCheck = that: any (T: hasType T that) (_.Ts.getLiteral {});
         });
         Union = Tlist:
           let Ts = U.Literal Tlist;
@@ -2085,9 +2089,9 @@ in rec {
           }];
 
           methods = {
-            getSolo = this: this.value.getSized.value;
-            getName = this: soloName this.getSolo;
-            getValue = this: soloValue this.getSolo;
+            getSolo = this: _: this.value.getSized.value;
+            getName = this: _: soloName (this.getSolo {});
+            getValue = this: _: soloValue (this.getSolo {});
           };
         });
         OrderedItem = T: OrderedItem_.bind { inherit T; };
@@ -2100,7 +2104,7 @@ in rec {
 
           methods = {
             # Get the solo attr list in order.
-            getSolos = this: _: this.mapItems (item: item.getSolo);
+            getSolos = this: _: this.mapItems (item: item.getSolo {});
 
             # The unordered merged attribute set
             unindexed = this: _: mergeAttrsList (this.getSolos {});
@@ -2110,13 +2114,13 @@ in rec {
             indexed = this: _: mergeAttrsList (indexed (this.getSolos {}));
 
             # The ordered attribute names.
-            names = this: _: this.mapItems (item: item.getName);
+            names = this: _: this.mapItems (item: item.getName {});
 
             # The ordered attribute values.
-            values = this: _: this.mapItems (item: item.getValue);
+            values = this: _: this.mapItems (item: item.getValue {});
 
             # A set from name to index.
-            indexes = this: _: this.imapItems (i: item: { ${item.getName} = i; });
+            indexes = this: _: this.imapItems (i: item: { ${item.getName {}} = i; });
 
             # Map over the underlying [OrderedItem T]
             # f :: (OrderedItem T -> a) -> [a]
@@ -2128,11 +2132,11 @@ in rec {
 
             # Map over the underlying [solo T] in order
             # f :: (string -> T -> a) -> [a]
-            mapSolos = this: f: this.mapItems (item: f item.getName item.getValue);
+            mapSolos = this: f: this.mapItems (item: f (item.getName {}) (item.getValue {}));
 
             # Map over the underlying indexed [solo T]
             # f :: (int -> string -> T -> a) -> [a]
-            imapSolos = this: f: this.imapItems (index: item: f index item.getName item.getValue);
+            imapSolos = this: f: this.imapItems (index: item: f index (item.getName {}) (item.getValue {}));
 
             # Modify the value at the given key via this.modifyAt {}.name f, preserving order and type.
             modifyAt = this: _:
@@ -2510,23 +2514,19 @@ in rec {
       builtinTests = U: with U; {
         mk =
           let
-            mkBuiltinTest = T: name: rawValue: {
-              expr =
-                assert T ? new;
-                let x = T.new rawValue;
-                in {
-                  name = x.Type.__do (T: T.name);
-                  value = if name == "Lambda" then null else x.value;
-                  newIsBuiltin = builtinValueCheck x;
-                  rawIsBuiltin = builtinValueCheck x.value;
-                };
-              expected = {
-                inherit name;
-                value = if name == "Lambda" then null else rawValue;
-                newIsBuiltin = false;
-                rawIsBuiltin = true;
+            mkBuiltinTest = T: name: rawValue:
+              assert T ? new;
+              let x = T.new rawValue;
+              in {
+                name = expect.stringEq (x.Type.__do (T: T.name)) name;
+                value = expect.eq
+                  (if name == "Lambda" then null else x.value)
+                  (if name == "Lambda" then null else rawValue);
+                newIsBuiltin =
+                  expect.False (builtinValueCheck x);
+                rawIsBuiltin =
+                  expect.True (builtinValueCheck x.value);
               };
-            };
           in {
             Null = mkBuiltinTest Null "Null" null;
             Int = mkBuiltinTest Int "Int" 123;
@@ -2741,10 +2741,7 @@ in rec {
       typeFunctionalityTests = U: with U; with TestTypes U; {
 
         checks = {
-          RootType = {
-            expr = Type.name;
-            expected = "Type";
-          };
+          RootType = expect.stringEq Type.name "Type";
         };
 
         methodCalls = {
@@ -2836,7 +2833,7 @@ in rec {
                 inherit
                   U_0
                   U_1
-                  # U_2
+                  #U_2
                   ;
               } typeFunctionalityTests);
 
@@ -2855,7 +2852,7 @@ in rec {
                 inherit
                   U_0
                   U_1
-                  # U_2
+                  #U_2
                   ;
               } instantiationTests);
 
@@ -2865,7 +2862,7 @@ in rec {
                 inherit
                   U_0
                   U_1
-                  # U_2
+                  U_2
                   ;
               } builtinTests);
 
@@ -2874,7 +2871,7 @@ in rec {
               (testInUniverses {
                 inherit
                   U_1
-                  # U_2
+                  U_2
                   ;
               } castTests);
 
@@ -2891,8 +2888,6 @@ in rec {
             solo
               (testInUniverses {
                 inherit
-                  # U_0
-                  # U_1
                   # U_2
                   ;
               } typeCheckingTests);
