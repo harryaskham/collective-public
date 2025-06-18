@@ -38,6 +38,16 @@ in rec {
         else this;
       in if this_ ? Type then removeAttrs this_ ["Type"] else this_;
 
+    String = this:
+      let
+        thisStr = Types.cast "string" this;
+      in
+        if Types.isCastError thisStr then throw (indent.block ''
+          Error occurred treating this as string:
+            ${indent.here thisStr.castError}
+        '')
+        else thisStr.castSuccess;
+
     # Resolve thunks in the expr and expected.
     Resolve = this: tryStrict (resolveDeep this) (e: { Compare.Resolve = "Thunk resolution evaluation error"; }) ;
 
@@ -113,6 +123,8 @@ in rec {
     eqOn = compare: expr: expected: { inherit expr expected compare; };
 
     printEq = eqOn Compare.Print;
+
+    stringEq = eqOn Compare.String;
 
     fieldsEq = eqOn Compare.Fields;
 

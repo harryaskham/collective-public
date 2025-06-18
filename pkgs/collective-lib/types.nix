@@ -101,7 +101,7 @@ in rec {
         TypeThunk must be null or a Type:
           ${indent.here (log.print T)}
       '');
-      UnsafeTypeThunk (getTypeName T) T // {
+      UnsafeTypeThunk (Types.getTypeName T) T // {
         __ThunkType = "TypeThunk";
         __showValue = self: self.__do Types.getTypeName;
       };
@@ -1184,6 +1184,9 @@ in rec {
           U.Type.new name {
             fields = This: SU.Fields.new [{ value = toLower name; }];
             methods = withSize ({
+              String = {
+                __toString = this: self: ''S:"${self.value}"'';
+              };
               List = {
                 fmap = this: f: this.modify.value (map f);
                 append = this: x: this.modify.value (xs: xs ++ [x]);
@@ -2331,7 +2334,7 @@ in rec {
       };
 
 
-      smokeTests = U: with U; let SU = resolve U._SU.get; in {
+      untypedSmokeTests = U: with U; let SU = resolve U._SU.get; in {
 
         Bootstrap = with __Bootstrap; {
           Type__args = {
@@ -2382,6 +2385,62 @@ in rec {
                assert A ? boundName;
                A.boundName {})
               "A";
+          };
+        };
+
+      };
+
+      typedSmokeTests = U: with U; let SU = resolve U._SU.get; in {
+
+        Bootstrap = with __Bootstrap; {
+          Type__args = {
+            ctor.defaults =
+              let expected = Type__args.ctor.bind Type__args "A" {};
+              in expect.printEq
+                expected
+                {
+                  __isTypeSet = true;
+                  Super = expected.Super;  # TODO: Cheat due to named thunk comparison
+                  checkValue = null;
+                  ctor = SU.Ctors.CtorFields;
+                  fields = This: SU.Fields.new [];
+                  methods = expected.methods; # TODO: Cheat due to named thunk comparison
+                  staticMethods = expected.staticMethods; # TODO: Cheat due to named thunk comparison
+                  name = "A";
+                  overrideCheck = null;
+                  tvarBindings = {};
+                  tvars = {};
+                };
+          };
+        };
+
+        Type = {
+          new = {
+            Type = expect.stringEq
+              (assert Type ? new;
+               let A = Type.new "A" {}; in
+               assert A ? Type;
+               assert (resolve A.Type) ? __TypeId;
+               (resolve A.Type).__TypeId {})
+              "Type";
+            id = expect.stringEq
+              (assert Type ? new;
+               let A = Type.new "A" {}; in
+               assert A ? __TypeId;
+               A.__TypeId {})
+              (String.new "A");
+            name = expect.stringEq
+              (assert Type ? new;
+               let A = Type.new "A" {}; in
+               assert A ? name;
+               A.name)
+              (String.new "A");
+            boundName = expect.stringEq
+              (assert Type ? new;
+               let A = Type.new "A" {}; in
+               assert A ? boundName;
+               A.boundName {})
+              (String.new "A");
           };
         };
 
@@ -2754,15 +2813,22 @@ in rec {
                 };
               };
 
-          smoke =
+          untypedSmoke =
             solo
               (testInUniverses {
                 inherit
                   U_0
                   U_1
-                  # U_2
                   ;
-              } smokeTests);
+              } untypedSmokeTests);
+
+          typedSmoke =
+            solo
+              (testInUniverses {
+                inherit
+                  U_2
+                  ;
+              } typedSmokeTests);
 
           typeFunctionality =
             solo
