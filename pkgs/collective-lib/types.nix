@@ -2406,35 +2406,20 @@ in rec {
           };
         };
 
-        Type = {
-          new = {
-            Type = expect.stringEq
-              (assert Type ? new;
-               let A = Type.new "A" {}; in
-               assert A ? Type;
-               assert (resolve A.Type) ? __TypeId;
-               (resolve A.Type).__TypeId {})
-              "Type";
-            id = expect.stringEq
-              (assert Type ? new;
-               let A = Type.new "A" {}; in
-               assert A ? __TypeId;
-               A.__TypeId {})
-              (String.new "A");
-            name = expect.stringEq
-              (assert Type ? new;
-               let A = Type.new "A" {}; in
-               assert A ? name;
-               A.name)
-              (String.new "A");
-            boundName = expect.stringEq
-              (assert Type ? new;
-               let A = Type.new "A" {}; in
-               assert A ? boundName;
-               A.boundName {})
-              (String.new "A");
+        Type =
+          assert Type ? new;
+          let A = Type.new "A" {}; in
+          assert A ? Type;
+          assert A ? __TypeId;
+          assert (resolve A.Type) ? __TypeId;
+          assert A ? name;
+          assert A ? boundName;
+          {
+            Type = expect.stringEq ((resolve A.Type).__TypeId {}) "Type";
+            id = expect.stringEq (A.__TypeId {}) "A";
+            name = expect.stringEq A.name "A";
+            boundName = expect.stringEq (A.boundName {}) "A";
           };
-        };
 
       };
 
