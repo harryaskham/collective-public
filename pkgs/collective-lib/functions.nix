@@ -10,6 +10,8 @@ with cutils.tests;
 # Misc functional utilities
 let
   log = cutils.log;
+  errors = cutils.errors;
+  Types = cutils.types.Types;
 in rec {
 
   # Compose two functions left-to-right
@@ -47,10 +49,24 @@ in rec {
   thunk = x: _: x;
 
   # Resolve a thunk, throwing an error if the resolving value is used.
+  # Any catchable error thrown by the thunk will be propagated with extra logging.
   resolve = x:
-    if isThunk x then x.get {}
-    else if isFunction x then x (throw ''Resolved thunk made use of its thunk-argument.'')
-    else throw ''Invalid type to resolve: ${typeOf x}'';
+    let propagateResolutionError = e:
+      throw (indent.block ''
+        resolve: thunk resolution error:
+          Thunk: ${indent.here (log.print x)}
+          Error: ${indent.here (log.print e)}
+        '');
+        tryResolve = resolvedX: errors.try resolvedX propagateResolutionError;
+    in
+      if isThunk x then
+        tryResolve (x.__get {})
+      else if isFunction x then
+        tryResolve (x (throw ''Resolved lambda-thunk made use of its thunk-argument.''))
+      else throw ''resolve: Invalid argument type: ${typeOf x}'';
+
+  # Resolve a thunk if x is one, otherwise do nothing.
+  maybeResolve = x: try (resolve x) (_: x);
 
   # Object wrapping a thunk with metadata.
   Thunk = x:
@@ -62,22 +78,30 @@ in rec {
 
         # Display thunks
         __show = self:
-          let name = optionalString (self ? __ThunkName) ">-${resolve self.__ThunkName}";
-          in self.do (x: indent.block ''
-            Thunk ${name}-> ${ellipsis 20 (with log.prints; put x _line ___)}
-          '');
+          let arrow = if (self ? __ThunkName) then ">-[${self.__ThunkName}]->" else ">->";
+          in self.__do (x: indent.lines (
+            ["${self.__ThunkType} ${arrow} ${self.__showValue self}"]
+            ++ (let extra = self.__showExtra self;
+                    extraStr = log.show extra;
+                in optionals (extra != null && size extraStr != 0) ["  ${extraStr}"])));
+
+        # Override in other thunk types to a showable
+        __ThunkType = "Thunk";
+        __showValue = self: self.__do Types.getTypeNameSafe;
+        __showExtra = self: "";
+        __toString = __show;
 
         # Before resolving the type.
         __x = thunk x;
 
         # Run a function over the resolved Type.
-        do = f: f (resolve __x);
+        __do = f: f (resolve __x);
 
         # Get the resolved Type. Must be a regular thunk itself to avoid recursion.
-        get = __x;
+        __get = __x;
 
         # Run a function over the resolved Type, retaining structure.
-        fmap = f: Thunk (do f);
+        __fmap = f: Thunk (__do f);
       };
     in
       mkThunk x;
@@ -86,8 +110,8 @@ in rec {
 
   setThunkName = name: x:
     assert isThunk x;
-    x // { __ThunkName = thunk name; };
-  NamedThunk = name: x: setThunkName name (Thunk x);
+    x // { __ThunkName = name; };
+  NamedThunk = name: x: setThunkName name (Thunk x) // { __ThunkType = "NamedThunk"; };
   isNamedThunk = x: isThunk x && x ? __ThunkName;
 
 
@@ -132,7 +156,7 @@ in rec {
             errors =
               nonEmpties [
                 (optionalString (!(spec.check nextState arg)) "Basic 'check' failed.")
-                (checkPredMsgs (spec.predMsgs or []) { inherit prevState nextState arg; })
+                (checkPredMsgs { inherit prevState nextState arg; } (spec.predMsgs or []))
               ];
           in
             if errors != []
@@ -479,8 +503,8 @@ in rec {
                 (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
               )
               "Thunk(Thunk(Thunk(Thunk(Thunk(123)))))";
-            do = expect.eq ((Thunk 123).do (x: x+1)) 124;
-            fmap = expect.eq (resolve ((Thunk 123).fmap (x: x+1))) 124;
+            do = expect.eq ((Thunk 123).__do (x: x+1)) 124;
+            fmap = expect.eq (resolve ((Thunk 123).__fmap (x: x+1))) 124;
           };
 
           fjoin = {

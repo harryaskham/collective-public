@@ -42,6 +42,14 @@ rec {
     path = compose stringLength toString;
   };
 
+  # Polymorphic emptiness check
+  empty = dispatch {
+    list = l: l == [];
+    set = s: s == {};
+    string = s: s == "";
+  };
+  nonEmpty = x: !(empty x);
+
   # Polymorphic map.
   fmap = f: dispatch {
     list = map f;

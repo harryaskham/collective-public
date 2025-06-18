@@ -1,6 +1,8 @@
 { pkgs ? import <nixpkgs> {},
   lib ? pkgs.lib,
-  trace-verbose ? false,
+  traceLevel ? 0,
+  enablePartialTrace ? false,
+  enableVerboseTrace ? false,
   ... }:
 
 let
@@ -18,7 +20,7 @@ let
     font = import ./font.nix { inherit lib cutils; };
     functions = import ./functions.nix { inherit lib cutils; };
     lists = import ./lists.nix { inherit lib cutils; };
-    log = import ./log.nix { inherit lib cutils trace-verbose; };
+    log = import ./log.nix { inherit lib cutils traceLevel enablePartialTrace enableVerboseTrace; };
     strings = import ./strings.nix { inherit lib cutils; };
     tests = import ./tests.nix { inherit lib cutils; };
     types = import ./types.nix { inherit lib cutils; };

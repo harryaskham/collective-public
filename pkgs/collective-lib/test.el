@@ -67,30 +67,35 @@
 (defun tvix-repl-run-preamble (v trace)
   "Run the Tvix REPL preamble."
   (interactive)
-  (unless v (setq v 0))
-  (let ((trace-verbose (if (> v 0) "true" "false")))
-    (progn
-      (tvix-repl-eval "\
+  (let ((trace-level (if (null v) "null" (format "%d" v)))
+        (enable-partial-trace (if (and (not (null (v))) (>= v 1)) "true" "false"))
+        (enable-verbose-trace (if (and (not (null (v))) (>= v 2)) "true" "false")))
+    (tvix-repl-eval "\
 pkgs = import <nixpkgs> {}"
-                      v trace t t nil)
-      (tvix-repl-eval "\
+                    v trace t t nil)
+    (tvix-repl-eval "\
 lib = pkgs.lib"
-                      v trace t t nil)
-      (tvix-repl-eval (format "\
+                    v trace t t nil)
+    (tvix-repl-eval (format "\
 __ctx = _:\
   let\
     collective-lib =\
       import ~/collective/collective-public/pkgs/collective-lib {\
         inherit pkgs lib;\
-        trace-verbose = %s;\
+        traceLevel = %s;\
+        enablePartialTrace = %s;\
+        enableVerboseTrace = %s;\
       };\
     self = lib // collective-lib // {\
       __replPrint = %s;\
     };\
   in self"
-                              trace-verbose (tvix-repl-print-fn v trace))
-                      v trace t t nil)
-      )))
+                            trace-level
+                            enable-partial-trace
+                            enable-verbose-trace
+                            (tvix-repl-print-fn v trace))
+                    v trace t t nil)
+    ))
 
 (defun tvix-repl-load (v trace &optional no-init)
   (unless (comint-check-proc (tvix-repl-buffer v trace))

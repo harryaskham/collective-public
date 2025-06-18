@@ -1,43 +1,54 @@
 function main() {
   NIX_FLAGS=
   REPL_FLAGS=
-  TRACE_VERBOSE="false"
+  TRACE_LEVEL="0"
+  ENABLE_PARTIAL_TRACE="false"
+  ENABLE_VERBOSE_TRACE="false"
   PRINT="x: x"
   while [[ -n "$1" ]]; do
     case "$1" in
       v)
         PRINT="collective-lib.log.print"
         REPL_FLAGS="--raw"
+        TRACE_LEVEL=1
         shift
         ;;
       vv)
         PRINT="collective-lib.log.vprint"
         REPL_FLAGS="--raw"
-        TRACE_VERBOSE="true"
+        TRACE_LEVEL=2
+        ENABLE_VERBOSE_TRACE="true"
         shift
         ;;
       vvv)
         PRINT="collective-lib.log.vprint"
         REPL_FLAGS="--raw"
-        TRACE_VERBOSE="true"
+        TRACE_LEVEL=3
+        ENABLE_PARTIAL_TRACE="true"
+        ENABLE_VERBOSE_TRACE="true"
         shift
         ;;
       vt)
         PRINT="collective-lib.log.print"
         REPL_FLAGS="--raw --show-trace"
+        TRACE_LEVEL=0
         shift
         ;;
       vvt)
         PRINT="collective-lib.log.print"
         REPL_FLAGS="--raw --show-trace"
-        TRACE_VERBOSE="true"
+        TRACE_LEVEL=2
+        ENABLE_PARTIAL_TRACE="true"
+        ENABLE_VERBOSE_TRACE="true"
         shift
         ;;
       vvvt)
-        TRACE_VERBOSE="true"
         REPL_FLAGS="--raw --show-trace"
         PRINT="collective-lib.log.vprint"
         REPL_FLAGS="--show-trace"
+        TRACE_LEVEL=3
+        ENABLE_PARTIAL_TRACE="true"
+        ENABLE_VERBOSE_TRACE="true"
         shift
         ;;
       *)
@@ -53,7 +64,9 @@ let
   lib = pkgs.lib;
   collective-lib = import ~/collective/collective-public/pkgs/collective-lib {
     inherit pkgs lib;
-    trace-verbose = $TRACE_VERBOSE;
+    traceLevel = $TRACE_LEVEL;
+    enablePartialTrace = $ENABLE_PARTIAL_TRACE;
+    enableVerboseTrace = $ENABLE_VERBOSE_TRACE;
   };
   __ctx = _:
     lib // collective-lib // {
@@ -65,7 +78,7 @@ in
 EOF
               )
 
-  CMD="nix eval --option max-call-depth 100000000 --extra-experimental-features pipe-operators --impure --expr '$FULL_EXPR' $REPL_FLAGS"
+  CMD="nix eval --option max-call-depth 1000000000 --extra-experimental-features pipe-operators --impure --expr '$FULL_EXPR' $REPL_FLAGS"
 
   echo "Running: ${CMD}" >&2
   bash -c "$CMD"
@@ -110,7 +123,7 @@ with types; _tests.debug
 </nix>
 
 <nix>
-with attrs; (_tests.run)
+with attrs; _tests.run
 </nix>
 
 <nix>
@@ -130,23 +143,25 @@ with functions;
 with types.Types;
 with Universe;
 rec {
-  U_0__args = U_0.__Bootstrap.Type__args;
-  U_0__Type = U_0.Type;
+  # U_0__args = U_0.__Bootstrap.Type__args;
+  #U_0__boot = U_0.__Bootstrap;
+  U_0__boot = U_0.__Bootstrap.Type__bootstrapped;
+  # U_0__Type =U_0.Type.get;
   # U_0__args__fields = U_0.__Bootstrap.Type__args.fields U_0__args;
   # U_1__args = U_1.__Bootstrap.Type__args;
-  U_1__Type = U_1.__Bootstrap.Type;
-  U_2__Type = U_2.__Bootstrap.Type;
+  # U_1__Type = U_1.__Bootstrap.Type;
+  # U_2__Type = U_2.__Bootstrap.Type;
   # U_3__Type__args = U_3.__Bootstrap.Type__args;
   # U_0__Type__args__fields = U_0.__Bootstrap.Type__args.fields U_0.__Bootstrap.Type__unsafe;
   # U_1__Type__args__fields = U_1.__Bootstrap.Type__args.fields U_1.__Bootstrap.Type__unsafe;
 
   # U_1__Type__fields = U_1.Type.fields U_1.Type;
-  U_1__Fields = U_1.Fields;
-  #U_2__Fields = U_2.Fields.new [];
-  U_1__Set = U_1.Set.new {};
-  U_2__Set = U_2.Set.new {};
-  U_1__Type__fields = U_1.Type.fields U_1.Type;
-  U_1__Type__field = (U_1.Type.fields U_1.Type).getField "name";
+  # U_1__Fields = U_1.Fields;
+  # U_2__Fields = U_2.Fields.new [];
+  # U_1__Set = U_1.Set.new {};
+  # U_2__Set = U_2.Set.new {};
+  # U_1__Type__fields = U_1.Type.fields U_1.Type;
+  # U_1__Type__field = (U_1.Type.fields U_1.Type).getField "name";
 
   # U_2__Type__args__fields = U_2.__Bootstrap.Type__args.fields U_2.__Bootstrap.Type__unsafe;
   # U_3__Type__args__fields = U_3.__Bootstrap.Type__args.fields U_3.__Bootstrap.Type__unsafe;
@@ -191,9 +206,22 @@ with types; _tests.run
 </nix>
 
 <nix>
+empty
+</nix>
+
+
+<nix>
+with functions;
+with types; with Types.Universe.U_1;
+with __Bootstrap;
+#log.vprintD 1 (Type__bootstrapped.new "" {})
+Bool.new
+</nix>
+
+<nix>
 with types.Types;
 with log.prints;
-putD 1 Universe.U_4 ___
+putD 1 Universe.U_0 ___
 </nix>
 
 with types.Types.Universe.U_0; (OrderedItem Int).new { a = 1; }

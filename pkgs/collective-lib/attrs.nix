@@ -192,6 +192,25 @@ in rec {
     else if a == b then "<equal>"
     else { unequal = { inherit a b; }; };
 
+  # Create an attrset that must be resolved via 'resolve'
+  # but that still has attrNames capability.
+  LazyAttrs_ = mkThunk: xs:
+    mkThunk xs
+    // rec {
+      __ThunkType = "LazyAttrs";
+      __isLazyAttrs = true;
+      __attrNames = attrNames xs;
+      __showValue = self: "${toString (size xs)} attrs";
+      __showExtra = self: indent.block ''
+        >> attrs: ${indent.here (log.show self.__attrNames)}
+      '';
+    };
+  isLazyAttrs = x: isThunk x && (x.__isLazyAttrs or false);
+  LazyAttrs = LazyAttrs_ (NamedThunk "LazyAttrs");
+  maybeLazyAttrs = x: if isLazyAttrs x then x else LazyAttrs x;
+  maybeNamedLazyAttrs = name: x: if isLazyAttrs x then setThunkName name x else NamedLazyAttrs name x;
+  NamedLazyAttrs = name: LazyAttrs_ (NamedThunk name);
+
   _tests = with cutils.tests; suite {
     attrs = {
       flatten = {
@@ -337,6 +356,35 @@ in rec {
         unindexedSet = expect.eq (unindexed (indexed {a = 1; b = 2;})) {a = 1; b = 2;};
         indicesList = expect.eq (indices (indexed [ {a = 1;} {b = 2;} ])) [ {a = 0;} {b = 1;} ];
         indicesSet = expect.eq (indices (indexed {a = 1; b = 2;})) {a = 0; b = 1;};
+      };
+
+      LazyAttrs = {
+        is = {
+          LazyAttrs.empty = expect.True (isLazyAttrs (LazyAttrs {}));
+          LazyAttrs.value = expect.True (isLazyAttrs (LazyAttrs { a = 123; }));
+          LazyAttrs.throw = expect.True (isLazyAttrs (LazyAttrs { a = throw "no"; }));
+          NamedLazyAttrs.empty = expect.True (isLazyAttrs (NamedLazyAttrs "name" {}));
+          NamedLazyAttrs.value = expect.True (isLazyAttrs (NamedLazyAttrs "name" { a = 123; }));
+          NamedLazyAttrs.throw = expect.True (isLazyAttrs (NamedLazyAttrs "name" { a = throw "no"; }));
+          set = expect.False (isLazyAttrs {});
+          Thunk.int = expect.False (isLazyAttrs (Thunk 123));
+          Thunk.set = expect.False (isLazyAttrs (Thunk {}));
+          Thunk.LazyAttrs = expect.False (isLazyAttrs (Thunk (LazyAttrs {})));
+          NamedThunk.int = expect.False (isLazyAttrs (NamedThunk "name" 123));
+          NamedThunk.set = expect.False (isLazyAttrs (NamedThunk "name" {}));
+          NamedThunk.LazyAttrs = expect.False (isLazyAttrs (NamedThunk "name" (LazyAttrs {})));
+        };
+        names.empty = expect.eq (LazyAttrs {}).__attrNames [];
+        names.full.values =
+          expect.eq
+            (LazyAttrs {a = "a"; b = 123;}).__attrNames
+            ["a" "b"];
+        names.full.throws =
+          expect.eq
+            (LazyAttrs {a = throw "no"; b = 123;}).__attrNames
+            ["a" "b"];
+        resolves.value = expect.eq (resolve (LazyAttrs {a = 123;})) {a = 123;};
+        resolves.throw = expect.error (resolve (LazyAttrs {a = throw "no";}));
       };
     };
   };

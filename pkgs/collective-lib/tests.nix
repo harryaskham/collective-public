@@ -196,7 +196,7 @@ in rec {
             ])}
 
           Actual:
-            ${indent.here (toString actual)}
+            ${indent.here (try (toString actual) (_: "<error>"))}
         '')
         ""
       ];
@@ -207,7 +207,7 @@ in rec {
   evalOneTest = evalFn: test:
     let tests = { ${test.name} = test; };
         result = evalFn (runTests tests);
-    in strict (runOneTest test result);
+    in runOneTest test result;
 
   # Create a test attribute set adding extra functionality to a runTests-style
   # test of format { expr = ...; expected = ...; }
@@ -242,7 +242,7 @@ in rec {
       solo = test.solo or false;
 
       # Run the test under tryEval, treating eval failure as test failure
-      run = evalOneTest builtins.tryEval (test_ // { mode = "run"; });
+      run = evalOneTest (expr: builtins.tryEval (strict expr)) (test_ // { mode = "run"; });
 
       # Run the test propagating eval errors that mask real failures
       debug = evalOneTest id (test_ // { mode = "debug"; });
@@ -267,7 +267,7 @@ in rec {
     debug = run_ false (test: test.debug) tests;
     run_ = debugOnFailure: runner: tests:
       let
-        results = strict (mapAttrsToList (_: runner) tests);
+        results = mapAttrsToList (_: runner) tests;
         byStatus =
           mapAttrs (statusK: statusV: filter (r: r.status == statusV) results) Status;
         counts =
