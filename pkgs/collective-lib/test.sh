@@ -127,6 +127,12 @@ with attrs; _tests.run
 </nix>
 
 <nix>
+with types; with Types.Universe.U_1;
+let a = Int.new 1; in
+a.modify.value (x: x + 1)
+</nix>
+
+<nix>
 with types; with Types.Universe.U_1; Type.new "wat" {}
 </nix>
 

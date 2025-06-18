@@ -30,9 +30,8 @@ with cutils.strings;
 #   - Unions
 #   - Enums
 #   - Maybe / ADTs
-# - Try https://bolt.tvix.dev/
 
-# Inheritance-based typesystem for use outside of the module system.
+# Typesystem for use outside of the module system.
 #
 # Objects are represented as attrsets with "Type" and "Super" keys, holding the
 # type and supertype definitions respectively.

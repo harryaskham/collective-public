@@ -29,9 +29,14 @@ in rec {
   Compare = rec {
     # Compare test outputs only on recursively extracted field values.
     Fields = this:
-      if typeOf this == "set"
-      then mapAttrs (_: Fields) (this.get or this)
-      else this;
+      let this_ =
+        if this ? get
+        then
+          mapAttrs
+            (_: Fields)
+              (mapAttrs (_: maybeResolve) (removeAttrs this.get ["Type"]))
+        else this;
+      in if this_ ? Type then removeAttrs this_ ["Type"] else this_;
 
     # Resolve thunks in the expr and expected.
     Resolve = this: tryStrict (resolveDeep this) (e: { Compare.Resolve = "Thunk resolution evaluation error"; }) ;
