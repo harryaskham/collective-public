@@ -127,8 +127,8 @@ in rec {
   setThunkName = name: x:
     assert isThunk x;
     x // { __ThunkName = name; };
-  NamedThunk = name: x: setThunkName name (Thunk x) // { __ThunkType = "NamedThunk"; };
-  isNamedThunk = x: isThunk x && x ? __ThunkName;
+  NamedThunk = name: x: setThunkName name (Thunk x) // { __isNAmedThunk = true; };
+  isNamedThunk = x: isThunk x && (x.__isNamedThunk or false);
 
 
   # Compose two functions left-to-right and merge their outputs.
@@ -509,16 +509,18 @@ in rec {
                 (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
               )))))
               123;
+            print1 = expect.eq (log.print (Thunk 123)) "Thunk >-> int";
+            printNamed1 = expect.eq (log.print (NamedThunk "name" 123)) "Thunk >-[name]-> int";
             print5 = expect.eq
               (log.print
                 (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
               )
-              "Thunk(Thunk(Thunk(Thunk(Thunk(123)))))";
+              "Thunk >-> set";
             show5 = expect.eq
               (log.show
                 (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
               )
-              "Thunk(Thunk(Thunk(Thunk(Thunk(123)))))";
+              "Thunk >-> set";
             do = expect.eq ((Thunk 123).__do (x: x+1)) 124;
             fmap = expect.eq (resolve ((Thunk 123).__fmap (x: x+1))) 124;
           };

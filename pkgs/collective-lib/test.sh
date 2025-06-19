@@ -127,6 +127,10 @@ with attrs; _tests.run
 </nix>
 
 <nix>
+with functions; _tests.run
+</nix>
+
+<nix>
 with types; with Types.Universe.U_0;
 let B = Int.subType "B" {}; in
 B.new 6
