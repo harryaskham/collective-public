@@ -509,13 +509,13 @@ in log // {
               };
             expected = {
               # Assignments exposed raw for use with 'with'
-              __out = {
+              out = {
                 a = 1;
                 b = 2;
                 c = 3;
                 d = 4;
               };
-              __logEvents = [
+              events = [
                 {
                   call = [
                     { name = "callName"; }

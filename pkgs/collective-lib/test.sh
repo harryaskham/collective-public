@@ -119,6 +119,10 @@ with types; _tests.run
 </nix>
 
 <nix>
+with log; _tests.run
+</nix>
+
+<nix>
 with types; _tests.debug
 </nix>
 
