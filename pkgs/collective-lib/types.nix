@@ -2882,10 +2882,10 @@ in rec {
               } untypedTests);
 
           typeChecking =
-            #solo
+            solo
               (testInUniverses {
                 inherit
-                  # U_2
+                  U_0
                   ;
               } typeCheckingTests);
 
