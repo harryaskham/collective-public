@@ -127,7 +127,7 @@ in rec {
   setThunkName = name: x:
     assert isThunk x;
     x // { __ThunkName = name; };
-  NamedThunk = name: x: setThunkName name (Thunk x) // { __isNAmedThunk = true; };
+  NamedThunk = name: x: setThunkName name (Thunk x) // { __isNamedThunk = true; };
   isNamedThunk = x: isThunk x && (x.__isNamedThunk or false);
 
 

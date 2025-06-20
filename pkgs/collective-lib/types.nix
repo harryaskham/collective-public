@@ -12,24 +12,10 @@ with cutils.lists;
 with cutils.strings;
 
 # TODO:
-# - Universe via merge
-#   - Build global type repository
-#   - Meyhods loook up in there
-#   - Laziness lets us recurse
-#
-# - TypeClasses using mkMerge
-# - SetOf
-# - LambdaOf
-# - OrderedOf
-# - newSubType
-# - Tests for:
-#   - Inheritance
-#   - Nested calls / chained sets see the correct bound state
-#   - ListOf
-#   - Type classes
-#   - Unions
-#   - Enums
-#   - Maybe / ADTs
+# - TypeClasses using mkMerge - i.e. instances form a fixed-point class dictionary
+# - Enums
+# - Maybe / ADTs
+# - Tvars/TvarBindings need to be lazy as well
 
 # Typesystem for use outside of the module system.
 #
@@ -1510,7 +1496,7 @@ in rec {
           # This can use U.Constraint, because we have U.Type
           # U.Constraint uses SU.Fields, which subtype an (SU.OrderedOf_ SU.Field) bound template.
           # That bound template uses SU.Constraint.
-          tvars = mapAttrs (_: U.Constraint.new) tvars_;
+          tvars = mapAttrs (_: T: SU.Constraint.new (TypeThunk T)) tvars_;
 
           # Convert the given (_: {...}) type template definition into one that
           # explicitly extends args with tvars and tvarBindings
@@ -1959,7 +1945,7 @@ in rec {
 
         SetOf = T: mkTypeShim "SetOf" { new = U.Set.new; };
         ListOf = T: mkTypeShim "ListOf" { new = U.List.new; };
-        Constraint = mkTypeShim "Constraint" { new = x: {value = x; satisfiedBy = _: true;};};
+        Constraint = mkTypeShim "Constraint" { new = x: {value = _: x; satisfiedBy = _: true;};};
         Static = T: mkTypeShim "Static" { staticType = _: T; };
         Default = T: V: mkTypeShim "Default" { defaultType = _: T; defaultValue = _: V; };
         NullOr = T: mkTypeShim "NullOr" { new = id; };
@@ -2004,7 +1990,7 @@ in rec {
         # A constraint on a type variable.
         Constraint = U.Type.new "Constraint" {
           fields = This: SU.Fields.new [
-            { constraintType = U.Type; }
+            { constraintType = "set"; }  # TypeThunk
           ];
           methods = {
             # Whether a given type variable binding satisfies the constraint.
@@ -2012,8 +1998,8 @@ in rec {
             # will throw an error.
             satisfiedBy = this: That:
               typeEq U.Void That
-              || That.isInstance this.constraintType
-              || this.constraintType.check That;
+              || That.isInstance (resolve this.constraintType)
+              || (resolve this.constraintType).check That;
           };
         };
 
@@ -2456,6 +2442,54 @@ in rec {
             fieldDefault = expect.eq (f.fieldDefault {}) null;
           };
 
+        Fields =
+          assert Fields ? new;
+          let
+            testFields = fields: args: {
+              getSolos =
+                expect.eqOn
+                  (mapSolos (_: Compare.Fields))
+                  (fields.getSolos {})
+                  args.expectedSolos;
+              # indexed = mergeAttrsList (cutils.attrs.indexed soloFields);
+              # update = newFieldSpecs:
+              #   Fields.new (concatSolos (solos fieldSpecs) (solos newFieldSpecs));
+              # getField = name: indexed.${name}.value;
+              # getFieldsWhere = pred: filterSolos pred (getSolos {});
+              # instanceFields = _:
+              #   getFieldsWhere (fieldName: field:
+              #     fieldName != "Type"
+              #     && (field == null
+              #         || !(field.fieldStatic {})));
+              # instanceFieldsWithType = _:
+              #   getFieldsWhere (fieldName: field:
+              #     field == null
+              #     || !(field.fieldStatic {}));
+              # requiredFields = _:
+              #   getFieldsWhere (_: field:
+              #     field == null
+              #     || (!(field.fieldStatic {})
+              #         && !(field.hasDefault {})));
+            };
+            expected = rec {
+              TypeField = Field.new "Type" "set";
+              aField = Field.new "a" null;
+              bField = Field.new "b" "int";
+              cField = Field.new "c" (Default Int 3);
+              dField = Field.new "d" (Static Int);
+              expectedSolos = [{Type = TypeField;} {a = aField;} { b = bField;} {c = cField;} {d = dField;}];
+            };
+          in
+          {
+            fromSolos =
+              let fields = Fields.new [{a = null;} {b = "int";} {c = Default Int 3;} {d = Static Int;}];
+              in testFields fields expected;
+
+            fromSet =
+              let fields = Fields.new [{a = null; b = "int"; c = Default Int 3; d = Static Int;}];
+              in testFields fields expected;
+          };
+
         Mystring = {
           mkFromString =
             expect.stringEq
@@ -2599,10 +2633,25 @@ in rec {
             ];
           };
         in {
-          Int = expect.eq (Int.new 123) 123;
-          A.new = expect.eq (mapAttrs (_: resolve) (A.new 1 2 3 4).get) {a = 1; b = 2; c = 3; d = 4;};
-          A.mk = expect.eq (mapAttrs (_: resolve) (A.mk {a = 1; b = 2;}).get) {a = 1; b = 2; c = 5; d = 10;};
-          A.wrongType = expect.error (mapAttrs (_: resolve) (A.new "no" 2 3 4).get);
+          Int = {
+            valid = expect.eq (Int.new 123).value 123;
+            invalid = expect.error (Int.new "123");
+          };
+
+          A = {
+            valid =
+              let x = A.new 1 2 3 4;
+              in
+                expect.eq
+                  [x.a x.b.value x.c.value x.d.value]
+                  [1 2 3 4];
+            wrongType = {
+              a = expect.error (A.new "1" 2 3 4);
+              b = expect.error (A.new 1 "2" 3 4);
+              c = expect.error (A.new 1 2 "3" 4);
+              d = expect.error (A.new 1 2 3 "4");
+            };
+          };
 
           castInMk = with TestTypes U; {
             MyString = {
@@ -2836,7 +2885,7 @@ in rec {
               } inheritanceTests);
 
           instantiation =
-            #solo
+            solo
               (testInUniverses {
                 inherit
                   U_0
@@ -2867,7 +2916,7 @@ in rec {
             #solo
               (testInUniverses {
                 inherit
-                  U_1
+                  U_1  # U_1+ due to reliance upon cast
                   U_2
                   ;
               } castTests);
@@ -2885,7 +2934,16 @@ in rec {
             solo
               (testInUniverses {
                 inherit
-                  U_0
+                  U_1  # U_1+ due to reliance upon cast
+                  # U_2
+                  ;
+              } typeCheckingTests);
+
+          typeCheckingBroken =
+            #solo
+              (testInUniverses {
+                inherit
+                  U_2
                   ;
               } typeCheckingTests);
 

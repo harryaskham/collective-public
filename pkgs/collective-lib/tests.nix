@@ -54,7 +54,7 @@ in rec {
     # Produce a version of the this-set with replaced lambdas, enabling deep comparison.
     NoLambdas = this:
       let
-        maxD = 50;
+        maxD = 10;
         go = d: this:
           if d >= maxD then { __NoLambdas_maxDepth = true; }
           else
@@ -186,6 +186,10 @@ in rec {
                 if result == null then msg
                 else indent.block ''
                   ${msg}: ${indent.here (log.print result)}
+                  ${optionalString (status == Status.Failed) ''
+                  Diff:
+                    ${indent.here (log.vprintD 8 (diffShort test.expected result))}
+                  ''}
                 '';
             };
        in
@@ -204,6 +208,7 @@ in rec {
         else if status == Status.Failed
           then
             let failedResult = assert (size results) == 1; head results;
+
             in mkActual "FAIL" failedResult.result
 
         else

@@ -174,7 +174,18 @@ in rec {
 
   # Diff two attrsets, returning any divergent keys and their values.
   diff = a: b:
-    if isAttrs a && isAttrs b
+    if isList a && isList b
+      then
+        (zipListsWith
+          (a: b: diff a b)
+          a
+          b)
+        ++ (if length a < length b
+            then map (x: { missing_in_a = x; }) (drop (length a) b)
+            else if length b > length a
+            then map (x: { missing_in_b = x; }) (drop (length b) a)
+            else [])
+    else if isAttrs a && isAttrs b
       then
         (zipAttrsWith
           (name: values:
@@ -189,8 +200,16 @@ in rec {
                 (elemAt values 0)
                 (elemAt values 1))
           [a b])
-    else if a == b then "<equal>"
-    else { unequal = { inherit a b; }; };
+    else if isFunction a && isFunction b then { __lambda = true; }
+    else if a == b then { __equal = a; }
+    else { __unequal = { inherit a b; }; };
+
+  filterDeep = f: dispatchDef id {
+    list = xs: filter f (map (filterDeep f) xs);
+    set = xs: filterAttrs (_: f) (mapAttrs (_: filterDeep f) xs);
+  };
+
+  diffShort = a: b: filterDeep (x: !(x ? __equal)) (diff a b);
 
   # Create an attrset that must be resolved via 'resolve'
   # but that still has attrNames capability.
