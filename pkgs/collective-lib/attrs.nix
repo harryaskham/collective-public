@@ -200,16 +200,11 @@ in rec {
                 (elemAt values 0)
                 (elemAt values 1))
           [a b])
-    else if isFunction a && isFunction b then { __lambda = true; }
+    else if isFunction a && isFunction b then { __unequal = "<lambda>"; }
     else if a == b then { __equal = a; }
     else { __unequal = { inherit a b; }; };
 
-  filterDeep = f: dispatchDef id {
-    list = xs: filter f (map (filterDeep f) xs);
-    set = xs: filterAttrs (_: f) (mapAttrs (_: filterDeep f) xs);
-  };
-
-  diffShort = a: b: filterDeep (x: !(x ? __equal)) (diff a b);
+  diffShort = a: b: deepFilter (x: !(x ? __equal)) (diff a b);
 
   # Create an attrset that must be resolved via 'resolve'
   # but that still has attrNames capability.
@@ -218,10 +213,10 @@ in rec {
     // rec {
       __ThunkType = "LazyAttrs";
       __isLazyAttrs = true;
-      __attrNames = attrNames xs;
+      __attrNames = _: attrNames xs;
       __showValue = self: "${toString (size xs)} attrs";
       __showExtra = self: indent.block ''
-        >> attrs: ${indent.here (log.show self.__attrNames)}
+        >> attrs: ${indent.here (log.show (self.__attrNames {}))}
       '';
     };
   isLazyAttrs = x: isThunk x && (x.__isLazyAttrs or false);
@@ -393,14 +388,14 @@ in rec {
           NamedThunk.set = expect.False (isLazyAttrs (NamedThunk "name" {}));
           NamedThunk.LazyAttrs = expect.False (isLazyAttrs (NamedThunk "name" (LazyAttrs {})));
         };
-        names.empty = expect.eq (LazyAttrs {}).__attrNames [];
+        names.empty = expect.eq ((LazyAttrs {}).__attrNames {}) [];
         names.full.values =
           expect.eq
-            (LazyAttrs {a = "a"; b = 123;}).__attrNames
+            ((LazyAttrs {a = "a"; b = 123;}).__attrNames {})
             ["a" "b"];
         names.full.throws =
           expect.eq
-            (LazyAttrs {a = throw "no"; b = 123;}).__attrNames
+            ((LazyAttrs {a = throw "no"; b = 123;}).__attrNames {})
             ["a" "b"];
         resolves.value = expect.eq (resolve (LazyAttrs {a = 123;})) {a = 123;};
         resolves.throw = expect.error (resolve (LazyAttrs {a = throw "no";}));

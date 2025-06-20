@@ -29,14 +29,22 @@ in rec {
   Compare = rec {
     # Compare test outputs only on recursively extracted field values.
     Fields = this:
-      let this_ =
-        if this ? get
-        then
-          mapAttrs
-            (_: Fields)
-              (mapAttrs (_: maybeResolve) (removeAttrs this.get ["Type"]))
-        else this;
-      in if this_ ? Type then removeAttrs this_ ["Type"] else this_;
+      let
+        this_ =
+          if this ? get
+          then
+            mapAttrs
+              (_: Fields)
+                (mapAttrs (_: maybeResolve) (removeAttrs this.get ["Type"]))
+          else this;
+        this__ = deepConcatMap (k: v:
+          if elem k ["__toString" "__show"]
+          then { "elided-${k}" = k; }
+          else if isFunction v then { ${k} = "<lambda>"; }
+          else { ${k} = v; })
+          this_;
+      in
+        this__;
 
     String = this:
       let
@@ -188,7 +196,7 @@ in rec {
                   ${msg}: ${indent.here (log.print result)}
                   ${optionalString (status == Status.Failed) ''
                   Diff:
-                    ${indent.here (log.vprintD 8 (diffShort test.expected result))}
+                    ${indent.here (log.vprintD 9 (diffShort test.expected result))}
                   ''}
                 '';
             };

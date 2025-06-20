@@ -148,8 +148,7 @@ with types; with Types.Universe.U_1; Type.new "wat" {}
 with functions;
 with types.Types;
 with Universe;
-  let T = (U_2._SU.get {}).Type.new "Type" (U_2.__Bootstrap.Type__args);
-  in groundTypeAndAssertFixed U_2.opts U_2.__Bootstrap.Type__args T
+U_0.String
 </nix>
 
 <nix>

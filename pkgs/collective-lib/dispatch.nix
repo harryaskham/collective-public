@@ -63,6 +63,18 @@ rec {
     set = mapAttrs (_: (deepMap f));
   };
 
+  # recursiveMapAttrs that also allows for mapping over lists.
+  deepConcatMap = f: dispatchDef (_: id) {
+    list = map (deepConcatMap f);
+    set = concatMapAttrs f;
+  };
+
+  deepFilter = f: dispatchDef id {
+    list = xs: filter f (map (deepFilter f) xs);
+    set = xs: filterAttrs (_: f) (mapAttrs (_: deepFilter f) xs);
+  };
+
+
   # Map a function over the depth and leaves of an arbitrary value, applying it recursively to all set and list values.
   deepMapWith = f:
     let

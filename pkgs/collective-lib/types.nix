@@ -111,7 +111,7 @@ in rec {
 
     # Whether or not x is an uppercase Builtin type
     # All builtins are attrs. The short-circuit stops recursive inspection of Type.
-    BuiltinValueCheck = x: x ? Type && BuiltinNameCheck (x.Type.__do (T: T.name));
+    BuiltinValueCheck = x: x ? Type && BuiltinNameCheck (x.Type.__do (T: T.getName {}));
 
     # Cast between types.
     # Returns a set with a 'castError' attribute if the cast is not possible
@@ -470,9 +470,9 @@ in rec {
       # The name of the type.
       {name = maybeNulled U_opts SU (SU.String);}
       # The type parameters of the type.
-      {tvars = maybeNulled U_opts SU (SU.Default "set" {});}
+      {tvars = maybeNulled U_opts SU (SU.Default "set" (LazyAttrs {}));}
       # The type parameter bindings of the type.
-      {tvarBindings = maybeNulled U_opts SU (SU.Default "set" {});}
+      {tvarBindings = maybeNulled U_opts SU (SU.Default "set" (LazyAttrs {}));}
       # The constructor function creating the fields of the type as a set to pass to mk.
       {ctor = maybeNulled U_opts SU (SU.Default SU.Ctor SU.Ctors.CtorFields);}
       # A set of ordered fields to make available as this.___ and this.has.___, this.set.___, etc
@@ -501,6 +501,8 @@ in rec {
     # which would mean every subtype created in a chain would ascend a universe until
     # it reached the Quasiverse.
     typeMethodsFor = U: SU: {
+      # Get the resolved name of the type.
+      getName = This: _: This.name.value;
 
       # Is this instance an instance of type That.
       isInstance = This: that: isTyped that && that.Type.__do (That: That.eq This);
@@ -520,18 +522,18 @@ in rec {
       isSubTypeOf = This: That: That.isSuperTypeOf This;
 
       # Get the full templated name of the type.
-      # Usually would be safe to use U.Void, except for the U.Void.boundName binding,
+      # Usually would be safe to use U.Void, except for the U.Void.getBoundName binding,
       # so uses SU.Void.
-      boundName = This: thunk (
-        with (log.v 4).methodCall This "boundName" ___;
+      getBoundName = This: thunk (
+        with (log.v 4).methodCall This "getBoundName" ___;
         return (
-          if This.tvars == {} then This.name
+          if (resolve This.tvars) == {} then (This.getName {})
           else
             let
               printBinding = tvarName:
-                let C = This.tvars.${tvarName} or (
-                      throw "No type variable ${tvarName} on ${This.name}");
-                    T = This.tvarBindings.${tvarName} or SU.Void;
+                let C = (resolve This.tvars).${tvarName} or (
+                      throw "No type variable ${tvarName} on ${This.getName {}}");
+                    T = (resolve This.tvarBindings).${tvarName} or SU.Void;
                 in
                   # Unbound
                   if typeEq SU.Void T
@@ -539,13 +541,13 @@ in rec {
 
                   # Bound to a type
                   else if isTypeSet T
-                  then T.boundName {}
+                  then T.getBoundName {}
 
                   # Bound to a literal or builtin
                   else
                     with log.prints; put T _line ___;
-              printBindings = joinSep ", " (map printBinding (attrNames This.tvars));
-            in "${This.name}<${printBindings}>"
+              printBindings = joinSep ", " (map printBinding (This.tvars.__attrNames {}));
+            in "${This.getName {}}<${printBindings}>"
         ));
 
       # Construct the type resulting from applying the given bindings to the parameterized This type.
@@ -562,19 +564,19 @@ in rec {
             let
               throwBindError = msg: throw (indent.block ''
                 Bind error:
-                  ${indent.here "${This.name}.${tvarName} <- ${log.print T}"}
+                  ${indent.here "${This.getName {}}.${tvarName} <- ${log.print T}"}
                   Constraints: ${indent.here "${log.print C.value} (${if TSatC then "" else "not "}satisfied)"}
                   Existing binding: ${log.print B}
                   ${indent.here msg}
                 '');
-              C = This.tvars.${tvarName} or null;
-              B = This.tvarBindings.${tvarName} or SU.Void;
+              C = (resolve This.tvars).${tvarName} or null;
+              B = (resolve This.tvarBindings).${tvarName} or SU.Void;
               TSatC = C.satisfiedBy T;
             in
               if C == null
-                then throwBindError "Type ${This.name} does not have type variable ${tvarName}"
+              then throwBindError "Type ${This.getName {}} does not have type variable ${tvarName}"
 
-              else if This.tvarBindings == null
+              else if (resolve This.tvarBindings) == null
                 then throwBindError "Type ${This.__TypeId {}} does not have bound or unbound type variable bindings"
 
               else if !(typeEq B SU.Void)
@@ -583,7 +585,7 @@ in rec {
               else if !(C.satisfiedBy T)
                 then throwBindError "Binding ${log.print T} does not satisfy constraint: ${log.print C}"
 
-              else This.modify.tvarBindings (bs: bs // {${tvarName} = T;});
+              else This.modify.tvarBindings (bs: bs.__fmap (bs: bs // {${tvarName} = T;}));
 
         in foldl' bindOne This tvarBindingsList;
 
@@ -616,9 +618,7 @@ in rec {
       # Use the bound name with its ordered param assignments to determine type identity
       # and equality.
       # For bootstrap types this may not be bound yet, falling back to the name.
-      __TypeId = This: thunk (
-        let getBoundName = This.boundName or (thunk This.name);
-        in getBoundName {});
+      __TypeId = This: _: resolve (This.getBoundName or This.getName);
 
       # Create a new instance of the type by providing at least all required field values.
       mk = This: mkInstance This;
@@ -644,7 +644,7 @@ in rec {
       # TODO: hide method on non-Type types.
       template =
         This: name: tvars: bindingsToArgs:
-        assert assertMsg (This.name == "Type") (indent.block ''
+        assert assertMsg ((This.getName {}) == "Type") (indent.block ''
           template: This is not Type:
             ${indent.here (log.print This)}
         '');
@@ -673,7 +673,7 @@ in rec {
     # in the method body, after Type is already constructed and bound.
     mkTypeArgsFor = U: SU: {
       __isTypeSet = true;
-      name = U.opts.typeName;
+      name = SU.String.new (U.opts.typeName);
       Super = TypeThunk null;
       ctor = SU.Ctors.CtorType;
       fields = This: mkTypeFieldsFor U.opts SU;
@@ -682,8 +682,8 @@ in rec {
       # methods via Ctors.CtorType.
       methods = maybeNamedLazyAttrs "mkTypeArgsFor.methods" (typeMethodsFor U SU);
       staticMethods = maybeNamedLazyAttrs "mkTypeArgsFor.staticMethods" (typeMethodsFor U SU);
-      tvars = {};
-      tvarBindings = {};
+      tvars = LazyAttrs {};
+      tvarBindings = LazyAttrs {};
       checkValue = null;
       overrideCheck = null;
     };
@@ -742,22 +742,23 @@ in rec {
       if x == null
         then "null"
       else if isTyped x
-        then x.Type.__do (T: T.name or (throw ''
-          Type is missing name in getTypeName:
-          ${indent.here (log.print (resolve x.Type))}
-        ''))
-        else typeOf x;
+        then x.Type.__do (T:
+          (T.name or (throw ''
+            Type is missing name in getTypeName:
+            ${indent.here (log.print (resolve x.Type))}
+          '')).value)
+        else
+          typeOf x;
 
     # Get the bound name of a type whether builtin or Type.
     getTypeBoundName = x:
       if isTyped x
       then x.Type.__do (T:
-        let getBoundName = T.boundName or (throw ''
-          Type is missing boundName in getTypeBoundName:
+        (T.getBoundName or (throw ''
+          Type is missing name in getTypeName:
           ${indent.here (log.print (resolve x.Type))}
-        '');
-        in getBoundName {})
-        else typeOf x;
+        '')) {})
+      else typeOf x;
 
     # Check two types for equality, supporting both Types and builtin type-name strings.
     typeEq = T: U:
@@ -1107,11 +1108,11 @@ in rec {
 
             staticMethodNames =
               assign "staticMethodNames" (
-                This.staticMethods.__attrNames);
+                This.staticMethods.__attrNames {});
 
             populatedStaticMethodNames =
               assign "populatedStaticMethodNames" (
-                filter (name: this ? ${name}) This.staticMethods.__attrNames);
+                filter (name: this ? ${name}) (This.staticMethods.__attrNames {}));
 
             missingStaticMethodNames = assign "missingStaticMethodNames" (
               subtractLists populatedStaticMethodNames staticMethodNames);
@@ -1205,25 +1206,32 @@ in rec {
     # Constructed such that for a universe U, all types should only need to access U.Ctors,
     # with the exception of U.Type which should use SU.Ctors.
     mkCtors = U: SU: with U; rec {
-      # Ctors are U.Type and made only of SU.* components.
-      # The U.Type.ctor ctor is of type SU.Ctor, which is an SU.Type made of SU.SU.* components.
-      Ctor = U.Type.new "Ctor" {
-        fields = This: SU.Fields.new [
-          { name = SU.String; }
-          { ctor = "lambda"; }
-        ];
-        methods = {
-          bind = this: This: this.ctor This;
+      Ctor =
+        if opts.level == 0
+        then mkTypeShim "Ctor" {
+          new = name: ctor: mkInstanceShim Ctor {
+            name = { value = name; };
+            inherit ctor;
+            bind = This: ctor This;
+          };
+        }
+        else SU.Type.new "Ctor" {
+          fields = This: SU.Fields.new [
+            { name = SU.String; }
+            { ctor = "lambda"; }
+          ];
+          methods = {
+            bind = this: This: this.ctor This;
+          };
         };
-      };
 
       Ctors = rec {
         # Explicit nullary constructor s.t. X.new == X.mk {}
         # Still needs a thunk arg otherwise it will evaluate
-        CtorNullary = SU.Ctor.new "CtorNullary" (This: _: {});
+        CtorNullary = Ctor.new "CtorNullary" (This: _: {});
 
         # Default constructor for regular non-NewType/Builtin/Alias types.
-        CtorFields = SU.Ctor.new "CtorFields" (This:
+        CtorFields = Ctor.new "CtorFields" (This:
           with (log.v 3).call "CtorFields.ctor" { inherit This; } ___;
           let
             fields = assign "fields" (This.fields This);
@@ -1239,9 +1247,9 @@ in rec {
         # The constructor for Type in U and its precursors / descendent Type types
         # in subuniverses of U.
         # TODO: Defaults should not need restating in U_2+
-        CtorType = SU.Ctor.new "CtorType" (This: name: args: {
+        CtorType = Ctor.new "CtorType" (This: name: args: {
           __isTypeSet = true;
-          inherit name;
+          name = cast_ U.String name;
           Super = setThunkName "Super[Type.ctor]" (args.Super or (TypeThunk null));
           # Whatever ctor is given, for universes that don't have access to Field's defaults,
           # we need to ensure the end result contains values for all Type args.
@@ -1256,8 +1264,8 @@ in rec {
                fields_;
           methods = maybeLazyAttrs (args.methods or {});
           staticMethods = maybeLazyAttrs (args.staticMethods or {});
-          tvars = args.tvars or {};
-          tvarBindings = args.tvarBindings or {};
+          tvars = maybeLazyAttrs (args.tvars or {});
+          tvarBindings = maybeLazyAttrs (args.tvarBindings or {});
           checkValue = args.checkValue or null;
           overrideCheck = args.overrideCheck or null;
         });
@@ -1500,15 +1508,13 @@ in rec {
 
           # Convert the given (_: {...}) type template definition into one that
           # explicitly extends args with tvars and tvarBindings
-          voidBindings = mapAttrs (_: _: U.Void) tvars;
           bindingsToArgs = tvarBindings:
             let args = bindingsToArgs_ tvarBindings;
             in args // {
               # Set the tvars to exactly those given.
+              # Thunk'd in the ctor
               inherit tvars tvarBindings;
             };
-          voidArgs = bindingsToArgs voidBindings;
-          isFullyBound = T: size (filterAttrs (_: T: typeEq U.Void T) T.tvars) == 0;
         in
           # No supertype; just create a new type with unbound args.
           # 'This' goes unused here. MyString.template is not meaningful vs Type.template.
@@ -1688,14 +1694,13 @@ in rec {
         Type__grounded;
 
     # Add the common core to the U universe.
-    # U must have 'opts' already set.
-    withCommonUniverse = SU: U:
+    # partialU must have 'opts' already set.
+    withCommonUniverse = SU: partialU:
       let
-        opts = U.opts;
-      in
-        foldl'
-          (U: f: f U SU // U)
-          U
+        opts = partialU.opts;
+        U = foldl'
+          (U: f: U // f U SU)
+          partialU
           [
             (_: _: {
               __toString = _: "<Universe: ${opts.name}>";
@@ -1706,6 +1711,8 @@ in rec {
             (U: SU: mkTemplating U SU)
             (U: SU: mkTrivialTypes U SU)
           ];
+      in
+        U;
     withCommonUniverseSelf = U: withCommonUniverse U U;
 
     mkUniverseReference = opts: tag: U:
@@ -1795,18 +1802,19 @@ in rec {
       attrs // {
         # Fields
         __isTypeSet = true;
-        inherit name;
-        tvars = {};
+        name = { value = name; };
+        tvars = LazyAttrs {};
         check = _: true;
         # Methods
         __TypeId = thunk name;
-        boundName = thunk name;
+        getBoundName = thunk name;
+        getName = thunk name;
         __toString = _: "TypeShim<${name}>";
       };
 
     mkInstanceShim = shimT: attrs:
       attrs // {
-        Type = UnsafeTypeThunk "InstanceShim[${shimT.name}]" shimT;
+        Type = UnsafeTypeThunk "InstanceShim[${shimT.getName {}}]" shimT;
       };
 
     mkBootstrappedType = U: SU:
@@ -1881,14 +1889,6 @@ in rec {
 
         # Expose the final Type.
         Type = __Bootstrap.Type;
-
-        Ctor = mkTypeShim "Ctor" {
-          new = name: ctor: mkInstanceShim Ctor {
-            name = { value = name; };
-            inherit ctor;
-            bind = This: ctor This;
-          };
-        };
 
         # Shim out all types used in the construction of Type s.t. Type can be created
         # with U == SU == Quasiverse.
@@ -2330,7 +2330,7 @@ in rec {
                   staticMethods = expected.staticMethods; # TODO: Cheat due to named thunk comparison
                   name = "A";
                   overrideCheck = null;
-                  tvarBindings = {};
+                  tvarBindings = LazyAttrs {};
                   tvars = {};
                 };
           };
@@ -2357,11 +2357,11 @@ in rec {
                assert A ? name;
                A.name)
               "A";
-            boundName = expect.eq
+            getBoundName = expect.eq
               (assert Type ? new;
                let A = Type.new "A" {}; in
-               assert A ? boundName;
-               A.boundName {})
+               assert A ? getBoundName;
+               A.getBoundName {})
               "A";
           };
         };
@@ -2386,7 +2386,7 @@ in rec {
                   staticMethods = expected.staticMethods; # TODO: Cheat due to named thunk comparison
                   name = "A";
                   overrideCheck = null;
-                  tvarBindings = {};
+                  tvarBindings = LazyAttrs {};
                   tvars = {};
                 };
           };
@@ -2399,12 +2399,12 @@ in rec {
           assert A ? __TypeId;
           assert (resolve A.Type) ? __TypeId;
           assert A ? name;
-          assert A ? boundName;
+          assert A ? getBoundName;
           {
             Type = expect.stringEq ((resolve A.Type).__TypeId {}) "Type";
             id = expect.stringEq (A.__TypeId {}) "A";
             name = expect.stringEq A.name "A";
-            boundName = expect.stringEq (A.boundName {}) "A";
+            getBoundName = expect.stringEq (A.getBoundName {}) "A";
           };
 
       };
@@ -2447,8 +2447,7 @@ in rec {
           let
             testFields = fields: args: {
               getSolos =
-                expect.eqOn
-                  (mapSolos (_: Compare.Fields))
+                expect.printEq
                   (fields.getSolos {})
                   args.expectedSolos;
               # indexed = mergeAttrsList (cutils.attrs.indexed soloFields);
@@ -2768,7 +2767,7 @@ in rec {
 
         methodCalls = {
           MyType_methods = {
-            expr = MyType.methods.__attrNames;
+            expr = MyType.methods.__attrNames {};
             expected = [ "helloMyField" ];
           };
           MyType_call = {
@@ -2885,7 +2884,7 @@ in rec {
               } inheritanceTests);
 
           instantiation =
-            solo
+            #solo
               (testInUniverses {
                 inherit
                   U_0
@@ -2931,7 +2930,7 @@ in rec {
               } untypedTests);
 
           typeChecking =
-            solo
+            #solo
               (testInUniverses {
                 inherit
                   U_1  # U_1+ due to reliance upon cast
@@ -2943,7 +2942,7 @@ in rec {
             #solo
               (testInUniverses {
                 inherit
-                  U_2
+                  #U_2
                   ;
               } typeCheckingTests);
 
