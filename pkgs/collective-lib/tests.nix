@@ -136,6 +136,8 @@ in rec {
 
     fieldsEq = eqOn Compare.Fields;
 
+    valueEq = eqOn (this: this.value);
+
     lazyFieldsEq = lazyEqOn Compare.Fields;
 
     anyLambda = _: throw ''expect.anyLambda was called; should only be used in placeholder for Print/NoLambdas expectations.'';

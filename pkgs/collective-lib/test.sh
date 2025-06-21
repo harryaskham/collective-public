@@ -148,7 +148,7 @@ with types; with Types.Universe.U_1; Type.new "wat" {}
 with functions;
 with types.Types;
 with Universe;
-U_0.String
+U_0.String.new "wat"
 </nix>
 
 <nix>

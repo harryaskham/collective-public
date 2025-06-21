@@ -113,6 +113,15 @@ in rec {
     # All builtins are attrs. The short-circuit stops recursive inspection of Type.
     BuiltinValueCheck = x: x ? Type && BuiltinNameCheck (x.Type.__do (T: T.getName {}));
 
+    str = x: if typeOf x == "string" then x
+      else if isTyped x && ((resolve x.Type).getName {}) == "String" then x.value
+      else throw (indent.block ''
+          Cannot convert to string:
+            ${log.print x}
+        '');
+
+    maybeStr = x: errors.try (str x) (_: x);
+
     # Cast between types.
     # Returns a set with a 'castError' attribute if the cast is not possible
     # or a set with a 'castSuccess' attribute containined the cast value.
@@ -137,8 +146,9 @@ in rec {
         '');
         result.castSuccess;
 
-    cast = T: x:
-      with (log.v 4).call "cast" T x ___;
+    cast = T_: x:
+      with (log.v 4).call "cast" T_ x ___;
+      let T = maybeStr T_; in
 
       if T == null then
         return (mkCastError "Cannot cast to null: T = ${log.print T}, x = ${log.print x}")
@@ -227,6 +237,30 @@ in rec {
               failMsg = _: null;
               successMsg = _: ''
                 Identity cast succeeded: ${castStr}
+              '';
+            }
+
+            # No-op cast if x is already an instance of a Union.
+            {
+              name = "Union";
+              when = isTypeSet T && T.getName {} == "Union";
+              orMsg = indent.block ''
+                Not a Union type:
+                  ${indent.here castStr}
+              '';
+              result =
+                let go = errors: Ts:
+                      if Ts == [] then mkCastError (joinLines errors)
+                      else
+                        let T = head Ts;
+                            Ts' = tail Ts;
+                            c = cast T x;
+                        in if isCastSuccess c then c
+                           else go (errors ++ [c.castError]) Ts';
+                in go [] ((resolve T.tvarBindings).Ts.getLiteral {});
+              failMsg = id;
+              successMsg = _: ''
+                Union cast succeeded: ${castStr}
               '';
             }
 
@@ -462,33 +496,33 @@ in rec {
 
     # Construct the fields for a universe using the types of the universe above.
     # The 'Type' field is added in Fields.new in both shim and real implementations.
-    mkTypeFieldListFor = U_opts: SU: [
+    mkTypeFieldListFor = U: SU: [
       # Indicates that this is a type. Should never be set manually.
-      {__isTypeSet = maybeNulled U_opts SU (SU.Default "bool" true);}
+      {__isTypeSet = maybeNulled U.opts SU (SU.Default "bool" true);}
       # The supertype of the type.
-      {Super = maybeNulled U_opts SU (SU.Default "set" (TypeThunk null));}
+      {Super = maybeNulled U.opts SU (SU.Default "set" (TypeThunk null));}
       # The name of the type.
-      {name = maybeNulled U_opts SU (SU.String);}
+      {name = maybeNulled U.opts SU (SU.String);}
       # The type parameters of the type.
-      {tvars = maybeNulled U_opts SU (SU.Default "set" (LazyAttrs {}));}
+      {tvars = maybeNulled U.opts SU (SU.Default "set" (LazyAttrs {}));}
       # The type parameter bindings of the type.
-      {tvarBindings = maybeNulled U_opts SU (SU.Default "set" (LazyAttrs {}));}
+      {tvarBindings = maybeNulled U.opts SU (SU.Default "set" (LazyAttrs {}));}
       # The constructor function creating the fields of the type as a set to pass to mk.
-      {ctor = maybeNulled U_opts SU (SU.Default SU.Ctor SU.Ctors.CtorFields);}
+      {ctor = maybeNulled U.opts SU (SU.Default U.Ctor U.Ctors.CtorFields);}
       # A set of ordered fields to make available as this.___ and this.has.___, this.set.___, etc
-      {fields = maybeNulled U_opts SU (SU.Default "lambda" (This: SU.Fields.new []));}
+      {fields = maybeNulled U.opts SU (SU.Default "lambda" (This: SU.Fields.new []));}
       # A set of methods from this to make available as this.___
-      {methods = maybeNulled U_opts SU (SU.Default "set" (LazyAttrs {}));}
+      {methods = maybeNulled U.opts SU (SU.Default "set" (LazyAttrs {}));}
       # A set of methods from This to make available as This.___ and this.___
-      {staticMethods = maybeNulled U_opts SU (SU.Default "set" (LazyAttrs {}));}
+      {staticMethods = maybeNulled U.opts SU (SU.Default "set" (LazyAttrs {}));}
       # Perform additional checks on the value of the type when comparing.
-      {checkValue = maybeNulled U_opts SU (SU.Default (SU.NullOr "lambda") null);}
+      {checkValue = maybeNulled U.opts SU (SU.Default (SU.NullOr "lambda") null);}
       # If set, ignore all other checks and use this check function only.
-      {overrideCheck = maybeNulled U_opts SU (SU.Default (SU.NullOr "lambda") null);}
+      {overrideCheck = maybeNulled U.opts SU (SU.Default (SU.NullOr "lambda") null);}
     ];
 
-    mkTypeFieldsFor = U_opts: SU:
-      let fieldList = mkTypeFieldListFor U_opts SU;
+    mkTypeFieldsFor = U: SU:
+      let fieldList = mkTypeFieldListFor U SU;
       in SU.Fields.new fieldList;
 
     # We need to be very careful here to only access U from sites that are
@@ -675,8 +709,8 @@ in rec {
       __isTypeSet = true;
       name = SU.String.new (U.opts.typeName);
       Super = TypeThunk null;
-      ctor = SU.Ctors.CtorType;
-      fields = This: mkTypeFieldsFor U.opts SU;
+      ctor = U.Ctors.CtorType;
+      fields = This: mkTypeFieldsFor U SU;
       # We have these are both methods and staticMethods on Type s.t. we have
       # them present in bootstrap and in Type.new instances, which get these as
       # methods via Ctors.CtorType.
@@ -718,7 +752,7 @@ in rec {
 
     # Check if a given argument is a Type or a builtin type.
     isTypeLike = T:
-      isTypeSet T || builtinNameCheck T;
+      isTypeSet T || builtinNameCheck (T.value or T);
 
     # Gets the type of a value, whether it is a Type or a builtin type.
     getRawType = x:
@@ -768,7 +802,7 @@ in rec {
       # Otherwise compare like with like
       else if isTypeSet T && !isTypeSet U then false
       else if !isTypeSet T && isTypeSet U then false
-      else if isTypeSet T && isTypeSet U then T.__TypeId {} == U.__TypeId {}
+      else if isTypeSet T && isTypeSet U then (T.__TypeId {}) == (U.__TypeId {})
       else if !(builtinNameCheck T) then false # throw "typeEq ${log.print T} ${log.print U}: ${log.print T} is not a Type or builtin type"
       else if !(builtinNameCheck U) then false # throw "typeEq ${log.print T} ${log.print U}: ${log.print U} is not a Type or builtin type"
       else T == U;
@@ -1203,8 +1237,7 @@ in rec {
           };
     };
 
-    # Constructed such that for a universe U, all types should only need to access U.Ctors,
-    # with the exception of U.Type which should use SU.Ctors.
+    # Constructed such that for a universe U, all types should only need to access U.Ctors.
     mkCtors = U: SU: with U; rec {
       Ctor =
         if opts.level == 0
@@ -1226,6 +1259,8 @@ in rec {
         };
 
       Ctors = rec {
+        None = Ctor.new "None" (This: _: throw ''Ctors.None evoked'');
+
         # Explicit nullary constructor s.t. X.new == X.mk {}
         # Still needs a thunk arg otherwise it will evaluate
         CtorNullary = Ctor.new "CtorNullary" (This: _: {});
@@ -1249,7 +1284,7 @@ in rec {
         # TODO: Defaults should not need restating in U_2+
         CtorType = Ctor.new "CtorType" (This: name: args: {
           __isTypeSet = true;
-          name = cast_ U.String name;
+          name = SU.String.new name;
           Super = setThunkName "Super[Type.ctor]" (args.Super or (TypeThunk null));
           # Whatever ctor is given, for universes that don't have access to Field's defaults,
           # we need to ensure the end result contains values for all Type args.
@@ -1384,12 +1419,12 @@ in rec {
 
       # Uninhabited type
       Void = U.Type.new "Void" {
-        ctor = SU.Ctor.new "CtorVoid" (_: thunk (throw "Void: ctor"));
+        ctor = U.Ctor.new "CtorVoid" (_: thunk (throw "Void: ctor"));
       };
 
       # Any type
       # Used in Type fields (via Literal binding) so must be SU.Type.
-      Any = SU.Type.new "Any" {overrideCheck = _: true;};
+      Any = U.Type.new "Any" {overrideCheck = _: true;};
     };
 
     # Construct templating functions for a given universe.
@@ -1694,26 +1729,28 @@ in rec {
         Type__grounded;
 
     # Add the common core to the U universe.
-    # partialU must have 'opts' already set.
-    withCommonUniverse = SU: partialU:
+    # U_ must have 'opts' already set.
+    withCommonUniverse = SU: U_:
       let
-        opts = partialU.opts;
+        opts = U.opts;
         U = foldl'
           (U: f: U // f U SU)
-          partialU
+          U_
           [
             (_: _: {
               __toString = _: "<Universe: ${opts.name}>";
             })
             (U: SU: mkUniverseReferences opts U SU)
-            (U: SU: mkBuiltins U SU)
             (U: SU: mkCtors U SU)
+            (U: SU: mkBuiltins U SU)
             (U: SU: mkTemplating U SU)
             (U: SU: mkTrivialTypes U SU)
           ];
       in
         U;
-    withCommonUniverseSelf = U: withCommonUniverse U U;
+    withCommonUniverseSelf = U_:
+      let U = withCommonUniverse U U_;
+      in U;
 
     mkUniverseReference = opts: tag: U:
       {
@@ -2028,6 +2065,7 @@ in rec {
 
         # A type satisfied by any value of the given list of types.
         Union_ = Type.template "Union" {Ts = Type;} (_: {
+          ctor = U.Ctors.None;
           overrideCheck = that: any (T: hasType T that) (_.Ts.getLiteral {});
         });
         Union = Tlist:
@@ -2044,7 +2082,7 @@ in rec {
         # xs.values == [ 1 2 3 ] (in order of definition)
         OrderedItem_ = Type.template "OrderedItem" { T = Type; } (_: {
           # TODO: Could be a unary cast, or inherit from Sized 1 (SetOf T)
-          ctor = SU.Ctor.new "CtorOrderedItem" (This: x: {
+          ctor = U.Ctor.new "CtorOrderedItem" (This: x: {
             value =
               let setOfX = ((SU.SetOf _.T).new x);
                   sizedSetOfX = (SU.Sized 1 (SU.SetOf _.T)).new setOfX;
@@ -2065,7 +2103,7 @@ in rec {
 
         OrderedOf_ = Type.subTemplateOf (_: U.ListOf (U.OrderedItem _.T)) "OrderedOf" {T = Type;} (_: {
           # Pass OrderedItems to the underlying ListOf
-          ctor = SU.Ctor.new "CtorOrderedOf" (This: xs: {
+          ctor = U.Ctor.new "CtorOrderedOf" (This: xs: {
             value = map (x: (SU.OrderedItem _.T).new x) (solos xs);
           });
 
@@ -2174,6 +2212,7 @@ in rec {
 
         # A type indicating a default value.
         Default_ = Type.template "Default" {T = Type; V = Type;} (_: {
+          ctor = U.Ctors.None;
           staticMethods.defaultType = This: thunk _.T;
           staticMethods.defaultValue = This: thunk (_.V.getLiteral {});
           overrideCheck = that: _.T == null || _.T.check that;
@@ -2184,6 +2223,7 @@ in rec {
 
         # Newtype wrapper
         Static_ = Type.template "Static" {T = Type;} (_: {
+          ctor = U.Ctors.None;
           staticMethods.staticType = This: thunk _.T;
         });
         Static = T: U.Static_.bind {inherit T;};
@@ -2204,7 +2244,7 @@ in rec {
         Field = Type.new "Field" {
           fields = This: SU.Fields.new [
             {fieldName = SU.String;}
-            {fieldSpec = SU.NullOr Type;}
+            {fieldSpec = U.Union [ U.Null Type U.String ];}
           ];
           methods = {
             parsedT = this: _: parseFieldSpec this.fieldSpec;
@@ -2226,7 +2266,7 @@ in rec {
           # Fields.new [ { field = FieldType; ... } ... ]
           # Fields.new [ { field = Default FieldType defaultValue; ... } ... ]
           # Fields.new [ { field = Static FieldType; ... } ... ]
-          ctor = SU.Ctor.new "CtorFields" (This: fieldSpecs_:
+          ctor = U.Ctor.new "CtorFields" (This: fieldSpecs_:
             let
               # Include Type field on all instances.
               fieldSpecs = withCommonFieldSpecs opts SU fieldSpecs_;
@@ -2264,9 +2304,6 @@ in rec {
     let
       testInUniverse = test: U: test U;
       testInUniverses = Us: test: mapAttrs (_: testInUniverse test) Us;
-      allUniverses = Universe // { inherit TS; };
-      untypedUniverses = {inherit (allUniverses) U_0 U_1;};
-      typedUniverses = {inherit (allUniverses) U_2 U_3 U_4; inherit TS; };
 
       TestTypes = U: with U; {
         MyType =
@@ -2311,8 +2348,7 @@ in rec {
           String.subType "WrapString" {};
       };
 
-
-      untypedSmokeTests = U: with U; let SU = resolve U._SU.get; in {
+      smokeTests = U: with U; let SU = resolve U._SU.get; in {
 
         Bootstrap = with __Bootstrap; {
           Type__args = {
@@ -2330,64 +2366,8 @@ in rec {
                   staticMethods = expected.staticMethods; # TODO: Cheat due to named thunk comparison
                   name = "A";
                   overrideCheck = null;
+                  tvars = LazyAttrs {};
                   tvarBindings = LazyAttrs {};
-                  tvars = {};
-                };
-          };
-        };
-
-        Type = {
-          new = {
-            Type = expect.eq
-              (assert Type ? new;
-               let A = Type.new "A" {}; in
-               assert A ? Type;
-               assert (resolve A.Type) ? __TypeId;
-               (resolve A.Type).__TypeId {})
-              "Type";
-            id = expect.eq
-              (assert Type ? new;
-               let A = Type.new "A" {}; in
-               assert A ? __TypeId;
-               A.__TypeId {})
-              "A";
-            name = expect.eq
-              (assert Type ? new;
-               let A = Type.new "A" {}; in
-               assert A ? name;
-               A.name)
-              "A";
-            getBoundName = expect.eq
-              (assert Type ? new;
-               let A = Type.new "A" {}; in
-               assert A ? getBoundName;
-               A.getBoundName {})
-              "A";
-          };
-        };
-
-      };
-
-      typedSmokeTests = U: with U; let SU = resolve U._SU.get; in {
-
-        Bootstrap = with __Bootstrap; {
-          Type__args = {
-            ctor.defaults =
-              let expected = Type__args.ctor.bind Type__args "A" {};
-              in expect.printEq
-                expected
-                {
-                  __isTypeSet = true;
-                  Super = expected.Super;  # TODO: Cheat due to named thunk comparison
-                  checkValue = null;
-                  ctor = SU.Ctors.CtorFields;
-                  fields = This: SU.Fields.new [];
-                  methods = expected.methods; # TODO: Cheat due to named thunk comparison
-                  staticMethods = expected.staticMethods; # TODO: Cheat due to named thunk comparison
-                  name = "A";
-                  overrideCheck = null;
-                  tvarBindings = LazyAttrs {};
-                  tvars = {};
                 };
           };
         };
@@ -2447,7 +2427,8 @@ in rec {
           let
             testFields = fields: args: {
               getSolos =
-                expect.printEq
+                expect.eqOn
+                  (mapSolos (_: v: { inherit (v) fieldName; }))
                   (fields.getSolos {})
                   args.expectedSolos;
               # indexed = mergeAttrsList (cutils.attrs.indexed soloFields);
@@ -2485,8 +2466,9 @@ in rec {
               in testFields fields expected;
 
             fromSet =
-              let fields = Fields.new [{a = null; b = "int"; c = Default Int 3; d = Static Int;}];
-              in testFields fields expected;
+              solo
+                (let fields = Fields.new [{a = null; b = "int"; c = Default Int 3; d = Static Int;}];
+                 in testFields fields expected);
           };
 
         Mystring = {
@@ -2524,7 +2506,7 @@ in rec {
               assert T ? new;
               let x = T.new rawValue;
               in {
-                name = expect.stringEq (x.Type.__do (T: T.name)) name;
+                name = expect.stringEq (x.Type.__do (T: T.name.value)) name;
                 value = expect.eq
                   (if name == "Lambda" then null else x.value)
                   (if name == "Lambda" then null else rawValue);
@@ -2604,13 +2586,13 @@ in rec {
           };
 
           mkToTypedBuiltinTest = T: x:
-            expect.fieldsEq
+            expect.valueEq
               (cast_ T x)
               (assert T ? new;
                T.new x);
 
           mkToUntypedBuiltinTest = T: x:
-            expect.fieldsEq
+            expect.valueEq
               (Builtin.From x)
               (assert T ? new;
                T.new x);
@@ -2656,13 +2638,13 @@ in rec {
             MyString = {
               mkFromstring = expect.eq (MyString.mk { value = "hello"; }).value.value "hello";
               newFromstring = expect.eq (MyString.new "hello").value.value "hello";
-              eqString = expect.eqOn Compare.Fields (MyString.new "hello").value (String.new "hello");
+              eqString = expect.valueEq (MyString.new "hello").value (String.new "hello");
             };
 
             WrapString = {
               mkFromstring = expect.eq (WrapString.mk { value = "hello"; }).value "hello";
               newFromstring = expect.eq (WrapString.new "hello").value "hello";
-              eqString = expect.eqOn Compare.Fields (WrapString.new "hello") (String.new "hello");
+              eqString = expect.valueEq (WrapString.new "hello") (String.new "hello");
             };
 
             MyType2_mk_overrideDefault = {
@@ -2796,7 +2778,7 @@ in rec {
               let this = MyType.new (String.new "Hello");
               in (this.modify.myField (x: String.new "${x.value}, World!"));
             expected = MyType.new (String.new "Hello, World!");
-            compare = Compare.Fields;
+            compare = this: this.myField.value;
           };
         };
 
@@ -2821,7 +2803,7 @@ in rec {
                   Type =
                     let
                       FakeType = name: {
-                        inherit name;
+                        name = { value = name; };
                         new = name: args: FakeType name;
                       };
                     in {
@@ -2831,22 +2813,15 @@ in rec {
                 };
               };
 
-          untypedSmoke =
+          smoke =
             #solo
               (testInUniverses {
                 inherit
                   U_0
                   U_1
-                  ;
-              } untypedSmokeTests);
-
-          typedSmoke =
-            #solo
-              (testInUniverses {
-                inherit
                   U_2
                   ;
-              } typedSmokeTests);
+              } smokeTests);
 
           typeFunctionality =
             #solo
