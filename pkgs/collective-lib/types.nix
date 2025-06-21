@@ -76,23 +76,6 @@ let
 in rec {
 
   Types = rec {
-    UnsafeTypeThunk = name: T:
-      (NamedThunk name T) // {
-        __isTypeThunk = true;
-        __ThunkType = "UnsafeTypeThunk";
-        __showValue = self: "<unsafe>";
-      };
-    TypeThunk = T:
-      assert assertMsg (isNull T || isTypeLike T) (indent.block ''
-        TypeThunk must be null or a Type:
-          ${indent.here (log.print T)}
-      '');
-      UnsafeTypeThunk (Types.getTypeName T) T // {
-        __ThunkType = "TypeThunk";
-        __showValue = self: self.__do Types.getTypeName;
-      };
-    isTypeThunk = x: x.__isTypeThunk or false;
-
     builtinNames = [ "null" "int" "float" "string" "path" "bool" "list" "set" "lambda" ];
     builtinNameCheck_ = mergeAttrsList (map (name: { ${name} = true; }) builtinNames);
     # Whether or not name is one of the lowercase builtin type names.
@@ -491,7 +474,7 @@ in rec {
       concatSolos
         # The type of the instance as a thunk.
         # Set in mkInstance args_->args to the This TypeThunk.
-        [{Type = maybeNulled opts SU "set";}]
+        [{Type = maybeNulled opts SU (SU.ThunkOf SU.Type);}]
         (solos fieldSpecs);
 
     # Construct the fields for a universe using the types of the universe above.
@@ -655,12 +638,12 @@ in rec {
       __TypeId = This: _: resolve (This.getBoundName or This.getName);
 
       # Create a new instance of the type by providing at least all required field values.
-      mk = This: mkInstance This;
+      mk = This: mkInstance SU U This;
 
       # Create a new instance of the type by calling This's constructor
       # When This == Type, creates a new Type.
       # Consumes its first argument to avoid nullaries
-      new = This: newInstance This;
+      new = This: newInstance SU U This;
 
       # Create a new subType inheriting from This
       # TODO: Compose checkValue / overrideCheck if they appear in args
@@ -738,7 +721,7 @@ in rec {
         }
         {
           name = "isTypeThunk x.Type";
-          cond = isAttrs x && isTypeThunk x.Type;
+          cond = (isAttrs x && x ? Type && (x.__TypeId {}) == "ThunkOf Type");
           msg = "checkTyped: x.Type is not a TypeThunk";
         }
       ];
@@ -797,8 +780,8 @@ in rec {
     # Check two types for equality, supporting both Types and builtin type-name strings.
     typeEq = T: U:
       # Unpack type thunks
-      if isTypeThunk T then typeEq (resolve T) U
-      else if isTypeThunk U then typeEq T (resolve U)
+      if T ? __resolve then typeEq (resolve T) U
+      else if U ? __resolve then typeEq T (resolve U)
       # Otherwise compare like with like
       else if isTypeSet T && !isTypeSet U then false
       else if !isTypeSet T && isTypeSet U then false
@@ -1079,8 +1062,8 @@ in rec {
     # The constructor's output arguments are then passed into mkInstance.
     # For types, the constructor just merges a name parameter with an arguments
     # parameter and delegates to mkInstance.
-    newInstance = This:
-      with (log.v 2).call "newInstance" "unsafe:This" ___;
+    newInstance = SU: U: This:
+      with (log.v 2).call "newInstance" SU U "unsafe:This" ___;
       # let boundCtor = This.ctor.bind This; in
       # if isFunction boundCtor then Variadic.compose (mkInstance This) boundCtor
       # else mkInstance This boundCtor;
@@ -1100,13 +1083,11 @@ in rec {
     # arg = { fieldName = value, ... } for all fields.
     # Fields with defaults can be omitted.
     # Build a new instance from a single dict of field values.
-    mkInstance = mkInstance_ TypeThunk;
-    mkInstanceUnsafe = mkInstance_ (UnsafeTypeThunk "mkInstanceUnsafe");
-    mkInstance_ = mkTypeThunk: This: args_:
-      with (log.v 2).call "mkInstance" This args_ ___;
+    mkInstance = SU: U: This: args_:
+      with (log.v 2).call "mkInstance" SU U This args_ ___;
       let
         # All instances have a common Type field.
-        args = args_ // { Type = mkTypeThunk This; };
+        args = args_ // { Type = (SU.ThunkOf Type).new This; };
 
         # Construct 'this' as an instance of 'This'.
         this = assign "this" (mkthis This args);
@@ -1184,12 +1165,12 @@ in rec {
       else throw "Expected type ${T} (got ${getTypeName x})";
 
     MkBuiltinFns = {
-      TypeShims = U: _: name:
+      TypeShims = U: SU: name:
         let
           BuiltinTypeShim = mkTypeShim name {
-            new = x: mkInstanceShim BuiltinTypeShim { value = x; };
-            mk = args: mkInstanceShim BuiltinTypeShim args;
-            fields = _: U.Fields.new { value = "string"; };
+            new = x: mkInstanceShim U SU BuiltinTypeShim { value = x; };
+            mk = args: mkInstanceShim U SU BuiltinTypeShim args;
+            fields = _: U.Fields.new { value = (toLower name); };
           };
         in
           BuiltinTypeShim;
@@ -1242,7 +1223,7 @@ in rec {
       Ctor =
         if opts.level == 0
         then mkTypeShim "Ctor" {
-          new = name: ctor: mkInstanceShim Ctor {
+          new = name: ctor: mkInstanceShim U SU Ctor {
             name = { value = name; };
             inherit ctor;
             bind = This: ctor This;
@@ -1713,11 +1694,9 @@ in rec {
 
     # Cause a Type to have itself as its own Type, eliding any information about
     # either bootstrap pseudo-types or the Type of its superuniverse.
-    groundType_ = mkTypeThunk: Type:
-      let Type__grounded = Type // { Type = mkTypeThunk Type__grounded; };
+    groundType = Type:
+      let Type__grounded = Type // { Type = (ThunkOf Type).new Type__grounded; };
       in Type__grounded;
-    groundType = groundType_ TypeThunk;
-    groundTypeUnsafe = groundType_ (UnsafeTypeThunk "groundTypeUnsafe");
 
     # Cause a Type to have itself as its own Type, eliding any information about
     # either bootstrap pseudo-types or the Type of its superuniverse.
@@ -1849,9 +1828,9 @@ in rec {
         __toString = _: "TypeShim<${name}>";
       };
 
-    mkInstanceShim = shimT: attrs:
+    mkInstanceShim = U: SU: shimT: attrs:
       attrs // {
-        Type = UnsafeTypeThunk "InstanceShim[${shimT.getName {}}]" shimT;
+        Type = (SU.ThunkOf SU.Type).new shimT;
       };
 
     mkBootstrappedType = U: SU:
@@ -1868,12 +1847,12 @@ in rec {
         # which we can achieve via groundTypeUnsafe (unsafe since we need a TypeThunk and
         # Type__args is not itself a Type).
         Type__argsGrounded = assign "Type__argsGrounded" (
-          groundTypeUnsafe Type__args);
+          groundType Type__args);
 
         # We can then bootstrap a new Type by running mkInstance with This as Type__argsGrounded
         # and args as Type__args.
         Type__bootstrapped = assign "Type__bootstrapped" (
-          mkInstanceUnsafe Type__argsGrounded Type__args
+          mkInstance Type__argsGrounded Type__args
         );
 
         # Construct Type through an actual application of the .mk constructor.
@@ -1937,7 +1916,7 @@ in rec {
                 inherit fieldSpec;
               };
               parsedSpec = parseFieldSpec fieldSpec;
-            in mkInstanceShim Field (get // {
+            in mkInstanceShim U SU Field (get // {
               inherit get;
               inherit fieldName;
               fieldDefault = _: parsedSpec.fieldDefault;
@@ -1956,7 +1935,7 @@ in rec {
                 # Include Type field on all instances.
                 fieldSpecs = withCommonFieldSpecs opts SU fieldSpecs_;
                 soloFields = mapSolos U.Field.new fieldSpecs;
-              in mkInstanceShim Fields (rec {
+              in mkInstanceShim U SU Fields (rec {
                 getSolos = _: soloFields;
                 indexed = mergeAttrsList (cutils.attrs.indexed soloFields);
                 update = newFieldSpecs:
@@ -1980,6 +1959,14 @@ in rec {
               });
           };
 
+        # Cannot use mkInstanceShim
+        ThunkOf = T: mkTypeShim "ThunkOf" {
+          new = x: {
+            Type = { __resolve = U.Type; };
+            value = NamedThunk "ThunkOfShim" x;
+            __resolve = _: resolve value;
+          };
+        };
         SetOf = T: mkTypeShim "SetOf" { new = U.Set.new; };
         ListOf = T: mkTypeShim "ListOf" { new = U.List.new; };
         Constraint = mkTypeShim "Constraint" { new = x: {value = _: x; satisfiedBy = _: true;};};
@@ -1994,7 +1981,7 @@ in rec {
         };
         Any = mkTypeShim "Any" {};
         OrderedItem = T: mkTypeShim "OrderedItem" {
-          new = x: mkInstanceShim (OrderedItem T) (rec {
+          new = x: mkInstanceShim U SU (OrderedItem T) (rec {
             value = (Sized 1 (SetOf T)).new x;
             getSolo = _: value.getSized.value;
             getName = _: soloName (getSolo {});
@@ -2039,6 +2026,17 @@ in rec {
               || (resolve this.constraintType).check That;
           };
         };
+
+        ThunkOf_ = U.Lambda.subTemplate "ThunkOf" {T = SU.Type;} (_: {
+          ctor = U.Ctor.new "CtorThunkOf" (This: x: {
+            value = NamedThunk (log.print This) x;
+          });
+          methods = {
+            __resolve = this: _: resolve this.value;
+          };
+          checkValue = that: isTypeSet that && hasType _.T (that.resolve {});
+        });
+        ThunkOf = T: U.ThunkOf_.bind { inherit T; };
 
         # Subtype of List that enforces homogeneity of element types.
         ListOf_ = U.List.subTemplate "ListOf" {T = SU.Type;} (_: {
@@ -2814,7 +2812,7 @@ in rec {
               };
 
           smoke =
-            #solo
+            solo
               (testInUniverses {
                 inherit
                   U_0

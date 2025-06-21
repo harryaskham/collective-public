@@ -59,7 +59,9 @@ in rec {
         '');
         tryResolve = resolvedX: errors.try resolvedX propagateResolutionError;
     in
-      if isFunction x then
+      if (x ? __resolve) then
+        tryResolve (x.__resolve {})
+      else if isFunction x then
         tryResolve (x (throw ''Resolved lambda-thunk made use of its thunk-argument.''))
       else if isThunk x then
         tryResolve (x.__get {})

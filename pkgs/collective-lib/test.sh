@@ -106,7 +106,7 @@ map (U: with U;
   b = (Fields.new [{a = null;}]);
 }.b
 ) [
-U_2
+U_0
 ]
 </nix>
 
