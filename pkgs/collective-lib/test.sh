@@ -229,7 +229,7 @@ with functions;
 with types;
 with Types;
 with Universe.U_0;
-Type.fields Type
+Ctor
 </nix>
 
 

@@ -136,7 +136,7 @@ in rec {
 
     fieldsEq = eqOn Compare.Fields;
 
-    valueEq = eqOn (this: this.value);
+    valueEq = eqOn (this: this.getValue {});
 
     lazyFieldsEq = lazyEqOn Compare.Fields;
 

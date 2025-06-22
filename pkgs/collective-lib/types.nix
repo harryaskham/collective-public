@@ -97,7 +97,7 @@ in rec {
     BuiltinValueCheck = x: x ? Type && BuiltinNameCheck (x.Type.__do (T: T.getName {}));
 
     str = x: if typeOf x == "string" then x
-      else if isTyped x && ((resolve x.Type).getName {}) == "String" then x.value
+      else if isTyped x && ((resolve x.Type).getName {}) == "String" then (x.getValue {})
       else throw (indent.block ''
           Cannot convert to string:
             ${log.print x}
@@ -479,33 +479,36 @@ in rec {
 
     # Construct the fields for a universe using the types of the universe above.
     # The 'Type' field is added in Fields.new in both shim and real implementations.
-    mkTypeFieldListFor = U: SU: [
+    mkTypeFieldListFor = SU: U: [
       # Indicates that this is a type. Should never be set manually.
-      {__isTypeSet = maybeNulled U.opts SU (SU.Default "bool" true);}
+      {__isTypeSet = maybeNulled U.opts SU (SU.Default SU.Bool true);}
       # The supertype of the type.
-      {Super = maybeNulled U.opts SU (SU.Default "set" (TypeThunk null));}
+      {Super = maybeNulled U.opts SU
+        (SU.Default
+          (SU.ThunkOf (SU.NullOr SU.Type))
+          ((SU.ThunkOf (SU.NullOr SU.Type)).new null));}
       # The name of the type.
       {name = maybeNulled U.opts SU (SU.String);}
       # The type parameters of the type.
-      {tvars = maybeNulled U.opts SU (SU.Default "set" (LazyAttrs {}));}
+      {tvars = maybeNulled U.opts SU (SU.Default SU.Set (LazyAttrs {}));}
       # The type parameter bindings of the type.
-      {tvarBindings = maybeNulled U.opts SU (SU.Default "set" (LazyAttrs {}));}
+      {tvarBindings = maybeNulled U.opts SU (SU.Default SU.Set (LazyAttrs {}));}
       # The constructor function creating the fields of the type as a set to pass to mk.
       {ctor = maybeNulled U.opts SU (SU.Default U.Ctor U.Ctors.CtorFields);}
       # A set of ordered fields to make available as this.___ and this.has.___, this.set.___, etc
-      {fields = maybeNulled U.opts SU (SU.Default "lambda" (This: SU.Fields.new []));}
+      {fields = maybeNulled U.opts SU (SU.Default SU.Lambda (This: SU.Fields.new []));}
       # A set of methods from this to make available as this.___
-      {methods = maybeNulled U.opts SU (SU.Default "set" (LazyAttrs {}));}
+      {methods = maybeNulled U.opts SU (SU.Default SU.Set (LazyAttrs {}));}
       # A set of methods from This to make available as This.___ and this.___
-      {staticMethods = maybeNulled U.opts SU (SU.Default "set" (LazyAttrs {}));}
+      {staticMethods = maybeNulled U.opts SU (SU.Default SU.Set (LazyAttrs {}));}
       # Perform additional checks on the value of the type when comparing.
-      {checkValue = maybeNulled U.opts SU (SU.Default (SU.NullOr "lambda") null);}
+      {checkValue = maybeNulled U.opts SU (SU.Default (SU.NullOr SU.Lambda) null);}
       # If set, ignore all other checks and use this check function only.
-      {overrideCheck = maybeNulled U.opts SU (SU.Default (SU.NullOr "lambda") null);}
+      {overrideCheck = maybeNulled U.opts SU (SU.Default (SU.NullOr SU.Lambda) null);}
     ];
 
-    mkTypeFieldsFor = U: SU:
-      let fieldList = mkTypeFieldListFor U SU;
+    mkTypeFieldsFor = SU: U:
+      let fieldList = mkTypeFieldListFor SU U;
       in SU.Fields.new fieldList;
 
     # We need to be very careful here to only access U from sites that are
@@ -517,9 +520,9 @@ in rec {
     # so that ((U.Type.new "Parent" {}).subType "Child" {}).Type == U.Type and not SU.Type,
     # which would mean every subtype created in a chain would ascend a universe until
     # it reached the Quasiverse.
-    typeMethodsFor = U: SU: {
+    typeMethodsFor = SU: U: {
       # Get the resolved name of the type.
-      getName = This: _: This.name.value;
+      getName = This: _: This.name.getValue {};
 
       # Is this instance an instance of type That.
       isInstance = This: that: isTyped that && that.Type.__do (That: That.eq This);
@@ -582,7 +585,7 @@ in rec {
               throwBindError = msg: throw (indent.block ''
                 Bind error:
                   ${indent.here "${This.getName {}}.${tvarName} <- ${log.print T}"}
-                  Constraints: ${indent.here "${log.print C.value} (${if TSatC then "" else "not "}satisfied)"}
+                  Constraints: ${indent.here "${log.print C} (${if TSatC then "" else "not "}satisfied)"}
                   Existing binding: ${log.print B}
                   ${indent.here msg}
                 '');
@@ -688,17 +691,17 @@ in rec {
     # is always composed of SU.Type components for all U, SU.
     # The exception is templating, or types producing types - these refer to U only
     # in the method body, after Type is already constructed and bound.
-    mkTypeArgsFor = U: SU: {
+    mkTypeArgsFor = SU: U: {
       __isTypeSet = true;
       name = SU.String.new (U.opts.typeName);
-      Super = TypeThunk null;
+      Super = (SU.ThunkOf (SU.NullOr SU.Type)).new null;
       ctor = U.Ctors.CtorType;
-      fields = This: mkTypeFieldsFor U SU;
+      fields = This: mkTypeFieldsFor SU U;
       # We have these are both methods and staticMethods on Type s.t. we have
       # them present in bootstrap and in Type.new instances, which get these as
       # methods via Ctors.CtorType.
-      methods = maybeNamedLazyAttrs "mkTypeArgsFor.methods" (typeMethodsFor U SU);
-      staticMethods = maybeNamedLazyAttrs "mkTypeArgsFor.staticMethods" (typeMethodsFor U SU);
+      methods = maybeNamedLazyAttrs "mkTypeArgsFor.methods" (typeMethodsFor SU U);
+      staticMethods = maybeNamedLazyAttrs "mkTypeArgsFor.staticMethods" (typeMethodsFor SU U);
       tvars = LazyAttrs {};
       tvarBindings = LazyAttrs {};
       checkValue = null;
@@ -721,7 +724,7 @@ in rec {
         }
         {
           name = "isTypeThunk x.Type";
-          cond = (isAttrs x && x ? Type && (x.__TypeId {}) == "ThunkOf Type");
+          cond = x ? Type && (resolve x.Type) ? __TypeId && (resolve x.Type).__TypeId {} == "ThunkOf Type";
           msg = "checkTyped: x.Type is not a TypeThunk";
         }
       ];
@@ -735,7 +738,7 @@ in rec {
 
     # Check if a given argument is a Type or a builtin type.
     isTypeLike = T:
-      isTypeSet T || builtinNameCheck (T.value or T);
+      isTypeSet T || (T.name.getValue {}) == "BuiltinOf";
 
     # Gets the type of a value, whether it is a Type or a builtin type.
     getRawType = x:
@@ -1076,7 +1079,7 @@ in rec {
       #                                       (mkInstance This)   (arg: This.ctor.bind This arg); in
       # mkViaCtor;
       # assert (isFunction boundCtor);
-      Variadic.compose (mkInstance This) (arg: This.ctor.bind This arg);
+      Variadic.compose (mkInstance SU U This) (arg: This.ctor.bind This arg);
 
     # Build a new instance from a single dict of field values.
     # Construct an instance from a This type and attrset of field-to-value assignments.
@@ -1165,65 +1168,73 @@ in rec {
       else throw "Expected type ${T} (got ${getTypeName x})";
 
     MkBuiltinFns = {
-      TypeShims = U: SU: name:
+      TypeShims = SU: U: BuiltinOf: name:
         let
           BuiltinTypeShim = mkTypeShim name {
-            new = x: mkInstanceShim U SU BuiltinTypeShim { value = x; };
-            mk = args: mkInstanceShim U SU BuiltinTypeShim args;
+            new = x: mkInstanceShim SU U BuiltinTypeShim {
+              getValue = _: x;
+            };
+            mk = args: mkInstanceShim SU U BuiltinTypeShim args;
             fields = _: U.Fields.new { value = (toLower name); };
           };
         in
           BuiltinTypeShim;
-      Types = U: SU: name:
+      Types = SU: U: BuiltinOf: name:
         let
-          hasSize = { String = true; Path = true; List = true; Set = true; }.${name} or false;
+          withGetValue = methods: methods // {
+            getValue = this: _: this.__value.value;
+          };
           hasToString = { String = true; }.${name} or false;
           withToString = methods:
             if hasToString
             then methods // {
-              __toString = this: self: indent.block ''${name}:"${indent.here (toString self.value)}"'';
+              __toString = this: self: indent.block ''${name}:"${indent.here (toString (self.getValue {}))}"'';
             }
             else methods;
+          hasSize = { String = true; Path = true; List = true; Set = true; }.${name} or false;
           withSize = methods:
             if hasSize
-            then let sizeFn = this: _: size this.value;
+            then let sizeFn = this: _: size (this.getValue {});
                 in methods // { size = sizeFn; }
             else methods;
         in
           U.Type.new name {
-            fields = This: SU.Fields.new [{ value = toLower name; }];
-            methods = withToString (withSize ({
+            fields = This: SU.Fields.new [{
+              __value = BuiltinOf (toLower name);
+            }];
+            methods = withToString (withSize (withGetValue ({
               List = {
-                fmap = this: f: this.modify.value (map f);
-                append = this: x: this.modify.value (xs: xs ++ [x]);
+                fmap = this: f: this.modify.__value (this: this.modify.value (map f));
+                append = this: x: this.modify.__value (this: this.modify.value (xs: xs ++ [x]));
               };
               Set = {
-                fmap = this: f: this.modify.value (mapAttrs (_: f));
-                names = this: _: attrNames this.value;
-                values = this: _: attrValues this.value;
+                fmap = this: f: this.modify.__value (this: this.modify.value (mapAttrs (_: f)));
+                names = this: _: attrNames (this.getValue {});
+                values = this: _: attrValues (this.getValue {});
                 # e.g. this.modifyAt.name (x: x+1)
-                getAt = this: _: this.value;
-                modifyAt = this: _: mapAttrs (k: v: f: this.modify.value (xs: xs // { ${k} = f v; })) this.value;
-                setAt = this: _: mapAttrs (k: _: x: this.modify.value (xs: xs // { ${k} = x; })) this.value;
+                modifyAt = this: _: mapAttrs (k: v: f:
+                  this.modify.__value (this: this.modify.value (xs: xs // { ${k} = f v; }))) (this.getValue {});
+                setAt = this: _: mapAttrs (k: _: x:
+                  this.modify.__value (this: this.modify.value (xs: xs // { ${k} = x; }))) (this.getValue {});
               };
               Lambda = {
-                fmap = this: f: this.modify.value (compose f);
+                fmap = this: f: this.modify.__value (this: this.modify.value (compose f));
               };
-            }.${name} or {}));
+            }.${name} or {})));
             checkValue = that: {
               # Additional check on sets s.t. we don't accept a typed value when expecting
               # a raw set.
-              Set = !(that ? Type);
+              Set = !((that.getValue {}) ? Type);
             }.${name} or true;
           };
     };
 
     # Constructed such that for a universe U, all types should only need to access U.Ctors.
-    mkCtors = U: SU: with U; rec {
+    mkCtors = SU: U: with U; rec {
       Ctor =
         if opts.level == 0
         then mkTypeShim "Ctor" {
-          new = name: ctor: mkInstanceShim U SU Ctor {
+          new = name: ctor: mkInstanceShim SU U Ctor {
             name = { value = name; };
             inherit ctor;
             bind = This: ctor This;
@@ -1232,7 +1243,7 @@ in rec {
         else SU.Type.new "Ctor" {
           fields = This: SU.Fields.new [
             { name = SU.String; }
-            { ctor = "lambda"; }
+            { ctor = SU.Lambda; }
           ];
           methods = {
             bind = this: This: this.ctor This;
@@ -1266,7 +1277,7 @@ in rec {
         CtorType = Ctor.new "CtorType" (This: name: args: {
           __isTypeSet = true;
           name = SU.String.new name;
-          Super = setThunkName "Super[Type.ctor]" (args.Super or (TypeThunk null));
+          Super = args.Super or ((SU.ThunkOf (SU.NullOr SU.Type)).new null);
           # Whatever ctor is given, for universes that don't have access to Field's defaults,
           # we need to ensure the end result contains values for all Type args.
           ctor = args.ctor or CtorFields;
@@ -1289,11 +1300,22 @@ in rec {
     };
 
     # Construct the Builtin type wrappers for universe U using the given mkBuiltin function.
-    mkBuiltins = U: SU:
-      let BuiltinTypes =
-            mergeAttrsList
-              (map (name: { ${name} = U.opts.mkBuiltin U SU name; }) BuiltinNames);
+    mkBuiltins = SU: U:
+      let
+        BuiltinOf_ = U.Type.template "BuiltinOf" { T = U.Type; } (_: {
+          fields = This: SU.Fields.new [
+            { value = SU.Any; }
+          ];
+          overrideCheck = that: (typeOf that.value) == _.T.getLiteral;
+        });
+        BuiltinOf = builtinType:
+          let T = U.Literal builtinType;
+          in BuiltinOf_.bind { inherit T; };
+        BuiltinTypes =
+          mergeAttrsList
+            (map (name: { ${name} = U.opts.mkBuiltin SU U BuiltinOf name; }) BuiltinNames);
       in BuiltinTypes // {
+        inherit BuiltinOf;
         # Wrap up some builtin constructors.
         # TODO: Builtin to a base type for all builtins.
         # TODO: Move to common
@@ -1381,7 +1403,7 @@ in rec {
 
       # Return unwrapped types.
       else
-        assert check "isTypeLike spec" (spec == null || isTypeLike spec)
+        assert check "isTypeLike spec" (isTypeLike spec)
               "Got a non-type spec in parseFieldSpec: ${log.print spec}";
 
         {
@@ -1391,7 +1413,7 @@ in rec {
         };
 
     # Universe-independent types that only depend on Type.
-    mkTrivialTypes = U: SU: rec {
+    mkTrivialTypes = SU: U: rec {
       # Unit Type
       Unit = U.Type.new "Unit" {
         ctor = U.Ctors.CtorNullary;
@@ -1420,7 +1442,7 @@ in rec {
     # when we call U.Fields.subType, we want this to defer to U.Type.newSubType, not
     # SU.Type.newSubType. The bound methods of U.Type are the only place where we can therefore refer to other parts
     # of U (lazily, after Type is properly built), as e.g. U.newSubType.
-    mkTemplating = U: SU: rec {
+    mkTemplating = SU: U: rec {
 
       # Modify an argument set to inherit from a Super type, given as a TypeThunk.
       # Inheritance is performed as follows:
@@ -1520,7 +1542,7 @@ in rec {
           # This can use U.Constraint, because we have U.Type
           # U.Constraint uses SU.Fields, which subtype an (SU.OrderedOf_ SU.Field) bound template.
           # That bound template uses SU.Constraint.
-          tvars = mapAttrs (_: T: SU.Constraint.new (TypeThunk T)) tvars_;
+          tvars = mapAttrs (_: T: SU.Constraint.new ((SU.ThunkOf SU.Type).new T)) tvars_;
 
           # Convert the given (_: {...}) type template definition into one that
           # explicitly extends args with tvars and tvarBindings
@@ -1694,16 +1716,16 @@ in rec {
 
     # Cause a Type to have itself as its own Type, eliding any information about
     # either bootstrap pseudo-types or the Type of its superuniverse.
-    groundType = Type:
-      let Type__grounded = Type // { Type = (ThunkOf Type).new Type__grounded; };
+    groundType = SU: U: Type:
+      let Type__grounded = Type // { Type = (SU.ThunkOf SU.Type).new Type__grounded; };
       in Type__grounded;
 
     # Cause a Type to have itself as its own Type, eliding any information about
     # either bootstrap pseudo-types or the Type of its superuniverse.
     # Also asserts that recreating the grounded Type using itself, via Type.new,
     # creates an identical Type (modulo lambda equality).
-    groundTypeAndAssertFixed = opts: Type__args: Type:
-      let Type__grounded = groundType Type;
+    groundTypeAndAssertFixed = SU: U: opts: Type__args: Type:
+      let Type__grounded = groundType SU U Type;
       in assert assertTypeFixedUnderNew Type__grounded opts.typeName Type__args;
         Type__grounded;
 
@@ -1713,17 +1735,17 @@ in rec {
       let
         opts = U.opts;
         U = foldl'
-          (U: f: U // f U SU)
+          (U: f: U // f SU U)
           U_
           [
             (_: _: {
               __toString = _: "<Universe: ${opts.name}>";
             })
-            (U: SU: mkUniverseReferences opts U SU)
-            (U: SU: mkCtors U SU)
-            (U: SU: mkBuiltins U SU)
-            (U: SU: mkTemplating U SU)
-            (U: SU: mkTrivialTypes U SU)
+            (SU: U: mkUniverseReferences opts SU U)
+            (SU: U: mkCtors SU U)
+            (SU: U: mkBuiltins SU U)
+            (SU: U: mkTemplating SU U)
+            (SU: U: mkTrivialTypes SU U)
           ];
       in
         U;
@@ -1737,7 +1759,7 @@ in rec {
         get = _: U;
       };
 
-    mkUniverseReferences = opts: U: SU: {
+    mkUniverseReferences = opts: SU: U: {
       _U = mkUniverseReference opts "self" U;
       _SU = mkUniverseReference opts "super" SU;
     };
@@ -1822,37 +1844,38 @@ in rec {
         tvars = LazyAttrs {};
         check = _: true;
         # Methods
+        Type = { __resolve = _: mkTypeShim name attrs; };  # Fake a "ThunkOf"
         __TypeId = thunk name;
         getBoundName = thunk name;
         getName = thunk name;
         __toString = _: "TypeShim<${name}>";
       };
 
-    mkInstanceShim = U: SU: shimT: attrs:
+    mkInstanceShim = SU: U: shimT: attrs:
       attrs // {
-        Type = (SU.ThunkOf SU.Type).new shimT;
+        Type = _: shimT;
       };
 
-    mkBootstrappedType = U: SU:
-      with (log.v 3).call "mkBootstrappedType" U SU ___;
+    mkBootstrappedType = SU: U:
+      with (log.v 3).call "mkBootstrappedType" SU U ___;
       let
         opts = U.opts;
       in rec {
         # Create the arguments to mkInstance for creating a Type.
         Type__args = assign "Type__args" (
-          mkTypeArgsFor U SU);
+          mkTypeArgsFor SU U);
 
         # Treat the arguments as an instantiated Type, despite the lack of bound methods.
         # This is sufficient for mkInstance. We only need Type to be set in addition,
         # which we can achieve via groundTypeUnsafe (unsafe since we need a TypeThunk and
         # Type__args is not itself a Type).
         Type__argsGrounded = assign "Type__argsGrounded" (
-          groundType Type__args);
+          groundType SU U Type__args);
 
         # We can then bootstrap a new Type by running mkInstance with This as Type__argsGrounded
         # and args as Type__args.
         Type__bootstrapped = assign "Type__bootstrapped" (
-          mkInstance Type__argsGrounded Type__args
+          mkInstance SU U Type__argsGrounded Type__args
         );
 
         # Construct Type through an actual application of the .mk constructor.
@@ -1862,7 +1885,10 @@ in rec {
         Type__new =
           assert checks [{ name = "Type__bootstrapped has mk";
                          cond = Type__bootstrapped ? mk;
-                         msg = "Type__bootstrapped must have a mk function";
+                         msg = indent.block ''
+                           Type__bootstrapped must have a mk function:
+                             ${indent.here (log.print Type__bootstrapped)}
+                           '';
                        }];
           assign "Type__new" (
             Type__bootstrapped.mk Type__args
@@ -1880,8 +1906,8 @@ in rec {
             # of further bootstrapping by Type.new, modulo lambda equality on created Type instances.
             # If enabled in the opts, an assertion checks that Type is fixed under further bootstrapping.
             if opts.checkTypeFixedUnderNew
-              then groundTypeAndAssertFixed opts Type__args Type__new
-              else groundType Type__new
+              then groundTypeAndAssertFixed SU U opts Type__args Type__new
+              else groundType SU U Type__new
           );
       };
 
@@ -1901,7 +1927,7 @@ in rec {
         # All other opts are generated from here via 'resolve opts.descend'
         opts = mkUniverseOpts 0;
 
-        __Bootstrap = mkBootstrappedType U SU;
+        __Bootstrap = mkBootstrappedType SU U;
 
         # Expose the final Type.
         Type = __Bootstrap.Type;
@@ -1916,7 +1942,7 @@ in rec {
                 inherit fieldSpec;
               };
               parsedSpec = parseFieldSpec fieldSpec;
-            in mkInstanceShim U SU Field (get // {
+            in mkInstanceShim SU U Field (get // {
               inherit get;
               inherit fieldName;
               fieldDefault = _: parsedSpec.fieldDefault;
@@ -1935,7 +1961,7 @@ in rec {
                 # Include Type field on all instances.
                 fieldSpecs = withCommonFieldSpecs opts SU fieldSpecs_;
                 soloFields = mapSolos U.Field.new fieldSpecs;
-              in mkInstanceShim U SU Fields (rec {
+              in mkInstanceShim SU U Fields (rec {
                 getSolos = _: soloFields;
                 indexed = mergeAttrsList (cutils.attrs.indexed soloFields);
                 update = newFieldSpecs:
@@ -1959,17 +1985,21 @@ in rec {
               });
           };
 
-        # Cannot use mkInstanceShim
         ThunkOf = T: mkTypeShim "ThunkOf" {
-          new = x: {
-            Type = { __resolve = U.Type; };
+          new = x: mkInstanceShim SU U (ThunkOf T) rec {
+            Type = {
+              __resolve = _: U.Type;
+            };
+            __TypeId = _: "ThunkOf ${T}";
             value = NamedThunk "ThunkOfShim" x;
             __resolve = _: resolve value;
+            __do = value.__do;
+            __fmap = value.__fmap;
           };
         };
         SetOf = T: mkTypeShim "SetOf" { new = U.Set.new; };
         ListOf = T: mkTypeShim "ListOf" { new = U.List.new; };
-        Constraint = mkTypeShim "Constraint" { new = x: {value = _: x; satisfiedBy = _: true;};};
+        Constraint = mkTypeShim "Constraint" { new = x: {constraintType = _: x; satisfiedBy = _: true;};};
         Static = T: mkTypeShim "Static" { staticType = _: T; };
         Default = T: V: mkTypeShim "Default" { defaultType = _: T; defaultValue = _: V; };
         NullOr = T: mkTypeShim "NullOr" { new = id; };
@@ -1981,9 +2011,9 @@ in rec {
         };
         Any = mkTypeShim "Any" {};
         OrderedItem = T: mkTypeShim "OrderedItem" {
-          new = x: mkInstanceShim U SU (OrderedItem T) (rec {
+          new = x: mkInstanceShim SU U (OrderedItem T) (rec {
             value = (Sized 1 (SetOf T)).new x;
-            getSolo = _: value.getSized.value;
+            getSolo = _: value.getSized.getValue {};
             getName = _: soloName (getSolo {});
             getValue = _: soloValue (getSolo {});
           });
@@ -2001,20 +2031,20 @@ in rec {
 
         # Construct the Type type in terms of the SU, then in terms of itself.
         #__Bootstrap = rec {
-        #  Type__args = mkTypeArgsFor U SU;
+        #  Type__args = mkTypeArgsFor SU U;
         #  Type__new = SU.Type.new opts.typeName Type__args;
         #  Type =
         #    if opts.checkTypeFixedUnderNew
-        #      then groundTypeAndAssertFixed opts Type__args Type__new
-        #      else groundType Type__new;
+        #      then groundTypeAndAssertFixed SU U opts Type__args Type__new
+        #      else groundType SU U Type__new;
         #};
-        __Bootstrap = mkBootstrappedType U SU;
+        __Bootstrap = mkBootstrappedType SU U;
         Type = __Bootstrap.Type;
 
         # A constraint on a type variable.
         Constraint = U.Type.new "Constraint" {
           fields = This: SU.Fields.new [
-            { constraintType = "set"; }  # TypeThunk
+            { constraintType = SU.ThunkOf SU.Type; }
           ];
           methods = {
             # Whether a given type variable binding satisfies the constraint.
@@ -2033,6 +2063,8 @@ in rec {
           });
           methods = {
             __resolve = this: _: resolve this.value;
+            __do = this: f: this.value.__do f;
+            __fmap = this: f: this.value.__fmap f;
           };
           checkValue = that: isTypeSet that && hasType _.T (that.resolve {});
         });
@@ -2040,7 +2072,7 @@ in rec {
 
         # Subtype of List that enforces homogeneity of element types.
         ListOf_ = U.List.subTemplate "ListOf" {T = SU.Type;} (_: {
-          checkValue = that: all (x: hasType _.T x) that.value;
+          checkValue = that: all (x: hasType _.T x) (that.getValue {});
         });
         ListOf = T: U.ListOf_.bind { inherit T; };
 
@@ -2092,7 +2124,7 @@ in rec {
           }];
 
           methods = {
-            getSolo = this: _: this.value.getSized.value;
+            getSolo = this: _: this.value.getSized.getValue;
             getName = this: _: soloName (this.getSolo {});
             getValue = this: _: soloValue (this.getSolo {});
           };
@@ -2102,6 +2134,7 @@ in rec {
         OrderedOf_ = Type.subTemplateOf (_: U.ListOf (U.OrderedItem _.T)) "OrderedOf" {T = Type;} (_: {
           # Pass OrderedItems to the underlying ListOf
           ctor = U.Ctor.new "CtorOrderedOf" (This: xs: {
+            # TODO: verify this cast
             value = map (x: (SU.OrderedItem _.T).new x) (solos xs);
           });
 
@@ -2127,11 +2160,11 @@ in rec {
 
             # Map over the underlying [OrderedItem T]
             # f :: (OrderedItem T -> a) -> [a]
-            mapItems = this: f: map f this.value;
+            mapItems = this: f: map f (this.getValue {});
 
             # Map over the underlying [OrderedItem T] with index.
             # f :: (int -> OrderedItem T -> a) -> [a]
-            imapItems = this: f: imap0 f this.value;
+            imapItems = this: f: imap0 f (this.getValue {});
 
             # Map over the underlying [solo T] in order
             # f :: (string -> T -> a) -> [a]
@@ -2310,7 +2343,7 @@ in rec {
           Type.new "MyType" {
             fields = This: Fields.new [{ myField = String; }];
             methods = {
-              helloMyField = this: extra: "Hello, ${this.myField.value}${extra}";
+              helloMyField = this: extra: "Hello, ${this.myField.getValue {}}${extra}";
             };
           };
 
@@ -2504,14 +2537,14 @@ in rec {
               assert T ? new;
               let x = T.new rawValue;
               in {
-                name = expect.stringEq (x.Type.__do (T: T.name.value)) name;
+                name = expect.stringEq (x.Type.__do (T: T.name.getValue {})) name;
                 value = expect.eq
-                  (if name == "Lambda" then null else x.value)
+                  (if name == "Lambda" then null else x.getValue {})
                   (if name == "Lambda" then null else rawValue);
                 newIsBuiltin =
                   expect.False (builtinValueCheck x);
                 rawIsBuiltin =
-                  expect.True (builtinValueCheck x.value);
+                  expect.True (builtinValueCheck (x.getValue {}));
               };
           in {
             Null = mkBuiltinTest Null "Null" null;
@@ -2622,7 +2655,7 @@ in rec {
               let x = A.new 1 2 3 4;
               in
                 expect.eq
-                  [x.a x.b.value x.c.value x.d.value]
+                  [x.a (x.b.getValue {}) (x.c.getValue {}) (x.d.getValue {})]
                   [1 2 3 4];
             wrongType = {
               a = expect.error (A.new "1" 2 3 4);
@@ -2634,14 +2667,14 @@ in rec {
 
           castInMk = with TestTypes U; {
             MyString = {
-              mkFromstring = expect.eq (MyString.mk { value = "hello"; }).value.value "hello";
-              newFromstring = expect.eq (MyString.new "hello").value.value "hello";
+              mkFromstring = expect.eq (MyString.mk { value = "hello"; }).__value.value "hello";
+              newFromstring = expect.eq (MyString.new "hello").__value.value "hello";
               eqString = expect.valueEq (MyString.new "hello").value (String.new "hello");
             };
 
             WrapString = {
-              mkFromstring = expect.eq (WrapString.mk { value = "hello"; }).value "hello";
-              newFromstring = expect.eq (WrapString.new "hello").value "hello";
+              mkFromstring = expect.eq ((WrapString.mk { value = "hello"; }).getValue {}) "hello";
+              newFromstring = expect.eq ((WrapString.new "hello").getValue {}) "hello";
               eqString = expect.valueEq (WrapString.new "hello") (String.new "hello");
             };
 
@@ -2652,7 +2685,9 @@ in rec {
                       intField = 123;
                       defaultIntField = 7;
                     };
-                in [this.stringField.value this.intField.value this.defaultIntField.value];
+                in [(this.stringField.getValue {})
+                    (this.intField.getValue {})
+                    (this.defaultIntField.getValue {})];
               expected = ["hi" 123 7];
             };
 
@@ -2670,7 +2705,7 @@ in rec {
                       intField = 123;
                       stringField = "hi";
                     };
-                in this.defaultIntField.value;
+                in this.defaultIntField.getValue {};
               expected = 666;
             };
 
@@ -2774,9 +2809,9 @@ in rec {
           MyType_modify = {
             expr =
               let this = MyType.new (String.new "Hello");
-              in (this.modify.myField (x: String.new "${x.value}, World!"));
+              in (this.modify.myField (x: String.new "${x.getValue {}}, World!"));
             expected = MyType.new (String.new "Hello, World!");
-            compare = this: this.myField.value;
+            compare = this: this.myField.getValue {};
           };
         };
 
@@ -2857,7 +2892,7 @@ in rec {
               } inheritanceTests);
 
           instantiation =
-            #solo
+            solo
               (testInUniverses {
                 inherit
                   U_0
