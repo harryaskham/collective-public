@@ -109,11 +109,6 @@ in rec {
           cond = x ? __Type;
           msg = "checkTyped: x has no __Type field";
         }
-        {
-          name = "isTypeThunk x.__Type";
-          cond = isTypeThunk x.__Type;
-          msg = "checkTyped: x.__Type is not a TypeThunk";
-        }
       ];
       return true;
 
@@ -282,11 +277,16 @@ in rec {
       lib.isString x
       || (isType SU.String x && lib.isString (getValueOrNull x));
 
+    hasToString = x:
+      x ? __toString || x ? outPath || elem (lib.typeOf x) [
+        "string" "path" "list" "int" "float" "bool" "null"
+      ];
+
     # As toString, but for builtin types, wrap as corresponding builtin first.
     # This means e.g. str true == "true" not "1", and str (a: 123) == "<lambda>" not an error.
     str = x_:
-      let x = if isTyped x then x else Builtin.From x; in
-      builtins.toString x;
+      let x = if isTyped x then x else Builtin.From x;
+      in builtins.toString x;
 
     # As str, but do not fail-hard under evaluation error.
     # These failures should not occur but helps with debugging the conversion
