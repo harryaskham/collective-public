@@ -26,9 +26,10 @@ in {
       hhdPython = pkgs.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ] );
       handheld-daemon-with-adjustor = pkgs.handheld-daemon.overrideAttrs (attrs: {
         nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ hhdPython.pkgs.wrapPython ];
-        propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ (with pkgs.python3Packages; [
-          handheld-daemon-adjustor
-        ]) ++ (with pkgs [busybox]);
+        propagatedBuildInputs =
+          (attrs.propagatedBuildInputs or [])
+          ++ (with pkgs.python3Packages; [handheld-daemon-adjustor])
+          ++ (with pkgs; [busybox]);
       });
       postFixup = ''
         wrapProgram "$out/bin/hhd" \

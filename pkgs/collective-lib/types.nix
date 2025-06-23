@@ -80,13 +80,8 @@ let
 in rec {
   # Nix library overrides to take Types into account.
   typelib = SU: U: rec {
-    getValue = x:
-      if x ? getValue then x.getValue {} else throw (indent.block ''
-        Attempted getValue on non-Builtin instance:
-          ${indent.here (log.print x)}
-        '');
-    getValueOr = def: x: errors.try (getValue x) (_: def);
-    getValueOrNull = getValueOr null;
+
+    ### type utilities
 
     # Check if a given argument is a Type in the Type system.
     # 'isType' collides with lib.isType.
@@ -143,23 +138,6 @@ in rec {
       (lib.isString T && lib.isString U && T == U)
       || (isTypeSet T && isTypeSet U && T.__TypeId {} == U.__TypeId {});
 
-    # Set up builtin support.
-    BuiltinNames = [ "Null" "Int" "Float" "String" "Path" "Bool" "List" "Set" "Lambda" ];
-    BuiltinNameTobuiltinName = mergeAttrsList (map (BName: { ${BName} = toLower BName; }) BuiltinNames);
-    builtinNameToBuiltinName = swap BuiltinNameTobuiltinName;
-    builtinNames = attrNames builtinNameToBuiltinName;
-    # Whether or not name is one of the lowercase builtin type names.
-    isbuiltinName = name: isString name && (builtinNameToBuiltinName ? ${str name});
-    isBuiltinName = name: isString name && (BuiltinNameTobuiltinName ? ${str name});
-
-    # Whether or not x is a lowercase builtin type
-    # Using typelib.typeOf to avoid set.__Type confusion.
-    isbuiltinValue = x: isbuiltinName (typeIdOf x);
-
-    # Whether or not x is a lowercase builtin type
-    # Using typelib.typeOf to avoid set.__Type confusion.
-    isBuiltinValue = x: isbuiltinName (typeIdOf x);
-
     # Override isType s.t. it operates per the module system as (isType "string" {_type = "string"})
     # but also as (isType String (Type.new "String" {...}))
     isType = T: x:
@@ -174,6 +152,8 @@ in rec {
 
     # Override typeOf s.t. on a raw builtin it operates normally, but on a typed value,
     # returns the resolved type.
+    # typeOf true == "bool"
+    # typeOf (Bool.new true) == Bool
     typeOf = x:
       if x ? __Type
         then resolve x.__Type
@@ -181,9 +161,12 @@ in rec {
 
     # Get the type as a string ID. For builtins, operates as typeOf, and for others returns
     # the string form e.g. "Union<[Int Float]>"
-    typeIdOf = x:
-      let T = typeOf x;
-      in toString (typeOf x);
+    # typeIdOf true == "bool"
+    # typeIdOf (Bool.new true) == "Bool"
+    typeIdOf = dispatchOn (x: typeOf (typeOf x)) {
+      string = typeOf;
+      Type = x: (typeOf x).__TypeId {};
+    };
 
     # Get the type name as a string ID. For builtins, operates as typeOf, and for others returns
     # a raw string.
@@ -191,73 +174,6 @@ in rec {
       let T = typeOf x;
       in if lib.isString T then T
          else toString T.name;
-
-    # Dispatch on __TypeId
-    # Matches full bound name string
-    dispatchTypeId = dispatchOn typeIdOf;
-
-    # Dispatch on type name
-    # Matches only the type name, not its bindings
-    # i.e. can match any Union, not just Union<[Int Float]>
-    dispatchTypeName = dispatchOn typeNameOf;
-
-    # null
-    isNull = x:
-      builtins.isNull x
-      || (isType SU.Null x && lib.isNull (getValueOr {} x)); # Can't check against null here, use {} instead.
-
-    # bool
-    isBool = x:
-      lib.isBool x
-      || (isType SU.Bool x && lib.isBool (getValueOrNull x));
-    boolToString = x: dispatchTypeName {
-      bool = lib.boolToString;
-      Bool = x: lib.boolToString (x.getValue {});
-    };
-
-    # int
-    isInt = x:
-      lib.isInt x
-      || (isType SU.Int x && lib.isInt (getValueOrNull x));
-
-    # float
-    isFloat = x:
-      lib.isFloat x
-      || (isType SU.Float x && lib.isFloat (getValueOrNull x));
-
-    # string
-    isString = x:
-      lib.isString x
-      || (isType SU.String x && lib.isString (getValueOrNull x));
-    str = x: if typeOf x == "string" then x
-      else if isType SU.String x then (x.getValue {})
-      else throw (indent.block ''
-          Cannot convert to string:
-            ${log.print x}
-        '');
-    maybeStr = x: errors.try (str x) (_: x);
-
-    # path
-    isPath = x:
-      lib.isPath x
-      || (isType SU.Path x && lib.isPath (getValueOrNull x));
-
-    # list
-    isList = x:
-      lib.isList x
-      || (isType SU.List x && lib.isList (getValueOrNull x));
-
-    # attrs
-    # Special case - only defer to lib.isAttrs if this is not a Typed value.
-    # Use lib.isAttrs if agnosticism to is required.
-    isAttrs = x:
-      (!(isTyped x) && lib.isAttrs x)
-      || (isType SU.Attrs x && lib.isAttrs (getValueOrNull x));
-
-    # function
-    isFunction = x:
-      lib.isFunction x
-      || (isType SU.Function x && lib.isFunction (getValueOrNull x));
 
     # Get the name of a value's type whether builtin or Type.
     getTypeName = x:
@@ -279,6 +195,129 @@ in rec {
           ${indent.here (log.print (resolve x.__Type))}
         '')) {})
       else typeOf x;
+
+
+    ### dispatch
+
+    # Dispatch on __TypeId
+    # Matches full bound name string
+    dispatchTypeId = dispatchOn typeIdOf;
+
+    # Dispatch on type name
+    # Matches only the type name, not its bindings
+    # i.e. can match any Union, not just Union<[Int Float]>
+    dispatchTypeName = dispatchOn typeNameOf;
+
+    ### builtin / Builtin
+
+    # List of all Builtin names i.e. [ "Null" ... ]
+    BuiltinNames = [ "Null" "Int" "Float" "String" "Path" "Bool" "List" "Set" "Lambda" ];
+
+    # Mapping i.e. Null to null
+    BuiltinNameTobuiltinName = mergeAttrsList (map (BName: { ${BName} = toLower BName; }) BuiltinNames);
+
+    # Mapping i.e. null to Null
+    builtinNameToBuiltinName = swap BuiltinNameTobuiltinName;
+
+    # List of all builtin names i.e. [ "null" ... ]
+    builtinNames = attrNames builtinNameToBuiltinName;
+
+    # Whether or not name is one of the lowercase builtin type names i.e. "string"
+    isbuiltinName = name: isString name && (builtinNameToBuiltinName ? ${str name});
+
+    # Whether or not name is one of the uppercase Builtin type names i.e. "String"
+    isBuiltinName = name: isString name && (BuiltinNameTobuiltinName ? ${str name});
+
+    # Whether or not x is a lowercase builtin type
+    # Using typelib.typeOf to avoid set.__Type confusion.
+    isbuiltinValue = x: isbuiltinName (typeIdOf x);
+
+    # Whether or not x is a lowercase builtin type
+    # Using typelib.typeOf to avoid set.__Type confusion.
+    isBuiltinValue = x: isbuiltinName (typeIdOf x);
+
+    ### getValue
+
+    getValue = x:
+      if x ? getValue then x.getValue {} else throw (indent.block ''
+        Attempted getValue on non-Builtin instance:
+          ${indent.here (log.print x)}
+        '');
+    getValueOr = def: x: errors.try (getValue x) (_: def);
+    getValueOrNull = getValueOr null;
+
+    ### null
+
+    isNull = x:
+      builtins.isNull x
+      || (isType SU.Null x && lib.isNull (getValueOr {} x)); # Can't check against null here, use {} instead.
+
+    ### bool
+
+    isBool = x:
+      lib.isBool x
+      || (isType SU.Bool x && lib.isBool (getValueOrNull x));
+
+    boolToString = x: dispatchTypeName {
+      bool = lib.boolToString;
+      Bool = x: lib.boolToString (x.getValue {});
+    };
+
+    ### int
+
+    isInt = x:
+      lib.isInt x
+      || (isType SU.Int x && lib.isInt (getValueOrNull x));
+
+    ### float
+
+    isFloat = x:
+      lib.isFloat x
+      || (isType SU.Float x && lib.isFloat (getValueOrNull x));
+
+    ### string
+
+    isString = x:
+      lib.isString x
+      || (isType SU.String x && lib.isString (getValueOrNull x));
+
+    # As toString, but for builtin types, wrap as corresponding builtin first.
+    # This means e.g. str true == "true" not "1", and str (a: 123) == "<lambda>" not an error.
+    str = x_:
+      let x = if isTyped x then x else Builtin.From x; in
+      builtins.toString x;
+    };
+
+    # As str, but do not fail-hard under evaluation error.
+    # These failures should not occur but helps with debugging the conversion
+    # of expressions that themselves contain failures.
+    maybeStr = x: errors.try (str x) (_: x);
+
+    ### path
+
+    isPath = x:
+      lib.isPath x
+      || (isType SU.Path x && lib.isPath (getValueOrNull x));
+
+    ### list
+
+    isList = x:
+      lib.isList x
+      || (isType SU.List x && lib.isList (getValueOrNull x));
+
+    ### attrs
+
+    # Special case - only defer to lib.isAttrs if this is not a Typed value.
+    # Use lib.isAttrs if agnosticism to is required.
+    isAttrs = x:
+      (!(isTyped x) && lib.isAttrs x)
+      || (isType SU.Attrs x && lib.isAttrs (getValueOrNull x));
+
+    ### function
+
+    isFunction = x:
+      lib.isFunction x
+      || (isType SU.Function x && lib.isFunction (getValueOrNull x));
 
   };
 
@@ -1271,13 +1310,25 @@ in rec {
           withGetValue = methods: methods // {
             getValue = this: _: this.__value.value;
           };
-          hasToString = { String = true; }.${name} or false;
+
+          toStringF = {
+            String = self: self.value;
+            Int = self: toString self.value;
+            Float = self: toString self.value;
+            Path = self: toString self.value;
+            Lambda = self: "<lambda>";
+            Bool = self: boolToString self.value;
+            Set = self: log.vprintD 1 self.value;
+            List = self: log.vprintD 2 self.value;
+            Null = self: "";
+          }.${name};
           withToString = methods:
-            if hasToString
-            then methods // {
-              __toString = this: self: indent.block ''${name}:"${indent.here (toString (self.getValue {}))}"'';
-            }
-            else methods;
+            methods // {
+              __toString = this: self:
+                with (log.v 2).methodCall this "__toString" { inherit self; } ___;
+                return (toStringF self);
+            };
+
           hasSize = { String = true; Path = true; List = true; Set = true; }.${name} or false;
           withSize = methods:
             if hasSize
