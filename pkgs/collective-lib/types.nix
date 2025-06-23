@@ -2183,6 +2183,7 @@ in rec {
           };
         };
         Any = mkTypeShim "Any" {};
+        Union = Ts: mkTypeShim "Union" {};
         OrderedItem = T: mkTypeShim "OrderedItem" {
           new = x: mkInstanceShim (OrderedItem T) (rec {
             value = (Sized 1 (SetOf T)).new x;
