@@ -219,10 +219,10 @@ in rec {
     builtinNames = attrNames builtinNameToBuiltinName;
 
     # Whether or not name is one of the lowercase builtin type names i.e. "string"
-    isbuiltinName = name: isString name && (builtinNameToBuiltinName ? ${str name});
+    isbuiltinName = name: isString name && (builtinNameToBuiltinName ? ${name});
 
     # Whether or not name is one of the uppercase Builtin type names i.e. "String"
-    isBuiltinName = name: isString name && (BuiltinNameTobuiltinName ? ${str name});
+    isBuiltinName = name: isString name && (BuiltinNameTobuiltinName ? ${name});
 
     # Whether or not x is a lowercase builtin type
     # Using typelib.typeOf to avoid set.__Type confusion.
