@@ -328,7 +328,8 @@ in rec {
 
     isFunction = x:
       lib.isFunction x
-      || (isType SU.Function x && lib.isFunction (getValueOrNull x));
+      || (isType SU.Lambda x && lib.isFunction (getValueOrNull x));
+    isLambda = isFunction;
 
   };
 
