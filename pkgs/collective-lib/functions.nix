@@ -222,6 +222,7 @@ in rec {
             else f nextState;
 
       in f spec.initialState;
+    mkThen = f: spec: Variadic.compose f (mk spec);
 
     # Build a variadic function that merges its attrset arguments.
     set_ = isTerminal: {

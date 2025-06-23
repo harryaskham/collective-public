@@ -54,6 +54,8 @@ rec {
               go (tail cs);
     in go cs;
 
+  checksBool = cs: tryBool (checks cs);
+
   # Take a list of [{pred = x: bool, msg = string}] and return the first errors for false preds on x.
   checkPredMsgs = x: predMsgs:
     let go = predMsgs:
