@@ -1323,23 +1323,29 @@ in rec {
             getValue = this: _: this.__value.value;
           };
 
-          toStringF = {
-            String = self: self.value;
-            Int = self: toString self.value;
-            Float = self: toString self.value;
-            Path = self: toString self.value;
-            Lambda = self: "<lambda>";
-            Bool = self: boolToString self.value;
-            Set = self: log.vprintD 1 self.value;
-            List = self: log.vprintD 2 self.value;
-            Null = self: "";
-          }.${name};
           withToString = methods:
-            methods // {
-              __toString = this: self:
-                with (log.v 2).methodCall this "__toString" { inherit self; } ___;
-                return (toStringF self);
-            };
+            let
+              toStringF = {
+                String = self: self.value;
+                Int = self: toString self.value;
+                Float = self: toString self.value;
+                Path = self: toString self.value;
+                Lambda = self: "<lambda>";
+                Bool = self: boolToString self.value;
+                Set = self: log.vprintD 1 self.value;
+                List = self: log.vprintD 2 self.value;
+                Null = self: "";
+              }.${name};
+            in
+              methods // {
+                __toString = this: self:
+                  with (log.v 2).methodCall
+                    (removeAttrs this ["__toString"])
+                    "__toString"
+                    { self = removeAttrs self ["__toString"]; }
+                    ___;
+                  return (toStringF self);
+              };
 
           hasSize = { String = true; Path = true; List = true; Set = true; }.${name} or false;
           withSize = methods:
