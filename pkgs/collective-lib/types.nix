@@ -214,7 +214,8 @@ in rec {
     BuiltinNames = [ "Null" "Int" "Float" "String" "Path" "Bool" "List" "Set" "Lambda" ];
 
     # Mapping i.e. Null to null
-    BuiltinNameTobuiltinName = mergeAttrsList (map (BName: { ${BName} = toLower BName; }) BuiltinNames);
+    BuiltinNameTobuiltinName =
+      mergeAttrsList (map (BName: { ${BName} = toLower BName; }) BuiltinNames);
 
     # Mapping i.e. null to Null
     builtinNameToBuiltinName = swap BuiltinNameTobuiltinName;
@@ -286,7 +287,6 @@ in rec {
     str = x_:
       let x = if isTyped x then x else Builtin.From x; in
       builtins.toString x;
-    };
 
     # As str, but do not fail-hard under evaluation error.
     # These failures should not occur but helps with debugging the conversion
