@@ -60,29 +60,39 @@ in rec {
         tryResolve = resolvedX: errors.try resolvedX propagateResolutionError;
     in
       if (x ? __resolve) then
-        tryResolve (x.__resolve {})
+        tryResolve (x.__resolve x)
       else if isFunction x then
         tryResolve (x (throw ''Resolved lambda-thunk made use of its thunk-argument.''))
-      else if isThunk x then
+      else if isThunkSet x then
         tryResolve (x.__get {})
       else throw ''resolve: Invalid argument type: ${typeOf x}: ${log.print x}'';
 
-  resolvesTo = to: x: isThunk x && resolve x == to;
+  # True iff x is a thunk that resolves to x via regular equality.
+  resolvesTo = th: to: resolvable th && resolve th == to;
+
+  # True iff x resolves to a value where f value == true
+  resolvesWith = f: th:
+    let f_th = thunkDo th f;
+    in
+      assert assertMsg (isBool f_th) (indent.block ''
+        resolvesToWith: f provided did not return a bool:
+          to = ${indent.here (log.print to)}
+          th = ${indent.here (log.print th)}
+          f = ${indent.here (log.print f)}
+          thunkDo th f (expected bool) = ${indent.here (log.print f_th)}
+      '');
+      resolvable th && f_th;
 
   # Thunkify x if it is not already a thunk.
-  maybeThunk = x: if isThunk x then x else Thunk;
+  maybeThunk = x: if isThunkSet x then x else Thunk;
 
   # Resolve a thunk if x is one, otherwise return x.
   maybeResolve = x: try (resolve x) (_: x);
 
-  # A thunk-like value is either a thunk or a function.
-  isThunkLike = x:
-    isFunction x || isThunk x;
-
   # Resolve x until it is no longer a thunk.
   resolveDeep = x:
     try (
-      if isThunkLike x
+      if resolvable x
       then let x_ = strict (try (resolve x) (_: throw ''resolveDeep: failed to resolve''));
            in resolveDeep x_
       else x
@@ -93,46 +103,58 @@ in rec {
     let
       # Make a new TT with the given depth and Type T.
       mkThunk = x: rec {
-          # Marker for identifying TTs, since they live outside the type system.
-        __isThunk = true;
+        # Marker for identifying TTs, since they live outside the type system.
+        __isThunkSet = true;
+
+        # Store x as a lambda thunk for returning by __resolve.
+        # To change the value of the thunk, one can just re-bind __x.
+        __x = _: x;
+
+        # Get the resolved Type. Must be a regular thunk itself to avoid recursion.
+        # This is picked up by 'resolve (mkThunk x)' to give x
+        __resolve = self: self.__x {};
 
         # Display thunks
-        __show = self:
+        __toString = self:
           let arrow = if (self ? __ThunkName) then ">-[${self.__ThunkName}]->" else ">->";
-          in self.__do (x: indent.lines (
+          in thunkDo self (x: indent.lines (
             ["${self.__ThunkType} ${arrow} ${self.__showValue self}"]
             ++ (let extra = self.__showExtra self;
                     extraStr = log.show extra;
                 in optionals (extra != null && size extraStr != 0) ["  ${extraStr}"])));
+        __show = __toString;
 
-        # Override in other thunk types to a showable
+        # Override in other thunk types to affect showa showable
         __ThunkType = "Thunk";
-        __showValue = self: self.__do Types.getTypeNameSafe;
+        __showValue = self: thunkDo self Types.TS.typelib.typeIdOf;
         __showExtra = self: "";
-        __toString = __show;
-
-        # Before resolving the type.
-        __x = thunk x;
-
-        # Run a function over the resolved Type.
-        __do = f: f (resolve __x);
-
-        # Get the resolved Type. Must be a regular thunk itself to avoid recursion.
-        __get = __x;
-
-        # Run a function over the resolved Type, retaining structure.
-        __fmap = f: Thunk (__do f);
       };
     in
       mkThunk x;
 
-  isThunk = x: isAttrs x && (x.__isThunk or false);
+  # True iff the value is a Thunk set
+  isThunkSet = x: isAttrs x && (x.__isThunkSet or false);
+
+  # True iff the value is a resolvable
+  resolvable = x: isFunction x || x ? __resolve;
+
+  # Run a function over the resolved Type, returning its unthunked value.
+  thunkDo = th: f: f (resolve th);
+
+  # Run a function over the resolved Type, retaining the thunk structure around the value.
+  thunkFmap = th: f:
+    if isThunkSet th then th // {__x = _: thunkDo f th;}
+    else if isFunction th then _: thunkDo f th
+    else throw (indent.block ''
+      thunkFmap: Invalid type of thunk (not resolvable):
+        ${indent.here (log.print th)}
+      '');
 
   setThunkName = name: x:
-    assert isThunk x;
+    assert isThunkSet x;
     x // { __ThunkName = name; };
   NamedThunk = name: x: setThunkName name (Thunk x) // { __isNamedThunk = true; };
-  isNamedThunk = x: isThunk x && (x.__isNamedThunk or false);
+  isNamedThunk = x: isThunkSet x && (x.__isNamedThunk or false);
 
 
   # Compose two functions left-to-right and merge their outputs.
@@ -503,9 +525,9 @@ in rec {
               };
           };
           Thunk = {
-            isThunkLambda = expect.eq (isThunk (_: 123)) false;
-            isThunkSet = expect.eq (isThunk {}) false;
-            isThunkThunk = expect.eq (isThunk (Thunk 123)) true;
+            isThunkLambda = expect.eq (isThunkSet (_: 123)) false;
+            isThunkSet = expect.eq (isThunkSet {}) false;
+            isThunkThunk = expect.eq (isThunkSet (Thunk 123)) true;
             mk = expect.eq (resolve (Thunk 123)) 123;
             mk2 = expect.eq (resolve (resolve (Thunk (Thunk 123)))) 123;
             mk5 = expect.eq

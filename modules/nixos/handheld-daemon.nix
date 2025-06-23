@@ -28,15 +28,13 @@ in {
         nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ hhdPython.pkgs.wrapPython ];
         propagatedBuildInputs = (attrs.propagatedBuildInputs or []) ++ (with pkgs.python3Packages; [
           handheld-daemon-adjustor
-        ]) ++ (with pkgs [
-          busybox
-        ]);
-        postFixup = ''
-          wrapProgram "$out/bin/hhd" \
-            --prefix PYTHONPATH : "$PYTHONPATH" \
-            --prefix PATH : "${hhdPython}/bin"
-        '';
+        ]) ++ (with pkgs [busybox]);
       });
+      postFixup = ''
+        wrapProgram "$out/bin/hhd" \
+          --prefix PYTHONPATH : "$PYTHONPATH" \
+          --prefix PATH : "${hhdPython}/bin"
+      '';
     in rec {
       services.handheld-daemon.package = handheld-daemon-with-adjustor;
       # Adjustor assumes it can talk PPD protocol over dbus

@@ -229,7 +229,9 @@ with functions;
 with types;
 with Types;
 with Universe.U_0;
-Ctor
+#builtinNameToBuiltinName
+# isType String "wat"
+isTypeLike TypeThunk
 </nix>
 
 
