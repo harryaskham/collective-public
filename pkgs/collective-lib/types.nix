@@ -293,6 +293,11 @@ in rec {
         "string" "path" "list" "int" "float" "bool" "null"
       ];
 
+    withoutToString = x:
+      removeAttrs x [
+        "__toString" "outPath"
+      ];
+
     # As toString, but for builtin types, wrap as corresponding builtin first.
     # This means e.g. str true == "true" not "1", and str (a: 123) == "<lambda>" not an error.
     str = x_:
@@ -1340,9 +1345,9 @@ in rec {
               methods // {
                 __toString = this: self:
                   with (log.v 2).methodCall
-                    (removeAttrs this ["__toString"])
+                    (withoutToString this)
                     "__toString"
-                    { self = removeAttrs self ["__toString"]; }
+                    { self = withoutToString self; }
                     ___;
                   return (toStringF self);
               };
