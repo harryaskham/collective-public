@@ -23,7 +23,7 @@ rec {
       Expected: ${joinSep ", " (attrNames dict)}
     '';
     in dispatchDefOn getType defaultF dict x;
-  dispatch = dispatchOn typeOf;
+  dispatch = dispatchOn lib.typeOf;
 
   # Make a polymorphic function from the given type-to-value attrs
   # Gets the type of the argument via a function f e.g.
