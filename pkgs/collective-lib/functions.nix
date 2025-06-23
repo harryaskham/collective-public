@@ -143,8 +143,8 @@ in rec {
 
   # Run a function over the resolved Type, retaining the thunk structure around the value.
   thunkFmap = th: f:
-    if isThunkSet th then th // {__x = _: thunkDo f th;}
-    else if isFunction th then _: thunkDo f th
+    if isThunkSet th then th // {__x = _: thunkDo th f;}
+    else if isFunction th then _: thunkDo th f
     else throw (indent.block ''
       thunkFmap: Invalid type of thunk (not resolvable):
         ${indent.here (log.print th)}
@@ -548,8 +548,8 @@ in rec {
                 (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
               )
               "Thunk >-> set";
-            do = expect.eq ((Thunk 123).__do (x: x+1)) 124;
-            fmap = expect.eq (resolve ((Thunk 123).__fmap (x: x+1))) 124;
+            do = expect.eq (thunkDo (Thunk 123) (x: x+1)) 124;
+            fmap = expect.eq (resolve (thunkFmap (Thunk 123) (x: x+1))) 124;
           };
 
           fjoin = {

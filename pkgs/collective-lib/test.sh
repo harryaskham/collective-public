@@ -1,3 +1,4 @@
+# (load-file "test.el")
 function main() {
   NIX_FLAGS=
   REPL_FLAGS=
