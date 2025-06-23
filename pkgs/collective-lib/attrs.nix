@@ -219,7 +219,7 @@ in rec {
         >> attrs: ${indent.here (log.show (self.__attrNames {}))}
       '';
     };
-  isLazyAttrs = x: isThunk x && (x.__isLazyAttrs or false);
+  isLazyAttrs = x: isThunkSet x && (x.__isLazyAttrs or false);
   LazyAttrs = LazyAttrs_ (NamedThunk "LazyAttrs");
   maybeLazyAttrs = x: if isLazyAttrs x then x else LazyAttrs x;
   maybeNamedLazyAttrs = name: x: if isLazyAttrs x then setThunkName name x else NamedLazyAttrs name x;

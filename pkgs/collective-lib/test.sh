@@ -106,7 +106,7 @@ map (U: with U;
   b = (Fields.new [{a = null;}]);
 }.b
 ) [
-U_2
+U_0
 ]
 </nix>
 
@@ -229,7 +229,9 @@ with functions;
 with types;
 with Types;
 with Universe.U_0;
-Type.fields Type
+#builtinNameToBuiltinName
+# isType String "wat"
+isTypeLike TypeThunk
 </nix>
 
 
