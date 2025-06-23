@@ -133,17 +133,28 @@ in rec {
       (lib.isString T && lib.isString U && T == U)
       || (isTypeSet T && isTypeSet U && T.__TypeId {} == U.__TypeId {});
 
-    # Override isType s.t. it operates per the module system as (isType "string" {_type = "string"})
-    # but also as (isType String (Type.new "String" {...}))
+    # Override isType s.t. it operates per the module system as:
+    # isType "string" {_type = "string"} == true
+    #
+    # but also as:
+    # isType "string" "my string" == true
+    #
+    # and as:
+    # isType String (String.new "my string") == true
+    #
+    # Where:
+    # isType "set" (String.new "my string") == false
+    # so that a typed value cannot be treated as a raw set.
     isType = T: x:
-      lib.isType T x
-      || (assert assertMsg (isTypeLike T) (indent.block ''
-            isType: Invalid T provided:
+      assert assertMsg (isTypeLike T) (indent.block ''
+        isType: Invalid T provided (expected builtin type string or Type):
 
-              T = ${indent.here (log.print T)}
-                = ${indent.here (log.vprintD 5 T)}
-            '');
-          isTyped x && typeEq T (resolve x.__Type));
+          T = ${indent.here (log.print T)}
+            = ${indent.here (log.vprintD 5 T)}
+        '');
+      # Check x for _type
+      lib.isType T x
+      || typeEq T (typeOf x);
 
     # Override typeOf s.t. on a raw builtin it operates normally, but on a typed value,
     # returns the resolved type.
