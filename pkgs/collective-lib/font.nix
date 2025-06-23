@@ -1,7 +1,7 @@
 { pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, cutils ? import ./. { inherit lib; }, ... }:
 
 with lib;
-with clib;
+with cutils.clib;
 
 # Nicer whole-system font configuration
 rec {

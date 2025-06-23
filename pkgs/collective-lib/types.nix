@@ -113,13 +113,16 @@ in rec {
     # All builtins are attrs. The short-circuit stops recursive inspection of Type.
     BuiltinValueCheck = x: x ? Type && BuiltinNameCheck (x.Type.__do (T: T.getName {}));
 
-    str = x: if typeOf x == "string" then x
-      else if isTyped x && ((resolve x.Type).getName {}) == "String" then x.value
-      else throw (indent.block ''
-          Cannot convert to string:
-            ${log.print x}
-        '');
+    # As toString, but for builtin types, wrap as corresponding builtin first.
+    # This means e.g. str true == "true" not "1", and str (a: 123) == "<lambda>" not an error.
+    str = x_:
+      let x = if isTyped x then x else Builtin.From x; in
+      builtins.toString x;
+    };
 
+    # As str, but do not fail-hard under evaluation error.
+    # These failures should not occur but helps with debugging the conversion
+    # of expressions that themselves contain failures.
     maybeStr = x: errors.try (str x) (_: x);
 
     # Cast between types.
@@ -1196,13 +1199,23 @@ in rec {
       Types = U: SU: name:
         let
           hasSize = { String = true; Path = true; List = true; Set = true; }.${name} or false;
-          hasToString = { String = true; }.${name} or false;
+          toStringF = {
+            String = self: self.value;
+            Int = self: toString self.value;
+            Float = self: toString self.value;
+            Path = self: toString self.value;
+            Lambda = self: "<lambda>";
+            Bool = self: boolToString self.value;
+            Set = self: log.vprintD 1 self.value;
+            List = self: log.vprintD 2 self.value;
+            Null = self: "";
+          }.${name};
           withToString = methods:
-            if hasToString
-            then methods // {
-              __toString = this: self: indent.block ''${name}:"${indent.here (toString self.value)}"'';
-            }
-            else methods;
+            methods // {
+              __toString = this: self:
+                with (log.v 2).methodCall this "__toString" { inherit self; } ___;
+                return (toStringF self);
+            };
           withSize = methods:
             if hasSize
             then let sizeFn = this: _: size this.value;
@@ -1211,7 +1224,7 @@ in rec {
         in
           U.Type.new name {
             fields = This: SU.Fields.new [{ value = toLower name; }];
-            methods = withToString (withSize ({
+            methods = withToString name (withSize ({
               List = {
                 fmap = this: f: this.modify.value (map f);
                 append = this: x: this.modify.value (xs: xs ++ [x]);
