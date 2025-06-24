@@ -178,7 +178,6 @@ let
         # log.trace.show [ 456 { a = 2; }] 123
         # -> trace: [ 456 { a = 2; }]
         # 123
-        # show = x: a: traceFn "\n\n[log.trace.show]\n${log.vprintD 6 x}\n" a;
         show = x: a: traceFn "\n\n[log.trace(${toString level}).show]\n${printFn x}\n" a;
 
         # log.trace.showId 123

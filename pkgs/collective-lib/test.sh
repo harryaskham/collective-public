@@ -104,10 +104,12 @@ with Universe;
 map (U: with U;
 {
   a = (Fields.new [{a = null;}]).update [{b = null;}];
-  b = (Fields.new [{a = null;}]);
+  b = (Fields.new [{a = Int;}]);
+  c = Fields.new {};
+  d = Type;
 }.b
 ) [
-U_0
+U_2
 ]
 </nix>
 
@@ -120,11 +122,11 @@ with types; _tests.run
 </nix>
 
 <nix>
-with log; _tests.run
+with types; _tests.debug
 </nix>
 
 <nix>
-with types; _tests.debug
+with log; _tests.run
 </nix>
 
 <nix>
@@ -136,20 +138,22 @@ with functions; _tests.run
 </nix>
 
 <nix>
-with types; with Types.Universe.U_0;
+with log;
+with types; with Types.Universe.U_2;
 let B = Int.subType "B" {}; in
-B.new 6
+toString (B.new 6)
 </nix>
 
 <nix>
-with types; with Types.Universe.U_1; Type.new "wat" {}
+with types; with Types.Universe.U_1; (Type.new "wat" {}).new {}
 </nix>
 
 <nix>
 with functions;
 with types.Types;
 with Universe;
-U_0.String.new "wat"
+with U_0;
+type (String.new ""))
 </nix>
 
 <nix>

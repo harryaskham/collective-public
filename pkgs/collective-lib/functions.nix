@@ -126,7 +126,7 @@ in rec {
 
         # Override in other thunk types to affect showa showable
         __ThunkType = "Thunk";
-        __showValue = self: thunkDo self Types.TS.typelib.typeIdOf;
+        __showValue = self: if x ? __TypeId then x.__TypeId {} else typeOf x;
         __showExtra = self: "";
       };
     in
