@@ -1,11 +1,11 @@
 # (load-file "test.el")
 function main() {
   NIX_FLAGS=
-  REPL_FLAGS=
+  REPL_FLAGS="--raw"
   TRACE_LEVEL="0"
   ENABLE_PARTIAL_TRACE="false"
   ENABLE_VERBOSE_TRACE="false"
-  PRINT="x: x"
+  PRINT="collective-lib.log.print"
   while [[ -n "$1" ]]; do
     case "$1" in
       v)
@@ -102,14 +102,19 @@ functions.enumerate [1 2 3]
 with types.Types;
 with Universe;
 map (U: with U;
-{
-  a = (Fields.new [{a = null;}]).update [{b = null;}];
+rec {
+  a = (Fields.new [{a = Int;}]).update [{b = Default Int 666;}];
   b = (Fields.new [{a = Int;}]);
   c = Fields.new {};
   d = Type;
-}.b
+  e = a.indexed {};
+  f = (OrderedOf Int).new { a = 1; b = 2; };
+  g = f.indexed {};
+  h = a.getSolos {};
+  i = a.instanceFields {};
+}.i
 ) [
-U_2
+U_0
 ]
 </nix>
 
@@ -139,9 +144,13 @@ with functions; _tests.run
 
 <nix>
 with log;
-with types; with Types.Universe.U_2;
-let B = Int.subType "B" {}; in
-toString (B.new 6)
+with attrs;
+with functions;
+with dispatch;
+with types; with Types.Universe.U_1;
+#let B = Int.subType "B" {}; in
+let B = TypeThunk; in
+(B.fields B).instanceFields {}
 </nix>
 
 <nix>
@@ -157,35 +166,53 @@ type (String.new ""))
 </nix>
 
 <nix>
+with attrs;
 with functions;
 with types.Types;
 with Universe;
-rec {
+log.vprintD 5 rec {
+  # U_0__boot = U_0.__Bootstrap;
   # U_0__args = U_0.__Bootstrap.Type__args;
-  #U_0__boot = U_0.__Bootstrap;
-  U_0__boot = U_0.__Bootstrap.Type__bootstrapped;
-  # U_0__Type =U_0.Type.get;
-  # U_0__args__fields = U_0.__Bootstrap.Type__args.fields U_0__args;
+  # U_0__argsGrounded = U_0.__Bootstrap.Type__argsGrounded;
+  # U_0__Type__bootstrapped = log.vprintD 1 U_0.__Bootstrap.Type__bootstrapped;
+  # U_0__Type__new = log.vprintD 1 U_0.__Bootstrap.Type__new;
+  # U_0__Type = log.vprintD 1 U_0.Type;
+  # U_1__boot = U_1.__Bootstrap;
   # U_1__args = U_1.__Bootstrap.Type__args;
-  # U_1__Type = U_1.__Bootstrap.Type;
-  # U_2__Type = U_2.__Bootstrap.Type;
-  # U_3__Type__args = U_3.__Bootstrap.Type__args;
-  # U_0__Type__args__fields = U_0.__Bootstrap.Type__args.fields U_0.__Bootstrap.Type__unsafe;
-  # U_1__Type__args__fields = U_1.__Bootstrap.Type__args.fields U_1.__Bootstrap.Type__unsafe;
-
-  # U_1__Type__fields = U_1.Type.fields U_1.Type;
-  # U_1__Fields = U_1.Fields;
-  # U_2__Fields = U_2.Fields.new [];
-  # U_1__Set = U_1.Set.new {};
-  # U_2__Set = U_2.Set.new {};
-  # U_1__Type__fields = U_1.Type.fields U_1.Type;
-  # U_1__Type__field = (U_1.Type.fields U_1.Type).getField "name";
-
-  # U_2__Type__args__fields = U_2.__Bootstrap.Type__args.fields U_2.__Bootstrap.Type__unsafe;
-  # U_3__Type__args__fields = U_3.__Bootstrap.Type__args.fields U_3.__Bootstrap.Type__unsafe;
-  # U_3__Type = U_3.__Bootstrap.Type;
-  # U_2__args = U_2.__Bootstrap.Type__args;
-  # U_2__Type__new = U_2.__Bootstrap.Type__new;
+  # U_1__argsGrounded = U_1.__Bootstrap.Type__argsGrounded;
+  # U_1__Type__bootstrapped = log.vprintD 3 U_1.__Bootstrap.Type__bootstrapped;
+  # U_1__Type__new = log.vprintD 3 U_1.__Bootstrap.Type__new;
+  # U_1__Type = log.vprintD 3 U_1.Type;
+  # U_1__args__fields = U_1.__Bootstrap.Type__args.fields U_1__args;
+  # U_2__boot = U_2.__Bootstrap;
+  # fs = U_0.parseFieldSpec (U_1.Default U_1.TypeThunk (U_1.TypeThunk.new U_1.Type));
+  # f0 = with U_0; Field.new "some" Int;
+  # f1 = with U_1; Field.new "some" Int;
+  # fs1 = with U_1; Fields.new {some = Int;};
+  # U_2__tlon = [
+  #   (U_2.isTypeLikeOrNull U_1.Set)
+  #   (U_2.isTypeLikeOrNull null)
+  #   (U_2.isTypeLikeOrNull (U_1.Null.new null))
+  #   (U_2.isTypeLikeOrNull U_1.Type)
+  #   (U_2.isTypeLikeOrNull U_1.TypeThunk)
+  #   #(U_2.isTypeLikeOrNull (U_1.TypeThunk.new U_1.Type))
+  #   (U_2.isTypeLikeOrNull 123)
+  #   (U_2.isTypeLikeOrNull (U_1.Int.new 123))
+  # ];
+  #U_2__args = U_2.__Bootstrap.Type__args;
+  #args__fields =
+  #  with U_2; with __Bootstrap;
+  #  let fs = Type__args.fields Type__args; in
+  #  fs.getSolos {};
+  wat_args__fields =
+    with U_2; with __Bootstrap;
+    let fs = Type__args.fields Type__args; in
+    map (x: x.getValue {}) (fs.getSolos {});
+  #U_2__args__fields = U_2.__Bootstrap.Type__argsGrounded.fields U_2.__Bootstrap.Type__argsGrounded;
+  #U_2__argsGrounded = U_2.__Bootstrap.Type__argsGrounded;
+  # U_2__Type__bootstrapped = log.vprintD 3 U_2.__Bootstrap.Type__bootstrapped;
+  # U_2__Type__new = log.vprintD 3 U_2.__Bootstrap.Type__new;
+  # U_2__Type = log.vprintD 3 U_2.Type;
 }
 </nix>
 

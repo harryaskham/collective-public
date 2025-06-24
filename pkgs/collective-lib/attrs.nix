@@ -83,6 +83,7 @@ in rec {
   checkSolos = xs:
     let
       nonSoloXs = filter (x: !isSolo x) xs;
+      nonSoloXSizes = map size nonSoloXs;
       names = soloNames xs;
       nameToCountSolos = map (name: { ${name} = count (name_: name == name_) names; }) names;
       duplicateNameCountSolos = filter (nameCount: (soloValue nameCount) > 1) nameToCountSolos;
@@ -101,8 +102,9 @@ in rec {
       '');
       assert assertMsg (nonSoloXs == []) (indent.block ''
         checkSolos: List contains non-solo items
+             xs sizes = ${indent.here (log.print nonSoloXSizes)}
+          non-solo xs = ${indent.here (log.vprint nonSoloXs)}
                    xs = ${indent.here (log.print xs)}
-          non-solo xs = ${indent.here (log.print nonSoloXs)}
       '');
       assert assertMsg (duplicateNameCountSolos == []) (indent.block ''
         checkSolos: List contains duplicate solo names

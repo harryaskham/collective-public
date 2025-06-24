@@ -48,9 +48,9 @@ in rec {
 
     String = this:
       let
-        thisStr = Types.cast "string" this;
+        thisStr = Types.TS.cast "string" this;
       in
-        if Types.isCastError thisStr then throw (indent.block ''
+        if Types.TS.isCastError thisStr then throw (indent.block ''
           Error occurred treating this as string:
             ${indent.here thisStr.castError}
         '')
@@ -129,6 +129,9 @@ in rec {
     eq = expr: expected: { inherit expr expected; };
 
     eqOn = compare: expr: expected: { inherit expr expected compare; };
+
+    eqWith = compareWith: expr: expected:
+      True (compareWith expr expected);
 
     printEq = eqOn Compare.Print;
 
@@ -266,6 +269,7 @@ in rec {
       name = testName;
 
       # A custom comparator to use to evaluate equality, or null if none provided.
+      # Evaluated as a unary function of each side.
       compare = test.compare or null;
 
       # The raw expression to evaluate as defined in the test.

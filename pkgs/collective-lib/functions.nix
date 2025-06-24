@@ -48,24 +48,26 @@ in rec {
   # Make a thunk out of a value
   thunk = x: _: x;
 
+  # Resolve a thunk.
+  resolve = x:
+    if (x ? __resolve) then
+      x.__resolve x
+    else if isFunction x then
+      x (throw ''Resolved lambda-thunk made use of its thunk-argument.'')
+    else if isThunkSet x then
+      x.__get {}
+    else throw ''resolve: Invalid argument type: ${typeOf x}: ${log.print x}'';
+
   # Resolve a thunk, throwing an error if the resolving value is used.
   # Any catchable error thrown by the thunk will be propagated with extra logging.
-  resolve = x:
+  tryResolve = x:
     let propagateResolutionError = e:
       throw (indent.block ''
         resolve: thunk resolution error:
           Thunk: ${indent.here (log.print x)}
           Error: ${indent.here (log.print e)}
         '');
-        tryResolve = resolvedX: errors.try resolvedX propagateResolutionError;
-    in
-      if (x ? __resolve) then
-        tryResolve (x.__resolve x)
-      else if isFunction x then
-        tryResolve (x (throw ''Resolved lambda-thunk made use of its thunk-argument.''))
-      else if isThunkSet x then
-        tryResolve (x.__get {})
-      else throw ''resolve: Invalid argument type: ${typeOf x}: ${log.print x}'';
+    in errors.try (resolve x) propagateResolutionError;
 
   # True iff x is a thunk that resolves to x via regular equality.
   resolvesTo = th: to: resolvable th && resolve th == to;
