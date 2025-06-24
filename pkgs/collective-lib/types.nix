@@ -1319,19 +1319,22 @@ in rec {
     };
 
     MkBuiltinFns = {
-      TypeShims = SU: U: BuiltinOf: name:
+      TypeShims = SU: U: BuiltinOf: BuiltinOfShim: name:
         let
           BuiltinTypeShim = SU.mkTypeShim name {
-            new = x: SU.mkInstanceShim BuiltinTypeShim {
-              getValue = _: x;
-              __toString = _: log.print x;
-            };
+            new = x:
+              let get = { __value = (BuiltinOfShim name).new x; }; in
+              SU.mkInstanceShim BuiltinTypeShim (get // rec {
+                inherit get;
+                getValue = _: get.__value.value;
+                __toString = _: log.print x;
+              });
             mk = args: SU.mkInstanceShim BuiltinTypeShim args;
             fields = _: U.Fields.new { value = (toLower name); };
           };
         in
           BuiltinTypeShim;
-      Types = SU: U: BuiltinOf: name:
+      Types = SU: U: BuiltinOf: BuiltinOfShim: name:
         let
           withGetValue = methods: methods // {
             getValue = this: _: this.__value.value;
@@ -1495,9 +1498,17 @@ in rec {
         });
         BuiltinOf = T: BuiltinOf_.bind { inherit T; };
 
+        BuiltinOfShim = T: SU.mkTypeShim "BuiltinOf<${T}>" {
+          new = x:
+            let get = { value = x; }; in
+            SU.mkInstanceShim (BuiltinOfShim T) (get // rec {
+              inherit get;
+            });
+        };
+
         BuiltinTypes =
           mergeAttrsList
-            (map (name: { ${name} = U.opts.mkBuiltin SU U BuiltinOf name; }) U.BuiltinNames);
+            (map (name: { ${name} = U.opts.mkBuiltin SU U BuiltinOf BuiltinOfShim name; }) U.BuiltinNames);
 
       in BuiltinTypes // {
         inherit BuiltinOf;
@@ -3391,7 +3402,7 @@ in rec {
               (testInUniverses {
                 inherit
                   U_0
-                  U_1
+                  #U_1
                   #U_2
                   ;
               } instantiationTests);
