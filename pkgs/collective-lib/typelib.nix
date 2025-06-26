@@ -3478,7 +3478,7 @@ let
         inherit Bootstrap;
         fromU_0 = 
           testInUniverses 
-            { inherit U_0 U_1 U_2; } #U_3 U_4 TS; }
+            { inherit U_0 U_1 U_2 U_3; } #U_4 TS; }
             (U: {
               peripheral = peripheralTests U;
               smoke = smokeTests U;
@@ -3492,7 +3492,7 @@ let
             });
         fromU_1 = 
           testInUniverses 
-            { inherit U_1 U_2; } #U_3 U_4 TS; }
+            { inherit U_1 U_2 U_3; } #U_4 TS; }
             (U: {
               typeChecking = typeCheckingTests U;
             });

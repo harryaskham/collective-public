@@ -39,7 +39,7 @@
    (if raw "r" "")))
 
 (defun tvix-repl-name (v trace)
-  (format "*Tvix-REPL-%s*" (verbosity-string v trace)))
+  (format "*Tvix-REPL-%s*" (verbosity-string v trace nil)))
 
 (defun shell-command-buffer ()
   (interactive)
@@ -64,7 +64,7 @@
   (interactive)
   (let ((expr (current-nix-expr)))
     (cond ((eq nix-variant 'nix) (run-nix-via-test-sh v trace raw expr))
-          ((eq nix-variant 'tvix) (run-nix-via-tvix-repl))
+          ((eq nix-variant 'tvix) (run-nix-via-tvix-repl v trace expr))
           (t (error "Unknown nix-variant: %s" nix-variant)))))
 
 (defun tvix-repl-buffer (v trace)
@@ -88,8 +88,8 @@
   "Run the Tvix REPL preamble."
   (interactive)
   (let ((trace-level (if (null v) "null" (format "%d" v)))
-        (enable-partial-trace (if (and (not (null (v))) (>= v 1)) "true" "false"))
-        (enable-verbose-trace (if (and (not (null (v))) (>= v 2)) "true" "false")))
+        (enable-partial-trace (if (and (not (null v)) (>= v 1)) "true" "false"))
+        (enable-verbose-trace (if (and (not (null v)) (>= v 2)) "true" "false")))
     (tvix-repl-eval "\
 pkgs = import <nixpkgs> {}"
                     v trace t t nil)
@@ -106,7 +106,8 @@ __ctx = _:\
         enablePartialTrace = %s;\
         enableVerboseTrace = %s;\
       };\
-    self = lib // collective-lib // {\
+    self = collective-lib.typed // {\
+      inherit lib;\
       __replPrint = %s;\
     };\
   in self"

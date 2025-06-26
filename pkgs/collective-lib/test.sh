@@ -111,6 +111,8 @@ main $@
 
 NOOP=$(cat << EOF
 (load-file "test.el")
+(setq debug-on-error t)
+(tvix-repl-run-preamble 0 nil)
 
 <nix>
 functions.enumerate [1 2 3]
@@ -142,7 +144,7 @@ rec {
 </nix>
 
 <nix>
-Type.name
+Types.Universe.U_0.Type.name
 </nix>
 
 <nix>
