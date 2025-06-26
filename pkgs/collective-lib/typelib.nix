@@ -2691,7 +2691,7 @@ let
                   {fieldSpec = SU.TypeThunk;}
                 ];
                 methods = {
-                  parsedT = this: _: SU.parseFieldSpec this.fieldSpec;
+                  parsedT = this: _: SU.parseFieldSpec (resolve this.fieldSpec);
                   fieldType = this: _: resolve (this.parsedT {}).fieldType;
                   fieldDefault = this: _: when (this.hasDefault {}) (resolve (this.parsedT {}).fieldDefault);
                   fieldStatic = this: _: (this.parsedT {}).fieldStatic;
