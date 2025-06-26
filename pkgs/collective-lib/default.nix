@@ -16,7 +16,7 @@ let
       # Merge all modules in base into a single module.
       # Includes the original base so that we have everything at top level, and can
       # still also access / override e.g. lib.strings via e.g. collective-lib.strings.
-      mergedBase = base // (concatMapAttrs (_: module: module) base);
+      mergedBase = base // (lib.concatMapAttrs (_: module: module) base);
 
       # Produce a new version of the collective-lib with 'lib' merged in.
       # Can be used as a drop-in replacement for 'lib' in modules that do not rely on the type system.
