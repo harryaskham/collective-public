@@ -13,6 +13,11 @@ let
       # Merge with another downstream collective-lib extension.
       extend = otherBase: mkCollectiveLib (lib.recursiveUpdate base otherBase);
 
+      # Merge all modules in base into a single module.
+      # Includes the original base so that we have everything at top level, and can
+      # still also access / override e.g. lib.strings via e.g. collective-lib.strings.
+      mergedBase = base // (concatMapAttrs (_: module: module) base);
+
       # Produce a new version of the collective-lib with 'lib' merged in.
       # Can be used as a drop-in replacement for 'lib' in modules that do not rely on the type system.
       # Does not include the type system and its overrides of functions like isType, isNull, etc
@@ -25,7 +30,7 @@ let
       # - lib.strings
       #
       # Does not include _tests; intended only for use as a library.
-      untyped = lib.recursiveUpdate lib base;
+      untyped = lib.recursiveUpdate lib mergedBase;
 
       # Produce a new version of the collective-lib with 'lib' merged in and the type system enabled and exposed.
       # Can be used as a drop-in replacement for 'lib' in modules that make use of the type system.
