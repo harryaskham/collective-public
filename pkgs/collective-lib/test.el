@@ -27,7 +27,7 @@
                             (replace-regexp-in-string "#.*\n" "\n"
                                                       (current-nix-block))))
 
-(defun verbosity-string (v trace)
+(defun verbosity-string (v trace raw)
   (unless v (setq v 0))
   (concat
    (cond ((= v 0) "")
@@ -35,16 +35,36 @@
          ((= v 2) "vv")
          ((= v 3) "vvv")
          (t ))
-   (if trace "t" "")))
+   (if trace "t" "")
+   (if raw "r" "")))
 
 (defun tvix-repl-name (v trace)
   (format "*Tvix-REPL-%s*" (verbosity-string v trace)))
 
-(defun run-nix (&optional v trace)
+(defun shell-command-buffer ()
+  (interactive)
+  (get-buffer shell-command-buffer-name))
+
+(defun run-nix-via-test-sh (v trace raw expr)
+  (interactive)
+  (shell-command (concat "./test.sh '" (verbosity-string v trace raw) " " expr "'"))
+  (let ((this-buffer (current-buffer)))
+    (pop-to-buffer (shell-command-buffer) nil t)
+    (goto-char (point-max))
+    (unless (search-backward "       error:" nil t)
+      (progn
+        (search-backward "__replPrint" nil t)
+        (pop-to-buffer this-buffer nil t)))))
+
+(defun run-nix-via-tvix-repl (v trace expr)
+  (interactive)
+  (tvix-repl-eval expr v trace nil nil nil))
+
+(defun run-nix (&optional v trace raw)
   (interactive)
   (let ((expr (current-nix-expr)))
-    (cond ((eq nix-variant 'nix) (shell-command (concat "./test.sh '" (verbosity-string v trace) " " expr "'")))
-          ((eq nix-variant 'tvix) (tvix-repl-eval expr v trace nil nil nil))
+    (cond ((eq nix-variant 'nix) (run-nix-via-test-sh v trace raw expr))
+          ((eq nix-variant 'tvix) (run-nix-via-tvix-repl))
           (t (error "Unknown nix-variant: %s" nix-variant)))))
 
 (defun tvix-repl-buffer (v trace)
@@ -166,13 +186,16 @@ __ctx = _:\
     )
   )
 
-(defun run-nix-0 () (interactive) (run-nix 0 nil))
-(defun run-nix-v () (interactive) (run-nix 1 nil))
-(defun run-nix-vv () (interactive) (run-nix 2 nil))
-(defun run-nix-vvv () (interactive) (run-nix 3 nil))
-(defun run-nix-vt () (interactive) (run-nix 1 t))
-(defun run-nix-vvt () (interactive) (run-nix 2 t))
-(defun run-nix-vvvt () (interactive) (run-nix 3 t))
+(defun run-nix-0 () (interactive) (run-nix 0 nil nil))
+(defun run-nix-v () (interactive) (run-nix 1 nil nil))
+(defun run-nix-vv () (interactive) (run-nix 2 nil nil))
+(defun run-nix-vvv () (interactive) (run-nix 3 nil nil))
+(defun run-nix-vt () (interactive) (run-nix 1 t nil))
+(defun run-nix-vvt () (interactive) (run-nix 2 t nil))
+(defun run-nix-vvvt () (interactive) (run-nix 3 t nil))
+(defun run-nix-vr () (interactive) (run-nix 1 t t))
+(defun run-nix-vvr () (interactive) (run-nix 2 t t))
+(defun run-nix-vvvr () (interactive) (run-nix 3 t t))
 
 (map!
  :map global-map
@@ -183,4 +206,7 @@ __ctx = _:\
  :n "SPC c v t n" #'run-nix-vt
  :n "SPC c v v t n" #'run-nix-vvt
  :n "SPC c v v v t n" #'run-nix-vvvt
+ :n "SPC c v r n" #'run-nix-vr
+ :n "SPC c v v r n" #'run-nix-vvr
+ :n "SPC c v v v r n" #'run-nix-vvvr
  )

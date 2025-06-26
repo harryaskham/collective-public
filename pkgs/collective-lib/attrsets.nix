@@ -211,6 +211,7 @@ in rec {
   # Create an attrset that must be resolved via 'resolve'
   # but that still has attrNames capability.
   LazyAttrs_ = mkThunk: xs:
+    assert assertMsg (isAttrs xs) "LazyAttrs: Not an attrset: ${log.print xs}";
     mkThunk xs
     // rec {
       __ThunkType = "LazyAttrs";
@@ -228,180 +229,180 @@ in rec {
   NamedLazyAttrs = name: LazyAttrs_ (NamedThunk name);
 
   _tests = with cutils.tests; suite {
-    attrs = {
-      flatten = {
-        sep = {
-          expr = flattenSep "-" {
-            a = {
-              b = {
-                c = 123;
-                d = {
-                  e = 456;
-                };
+    flatten = {
+      sep = {
+        expr = flattenSep "-" {
+          a = {
+            b = {
+              c = 123;
+              d = {
+                e = 456;
               };
             };
           };
-          expected = {
-            a-b-c = 123;
-            a-b-d-e = 456;
-          };
         };
-      };
-
-      solos =
-      let
-        s0 = mkSolo "abc" 123;
-        s1 = mkSolo "def" 456;
-        notSolo = { a = 1; b = 2; };
-        soloSet = { abc = 123; def = 456; };
-        soloList = [ { abc = 123; } { def = 456; } ];
-        notSoloList = [ s0 notSolo s1 ];
-      in {
-        mkSolo = expect.eq s0 { abc = 123; };
-        getSolo = {
-          s0 = expect.eq (getSolo s0) { name = "abc"; value = 123; };
-          notSolo = expect.error (getSolo notSolo);
+        expected = {
+          a-b-c = 123;
+          a-b-d-e = 456;
         };
-        soloName = {
-          s0 = expect.eq (soloName s0) "abc";
-          notSolo = expect.error (soloName notSolo);
-        };
-        soloValue = {
-          s0 = expect.eq (soloValue s0) 123;
-          notSolo = expect.error (soloValue notSolo);
-        };
-        solos = {
-          setToList = expect.eq (sortOn soloName (solos soloSet)) soloList;
-          listToList = expect.eq (solos soloList) soloList;
-          string = expect.error (solos "notSolo");
-        };
-        isSolo = {
-          s0 = expect.True (isSolo s0);
-          s1 = expect.True (isSolo s1);
-          notSolo = expect.False (isSolo notSolo);
-          emptySet = expect.False (isSolo {});
-          emptyList = expect.False (isSolo []);
-          int = expect.False (isSolo 123);
-          intList = expect.False (isSolo [123]);
-          string = expect.False (isSolo "notSolo");
-          soloList = expect.False (isSolo [s0]);
-          setOfSolos = expect.False (isSolo {inherit s0 s1;});
-        };
-        isSolos = {
-          validSolos = {
-            emptyList = expect.True (isSolos []);
-            soloList0 = expect.True (isSolos [s0]);
-            soloList1 = expect.True (isSolos [s1]);
-            soloList01 = expect.True (isSolos [s0 s1]);
-          };
-          nonList = {
-            emptySet = expect.False (isSolos {});
-            setOfSolos = expect.False (isSolos {inherit s0 s1;});
-            int = expect.False (isSolos 123);
-            string = expect.False (isSolos "notSolo");
-          };
-          nonSoloEntries = {
-            notSolo = expect.False (isSolos [notSolo]);
-            soloList0N = expect.False (isSolos [s0 notSolo]);
-            soloListN0 = expect.False (isSolos [notSolo s0]);
-            intList = expect.False (isSolos [123]);
-            soloList01I = expect.False (isSolos [s0 s1 123]);
-          };
-          duplicates = {
-            soloList00 = expect.False (isSolos [s0 s0]);
-            soloList11 = expect.False (isSolos [s1 s1]);
-            soloList101 = expect.False (isSolos [s1 s0 s1]);
-            soloList010 = expect.False (isSolos [s0 s1 s0]);
-            soloList000111 = expect.False (isSolos [s0 s0 s0 s1 s1 s1]);
-          };
-        };
-        mapSolos = {
-          setToList = expect.eq (sortOn soloName (mapSolos (_: x: x+1) soloSet)) [ {abc = 124;} {def = 457;} ];
-          listToList = expect.eq (mapSolos (_: x: x+1) soloList) [ {abc = 124;} {def = 457;} ];
-          notSoloList = expect.error (mapSolos (_: x: x+1) notSoloList);
-          withName = expect.eq (mapSolos (n: x: "${n}${toString x}") soloList) [ {abc = "abc123";} {def = "def456";} ];
-        };
-        mergeSolos = {
-          soloList = expect.eq (mergeSolos [s0 s1]) {abc = 123; def = 456;};
-          notSoloList = expect.error (mergeSolos notSoloList);
-        };
-        concatSolos = {
-          concatSolos01 = expect.eq (concatSolos [s0] [s1]) [{abc = 123;} {def = 456;}];
-          concatSolos10 = expect.eq (concatSolos [s1] [s0]) [{def = 456;} {abc = 123;}];
-          concatSolos00 = expect.eq (concatSolos [s0] [s0]) [{abc = 123;}];
-          concatSolos11 = expect.eq (concatSolos [s1] [s1]) [{def = 456;}];
-          preserveOrder = expect.eq (concatSolos [{a = 1;} {b = null;} {c = 3;}] [{b = 2;} {d = 4;}]) [{a = 1;} {b = 2;} {c = 3;} {d = 4;}];
-          concatSolos011 = expect.error (concatSolos [s0] [s1 s1]);
-          nonSoloListLHS = expect.error (concatSolos notSoloList soloList);
-          nonSoloListRHS = expect.error (concatSolos soloList notSoloList);
-          nonSoloListBoth = expect.error (concatSolos notSoloList notSoloList);
-        };
-        concatMapSolos = {
-          setToList = expect.eq (concatMapSolos (_: x: x+1) soloSet) {abc = 124; def = 457;};
-          listToList = expect.eq (concatMapSolos (_: x: x+1) soloList) {abc = 124; def = 457;};
-          notSoloList = expect.error (concatMapSolos (_: x: x+1) notSoloList);
-          withName = expect.eq (concatMapSolos (n: x: "${n}${toString x}") soloList) {abc = "abc123"; def = "def456";};
-        };
-        fmapSolos = {
-          setToSet = expect.eq (fmapSolos (_: x: x+1) soloSet) {abc = 124; def = 457;};
-          listToList = expect.eq (fmapSolos (_: x: x+1) soloList) [ {abc = 124;} {def = 457;} ];
-          notSolo = expect.eq (fmapSolos (_: x: x+1) notSolo) { a = 2; b = 3; };
-          notSoloList = expect.error (fmapSolos (_: x: x+1) notSoloList);
-        };
-        ifmapSolos = {
-          setToSet = expect.eq (ifmapSolos (i: _: x: x+(1000*(i+1))) soloSet) {abc = 1123; def = 2456;};
-          listToList = expect.eq (ifmapSolos (i: _: x: x+(1000*(i+1))) soloList) [ {abc = 1123;} {def = 2456;} ];
-          notSolo = expect.eq (ifmapSolos (i: _: x: x+(10*(i+1))) notSolo) { a = 11; b = 22; };
-          notSoloList = expect.error (ifmapSolos (_: _: x: x) notSoloList);
-          withName =
-            expect.eq
-              (ifmapSolos (i: n: x: "${toString i}, ${n}, ${toString x}") soloSet)
-              {abc = "0, abc, 123"; def = "1, def, 456";};
-        };
-        filterSolos = {
-          evens = expect.eq (filterSolos (_: v: mod v 2 == 0) soloList) [ {def = 456;} ];
-          odds = expect.eq (filterSolos (_: v: mod v 2 == 1) soloList) [ {abc = 123;} ];
-          byName = expect.eq (filterSolos (n: _: n == "abc") soloList) [ {abc = 123;} ];
-        };
-      };
-
-      index = {
-        addToList = expect.eq (indexed [ {a = 1;} {b = 2;} ]) [{ a = { index = 0; value = 1; }; } { b = { index = 1; value = 2; }; }];
-        addToSet = expect.eq (indexed {a = 1; b = 2;}) { a = {index = 0; value = 1;}; b = { index = 1; value = 2; }; };
-        unindexedList = expect.eq (unindexed (indexed [ {a = 1;} {b = 2;} ])) [ {a = 1;} {b = 2;} ];
-        unindexedSet = expect.eq (unindexed (indexed {a = 1; b = 2;})) {a = 1; b = 2;};
-        indicesList = expect.eq (indices (indexed [ {a = 1;} {b = 2;} ])) [ {a = 0;} {b = 1;} ];
-        indicesSet = expect.eq (indices (indexed {a = 1; b = 2;})) {a = 0; b = 1;};
-      };
-
-      LazyAttrs = {
-        is = {
-          LazyAttrs.empty = expect.True (isLazyAttrs (LazyAttrs {}));
-          LazyAttrs.value = expect.True (isLazyAttrs (LazyAttrs { a = 123; }));
-          LazyAttrs.throw = expect.True (isLazyAttrs (LazyAttrs { a = throw "no"; }));
-          NamedLazyAttrs.empty = expect.True (isLazyAttrs (NamedLazyAttrs "name" {}));
-          NamedLazyAttrs.value = expect.True (isLazyAttrs (NamedLazyAttrs "name" { a = 123; }));
-          NamedLazyAttrs.throw = expect.True (isLazyAttrs (NamedLazyAttrs "name" { a = throw "no"; }));
-          set = expect.False (isLazyAttrs {});
-          Thunk.int = expect.False (isLazyAttrs (Thunk 123));
-          Thunk.set = expect.False (isLazyAttrs (Thunk {}));
-          Thunk.LazyAttrs = expect.False (isLazyAttrs (Thunk (LazyAttrs {})));
-          NamedThunk.int = expect.False (isLazyAttrs (NamedThunk "name" 123));
-          NamedThunk.set = expect.False (isLazyAttrs (NamedThunk "name" {}));
-          NamedThunk.LazyAttrs = expect.False (isLazyAttrs (NamedThunk "name" (LazyAttrs {})));
-        };
-        names.empty = expect.eq ((LazyAttrs {}).__attrNames {}) [];
-        names.full.values =
-          expect.eq
-            ((LazyAttrs {a = "a"; b = 123;}).__attrNames {})
-            ["a" "b"];
-        names.full.throws =
-          expect.eq
-            ((LazyAttrs {a = throw "no"; b = 123;}).__attrNames {})
-            ["a" "b"];
-        resolves.value = expect.eq (resolve (LazyAttrs {a = 123;})) {a = 123;};
-        resolves.throw = expect.error (resolve (LazyAttrs {a = throw "no";}));
       };
     };
+
+    solos =
+    let
+      s0 = mkSolo "abc" 123;
+      s1 = mkSolo "def" 456;
+      notSolo = { a = 1; b = 2; };
+      soloSet = { abc = 123; def = 456; };
+      soloList = [ { abc = 123; } { def = 456; } ];
+      notSoloList = [ s0 notSolo s1 ];
+    in {
+      mkSolo = expect.eq s0 { abc = 123; };
+      getSolo = {
+        s0 = expect.eq (getSolo s0) { name = "abc"; value = 123; };
+        notSolo = expect.error (getSolo notSolo);
+      };
+      soloName = {
+        s0 = expect.eq (soloName s0) "abc";
+        notSolo = expect.error (soloName notSolo);
+      };
+      soloValue = {
+        s0 = expect.eq (soloValue s0) 123;
+        notSolo = expect.error (soloValue notSolo);
+      };
+      solos = {
+        singleSoloToList = expect.eq (solos {a = 1;}) [ {a = 1;} ];
+        setToList = expect.eq (sortOn soloName (solos soloSet)) soloList;
+        listToList = expect.eq (solos soloList) soloList;
+        string = expect.error (solos "notSolo");
+      };
+      isSolo = {
+        s0 = expect.True (isSolo s0);
+        s1 = expect.True (isSolo s1);
+        notSolo = expect.False (isSolo notSolo);
+        emptySet = expect.False (isSolo {});
+        emptyList = expect.False (isSolo []);
+        int = expect.False (isSolo 123);
+        intList = expect.False (isSolo [123]);
+        string = expect.False (isSolo "notSolo");
+        soloList = expect.False (isSolo [s0]);
+        setOfSolos = expect.False (isSolo {inherit s0 s1;});
+      };
+      isSolos = {
+        validSolos = {
+          emptyList = expect.True (isSolos []);
+          soloList0 = expect.True (isSolos [s0]);
+          soloList1 = expect.True (isSolos [s1]);
+          soloList01 = expect.True (isSolos [s0 s1]);
+        };
+        nonList = {
+          emptySet = expect.False (isSolos {});
+          setOfSolos = expect.False (isSolos {inherit s0 s1;});
+          int = expect.False (isSolos 123);
+          string = expect.False (isSolos "notSolo");
+        };
+        nonSoloEntries = {
+          notSolo = expect.False (isSolos [notSolo]);
+          soloList0N = expect.False (isSolos [s0 notSolo]);
+          soloListN0 = expect.False (isSolos [notSolo s0]);
+          intList = expect.False (isSolos [123]);
+          soloList01I = expect.False (isSolos [s0 s1 123]);
+        };
+        duplicates = {
+          soloList00 = expect.False (isSolos [s0 s0]);
+          soloList11 = expect.False (isSolos [s1 s1]);
+          soloList101 = expect.False (isSolos [s1 s0 s1]);
+          soloList010 = expect.False (isSolos [s0 s1 s0]);
+          soloList000111 = expect.False (isSolos [s0 s0 s0 s1 s1 s1]);
+        };
+      };
+      mapSolos = {
+        setToList = expect.eq (sortOn soloName (mapSolos (_: x: x+1) soloSet)) [ {abc = 124;} {def = 457;} ];
+        listToList = expect.eq (mapSolos (_: x: x+1) soloList) [ {abc = 124;} {def = 457;} ];
+        notSoloList = expect.error (mapSolos (_: x: x+1) notSoloList);
+        withName = expect.eq (mapSolos (n: x: "${n}${toString x}") soloList) [ {abc = "abc123";} {def = "def456";} ];
+      };
+      mergeSolos = {
+        soloList = expect.eq (mergeSolos [s0 s1]) {abc = 123; def = 456;};
+        notSoloList = expect.error (mergeSolos notSoloList);
+      };
+      concatSolos = {
+        concatSolos01 = expect.eq (concatSolos [s0] [s1]) [{abc = 123;} {def = 456;}];
+        concatSolos10 = expect.eq (concatSolos [s1] [s0]) [{def = 456;} {abc = 123;}];
+        concatSolos00 = expect.eq (concatSolos [s0] [s0]) [{abc = 123;}];
+        concatSolos11 = expect.eq (concatSolos [s1] [s1]) [{def = 456;}];
+        preserveOrder = expect.eq (concatSolos [{a = 1;} {b = null;} {c = 3;}] [{b = 2;} {d = 4;}]) [{a = 1;} {b = 2;} {c = 3;} {d = 4;}];
+        concatSolos011 = expect.error (concatSolos [s0] [s1 s1]);
+        nonSoloListLHS = expect.error (concatSolos notSoloList soloList);
+        nonSoloListRHS = expect.error (concatSolos soloList notSoloList);
+        nonSoloListBoth = expect.error (concatSolos notSoloList notSoloList);
+      };
+      concatMapSolos = {
+        setToList = expect.eq (concatMapSolos (_: x: x+1) soloSet) {abc = 124; def = 457;};
+        listToList = expect.eq (concatMapSolos (_: x: x+1) soloList) {abc = 124; def = 457;};
+        notSoloList = expect.error (concatMapSolos (_: x: x+1) notSoloList);
+        withName = expect.eq (concatMapSolos (n: x: "${n}${toString x}") soloList) {abc = "abc123"; def = "def456";};
+      };
+      fmapSolos = {
+        setToSet = expect.eq (fmapSolos (_: x: x+1) soloSet) {abc = 124; def = 457;};
+        listToList = expect.eq (fmapSolos (_: x: x+1) soloList) [ {abc = 124;} {def = 457;} ];
+        notSolo = expect.eq (fmapSolos (_: x: x+1) notSolo) { a = 2; b = 3; };
+        notSoloList = expect.error (fmapSolos (_: x: x+1) notSoloList);
+      };
+      ifmapSolos = {
+        setToSet = expect.eq (ifmapSolos (i: _: x: x+(1000*(i+1))) soloSet) {abc = 1123; def = 2456;};
+        listToList = expect.eq (ifmapSolos (i: _: x: x+(1000*(i+1))) soloList) [ {abc = 1123;} {def = 2456;} ];
+        notSolo = expect.eq (ifmapSolos (i: _: x: x+(10*(i+1))) notSolo) { a = 11; b = 22; };
+        notSoloList = expect.error (ifmapSolos (_: _: x: x) notSoloList);
+        withName =
+          expect.eq
+            (ifmapSolos (i: n: x: "${toString i}, ${n}, ${toString x}") soloSet)
+            {abc = "0, abc, 123"; def = "1, def, 456";};
+      };
+      filterSolos = {
+        evens = expect.eq (filterSolos (_: v: mod v 2 == 0) soloList) [ {def = 456;} ];
+        odds = expect.eq (filterSolos (_: v: mod v 2 == 1) soloList) [ {abc = 123;} ];
+        byName = expect.eq (filterSolos (n: _: n == "abc") soloList) [ {abc = 123;} ];
+      };
+    };
+
+    index = {
+      addToList = expect.eq (indexed [ {a = 1;} {b = 2;} ]) [{ a = { index = 0; value = 1; }; } { b = { index = 1; value = 2; }; }];
+      addToSet = expect.eq (indexed {a = 1; b = 2;}) { a = {index = 0; value = 1;}; b = { index = 1; value = 2; }; };
+      unindexedList = expect.eq (unindexed (indexed [ {a = 1;} {b = 2;} ])) [ {a = 1;} {b = 2;} ];
+      unindexedSet = expect.eq (unindexed (indexed {a = 1; b = 2;})) {a = 1; b = 2;};
+      indicesList = expect.eq (indices (indexed [ {a = 1;} {b = 2;} ])) [ {a = 0;} {b = 1;} ];
+      indicesSet = expect.eq (indices (indexed {a = 1; b = 2;})) {a = 0; b = 1;};
+    };
+
+    LazyAttrs = {
+      is = {
+        LazyAttrs.empty = expect.True (isLazyAttrs (LazyAttrs {}));
+        LazyAttrs.value = expect.True (isLazyAttrs (LazyAttrs { a = 123; }));
+        LazyAttrs.throw = expect.True (isLazyAttrs (LazyAttrs { a = throw "no"; }));
+        NamedLazyAttrs.empty = expect.True (isLazyAttrs (NamedLazyAttrs "name" {}));
+        NamedLazyAttrs.value = expect.True (isLazyAttrs (NamedLazyAttrs "name" { a = 123; }));
+        NamedLazyAttrs.throw = expect.True (isLazyAttrs (NamedLazyAttrs "name" { a = throw "no"; }));
+        set = expect.False (isLazyAttrs {});
+        Thunk.int = expect.False (isLazyAttrs (Thunk 123));
+        Thunk.set = expect.False (isLazyAttrs (Thunk {}));
+        Thunk.LazyAttrs = expect.False (isLazyAttrs (Thunk (LazyAttrs {})));
+        NamedThunk.int = expect.False (isLazyAttrs (NamedThunk "name" 123));
+        NamedThunk.set = expect.False (isLazyAttrs (NamedThunk "name" {}));
+        NamedThunk.LazyAttrs = expect.False (isLazyAttrs (NamedThunk "name" (LazyAttrs {})));
+      };
+      names.empty = expect.eq ((LazyAttrs {}).__attrNames {}) [];
+      names.full.values =
+        expect.eq
+          ((LazyAttrs {a = "a"; b = 123;}).__attrNames {})
+          ["a" "b"];
+      names.full.throws =
+        expect.eq
+          ((LazyAttrs {a = throw "no"; b = 123;}).__attrNames {})
+          ["a" "b"];
+      resolves.value = expect.eq (resolve (LazyAttrs {a = 123;})) {a = 123;};
+      resolves.throw = expect.error (resolve (LazyAttrs {a = throw "no";}));
+    };
   };
+
 }

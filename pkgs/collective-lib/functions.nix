@@ -11,7 +11,6 @@ with cutils.tests;
 let
   log = cutils.log;
   errors = cutils.errors;
-  Types = cutils.types.Types;
 in rec {
 
   # Compose two functions left-to-right
@@ -223,8 +222,10 @@ in rec {
               then spec.terminate nextState arg
             else f nextState;
 
-      in f spec.initialState;
-    mkThen = f: spec: Variadic.compose f (mk spec);
+      in 
+        if spec.isTerminal spec.initialState null
+        then spec.terminate spec.initialState null
+        else arg: f spec.initialState arg;
 
     # Build a variadic function that merges its attrset arguments.
     set_ = isTerminal: {
@@ -325,6 +326,14 @@ in rec {
   # Shorthand for variadic end marker
   ___ = Variadic.end;
 
+  # Exhaust a function and do something with its first non-function curried output
+  exhaust = fThen: f: Variadic.mk {
+    initialState = { inherit f; };
+    handle = state: x: { f = state.f x; };
+    isTerminal = nextState: _: !(isFunction nextState.f);
+    terminate = nextState: _: fThen nextState.f;
+  };
+
   # Convert a list of length n[ x ... y ] to a list
   # [ {index = 0; value = x;} ... {index = n - 1; value = y;} ]
   enumerate = xs: 
@@ -334,296 +343,301 @@ in rec {
       xs;
 
   # nix eval --impure --expr '(import collective-public/pkgs/collective-utils/functions.nix {})._tests.run'
-  _tests =
-    cutils.tests.suite {
-      functions = {
-        compose = {
-          expr =
-            let f = a: a + 1;
-                g = a: a * 3;
-                gf = compose g f;
-            in map gf [0 1 2 3];
-          expected = [3 6 9 12];
+  _tests = with cutils.tests; suite {
+    compose = {
+      expr =
+        let f = a: a + 1;
+            g = a: a * 3;
+            gf = compose g f;
+        in map gf [0 1 2 3];
+      expected = [3 6 9 12];
+    };
+
+    Variadic = {
+      default = {
+        expr =
+          let f = Variadic.mk { isTerminal = _: arg: isAttrs arg && attrValues arg == [123]; };
+          in f {x = "y";} {abc = 123;};
+        expected = { x = "y"; abc = 123; };
+      };
+
+      ordered = {
+        _0 = {
+          expr = Variadic.mkOrdered [];
+          expected = {};
         };
-
-        Variadic = {
-          default = {
-            expr =
-              let f = Variadic.mk { isTerminal = _: arg: attrValues arg == [123]; };
-              in f {x = "y";} {abc = 123;};
-            expected = { x = "y"; abc = 123; };
-          };
-
-          ordered = {
-            _0 = {
-              expr = Variadic.mkOrdered [];
-              expected = {};
-            };
-            _1 = {
-              expr = (Variadic.mkOrdered ["a"] ) 1;
-              expected = { a = 1; };
-            };
-            _2 = {
-              expr = (Variadic.mkOrdered ["a" "b"]) 1 2;
-              expected = { a = 1; b = 2; };
-            };
-          };
-
-          unary = {
-            expr = (Variadic.mkUnary "xxx") "abc";
-            expected = { xxx = "abc"; };
-          };
-
-          set = {
-            default = {
-              noArgs = {
-                expr = Variadic.mkSet ___;
-                expected = {};
-              };
-              empty = {
-                expr = Variadic.mkSet {} ___;
-                expected = {};
-              };
-              merged = {
-                expr = Variadic.mkSet {a = 1;} {b = 2;} ___;
-                expected = {a = 1; b = 2;};
-              };
-              preferLater = {
-                expr = Variadic.mkSet {a = 1;} {a = 2;} ___;
-                expected = {a = 2;};
-              };
-              from = {
-                noArgs = {
-                  expr = Variadic.mkSetFrom {x = 9;} ___;
-                  expected = {x = 9;};
-                };
-                args = {
-                  expr = Variadic.mkSetFrom {x = 9;} {a = 1;} ___;
-                  expected = {a = 1; x = 9;};
-                };
-                overwriteInit = {
-                  expr = Variadic.mkSetFrom {x = 9;} {x = 1;} ___;
-                  expected = {x = 1;};
-                };
-              };
-              setThen = {
-                expr = sortOn id (Variadic.mkSetThen attrNames {a = 1;} {b = 3;} ___);
-                expected = ["a" "b"];
-              };
-              fromThen = {
-                expr = sortOn id (Variadic.mkSetFromThen {x = 9;} attrNames {a = 1;} ___);
-                expected = ["a" "x"];
-              };
-            };
-          };
-
-          list = {
-            expr = Variadic.mkList 1 2 3 Variadic.end;
-            expected = [ 1 2 3 ];
-          };
-
-          listOfLength = {
-            partial = {
-              expr = typeOf ((Variadic.mkListOfLength 3) 1 2);
-              expected = "lambda";
-            };
-            full = {
-              expr = (Variadic.mkListOfLength 3) 1 2 3;
-              expected = [1 2 3];
-            };
-          };
-
-          listThen = {
-            expr = Variadic.mkListThen size 1 1 1 ___;
-            expected = 3;
-          };
-
-          listCompose = {
-            expr =
-              let f = Variadic.mkListCompose (x: x + 1) (x: x * 2) ___;
-              in f 2;
-            expected = 5;
-          };
-
-          listComposeAp = {
-            expr =
-              let f = Variadic.mkListComposeAp (x: x + 1) (x: x * 2) ___;
-              in f 2;
-            expected = 5;
-          };
-
-          listComposeFlap = {
-            expr =
-              let f = Variadic.mkListComposeFlap (x: x + 1) (x: x * 2) ___ map;
-              in f [1 2 3];
-            expected = [3 5 7];
-          };
-
-          compose = {
-            unaryWithVariadic = {
-              expr =
-                let f = Variadic.mkOrdered ["a" "b"];
-                    g = x: x // { c = 123; };
-                    gf = Variadic.compose g f;
-                in gf 1 2;
-
-              expected = {
-                a = 1;
-                b = 2;
-                c = 123;
-              };
-            };
-
-            variadicWithVariadic = {
-              expr =
-                let f = Variadic.mkOrdered ["a" "b"];
-                    g = Variadic.mk { isTerminal = state: _: size state > 2; };
-                    gf = Variadic.compose g f;
-                in gf 1 2 {c = 123;};
-
-              expected = {
-                a = 1;
-                b = 2;
-                c = 123;
-              };
-            };
-
-            orderedWithOrdered = {
-              expr =
-                let f = Variadic.mkOrdered ["a" "b"];
-                    g = Variadic.mkOrdered ["c" "d"];
-                    gf = Variadic.compose g f;
-                in gf 1 2 3;
-              expected = {
-                c = {
-                  a = 1;
-                  b = 2;
-                };
-                d = 3;
-              };
-            };
-
-          };
-
-          pipe = {
-            simple = expect.eq
-              (pipe 123
-                (x: x + 1)
-                toString
-                (s: "${s} is 124")
-                ___)
-              "124 is 124";
-          };
-
-          thunk = {
-            manual = expect.eq ((thunk 123) {}) 123;
-            resolve = expect.eq (resolve (thunk 123)) 123;
-            recursive =
-              let mkX = i: { inherit i; next = thunk (mkX (i + 1)); };
-              in {
-                mkXPrints = expect.printEq (mkX 0) { i = 0; next = expect.anyLambda; };
-                mkX_0 = expect.eq (mkX 0).i 0;
-                mkX_0_next = expect.eq (resolve (mkX 0).next).i 1;
-                mkX_0_next_next = expect.eq (resolve (resolve (mkX 0).next).next).i 2;
-              };
-          };
-          Thunk = {
-            isThunkLambda = expect.eq (isThunkSet (_: 123)) false;
-            isThunkSet = expect.eq (isThunkSet {}) false;
-            isThunkThunk = expect.eq (isThunkSet (Thunk 123)) true;
-            mk = expect.eq (resolve (Thunk 123)) 123;
-            mk2 = expect.eq (resolve (resolve (Thunk (Thunk 123)))) 123;
-            mk5 = expect.eq
-              (resolve (resolve (resolve (resolve (resolve
-                (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
-              )))))
-              123;
-            print1 = expect.eq (log.print (Thunk 123)) "Thunk >-> int";
-            printNamed1 = expect.eq (log.print (NamedThunk "name" 123)) "Thunk >-[name]-> int";
-            print5 = expect.eq
-              (log.print
-                (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
-              )
-              "Thunk >-> set";
-            show5 = expect.eq
-              (log.show
-                (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
-              )
-              "Thunk >-> set";
-            do = expect.eq (thunkDo (Thunk 123) (x: x+1)) 124;
-            fmap = expect.eq (resolve (thunkFmap (Thunk 123) (x: x+1))) 124;
-          };
-
-          fjoin = {
-            fUnary =
-              let f = a: a * 3;
-              in {
-                gUnary =
-                  let g = a: a + 2;
-                      gf = fjoin (gr: fr: {inherit gr fr;}) g f;
-                  in {
-                    expr = gf 2 10;
-                    expected = { fr = 6; gr = 12;};
-                  };
-                gBinary =
-                  let g = a: b: a + b;
-                      gf = fjoin (gr: fr: {inherit gr fr;}) g f;
-                  in {
-                    expr = gf 2 10 1;
-                    expected = { fr = 6; gr = 11;};
-                  };
-              };
-
-            fBinary =
-              let f = a: b: a * b;
-              in {
-                gUnary =
-                  let g = a: a + 2;
-                      gf = fjoin (gr: fr: {inherit gr fr;}) g f;
-                  in {
-                    expr = gf 3 2 10;
-                    expected = { fr = 6; gr = 12;};
-                  };
-                gBinary =
-                  let g = a: b: a + b;
-                      gf = fjoin (gr: fr: {inherit gr fr;}) g f;
-                  in {
-                    expr = gf 3 2 10 1;
-                    expected = { fr = 6; gr = 11;};
-                  };
-              };
-
-            orderedWithOrderedMerge = {
-              distinct = {
-                expr =
-                  let f = Variadic.mkOrdered ["a" "b"];
-                      g = Variadic.mkOrdered ["c" "d"];
-                      gf = fjoin mergeAttrs g f;
-                  in gf 1 2 3 4;
-                expected = { a = 1; b = 2; c = 3; d = 4; };
-              };
-              overlapping = {
-                expr =
-                  let f = Variadic.mkOrdered ["a" "b"];
-                      g = Variadic.mkOrdered ["b" "c"];
-                      gf = fjoin mergeAttrs g f;
-                  in gf 1 2 3 4;
-                expected = { a = 1; b = 2; c = 4; };
-              };
-              overlappingFlip = {
-                expr =
-                  let f = Variadic.mkOrdered ["a" "b"];
-                      g = Variadic.mkOrdered ["b" "c"];
-                      gf = fjoin (flip mergeAttrs) g f;
-                  in gf 1 2 3 4;
-                expected = { a = 1; b = 3; c = 4; };
-              };
-            };
-
-          };
-
+        _1 = {
+          expr = (Variadic.mkOrdered ["a"] ) 1;
+          expected = { a = 1; };
+        };
+        _2 = {
+          expr = (Variadic.mkOrdered ["a" "b"]) 1 2;
+          expected = { a = 1; b = 2; };
         };
       };
+
+      unary = {
+        expr = (Variadic.mkUnary "xxx") "abc";
+        expected = { xxx = "abc"; };
+      };
+
+      set = {
+        default = {
+          noArgs = {
+            expr = Variadic.mkSet ___;
+            expected = {};
+          };
+          empty = {
+            expr = Variadic.mkSet {} ___;
+            expected = {};
+          };
+          merged = {
+            expr = Variadic.mkSet {a = 1;} {b = 2;} ___;
+            expected = {a = 1; b = 2;};
+          };
+          preferLater = {
+            expr = Variadic.mkSet {a = 1;} {a = 2;} ___;
+            expected = {a = 2;};
+          };
+          from = {
+            noArgs = {
+              expr = Variadic.mkSetFrom {x = 9;} ___;
+              expected = {x = 9;};
+            };
+            args = {
+              expr = Variadic.mkSetFrom {x = 9;} {a = 1;} ___;
+              expected = {a = 1; x = 9;};
+            };
+            overwriteInit = {
+              expr = Variadic.mkSetFrom {x = 9;} {x = 1;} ___;
+              expected = {x = 1;};
+            };
+          };
+          setThen = {
+            expr = sortOn id (Variadic.mkSetThen attrNames {a = 1;} {b = 3;} ___);
+            expected = ["a" "b"];
+          };
+          fromThen = {
+            expr = sortOn id (Variadic.mkSetFromThen {x = 9;} attrNames {a = 1;} ___);
+            expected = ["a" "x"];
+          };
+        };
+      };
+
+      list = {
+        expr = Variadic.mkList 1 2 3 Variadic.end;
+        expected = [ 1 2 3 ];
+      };
+
+      listOfLength = {
+        partial = {
+          expr = typeOf ((Variadic.mkListOfLength 3) 1 2);
+          expected = "lambda";
+        };
+        full = {
+          expr = (Variadic.mkListOfLength 3) 1 2 3;
+          expected = [1 2 3];
+        };
+      };
+
+      listThen = {
+        expr = Variadic.mkListThen size 1 1 1 ___;
+        expected = 3;
+      };
+
+      listCompose = {
+        expr =
+          let f = Variadic.mkListCompose (x: x + 1) (x: x * 2) ___;
+          in f 2;
+        expected = 5;
+      };
+
+      listComposeAp = {
+        expr =
+          let f = Variadic.mkListComposeAp (x: x + 1) (x: x * 2) ___;
+          in f 2;
+        expected = 5;
+      };
+
+      listComposeFlap = {
+        expr =
+          let f = Variadic.mkListComposeFlap (x: x + 1) (x: x * 2) ___ map;
+          in f [1 2 3];
+        expected = [3 5 7];
+      };
+
+      compose = {
+        unaryWithVariadic = {
+          expr =
+            let f = Variadic.mkOrdered ["a" "b"];
+                g = x: x // { c = 123; };
+                gf = Variadic.compose g f;
+            in gf 1 2;
+
+          expected = {
+            a = 1;
+            b = 2;
+            c = 123;
+          };
+        };
+
+        variadicWithVariadic = {
+          expr =
+            let f = Variadic.mkOrdered ["a" "b"];
+                g = Variadic.mk { isTerminal = state: _: size state > 2; };
+                gf = Variadic.compose g f;
+            in gf 1 2 {c = 123;};
+
+          expected = {
+            a = 1;
+            b = 2;
+            c = 123;
+          };
+        };
+
+        orderedWithOrdered = {
+          expr =
+            let f = Variadic.mkOrdered ["a" "b"];
+                g = Variadic.mkOrdered ["c" "d"];
+                gf = Variadic.compose g f;
+            in gf 1 2 3;
+          expected = {
+            c = {
+              a = 1;
+              b = 2;
+            };
+            d = 3;
+          };
+        };
+
+      };
+
+      exhaust = {
+        value = expect.eq (exhaust (x: x + 1) 6) 7;
+        unary = expect.eq (exhaust (x: x + 1) (a: a + 3) 2) 6;
+        binary = expect.eq (exhaust (x: x + 1) (a: b: a + b) 1 2) 4;
+        trinary = expect.eq (exhaust (x: x + 1) (a: b: c: a + b + c) 1 2 3) 7;
+        unexhausted = expect.True (isFunction (exhaust (x: x + 1) (a: b: c: a + b + c) 1 2));
+      };
+
+      pipe = {
+        simple = expect.eq
+          (pipe 123
+            (x: x + 1)
+            toString
+            (s: "${s} is 124")
+            ___)
+          "124 is 124";
+      };
+
+      thunk = {
+        manual = expect.eq ((thunk 123) {}) 123;
+        resolve = expect.eq (resolve (thunk 123)) 123;
+        recursive =
+          let mkX = i: { inherit i; next = thunk (mkX (i + 1)); };
+          in {
+            mkXPrints = expect.printEq (mkX 0) { i = 0; next = expect.anyLambda; };
+            mkX_0 = expect.eq (mkX 0).i 0;
+            mkX_0_next = expect.eq (resolve (mkX 0).next).i 1;
+            mkX_0_next_next = expect.eq (resolve (resolve (mkX 0).next).next).i 2;
+          };
+      };
+      Thunk = {
+        isThunkLambda = expect.eq (isThunkSet (_: 123)) false;
+        isThunkSet = expect.eq (isThunkSet {}) false;
+        isThunkThunk = expect.eq (isThunkSet (Thunk 123)) true;
+        mk = expect.eq (resolve (Thunk 123)) 123;
+        mk2 = expect.eq (resolve (resolve (Thunk (Thunk 123)))) 123;
+        mk5 = expect.eq
+          (resolve (resolve (resolve (resolve (resolve
+            (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
+          )))))
+          123;
+        print1 = expect.eq (log.print (Thunk 123)) "Thunk >-> int";
+        printNamed1 = expect.eq (log.print (NamedThunk "name" 123)) "Thunk >-[name]-> int";
+        print5 = expect.eq
+          (log.print
+            (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
+          )
+          "Thunk >-> set";
+        show5 = expect.eq
+          (log.show
+            (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
+          )
+          "Thunk >-> set";
+        do = expect.eq (thunkDo (Thunk 123) (x: x+1)) 124;
+        fmap = expect.eq (resolve (thunkFmap (Thunk 123) (x: x+1))) 124;
+      };
+
+      fjoin = {
+        fUnary =
+          let f = a: a * 3;
+          in {
+            gUnary =
+              let g = a: a + 2;
+                  gf = fjoin (gr: fr: {inherit gr fr;}) g f;
+              in {
+                expr = gf 2 10;
+                expected = { fr = 6; gr = 12;};
+              };
+            gBinary =
+              let g = a: b: a + b;
+                  gf = fjoin (gr: fr: {inherit gr fr;}) g f;
+              in {
+                expr = gf 2 10 1;
+                expected = { fr = 6; gr = 11;};
+              };
+          };
+
+        fBinary =
+          let f = a: b: a * b;
+          in {
+            gUnary =
+              let g = a: a + 2;
+                  gf = fjoin (gr: fr: {inherit gr fr;}) g f;
+              in {
+                expr = gf 3 2 10;
+                expected = { fr = 6; gr = 12;};
+              };
+            gBinary =
+              let g = a: b: a + b;
+                  gf = fjoin (gr: fr: {inherit gr fr;}) g f;
+              in {
+                expr = gf 3 2 10 1;
+                expected = { fr = 6; gr = 11;};
+              };
+          };
+
+        orderedWithOrderedMerge = {
+          distinct = {
+            expr =
+              let f = Variadic.mkOrdered ["a" "b"];
+                  g = Variadic.mkOrdered ["c" "d"];
+                  gf = fjoin mergeAttrs g f;
+              in gf 1 2 3 4;
+            expected = { a = 1; b = 2; c = 3; d = 4; };
+          };
+          overlapping = {
+            expr =
+              let f = Variadic.mkOrdered ["a" "b"];
+                  g = Variadic.mkOrdered ["b" "c"];
+                  gf = fjoin mergeAttrs g f;
+              in gf 1 2 3 4;
+            expected = { a = 1; b = 2; c = 4; };
+          };
+          overlappingFlip = {
+            expr =
+              let f = Variadic.mkOrdered ["a" "b"];
+                  g = Variadic.mkOrdered ["b" "c"];
+                  gf = fjoin (flip mergeAttrs) g f;
+              in gf 1 2 3 4;
+            expected = { a = 1; b = 3; c = 4; };
+          };
+        };
+
+      };
+
     };
+  };
 
 }

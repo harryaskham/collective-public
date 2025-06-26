@@ -12,7 +12,7 @@
 }:
 
 with lib;
-with cutils.attrs;
+with cutils.attrsets;
 with cutils.dispatch;
 with cutils.lists;
 with cutils.functions;
@@ -175,281 +175,324 @@ let
           then printWith (args: args // prints.using.depth (3 + 3 * traceLevel))
           else log.print;
         self = rec {
-        # log.trace.show [ 456 { a = 2; }] 123
-        # -> trace: [ 456 { a = 2; }]
-        # 123
-        show = x: a: traceFn "\n\n[log.trace(${toString level}).show]\n${printFn x}\n" a;
+          # Options that can be set on a mkTrace object that influence any created
+          # trace groups. Injected into the initial log state.
+          # Can be updated in a rebound way using setOpts i.e.
+          # with log.trace.setOpts {safe = true;};
+          opts = {
+            safe = false;
+          };
 
-        # log.trace.showId 123
-        # -> trace: 123
-        # 123
-        showId = x: self.show x x;
-        msg = x: over (showId x);
+          # log.trace.show [ 456 { a = 2; }] 123
+          # -> trace: [ 456 { a = 2; }]
+          # 123
+          show = x: a: traceFn "\n\n[log.trace(${toString level}).show]\n${printFn x}\n" a;
 
-        toTraceF = fs: {
-          list =
-            let fs_ = map (f: if isFunction f then f else show f) fs;
-                f = foldl1 compose fs_;
-            in f;
-        }.${typeOf fs} or (show fs);
+          # log.trace.showId 123
+          # -> trace: 123
+          # 123
+          showId = x: self.show x x;
+          msg = x: over (showId x);
 
-        # For use with assert for low-paren tracing
-        # e.g.
-        # with log.trace; assert over ["msg" {a = 123;}]; expr
-        # or
-        # with log.trace; assert over {a = 123;}; expr
-        #
-        # Can't access expr for e.g. log.trace.id
-        # Can mix partially applied traces with raw values, which will be printed.
-        over = fs:
-          # Short-circuit if trace disabled to save traceF construction.
-          if enableTrace
-            then (toTraceF fs) true
-            else true;
+          toTraceF = fs: {
+            list =
+              let fs_ = map (f: if isFunction f then f else show f) fs;
+                  f = foldl1 compose fs_;
+              in f;
+          }.${typeOf fs} or (show fs);
 
-        # Trace over the given fs only if intermediate tracing is enabled.
-        overPartial = fs:
-          if enablePartialTrace then over fs else true;
+          # For use with assert for low-paren tracing
+          # e.g.
+          # with log.trace; assert over ["msg" {a = 123;}]; expr
+          # or
+          # with log.trace; assert over {a = 123;}; expr
+          #
+          # Can't access expr for e.g. log.trace.id
+          # Can mix partially applied traces with raw values, which will be printed.
+          over = fs:
+            # Short-circuit if trace disabled to save traceF construction.
+            if enableTrace
+              then (toTraceF fs) true
+              else true;
 
-        # e.g. with log.trace; assert over (tagged "START_CALL" xs);
-        tagged = tag: dispatch {
-          set = xs: xs // { _ = tag; };
-          list = xs: { _ = tag; __ = xs; };
-        };
+          # Trace over the given fs only if intermediate tracing is enabled.
+          overPartial = fs:
+            if enablePartialTrace then over fs else true;
 
-        mkSurround = tag: fs: [ "\n\n" "START:${tag}" (toTraceF fs) "END:${tag}" "\n\n" ];
-        surround = tag: fs: over mkSurround tag fs;
+          # e.g. with log.trace; assert over (tagged "START_CALL" xs);
+          tagged = tag: dispatch {
+            set = xs: xs // { _ = tag; };
+            list = xs: { _ = tag; __ = xs; };
+          };
 
-        # e.g.
-        # with log.trace; assert call "callName" arg1 arg2
-        buildInitialLogState = initEvent: {
-          events = [initEvent];
-          safe = false;
-        };
+          mkSurround = tag: fs: [ "\n\n" "START:${tag}" (toTraceF fs) "END:${tag}" "\n\n" ];
+          surround = tag: fs: over mkSurround tag fs;
 
-        buildCall = callName:
-          Variadic.mkListThen
-            (l: buildInitialLogState {call = [{name = callName;} {args = l;}]; });
+          # e.g.
+          # with log.trace; assert call "callName" arg1 arg2
+          buildInitialLogState = self: initEvent: {
+            events = [initEvent];
+            safe = self.opts.safe;
+          };
 
-        buildMethodCall = this: methodName:
-          Variadic.mkListThen
-            (l: buildInitialLogState {method = [{name = methodName;} { this = "unsafe:this"; } {args = l;}]; });
+          buildCall = self: callName:
+            Variadic.mkListThen
+              (l: buildInitialLogState self {call = [{name = callName;} {args = l;}]; });
 
-        buildAttrs = attrsName:
-          Variadic.mkListThen
-            (l: buildInitialLogState {attrs = [{name = attrsName;}] ++ (optionals (size l > 0) [{extra = l;}]); });
+          buildMethodCall = self: this: methodName:
+            Variadic.mkListThen
+              (l: buildInitialLogState self {
+                method = [
+                  { name = methodName; } 
+                  { this = "unsafe:this"; }
+                  { args = l; }
+                ]; 
+              });
 
-        buildTest = testName:
-          Variadic.mkListThen
-            (l: buildInitialLogState {test = [{name = testName;}] ++ (optionals (size l > 0) [{args = l;}]); });
+          buildAttrs = self: attrsName:
+            Variadic.mkListThen
+              (l: buildInitialLogState self {
+                attrs = (
+                  [ {name = attrsName;} ]
+                  ++ (optionals (nonEmpty l) [{extra = l;}]));
+              });
 
-        traceCall = callName:
-          Variadic.compose
-            (xs: over xs)
-            (buildCall callName);
+          buildTest = self: testName:
+            Variadic.mkListThen
+              (l: buildInitialLogState self {
+                test = (
+                  [{name = testName;}]
+                  ++ (optionals (nonEmpty l) [{args = l;}]));
+              });
 
-        traceMethodCall = this: methodName:
-          Variadic.compose
-            (xs: over xs)
-            (buildMethodCall this methodName);
-
-        # e.g.
-        # with log.vtrace.returning "newSubType" This name args ___;
-        # ...
-        # return expr;
-        #
-        # or
-        #
-        # let
-        #   return = (log.vtrace.returning "newSubType" This name args ___).return;
-        # in ...
-        #   return x;
-        #   ...
-        #   return y;
-        #
-        # Note even if tracing is disabled, these are still constructed, because
-        # the function logic then depends upon the constructs here i.e. with lets, return.
-        # We just don't do any print-tracing.
-        mkEventGroup = groupType: buildGroup_: groupName:
-          let
-            groupBuilder = buildGroup_ groupName;
-            mkGroupClosure = logState: logState // rec {
-              # Store an arbitrary list of events and rebuild the closure.
-              # Also perform an assertion over the updated state, which can perform logging.
-              __withEventsAssert = events: assertion:
-                let
-                  logState' = mkGroupClosure (logState // {
-                    events = logState.events ++ events;
-                  });
-                in
-                  assert assertion logState';
-                  logState';
-
-              # Store an arbitrary list of events and rebuild the closure.
-              # Also perform an assertion over the updated state, which can perform logging.
-              # Returns a modified state, under application of f (i.e. for storing any extra 'with' context)
-              # which has its bindings rebuilt.
-              __withEventsAssertWith = events: assertion: f:
-                let logState = __withEventsAssert events assertion;
-                in mkGroupClosure (f logState);
-
-              # Store an arbitrary list of events and rebuild the closure.
-              # Also perform an assertion over the updated state, which can perform logging.
-              # Discard the state in favor of returning x
-              __withEventsAssertReturning = events: assertion: x:
-                seq (__withEventsAssert events assertion) x;
-
-              # Store an arbitrary list of events and rebuild the closure.
-              __withEvents = events: __withEventsAssert events true;
-
-              # Set safe mode.
-              # i.e.
-              # with log....
-              # with safety true;
-              # return x;
-              safety = safe_: mkGroupClosure (logState // { safe = safe_; });
-              safely = x: if logState.safe then LazyAttrs x else x;
-
-              # Return accumulated log state.
-              # Thunked due to self-reference.
-              __logState = NamedThunk "__logState" logState;
-
-              # Return accumulated log events.
-              __logEvents = NamedThunk "__logEvents" logState.events;
-
-              # Trace an arbitrary key/value event
-              event = name: value: events [{ ${name} = value; }];
-
-              # Trace a message by showing the given value.
-              # When used with 'with', accrues logs by modifying the mkGroupClosure in scope.
-              msg = value:
-                __withEventsAssert
-                  [{ msg = log.show value; }]
-                  (logState: overPartial (tagged "MSG:${groupType}:${groupName}" logState.events));
-
-              # Check a cond is true and throw if it isn't.
-              # When used with 'with', accrues logs by modifying the mkGroupClosure in scope.
-              # Will always perform the check, even if tracing is disabled - only the result
-              # logging is controlled by the traceLevel.
-              check = name: cond: msg: checks [{inherit name cond msg;}];
-
-              # Check a list of {name cond msg} is true and throw if it isn't.
-              # Run the given errors.checks style checks.
-              # When used with 'with', accrues logs by modifying the mkGroupClosure in scope.
-              # Will always perform the checks, even if tracing is disabled - only the result
-              # logging is controlled by the traceLevel.
-              checks = cs:
-                __withEventsAssertReturning
-                  [{ checks = map (c: c.name or "unnamed") cs; }]
-                  (logState: overPartial (tagged "CHECKS:${groupType}:${groupName}" logState.events))
-                  (assert cutils.errors.checks cs; true);
-
-              # Print a warning message
-              # When used with 'with', accrues logs by modifying the mkGroupClosure in scope.
-              warning = msg: Variadic.mkListThen (extra:
-                __withEventsAssert
-                  [{ warning = [{inherit msg;}] ++ optionals (size extra > 0) [{inherit extra;}]; }]
-                  (logState: overPartial (tagged "WARNING:${groupType}:${groupName}" logState.events)));
-
-              # Trace an assignment inline.
-              # Cannot be used with 'with' to accrue to the group; returns the assignment.
-              # Use 'lets' to accrue.
-              assign = name: value:
-                __withEventsAssertReturning
-                  [{ assign = [{ inherit name; } {inherit value;}];}]
-                  (logState: over (tagged "ASSIGN:${groupType}:${groupName}" logState.events))
-                  value;
-
-              # Trace a group of assignments and provide access to the results.
-              # Accrues logs e.g.
-              # with (lets { x = ... }); ... <use x>
-              lets = vars:
-                assert assertMsg (isAttrs vars) ''Non-attrset vars in 'lets': ${log.print mkVars}'';
-                __withEventsAssertWith
-                  [{lets = vars;}]
-                  (logState: overPartial (tagged "LETS:${groupType}:${groupName}" logState.events))
-                  (logState: logState // vars);
-
-              # Return a value from the group, tracing the value.
-              #
-              # Does not accrue; instead intended to terminate the group by emitting accrued
-              # values.
-              return = x:
-                __withEventsAssertReturning
-                  [{return = safely x;}]
-                  (logState: over (tagged "RETURN:${groupType}:${groupName}" logState.events))
-                  (if isFunction x then returnEta x else x);
-
-              # Return a (possibly variadic) function from the group, tracing the function's
-              # return value when it is fully invoked.
-              #
-              # Does not accrue; instead intended to terminate the group by emitting accrued
-              # values.
-              #
-              # Should be used only when the return value's application is eta-reduced and intended
-              # to be the output of the containing function; i.e.
-              #
-              # Correct usage:
-              #
-              # getNThings = n:
-              #   with log.trace.call "getNThings" n ___;
-              #   returnEta (Variadic.mkListOfLength n) # Or just 'return (Variadic.mkListOfLength n)'
-              #
-              # getNThings 3 "a" "b" -> partial result, no logs
-              # getNThings 3 "a" "b" "c" -> fully applied down to a value, now log ["a" "b" "c"]
-              #
-              # Incorrect usage:
-              # (returns a function by design, which can't be distinguished in general
-              # from a partially applied Variadic)
-              # getGreeter = person:
-              #   with log.trace.call "getGreeter" person ___;
-              #   returnEta person.greet
-              # greet = getGreeter alice;  # No logs
-              # greet "hello"; # Logs now that fully applied
-              # greet "there"; # Logs again
-              #
-              # Incorrect usage:
-              # (returns a partially applied (filter composedPreds) which will not emit logs
-              # until it is applied to a list, and will log every time it is applied to a list)
-              #
-              # composeNFilters = n:
-              #   with log.trace.call "composeNFilters" n ___
-              #   returnEta Variadic.mkListThen (fs: filter (x: foldl' (pred: b: b && pred x) true fs))
-              returnEta = f:
-                let traceOut = out:
-                      __withEventsAssertReturning
-                        [{ returnEta = out; }]
-                        (logState: over (tagged "RETURN_ETA:${groupType}:${groupName}" logState.events))
-                        out;
-                in Variadic.compose traceOut f;
-
-              # Log a variadic composite function from the group, tracing the function's return value when it is fully invoked.
-              # Logs the intermediate value of the fully applied f before passing to g.
-              # Can't accrue due to the event state being delegated until application, but the composed
-              # result can itself be passed to returnEta/return.
-              traceComposeVariadic = name: gName: fName: g: f:
-                let gTraceVarargs = varargs:
-                      __withEventsAssertReturning
-                        [{ vcompose = [ { inherit name; } {g = gName;} {f = fName;} { inherit varargs; } ]; }]
-                        (logState: overPartial (tagged "VARIADIC_COMPOSE:${groupType}:${groupName}" logState.events))
-                        (g varargs);
-                in Variadic.compose gTraceVarargs f;
-            };
-          in
+          traceCall = self: callName:
             Variadic.compose
-              (initialState:
-                let logState = mkGroupClosure initialState; in
-                with logState;
-                assert (over (tagged "START:${groupType}:${groupName}" initialState.events));
-                logState)
-              groupBuilder;
+              (xs: over xs)
+              (buildCall self callName);
 
-        call = mkEventGroup "call" buildCall;
-        methodCall = this: mkEventGroup "methodCall" (buildMethodCall this);
-        attrs = mkEventGroup "attrs" buildAttrs;
-        test = mkEventGroup "test" buildTest;
+          traceMethodCall = self: this: methodName:
+            Variadic.compose
+              (xs: over xs)
+              (buildMethodCall self this methodName);
 
-      }; in self;
+          # e.g.
+          # with log.vtrace.returning "newSubType" This name args ___;
+          # ...
+          # return expr;
+          #
+          # or
+          #
+          # let
+          #   return = (log.vtrace.returning "newSubType" This name args ___).return;
+          # in ...
+          #   return x;
+          #   ...
+          #   return y;
+          #
+          # Note even if tracing is disabled, these are still constructed, because
+          # the function logic then depends upon the constructs here i.e. with lets, return.
+          # We just don't do any print-tracing.
+          mkEventGroup = groupType: buildGroup_: groupName:
+            let
+              groupBuilder = buildGroup_ groupName;
+              mkGroupClosure = logState: logState // rec {
+                # Store an arbitrary list of events and rebuild the closure.
+                # Also perform an assertion over the updated state, which can perform logging.
+                __withEventsAssert = events: assertion:
+                  let
+                    logState' = mkGroupClosure (logState // {
+                      events = logState.events ++ events;
+                    });
+                  in
+                    assert assertion logState';
+                    logState';
+
+                # Store an arbitrary list of events and rebuild the closure.
+                # Also perform an assertion over the updated state, which can perform logging.
+                # Returns a modified state, under application of f (i.e. for storing any extra 'with' context)
+                # which has its bindings rebuilt.
+                __withEventsAssertWith = events: assertion: f:
+                  let logState = __withEventsAssert events assertion;
+                  in mkGroupClosure (f logState);
+
+                # Store an arbitrary list of events and rebuild the closure.
+                # Also perform an assertion over the updated state, which can perform logging.
+                # Discard the state in favor of returning x
+                __withEventsAssertReturning = events: assertion: x:
+                  seq (__withEventsAssert events assertion) x;
+
+                # Store an arbitrary list of events and rebuild the closure.
+                __withEvents = events: __withEventsAssert events true;
+
+                # Set safe mode.
+                # i.e.
+                # with log....
+                # with safety true;
+                # return x;
+                safety = safe_: mkGroupClosure (logState // { safe = safe_; });
+                safely = x: 
+                  if logState.safe then LazyAttrs x else x;
+
+                # Return accumulated log state.
+                # Thunked due to self-reference.
+                __logState = NamedThunk "__logState" logState;
+
+                # Return accumulated log events.
+                __logEvents = NamedThunk "__logEvents" logState.events;
+
+                # Trace an arbitrary key/value event
+                event = name: value: events [{ ${name} = value; }];
+
+                # Trace a message by showing the given value.
+                # When used with 'with', accrues logs by modifying the mkGroupClosure in scope.
+                msg = value:
+                  __withEventsAssert
+                    [{ msg = log.show value; }]
+                    (logState: overPartial (tagged "MSG:${groupType}:${groupName}" logState.events));
+
+                # Check a cond is true and throw if it isn't.
+                # When used with 'with', accrues logs by modifying the mkGroupClosure in scope.
+                # Will always perform the check, even if tracing is disabled - only the result
+                # logging is controlled by the traceLevel.
+                check = name: cond: msg: checks [{inherit name cond msg;}];
+
+                # Check a list of {name cond msg} is true and throw if it isn't.
+                # Run the given errors.checks style checks.
+                # When used with 'with', accrues logs by modifying the mkGroupClosure in scope.
+                # Will always perform the checks, even if tracing is disabled - only the result
+                # logging is controlled by the traceLevel.
+                checks = cs:
+                  __withEventsAssertReturning
+                    [{ checks = map (c: c.name or "unnamed") cs; }]
+                    (logState: overPartial (tagged "CHECKS:${groupType}:${groupName}" logState.events))
+                    (assert cutils.errors.checks cs; true);
+
+                # Print a warning message
+                # When used with 'with', accrues logs by modifying the mkGroupClosure in scope.
+                warning = msg: Variadic.mkListThen (extra:
+                  __withEventsAssert
+                    [{ warning = (
+                      [{inherit msg;}] 
+                      ++ (optionals (nonEmpty extra) [{inherit extra;}])
+                    ); 
+                    }]
+                    (logState: overPartial (tagged "WARNING:${groupType}:${groupName}" logState.events)));
+
+                # Trace an assignment inline.
+                # Cannot be used with 'with' to accrue to the group; returns the assignment.
+                # Use 'lets' to accrue.
+                assign = name: value:
+                  __withEventsAssertReturning
+                    [{ assign = [
+                      { inherit name; }
+                      (safely { inherit value; })
+                    ];}]
+                    (logState: over (tagged "ASSIGN:${groupType}:${groupName}" logState.events))
+                    value;
+
+                # Trace a group of assignments and provide access to the results.
+                # Accrues logs e.g.
+                # with (lets { x = ... }); ... <use x>
+                lets = vars:
+                  assert assertMsg (isAttrs vars) ''Non-attrset vars in 'lets': ${log.print mkVars}'';
+                  __withEventsAssertWith
+                    [{lets = safely vars;}]
+                    (logState: overPartial (tagged "LETS:${groupType}:${groupName}" logState.events))
+                    (logState: logState // vars);
+
+                # Return a value from the group, tracing the value.
+                #
+                # Does not accrue; instead intended to terminate the group by emitting accrued
+                # values.
+                return = x:
+                  __withEventsAssertReturning
+                    [{return = safely x;}]
+                    (logState: over (tagged "RETURN:${groupType}:${groupName}" logState.events))
+                    (if isFunction x then returnEta x else x);
+
+                # Return a (possibly variadic) function from the group, tracing the function's
+                # return value when it is fully invoked.
+                #
+                # Does not accrue; instead intended to terminate the group by emitting accrued
+                # values.
+                #
+                # Should be used only when the return value's application is eta-reduced and intended
+                # to be the output of the containing function; i.e.
+                #
+                # Correct usage:
+                #
+                # getNThings = n:
+                #   with log.trace.call "getNThings" n ___;
+                #   returnEta (Variadic.mkListOfLength n) # Or just 'return (Variadic.mkListOfLength n)'
+                #
+                # getNThings 3 "a" "b" -> partial result, no logs
+                # getNThings 3 "a" "b" "c" -> fully applied down to a value, now log ["a" "b" "c"]
+                #
+                # Incorrect usage:
+                # (returns a function by design, which can't be distinguished in general
+                # from a partially applied Variadic)
+                # getGreeter = person:
+                #   with log.trace.call "getGreeter" person ___;
+                #   returnEta person.greet
+                # greet = getGreeter alice;  # No logs
+                # greet "hello"; # Logs now that fully applied
+                # greet "there"; # Logs again
+                #
+                # Incorrect usage:
+                # (returns a partially applied (filter composedPreds) which will not emit logs
+                # until it is applied to a list, and will log every time it is applied to a list)
+                #
+                # composeNFilters = n:
+                #   with log.trace.call "composeNFilters" n ___
+                #   returnEta Variadic.mkListThen (fs: filter (x: foldl' (pred: b: b && pred x) true fs))
+                returnEta = f:
+                  let traceOut = out:
+                        __withEventsAssertReturning
+                          [{ returnEta = out; }]
+                          (logState: over (tagged "RETURN_ETA:${groupType}:${groupName}" logState.events))
+                          out;
+                  in Variadic.compose traceOut f;
+
+                # Log a variadic composite function from the group, tracing the function's return value when it is fully invoked.
+                # Logs the intermediate value of the fully applied f before passing to g.
+                # Can't accrue due to the event state being delegated until application, but the composed
+                # result can itself be passed to returnEta/return.
+                traceComposeVariadic = name: gName: fName: g: f:
+                  let gTraceVarargs = varargs:
+                        __withEventsAssertReturning
+                          [{ vcompose = [ { inherit name; } {g = gName;} {f = fName;} { inherit varargs; } ]; }]
+                          (logState: overPartial (tagged "VARIADIC_COMPOSE:${groupType}:${groupName}" logState.events))
+                          (g varargs);
+                  in Variadic.compose gTraceVarargs f;
+              };
+            in
+              Variadic.compose
+                (initialState:
+                  let logState = mkGroupClosure initialState; in
+                  with logState;
+                  assert (over (tagged "START:${groupType}:${groupName}" initialState.events));
+                  logState)
+                groupBuilder;
+
+          unbound = self: rec {
+            call = mkEventGroup "call" (buildCall self);
+            methodCall = this: mkEventGroup "methodCall" (buildMethodCall self this);
+            attrs = mkEventGroup "attrs" (buildAttrs self);
+            test = mkEventGroup "test" (buildTest self);
+
+            # Set options on the bound self and rebind such that they are
+            # available on the unbound methods.
+            setOpts = opts: bindSelf (self // { inherit opts; });
+            modifyOpts = f: setOpts (f self.opts);
+            # Set safe mode.
+            # i.e. (log.trace.safe true).call "callName" "arg0" "arg1" ___;
+            safe = safe_: modifyOpts (opts: opts // { safe = safe_; });
+          };
+        };
+        # Bind the self reference to the unbound methods.
+        bindSelf = self: self // self.unbound self;
+      in 
+        bindSelf self;
 
     # Tracing interface using print.
     # with log.trace; assert traces [
@@ -471,67 +514,70 @@ let
     # Enabled when module arg traceLevel is >= level
     # with log.v 1; assert over ...
     v = level: mkTrace level;
+
+    # Light interface to interject safety mode without parens
+    # with log.safe; assert over ...
+    safe = {
+      v = level: (v level).safe true;
+      trace = trace.safe true;
+      vtrace = vtrace.safe true;
+    };
   };
 
 in log // {
-
   _tests = with cutils.tests; suite {
-    log = {
+    print = {
+      string = expect.eq (log.print "abc") ''"abc"'';
+      int = expect.eq (log.print 123) ''123'';
+    };
 
-      print = {
-        string = expect.eq (log.print "abc") ''"abc"'';
-        int = expect.eq (log.print 123) ''123'';
-      };
-
-      show = {
-        stringToString = expect.eq (log.show "abc") "abc";
-        intToString = expect.eq (log.show 123) "123";
-      };
-      
-      trace = {
-        call = {
-          combined = {
-            expr =
-              with log.vtrace.call "callName" "arg0" "arg1" ___;
-              with msg "test msg";
-              with lets {
-                a = 1;
-                b = 2;
-              };
-              with lets rec {
-                c = 3;
-                d = c + 1;
-              };
-              {
-                out = {inherit a b c d;};
-                events = resolve __logEvents;
-              };
-            expected = {
-              # Assignments exposed raw for use with 'with'
-              out = {
-                a = 1;
-                b = 2;
-                c = 3;
-                d = 4;
-              };
-              events = [
-                {
-                  call = [
-                    { name = "callName"; }
-                    { args = [ "arg0" "arg1" ]; }
-                  ];
-                }
-                { msg = "test msg"; }
-                { lets = { a = 1;
-                           b = 2; }; }
-                { lets = { c = 3;
-                           d = 4; }; }
-              ];
+    show = {
+      stringToString = expect.eq (log.show "abc") "abc";
+      intToString = expect.eq (log.show 123) "123";
+    };
+    
+    trace = {
+      call = {
+        combined = {
+          expr =
+            with log.vtrace.call "callName" "arg0" "arg1" ___;
+            with msg "test msg";
+            with lets {
+              a = 1;
+              b = 2;
             };
+            with lets rec {
+              c = 3;
+              d = c + 1;
+            };
+            {
+              out = {inherit a b c d;};
+              events = resolve __logEvents;
+            };
+          expected = {
+            # Assignments exposed raw for use with 'with'
+            out = {
+              a = 1;
+              b = 2;
+              c = 3;
+              d = 4;
+            };
+            events = [
+              {
+                call = [
+                  { name = "callName"; }
+                  { args = [ "arg0" "arg1" ]; }
+                ];
+              }
+              { msg = "test msg"; }
+              { lets = { a = 1;
+                          b = 2; }; }
+              { lets = { c = 3;
+                          d = 4; }; }
+            ];
           };
         };
       };
-
     };
   };
 }

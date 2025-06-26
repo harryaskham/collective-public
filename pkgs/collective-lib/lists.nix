@@ -96,65 +96,109 @@ in rec {
 
   mapTail = fTail: mapSnoc id fTail;
 
-  _tests =
-    cutils.tests.suite {
-      lists = {
-        foldl' = {
-          sum = {
-            expr = foldl' (a: b: a + b) 4 [1 2 3];
-            expected = 10;
-          };
-          reverse = {
-            expr = foldl' (xs: x: [x] ++ xs) [] [1 2 3];
-            expected = [3 2 1];
-          };
-        };
-        foldr = {
-          sum = {
-            expr = foldr (a: b: a + b) 4 [1 2 3];
-            expected = 10;
-          };
-          reverse = {
-            expr = foldr (x: xs: xs ++ [x]) [] [1 2 3];
-            expected = [3 2 1];
-          };
-        };
-        append = {
-          expr = append 5 [1 2 3];
-          expected = [1 2 3 5];
-        };
-        cons = {
-          expr = cons 0 [1 2 3];
-          expected = [0 1 2 3];
-        };
-        insertAt = {
-          start = {
-            expr = insertAt 0 99 [1 2 3 4];
-            expected = [99 1 2 3 4];
-          };
-          middle = {
-            expr = insertAt 2 99 [1 2 3 4];
-            expected = [1 2 99 3 4];
-          };
-          end = {
-            expr = insertAt 4 99 [1 2 3 4];
-            expected = [1 2 3 4 99];
-          };
-          beyondEnd = {
-            expr = insertAt 10 99 [1 2 3 4];
-            expected = [1 2 3 4 99];
-          };
-        };
-        concat = {
-          listOfLists = {
-            expr = concat [[1 2] [3 4] [5]];
-            expected = [1 2 3 4 5];
-          };
-          listOfSets = {
-            expr = concat [{a=1;}{b=2;c=3;}{d=4;}];
-            expected = { a=1; b=2; c=3; d=4; };
-          };
-        };
+  # Create a list that must be resolved via 'resolve'
+  # but that still has a length.
+  LazyList_ = mkThunk: xs:
+    assert assertMsg (isList xs) "LazyList: Not a list: ${log.print xs}";
+    mkThunk xs
+    // rec {
+      __ThunkType = "LazyList";
+      __isLazyList = true;
+      __length = _: length xs;
+      __showValue = self: "[${toString (self.__length {})} items]";
+    };
+  isLazyList = x: isThunkSet x && (x.__isLazyList or false);
+  LazyList = LazyList_ (NamedThunk "LazyList");
+  maybeLazyList = x: if isLazyList x then x else LazyList x;
+  maybeNamedLazyList = name: x: if isLazyList x then setThunkName name x else NamedLazyList name x;
+  NamedLazyList = name: LazyList_ (NamedThunk name);
+
+  _tests = with cutils.tests; suite {
+    foldl' = {
+      sum = {
+        expr = foldl' (a: b: a + b) 4 [1 2 3];
+        expected = 10;
+      };
+      reverse = {
+        expr = foldl' (xs: x: [x] ++ xs) [] [1 2 3];
+        expected = [3 2 1];
       };
     };
+    foldr = {
+      sum = {
+        expr = foldr (a: b: a + b) 4 [1 2 3];
+        expected = 10;
+      };
+      reverse = {
+        expr = foldr (x: xs: xs ++ [x]) [] [1 2 3];
+        expected = [3 2 1];
+      };
+    };
+    append = {
+      expr = append 5 [1 2 3];
+      expected = [1 2 3 5];
+    };
+    cons = {
+      expr = cons 0 [1 2 3];
+      expected = [0 1 2 3];
+    };
+    insertAt = {
+      start = {
+        expr = insertAt 0 99 [1 2 3 4];
+        expected = [99 1 2 3 4];
+      };
+      middle = {
+        expr = insertAt 2 99 [1 2 3 4];
+        expected = [1 2 99 3 4];
+      };
+      end = {
+        expr = insertAt 4 99 [1 2 3 4];
+        expected = [1 2 3 4 99];
+      };
+      beyondEnd = {
+        expr = insertAt 10 99 [1 2 3 4];
+        expected = [1 2 3 4 99];
+      };
+    };
+    concat = {
+      listOfLists = {
+        expr = concat [[1 2] [3 4] [5]];
+        expected = [1 2 3 4 5];
+      };
+      listOfSets = {
+        expr = concat [{a=1;}{b=2;c=3;}{d=4;}];
+        expected = { a=1; b=2; c=3; d=4; };
+      };
+    };
+    LazyList = {
+      is = {
+        LazyList.empty = expect.True (isLazyList (LazyList []));
+        LazyList.value = expect.True (isLazyList (LazyList [1 2 3]));
+        LazyList.throw = expect.True (isLazyList (LazyList [1 2 3 { a = throw "no"; }]));
+        NamedLazyList.empty = expect.True (isLazyList (NamedLazyList "name" []));
+        NamedLazyList.value = expect.True (isLazyList (NamedLazyList "name" [1 2 3]));
+        NamedLazyList.throw = expect.True (isLazyList (NamedLazyList "name" [1 2 3 { a = throw "no"; }]));
+        set = expect.False (isLazyList {});
+        LazyAttrs = expect.False (isLazyList (LazyAttrs {}));
+        Thunk.int = expect.False (isLazyList (Thunk 123));
+        Thunk.set = expect.False (isLazyList (Thunk {}));
+        Thunk.list = expect.False (isLazyList (Thunk []));
+        Thunk.LazyList = expect.False (isLazyList (Thunk (LazyList [])));
+        NamedThunk.int = expect.False (isLazyList (NamedThunk "name" 123));
+        NamedThunk.set = expect.False (isLazyList (NamedThunk "name" {}));
+        NamedThunk.LazyList = expect.False (isLazyList (NamedThunk "name" (LazyList [])));
+      };
+      length.empty = expect.eq ((LazyList []).__length {}) 0;
+      length.full =
+        expect.eq
+          ((LazyList [1 2 3]).__length {})
+          3;
+      length.throws =
+        expect.eq
+          ((LazyList [1 2 3 { a = throw "no"; }]).__length {})
+          4;
+      resolves.value = expect.eq (resolve (LazyList [1 2 3])) [1 2 3];
+      resolves.throw = expect.error (resolve (LazyList [1 2 3 { a = throw "no"; }]));
+    };
+  };
 }

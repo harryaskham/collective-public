@@ -1,17 +1,17 @@
 { pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, cutils ? import ./. { inherit lib; }, ... }:
 
 with lib;
-with cutils.attrs;
+with cutils.attrsets;
 with cutils.dispatch;
 with cutils.errors;
 with cutils.functions;
 with cutils.lists;
 with cutils.strings;
-with cutils.types;
 
 # Nicer interface to runtests
 let
   log = cutils.log;
+  inherit (cutils.typelib) cast isCastError;
 in rec {
 
   Status = {
@@ -48,9 +48,9 @@ in rec {
 
     String = this:
       let
-        thisStr = Types.TS.cast "string" this;
+        thisStr = cast "string" this;
       in
-        if Types.TS.isCastError thisStr then throw (indent.block ''
+        if isCastError thisStr then throw (indent.block ''
           Error occurred treating this as string:
             ${indent.here thisStr.castError}
         '')
@@ -94,7 +94,7 @@ in rec {
   isTest = test: test ? expr && test ? expected;
 
   # Detect a wrapped test object
-  isWrappedTest = test: test ? __mkTest;
+  isWrappedTest = test: test.__wrappedTest or false;
 
   skip = tests:
     let setSkip = test: test // {skip = true;};
@@ -257,49 +257,95 @@ in rec {
         result = evalFn (runTests tests);
     in runOneTest test result;
 
+  # Evaluating tests at their callsite makes for better errors.
+  # Instead of e.g.
+  # test = suite { a = { expr = ...; expected = ...; }; }
+  # This lets us write e.g.
+  # test = suite { a = _t { expr = ...; expected = ...; }; }
+  # and get better errors.
+  _t = x:
+    if isAttrs x then mkTest "_t" x
+    else if isFunction x then exhaust (mkTest "_t") x
+    else throw "Invalid test argument (expected test attrset or function): ${log.print x}";
+
   # Create a test attribute set adding extra functionality to a runTests-style
   # test of format { expr = ...; expected = ...; }
   # Optionally { skip = bool; } can be set too on the raw test.
   mkTest = testName: test:
-    let test_ = rec {
-      # Marker for detecting an augmented test.
-      __mkTest = true;
+    if isWrappedTest test then 
+      if test.name == "_t" then test // { name = testName; }
+      else test
+    else
+      let test_ = rec {
+        # Marker for detecting an augmented test.
+        __wrappedTest = true;
 
-      # The flattened test name.
-      name = testName;
+        # The flattened test name.
+        name = testName;
 
-      # A custom comparator to use to evaluate equality, or null if none provided.
-      # Evaluated as a unary function of each side.
-      compare = test.compare or null;
+        # A custom comparator to use to evaluate equality, or null if none provided.
+        # Evaluated as a unary function of each side.
+        compare = test.compare or null;
 
-      # The raw expression to evaluate as defined in the test.
-      rawExpr = test.expr;
+        # The raw expression to evaluate as defined in the test.
+        rawExpr = test.expr;
 
-      # The expression to evaluate, optionally under a comparison function.
-      # Can't thunkify here - this is the "expr" literally passed to runTests.
-      expr = if compare == null then rawExpr else compare rawExpr;
+        # The expression to evaluate, optionally under a comparison function.
+        # Can't thunkify here - this is the "expr" literally passed to runTests.
+        expr = if compare == null then rawExpr else compare rawExpr;
 
-      # The raw expected expression to compare with as defined in the test.
-      rawExpected = test.expected;
+        # The raw expected expression to compare with as defined in the test.
+        rawExpected = test.expected;
 
-      # The expected expression to compare with, optionally under a comparison function.
-      # Can't thunkify here - this is the "expected" literally passed to runTests.
-      expected = if compare == null then rawExpected else compare rawExpected;
+        # The expected expression to compare with, optionally under a comparison function.
+        # Can't thunkify here - this is the "expected" literally passed to runTests.
+        expected = if compare == null then rawExpected else compare rawExpected;
 
-      # Iff true, skip this test and do not treat as failure.
-      skip = test.skip or false;
+        # Iff true, skip this test and do not treat as failure.
+        skip = test.skip or false;
 
-      # Iff any test has solo == true, run only tests with solo == true.
-      solo = test.solo or false;
+        # Iff any test has solo == true, run only tests with solo == true.
+        solo = test.solo or false;
 
-      # Run the test under tryEval, treating eval failure as test failure
-      run = evalOneTest (expr: builtins.tryEval (strict expr)) (test_ // { mode = "run"; });
+        # Run the test under tryEval, treating eval failure as test failure
+        run = evalOneTest (expr: builtins.tryEval (strict expr)) (test_ // { mode = "run"; });
 
-      # Run the test propagating eval errors that mask real failures
-      debug = evalOneTest (expr: strict expr) (test_ // { mode = "debug"; });
-    };
+        # Run the test propagating eval errors that mask real failures
+        debug = evalOneTest (expr: strict expr) (test_ // { mode = "debug"; });
+      };
     in test_;
 
+  # Collect the tests from a given set of modules / sets containining a _tests attribute into
+  # a single test suite.
+  mergeSuites = modules:
+    self.base.tests.suite
+      (lib.concatMapAttrs
+        (name: module: {
+          ${name} = 
+            if (module ? _tests) 
+            then module._tests.nestedTests
+            else { emptyTestSuite = expect.True true; };
+        })
+        modules);
+
+  # Create a test suite from a nested set of tests.
+  # e.g.
+  # {
+  #   ...
+  #   _tests = suite {
+  #     topLevelTest = { expr = ...; expected = ...; };
+  #     section1 = {
+  #       testA = { expr = ...; expected = ...; };
+  #       testB = { expr = ...; expected = ...; };
+  #       ...
+  #       subSection = {
+  #         testE = { expr = ...; expected = ...; };
+  #         ...
+  #       };
+  #     };
+  #     section2 = { ... };
+  #   };
+  # }
   suite = nestedTests: rec {
     inherit nestedTests;
     tests =

@@ -421,110 +421,107 @@ in rec {
 
   # nix eval --impure --expr '(import ./cutils/strings.nix {})._tests'
   _tests = with cutils.tests; suite {
-    strings = {
-
-      split = {
-        whitespace = {
-          expr = splitWhitespace " \n hell   o \n\n  \t \n wor\t\tld  \n";
-          expected = [ "hell" "o" "wor" "ld" ];
-        };
+    split = {
+      whitespace = {
+        expr = splitWhitespace " \n hell   o \n\n  \t \n wor\t\tld  \n";
+        expected = [ "hell" "o" "wor" "ld" ];
       };
+    };
 
-      indent = {
-        set0 = {
-          expr = indent.set 0 (joinLines [
-            "            line1"
-            "            def fn() {"
-            "              line2"
-            "            }"
-          ]);
-          expected = joinLines [
-            "line1"
-            "def fn() {"
-            "  line2"
-            "}"
-          ];
-        };
-        set4 = {
-          expr = indent.set 4 (joinLines [
-            "            line1"
-            "            def fn() {"
-            "              line2"
-            "            }"
-          ]);
-          expected = joinLines [
-            "    line1"
-            "    def fn() {"
-            "      line2"
-            "    }"
-          ];
-        };
-        get = {
-          expr = indent.get (joinLines [
-            "            line1"
-            "            def fn() {"
-            "              line2"
-            "            }"
-          ]);
-          expected = 12;
-        };
+    indent = {
+      set0 = {
+        expr = indent.set 0 (joinLines [
+          "            line1"
+          "            def fn() {"
+          "              line2"
+          "            }"
+        ]);
+        expected = joinLines [
+          "line1"
+          "def fn() {"
+          "  line2"
+          "}"
+        ];
       };
+      set4 = {
+        expr = indent.set 4 (joinLines [
+          "            line1"
+          "            def fn() {"
+          "              line2"
+          "            }"
+        ]);
+        expected = joinLines [
+          "    line1"
+          "    def fn() {"
+          "      line2"
+          "    }"
+        ];
+      };
+      get = {
+        expr = indent.get (joinLines [
+          "            line1"
+          "            def fn() {"
+          "              line2"
+          "            }"
+        ]);
+        expected = 12;
+      };
+    };
 
-      codeBlock = {
-        embedded = {
-          expr =
-            let body = codeBlock ''
-              embed1:
-                embed2
-            '';
-            in codeBlock ''
-              def fn() {
-                ${indent.here body}
-              }
-            '';
-          expected = trimNewlines ''
+    codeBlock = {
+      embedded = {
+        expr =
+          let body = codeBlock ''
+            embed1:
+              embed2
+          '';
+          in codeBlock ''
             def fn() {
-              embed1:
-                embed2
+              ${indent.here body}
             }
           '';
-        };
-        inline = {
-          expr =
-            let body = codeBlock ''
-              1
-              2
-              3
-            '';
-            in codeBlock ''
-              X = [ ${indent.here body} ]
-            '';
-          expected = trimNewlines ''
-            X = [ 1
-                  2
-                  3 ]
+        expected = trimNewlines ''
+          def fn() {
+            embed1:
+              embed2
+          }
+        '';
+      };
+      inline = {
+        expr =
+          let body = codeBlock ''
+            1
+            2
+            3
           '';
-        };
+          in codeBlock ''
+            X = [ ${indent.here body} ]
+          '';
+        expected = trimNewlines ''
+          X = [ 1
+                2
+                3 ]
+        '';
       };
-
-      pluralise = {
-        pluralise_ = {
-          test0 = expect.eq (pluralise_ 0 "test" "one" "many") "testmany";
-          test1 = expect.eq (pluralise_ 1 "test" "one" "many") "testone";
-          test2 = expect.eq (pluralise_ 2 "test" "one" "many") "testmany";
-        };
-        pluralise = {
-          test0 = expect.eq (pluralise 0 "test" "many") "testmany";
-          test1 = expect.eq (pluralise 1 "test" "many") "test";
-          test2 = expect.eq (pluralise 2 "test" "many") "testmany";
-        };
-        pluralises = {
-          test0 = expect.eq (pluralises 0 "test") "tests";
-          test1 = expect.eq (pluralises 1 "test") "test";
-          test2 = expect.eq (pluralises 2 "test") "tests";
-        };
-      };
-
     };
+
+    pluralise = {
+      pluralise_ = {
+        test0 = expect.eq (pluralise_ 0 "test" "one" "many") "testmany";
+        test1 = expect.eq (pluralise_ 1 "test" "one" "many") "testone";
+        test2 = expect.eq (pluralise_ 2 "test" "one" "many") "testmany";
+      };
+      pluralise = {
+        test0 = expect.eq (pluralise 0 "test" "many") "testmany";
+        test1 = expect.eq (pluralise 1 "test" "many") "test";
+        test2 = expect.eq (pluralise 2 "test" "many") "testmany";
+      };
+      pluralises = {
+        test0 = expect.eq (pluralises 0 "test") "tests";
+        test1 = expect.eq (pluralises 1 "test") "test";
+        test2 = expect.eq (pluralises 2 "test") "tests";
+      };
+    };
+
   };
 }
