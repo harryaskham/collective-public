@@ -2,6 +2,7 @@
 
 with cutils.dispatch;
 with cutils.functions;
+with cutils.attrsets;
 
 # List utils and aliases.
 let log = cutils.log;

@@ -318,7 +318,7 @@ in rec {
   # Collect the tests from a given set of modules / sets containining a _tests attribute into
   # a single test suite.
   mergeSuites = modules:
-    self.base.tests.suite
+    suite
       (lib.concatMapAttrs
         (name: module: {
           ${name} = 

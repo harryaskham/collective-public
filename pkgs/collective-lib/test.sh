@@ -149,6 +149,10 @@ isNull Nil
 </nix>
 
 <nix>
+collective-lib._testsUntyped.run
+</nix>
+
+<nix>
 typelib._tests.run
 </nix>
 
