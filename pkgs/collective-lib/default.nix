@@ -11,7 +11,7 @@ let
     base // rec {
 
       # Merge with another downstream collective-lib extension.
-      __extend = otherBase: mkCollectiveLib (lib.recursiveUpdate base otherBase);
+      extend = otherBase: mkCollectiveLib (lib.recursiveUpdate base otherBase);
 
       # Produce a new version of the collective-lib with 'lib' merged in.
       # Can be used as a drop-in replacement for 'lib' in modules that do not rely on the type system.
