@@ -227,6 +227,10 @@ in rec {
         then spec.terminate spec.initialState null
         else arg: f spec.initialState arg;
 
+    mkThen = f: spec:
+      let g = Variadic.mk spec;
+      in Variadic.compose f g;
+
     # Build a variadic function that merges its attrset arguments.
     set_ = isTerminal: {
       inherit isTerminal;
