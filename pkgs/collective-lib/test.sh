@@ -150,7 +150,8 @@ _tests.run
 </nix>
 
 <nix>
-isNull Nil
+with Types.Universe.U_2;
+Type
 </nix>
 
 <nix>
