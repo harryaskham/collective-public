@@ -1914,7 +1914,8 @@ let
     #     exactly TS, modulo lambda equality
     # The final type system is then U_4 with any U_*, U, SU or opts references removed.
     # TODO: Update TS to best current working universe
-    TSUniverse = Universe.U_4;
+    # U_4 is perfect but the constant rebuilds are slow
+    TSUniverse = Universe.U_2;
     TS = removeAttrs TSUniverse [
       "opts"
       "_U"
