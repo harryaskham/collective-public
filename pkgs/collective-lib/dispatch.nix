@@ -7,7 +7,8 @@ with cutils.lists;
 with cutils.strings;
 with cutils.tests;
 
-rec {
+let log = cutils.log;
+in rec {
   # Make a polymorphic function from the given type-to-value attrs.
   # Accepts a given default function to apply to any unspecified types.
   # Also dispatches a function polymorphically if values are functions from the type of the argument.
@@ -21,6 +22,7 @@ rec {
     let defaultF = throw ''
       Unsupported type ${getType x} in polymorphic dispatch.
       Expected: ${joinSep ", " (attrNames dict)}
+      Got ${getType x} of value: ${log.print x}
     '';
     in dispatchDefOn getType defaultF dict x;
   dispatch = dispatchOn lib.typeOf;

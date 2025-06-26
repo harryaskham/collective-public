@@ -11,7 +11,7 @@ with cutils.strings;
 # Nicer interface to runtests
 let
   log = cutils.log;
-  inherit (cutils.typelib) cast isCastError;
+  inherit (cutils.typelib) cast isCastError hasToString;
 in rec {
 
   Status = {
@@ -32,10 +32,7 @@ in rec {
       let
         this_ =
           if this ? get
-          then
-            mapAttrs
-              (_: Fields)
-                (mapAttrs (_: maybeResolve) (removeAttrs this.get ["Type"]))
+          then mapAttrs (_: Fields) (mapAttrs (_: maybeResolve) (removeAttrs this.get ["__Type"]))
           else this;
         this__ = deepConcatMap (k: v:
           if elem k ["__toString" "__show"]
@@ -47,14 +44,11 @@ in rec {
         this__;
 
     String = this:
-      let
-        thisStr = cast "string" this;
-      in
-        if isCastError thisStr then throw (indent.block ''
-          Error occurred treating this as string:
-            ${indent.here thisStr.castError}
-        '')
-        else thisStr.castSuccess;
+      if hasToString this then toString this
+      else throw (indent.block ''
+        Error occurred treating this as string:
+          ${indent.here (log.print this)}
+      '');
 
     # Resolve thunks in the expr and expected.
     Resolve = this: tryStrict (resolveDeep this) (e: { Compare.Resolve = "Thunk resolution evaluation error"; }) ;
@@ -139,7 +133,15 @@ in rec {
 
     fieldsEq = eqOn Compare.Fields;
 
-    valueEq = eqOn (this: this.getValue {});
+    noLambdasEq = eqOn Compare.NoLambdas;
+
+    valueEq = eqOn (this: 
+      assert assertMsg (this ? getValue) (indent.block ''
+        expect.valueEq: No getValue on this
+          ${indent.here (log.print this)}
+        '');
+      this.getValue {}
+    );
 
     lazyFieldsEq = lazyEqOn Compare.Fields;
 

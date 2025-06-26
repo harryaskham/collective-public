@@ -121,7 +121,7 @@ functions.enumerate [1 2 3]
 </nix>
 
 <nix>
-with Types.Universe.U_1;
+with Types.Universe.U_3;
 rec {
   a = (Fields.new [{a = Int;}]).update [{b = Default Int 666;}];
   b = (Fields.new [{a = Int;}]);
@@ -132,12 +132,17 @@ rec {
   g = f.indexed {};
   h = a.getSolos {};
   i = a.instanceFields {};
-  j = (Int.fields Int);
+  j = (Int.getFields {});
   k = (Field.new "a" Int);
   l = (lambda a.fieldSpecs) {};
   m = parseFieldSpec Int;
   n = Int;
-}.n
+  o = (String.new "wat").__value.value;
+}.e
+</nix>
+
+<nix>
+Type.name
 </nix>
 
 <nix>
@@ -154,6 +159,9 @@ collective-lib._testsUntyped.run
 
 <nix>
 typelib._tests.run
+</nix>
+<nix>
+typelib._tests.debug
 </nix>
 
 <nix>
