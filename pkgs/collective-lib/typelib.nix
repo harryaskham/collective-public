@@ -972,7 +972,7 @@ let
       #      parseFieldSpec Default<Int, 123> -> {fieldDefault = 123; fieldType = Int; }
       #      parseFieldSpec Int -> { fieldType = Int; }
       parseFieldSpec = spec:
-        with (log.safe.v 1).call "parseFieldSpec" spec ___;
+        with (log.safe.v 3).call "parseFieldSpec" { inherit spec; level = U.opts.level; } ___;
 
         # Unwrap Static types.
         # Duck-typed to support bootstrap.
@@ -1525,104 +1525,8 @@ let
       };
     };
 
-    # Construct the Builtin type wrappers for universe U using the given mkBuiltin function.
-    mkBuiltins = SU: U: rec {
-      AnyBuiltin = SU.Union SU.builtinNames;
-
-      BuiltinOf_ = U.Type.template "BuiltinOf" { T = AnyBuiltin; } (_: {
-        fields = This: SU.Fields.new [{ value = _.T; }];
-      });
-      BuiltinOf = T: BuiltinOf_.bind { inherit T; };
-
-      mkBuiltinType = name:
-        let
-          withGetValue = methods: methods // {
-            getValue = this: _: this.__value.value;
-          };
-
-          withToString = methods:
-            let
-              toStringF = {
-                String = self: self.getValue {};
-                Int = self: toString (self.getValue {});
-                Float = self: toString (self.getValue {});
-                Path = self: toString (self.getValue {});
-                Lambda = self: "_: ...";
-                Bool = self: boolToString (self.getValue {});
-                Set = self: log.vprintD 1 (self.getValue {});
-                List = self: log.vprintD 2 (self.getValue {});
-                Null = self: "";
-              }.${name};
-            in
-              methods // {
-                # show (Int.new 6) returns e.g. "Int(6)"
-                __show = this: self: "${U.typeIdOf self}(${toStringF self})";
-                # toString (Int.new 6) returns e.g. "6"
-                __toString = this: self:
-                  with (log.v 2).methodCall
-                    (U.withoutStringConversions this)
-                    "__toString"
-                    { self = U.withoutStringConversions self; }
-                    ___;
-                  return (toStringF self);
-              };
-
-          hasSize = { String = true; Path = true; List = true; Set = true; }.${name} or false;
-          withSize = methods:
-            if hasSize
-            then let sizeFn = this: _: size (this.getValue {});
-                in methods // { size = sizeFn; }
-            else methods;
-        in
-          U.Type.new name {
-            ctor = SU.Ctor.new "Ctor${name}" (This: x: {
-              __value = (U.BuiltinOf (toLower name)).new x;
-            });
-            fields = This: SU.Fields.new [{
-              __value = U.BuiltinOf (toLower name);
-            }];
-            methods = withToString (withSize (withGetValue ({
-              List = {
-                fmap = this: f: this.modify.__value (this: this.modify.value (map f));
-                append = this: x: this.modify.__value (this: this.modify.value (xs: xs ++ [x]));
-              };
-              Set = {
-                fmap = this: f: this.modify.__value (this: this.modify.value (mapAttrs (_: f)));
-                names = this: _: attrNames (this.getValue {});
-                values = this: _: attrValues (this.getValue {});
-              };
-              Lambda = {
-                fmap = this: f: this.modify.__value (this: this.modify.value (compose f));
-              };
-            }.${name} or {})));
-            checkValue = that: {
-              # Additional check on sets s.t. we don't accept a typed value when expecting
-              # a raw set.
-              Set = !((that.getValue {}) ? __Type);
-            }.${name} or true;
-          };
-
-      BuiltinTypes = mapAttrs (BuiltinName: _: mkBuiltinType BuiltinName) U.BuiltinNameTobuiltinName;
-
-      inherit (BuiltinTypes) Null Int Float String Path Bool List Set Lambda;
-    };
-
     # Universe-independent types that only depend on Type.
     mkTrivialTypes = SU: U: rec {
-      # Unit Type
-      Unit = SU.Type.new "Unit" {
-        ctor = SU.Ctors.CtorNullary;
-      };
-      unit = Unit.new {};
-
-      # Uninhabited type
-      Void = SU.Type.new "Void" {
-        ctor = SU.Ctor.new "CtorVoid" (_: thunk (throw "Void: ctor"));
-      };
-
-      # Any type
-      # Used in Type fields (via Literal binding) so must be SU.Type.
-      Any = SU.Type.new "Any" {overrideCheck = _: true;};
     };
 
     # Construct templating functions for a given universe.
@@ -2453,6 +2357,37 @@ let
       };
 
     # Create a new universe descending from SU.
+    #
+    # At first, SU == U_0 == Quasiverse, and contains:
+    #
+    # - Shims for all Builtins and all component types
+    #   - Constructed from each other, or pseudo-typed shims that do not recursively use
+    #     other parts of U_0
+    # - A functioning Type type, constructed out of U_0 shim instances
+    # - Utility / Typelib functions for operating over the types in U_0 (e.g. isType, typeEq)
+    #
+    # A sub-universe U can then make full use of SU's Type and its components when constructing
+    # its own versions of Type and those components.
+    #
+    # Before SU.Type is created, we first create U's common components.
+    #
+    # - Typelib
+    # - Casting
+    # - Shared Constructors
+    # - Inheritance
+    # - Instantiation (i.e. mkInstance)
+    # - Builtin utilities
+    #
+    # These tertiary parts of U can only depend on and make use of the elements of SU.
+    # Reaching forward after Type is created into the final U reference causes circularity,
+    # as U.Type's construction depends on these elements.
+    #
+    # Next we create U.Type in terms of SU and the above tertiary parts of U.
+    #
+    # Finally we can construct the remainder of U as instances of U.Type:
+    # - Builtins
+    # - Trivials
+    # - Components (Field, Fields, Ctor, etc)
     mkSubUniverse = SU:
       let opts = resolve SU.opts.descend; in
       with (log.v 4).call "mkSubUniverse" opts "<SU>" ___;
@@ -2460,23 +2395,115 @@ let
       let
         U = 
           withCommonUniverse SU (
-            mkBuiltins SU U // 
-            mkTrivialTypes SU U 
+            mkTrivialTypes SU U
             // rec {
               # Store the opts as U.opts
               inherit opts;
 
-              # Construct the Type type in terms of the SU, then in terms of itself.
-              #__Bootstrap = rec {
-              #  Type__args = mkTypeArgsFor SU U;
-              #  Type__new = SU.Type.new opts.typeName Type__args;
-              #  Type =
-              #    if opts.checkTypeFixedUnderNew
-              #      then groundTypeAndAssertFixed SU U opts Type__args Type__new
-              #      else groundType SU U Type__new;
-              #};
               __Bootstrap = mkBootstrappedType SU U;
               Type = __Bootstrap.Type;
+
+              ### Builtins
+
+              AnyBuiltin = SU.Union SU.builtinNames;
+
+              BuiltinOf_ = U.Type.template "BuiltinOf" { T = AnyBuiltin; } (_: {
+                fields = This: SU.Fields.new [{ value = _.T; }];
+              });
+              BuiltinOf = T: BuiltinOf_.bind { inherit T; };
+
+              mkBuiltinType = name:
+                let
+                  withGetValue = methods: methods // {
+                    getValue = this: _: this.__value.value;
+                  };
+
+                  withToString = methods:
+                    let
+                      toStringF = {
+                        String = self: self.getValue {};
+                        Int = self: toString (self.getValue {});
+                        Float = self: toString (self.getValue {});
+                        Path = self: toString (self.getValue {});
+                        Lambda = self: "_: ...";
+                        Bool = self: boolToString (self.getValue {});
+                        Set = self: log.vprintD 1 (self.getValue {});
+                        List = self: log.vprintD 2 (self.getValue {});
+                        Null = self: "";
+                      }.${name};
+                    in
+                      methods // {
+                        # show (Int.new 6) returns e.g. "Int(6)"
+                        __show = this: self: "${U.typeIdOf self}(${toStringF self})";
+                        # toString (Int.new 6) returns e.g. "6"
+                        __toString = this: self:
+                          with (log.v 2).methodCall
+                            (U.withoutStringConversions this)
+                            "__toString"
+                            { self = U.withoutStringConversions self; }
+                            ___;
+                          return (toStringF self);
+                      };
+
+                  hasSize = { String = true; Path = true; List = true; Set = true; }.${name} or false;
+                  withSize = methods:
+                    if hasSize
+                    then let sizeFn = this: _: size (this.getValue {});
+                        in methods // { size = sizeFn; }
+                    else methods;
+                in
+                  U.Type.new name {
+                    ctor = SU.Ctor.new "Ctor${name}" (This: x: {
+                      __value = (U.BuiltinOf (toLower name)).new x;
+                    });
+                    fields = This: SU.Fields.new [{
+                      __value = U.BuiltinOf (toLower name);
+                    }];
+                    methods = withToString (withSize (withGetValue ({
+                      List = {
+                        fmap = this: f: this.modify.__value (this: this.modify.value (map f));
+                        append = this: x: this.modify.__value (this: this.modify.value (xs: xs ++ [x]));
+                      };
+                      Set = {
+                        fmap = this: f: this.modify.__value (this: this.modify.value (mapAttrs (_: f)));
+                        names = this: _: attrNames (this.getValue {});
+                        values = this: _: attrValues (this.getValue {});
+                      };
+                      Lambda = {
+                        fmap = this: f: this.modify.__value (this: this.modify.value (compose f));
+                      };
+                    }.${name} or {})));
+                    checkValue = that: {
+                      # Additional check on sets s.t. we don't accept a typed value when expecting
+                      # a raw set.
+                      Set = !((that.getValue {}) ? __Type);
+                    }.${name} or true;
+                  };
+
+              BuiltinTypes = mapAttrs (BuiltinName: _: mkBuiltinType BuiltinName) U.BuiltinNameTobuiltinName;
+
+              inherit (BuiltinTypes) Null Int Float String Path Bool List Set Lambda;
+
+
+              ### Trivial
+
+              # Unit Type
+              Unit = U.Type.new "Unit" {
+                ctor = SU.Ctors.CtorNullary;
+              };
+              unit = Unit.new {};
+
+              # Uninhabited type
+              Void = U.Type.new "Void" {
+                ctor = SU.Ctor.new "CtorVoid" (_: thunk (throw "Void: ctor"));
+              };
+
+              # Any type
+              # Used in Type fields (via Literal binding) so must be SU.Type.
+              Any = U.Type.new "Any" {overrideCheck = _: true;};
+
+
+              ### Components
 
               Ctor = Type.new "Ctor" {
                 # Manually cast here for universes before typechecking to ensure homogeneity of
@@ -3475,36 +3502,37 @@ let
 
     in suite rec {
 
-      all = solo (
-        mergeAttrsList [
-          { inherit Bootstrap; }
-          (testInUniverses 
-            { inherit U_0 U_1 U_2 U_3 U_4; }
-            (U: {
-              peripheral = peripheralTests U;
-            }))
-          (testInUniverses 
-            { inherit U_0 U_1 U_2 U_3; }
-            (U: {
-              smoke = smokeTests U;
-            }))
-          (testInUniverses 
-            { inherit U_0 U_1 U_2; }
-            (U: {
-              Typelib = TypelibTests U;
-              typeFunctionality = typeFunctionalityTests U;
-              inheritance = inheritanceTests U;
-              instantiation = instantiationTests U;
-              builtin = builtinTests U;
-              cast = castTests U;
-              untyped = untypedTests U;
-            }))
-          (testInUniverses 
-            { inherit U_1 U_2 U_3; }
-            (U: {
-              typeChecking = typeCheckingTests U;
-            }))
-        ]);
+      all =
+        #solo
+          (mergeAttrsList [
+            { inherit Bootstrap; }
+            (testInUniverses
+              { inherit U_0 U_1 U_2 U_3 U_4; }
+              (U: {
+                peripheral = peripheralTests U;
+              }))
+            (testInUniverses
+              { inherit U_0 U_1 U_2 U_3; }
+              (U: {
+                smoke = smokeTests U;
+              }))
+            (testInUniverses
+              { inherit U_0 U_1 U_2; }
+              (U: {
+                Typelib = TypelibTests U;
+                typeFunctionality = typeFunctionalityTests U;
+                inheritance = inheritanceTests U;
+                instantiation = instantiationTests U;
+                builtin = builtinTests U;
+                cast = castTests U;
+                untyped = untypedTests U;
+              }))
+            (testInUniverses
+              { inherit U_1 U_2 U_3; }
+              (U: {
+                typeChecking = typeCheckingTests U;
+              }))
+          ]);
 
       Bootstrap = testInUniverse U_0 (U:
         with U;
@@ -3553,6 +3581,14 @@ let
               U_1
               U_2
               U_3
+              ;
+          } smokeTests);
+
+      fastSmoke =
+        solo
+          (testInUniverses {
+            inherit
+              U_0
               ;
           } smokeTests);
 
@@ -3664,6 +3700,95 @@ let
       };
     in 
       self;
+
+  # Placeholder to store multiline string for fast expr execution using nixlike.el
+  __nixlikeExprs = ''
+# Import shortcut
+(load-file "nixlike.el")
+
+# Quick toggles
+
+(setq debug-on-error t)
+(setq debug-on-error nil)
+
+(setq nixlike-default-nix-variant 'nix)
+(setq nixlike-default-nix-variant 'tvix)
+
+(setq nixlike-default-mode 'shell)
+(setq nixlike-default-mode 'repl)
+
+(nixlike-preamble-expr 'nix 0 nil nil)
+
+<nix>
+strict (enumerate [1 2 3])
+</nix>
+
+<nix>
+# (run-nix-0)
+123
+</nix>
+
+<nix>
+Types.Universe.U_2.Int
+</nix>
+
+<nix>
+with Types.Universe.U_3;
+rec {
+  a = (Fields.new [{a = Int;}]).update [{b = Default Int 666;}];
+  b = (Fields.new [{a = Int;}]);
+  c = Fields.new {};
+  d = Type;
+  e = a.indexed {};
+  f = (OrderedOf Int).new { a = 1; b = 2; };
+  g = f.indexed {};
+  h = a.getSolos {};
+  i = a.instanceFields {};
+  j = (Int.getFields {});
+  k = (Field.new "a" Int);
+  l = (lambda a.fieldSpecs) {};
+  m = parseFieldSpec Int;
+  n = Int;
+  o = (String.new "wat").__value.value;
+}.e
+</nix>
+
+<nix>
+Types.Universe.U_2
+</nix>
+
+<nix>
+_tests.run
+</nix>
+
+<nix>
+with Types.Universe.U_2;
+Type
+</nix>
+
+<nix>
+_testsUntyped.run
+</nix>
+
+<nix>
+typelib._tests.run
+</nix>
+
+<nix>
+typelib._tests.debug
+</nix>
+
+<nix>
+log._tests
+</nix>
+
+<nix>
+attrsets._tests.run
+</nix>
+<nix>
+lists
+</nix>
+'';
 
 in
   # Use as:
