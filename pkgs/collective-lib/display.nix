@@ -103,7 +103,7 @@ rec {
   onPort = port: display: display // { defaultOutput = port; };
   onSpace = space: display: display // { defaultWorkspace = space; };
 
-  mkKanshiLaptop = internal: primary: rest: {
+  mkKanshi = internal: primary: rest: {
     enable = true;
     profiles = {
       undocked = {

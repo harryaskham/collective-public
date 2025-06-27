@@ -84,7 +84,7 @@ let
     rec {
 
     # Nix library overrides to take Types into account.
-    mkTypelib = SU: U: rec {
+    mkTypelib = SU: rec {
 
       ### constants
 
@@ -1851,7 +1851,7 @@ let
           U_
           [ (SU: U: {
               # Ensure the lib for a universe is accessible by reference.
-              Typelib = mkTypelib SU U;
+              Typelib = mkTypelib SU;
 
               # Tersely print universes.
               __toString = _: "<Universe: ${opts.name}>";
@@ -3502,8 +3502,29 @@ let
 
     in suite rec {
 
+      fastSmoke =
+        #solo
+          (testInUniverses {
+            inherit
+              U_0
+              ;
+          } smokeTests);
+
+      smoke =
+        #solo
+          (testInUniverses {
+            inherit
+              U_0
+              U_1
+              U_2
+              U_3
+              ;
+          } smokeTests);
+
+    } // unless false {
+
       all =
-        solo
+        #solo
           (mergeAttrsList [
             { inherit Bootstrap; }
             (testInUniverses
@@ -3527,7 +3548,7 @@ let
                 cast = castTests U;
                 untyped = untypedTests U;
               }))
-            (testInUniverse 
+            (testInUniverses
               { inherit U_1 U_2 U_3; }
               (U: {
                 typeChecking = typeCheckingTests U;
@@ -3572,25 +3593,6 @@ let
               TS
               ;
           } peripheralTests);
-
-      smoke =
-        #solo
-          (testInUniverses {
-            inherit
-              U_0
-              U_1
-              U_2
-              U_3
-              ;
-          } smokeTests);
-
-      fastSmoke =
-        #solo
-          (testInUniverses {
-            inherit
-              U_0
-              ;
-          } smokeTests);
 
       Typelib =
         #solo
@@ -3761,8 +3763,7 @@ _tests.run
 </nix>
 
 <nix>
-with Types.Universe.U_3;
-Type
+Types.Universe.U_4.Int.new 123
 </nix>
 
 <nix>
