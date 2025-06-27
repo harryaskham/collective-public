@@ -3717,6 +3717,8 @@ let
 (setq nixlike-default-mode 'shell)
 (setq nixlike-default-mode 'repl)
 
+(nixlike-eval-command 'nix "123" 0 t nil)
+
 <nix>
 enumerate [1 2 3]
 </nix>
@@ -3759,7 +3761,7 @@ _tests.run
 </nix>
 
 <nix>
-with Types.Universe.U_2;
+with Types.Universe.U_3;
 Type
 </nix>
 

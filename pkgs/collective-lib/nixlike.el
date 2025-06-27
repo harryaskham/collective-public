@@ -151,12 +151,17 @@
      trace-runtime-timing-arg)))
 
 (defun nixlike-eval-command-args (nix-variant expr v trace raw)
-  (let ((expr-with-ctx (concat "with __mkCtx {}; " expr))
-        (expr-str (nixlike-expr-with-preamble nix-variant expr-with-ctx v trace raw)))
+  (letrec ((expr-with-ctx (concat "with __mkCtx {}; " expr))
+           (expr-str (format
+                      "'%s'"
+                      (replace-regexp-in-string
+                       "'" "\\'"
+                       (nixlike-expr-with-preamble nix-variant expr-with-ctx v trace raw)))))
     (append
-     (if raw '("--raw") '())
      (cond ((eq nix-variant 'nix) `("eval" "--impure" "--expr" ,expr-str))
-           ((eq nix-variant 'tvix) `("-E" ,expr-str))
+           ((eq nix-variant 'tvix) (append
+                                    (if raw '("--raw") '())
+                                    `("-E" ,expr-str)))
            (t (error "Unknown nix-variant: %s" nix-variant)))
      (nixlike-common-args nix-variant v trace raw))))
 
