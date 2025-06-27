@@ -249,7 +249,7 @@ let
         mergeAttrsList (map (BName: { ${BName} = toLower BName; }) BuiltinNames);
 
       # List of all builtin names i.e. [ "null" ... ]
-      builtinNames = attrValues BuiltinNameTobuiltinName;
+      builtinNames = map toLower BuiltinNames;
 
       # Whether or not name is one of the lowercase builtin type names i.e. "string"
       isbuiltinName = name: elem name builtinNames;
@@ -3503,7 +3503,7 @@ let
     in suite rec {
 
       all =
-        #solo
+        solo
           (mergeAttrsList [
             { inherit Bootstrap; }
             (testInUniverses
@@ -3527,7 +3527,7 @@ let
                 cast = castTests U;
                 untyped = untypedTests U;
               }))
-            (testInUniverses
+            (testInUniverse 
               { inherit U_1 U_2 U_3; }
               (U: {
                 typeChecking = typeCheckingTests U;
@@ -3585,7 +3585,7 @@ let
           } smokeTests);
 
       fastSmoke =
-        solo
+        #solo
           (testInUniverses {
             inherit
               U_0
@@ -3717,14 +3717,11 @@ let
 (setq nixlike-default-mode 'shell)
 (setq nixlike-default-mode 'repl)
 
-(nixlike-preamble-expr 'nix 0 nil nil)
-
 <nix>
-strict (enumerate [1 2 3])
+enumerate [1 2 3]
 </nix>
 
 <nix>
-# (run-nix-0)
 123
 </nix>
 
@@ -3733,7 +3730,7 @@ Types.Universe.U_2.Int
 </nix>
 
 <nix>
-with Types.Universe.U_3;
+with Types.Universe.U_0;
 rec {
   a = (Fields.new [{a = Int;}]).update [{b = Default Int 666;}];
   b = (Fields.new [{a = Int;}]);
@@ -3754,7 +3751,7 @@ rec {
 </nix>
 
 <nix>
-Types.Universe.U_2
+Types.Universe.U_0.builtinNames
 </nix>
 
 <nix>
@@ -3767,11 +3764,19 @@ Type
 </nix>
 
 <nix>
-_testsUntyped.run
+collective-lib._testsUntyped.run
+</nix>
+
+<nix>
+collective-lib._testsUntyped.debug
 </nix>
 
 <nix>
 typelib._tests.run
+</nix>
+
+<nix>
+(suite typelib._tests.all).run
 </nix>
 
 <nix>
@@ -3785,6 +3790,7 @@ log._tests
 <nix>
 attrsets._tests.run
 </nix>
+
 <nix>
 lists
 </nix>
