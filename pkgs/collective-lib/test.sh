@@ -101,7 +101,8 @@ in
 EOF
               )
 
-  CMD="nix eval --option max-call-depth 1000000000 --extra-experimental-features pipe-operators --impure --expr '$FULL_EXPR' $REPL_FLAGS"
+  #CMD="nix eval --option max-call-depth 1000000000 --extra-experimental-features pipe-operators --impure --expr '$FULL_EXPR' $REPL_FLAGS"
+  CMD="nix eval --extra-experimental-features pipe-operators --impure --expr '$FULL_EXPR' $REPL_FLAGS"
 
   echo "Running: ${CMD}" >&2
   bash -c "$CMD"

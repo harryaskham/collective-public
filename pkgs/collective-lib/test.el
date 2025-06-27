@@ -1,8 +1,8 @@
 ;;; -*- lexical-binding: t; -*-
 
 ;;; (load-file "test.el")
-;;;(setq nix-variant 'tvix)
-(setq nix-variant 'nix)
+;;;(setq override-nix-variant 'tvix)
+(setq default-nix-variant 'nix)
 
 (defun forward-nix-block (&optional n)
   (interactive)
@@ -38,8 +38,12 @@
    (if trace "t" "")
    (if raw "r" "")))
 
-(defun tvix-repl-name (v trace)
-  (format "*Tvix-REPL-%s*" (verbosity-string v trace nil)))
+(defun nixlike-repl-name (nix-variant v trace)
+  (interactive)
+  (let ((prefix (cond ((eq nix-variant 'nix) "Nix")
+                      ((eq nix-variant 'tvix) "Tvix")
+                      (t (error "Unknown nix-variant: %s" nix-variant)))))
+    (format "*%s-REPL-%s*" prefix (verbosity-string v trace nil))))
 
 (defun shell-command-buffer ()
   (interactive)
@@ -56,47 +60,47 @@
         (search-backward "__replPrint" nil t)
         (pop-to-buffer this-buffer nil t)))))
 
-(defun run-nix-via-tvix-repl (v trace expr)
+(defun run-nix-via-nixlike-repl (nix-variant v trace expr)
   (interactive)
-  (tvix-repl-eval expr v trace nil nil nil))
+  (nixlike-repl-eval nix-variant expr v trace nil nil nil))
 
-(defun run-nix (&optional v trace raw)
+(defun run-nix (nix-variant &optional v trace raw)
   (interactive)
   (let ((expr (current-nix-expr)))
     (cond ((eq nix-variant 'nix) (run-nix-via-test-sh v trace raw expr))
-          ((eq nix-variant 'tvix) (run-nix-via-tvix-repl v trace expr))
+          ((eq nix-variant 'tvix) (run-nix-via-nixlike-repl 'tvix v trace expr))
           (t (error "Unknown nix-variant: %s" nix-variant)))))
 
-(defun tvix-repl-buffer (v trace)
+(defun nixlike-repl-buffer (nix-variant v trace)
   (interactive)
-  (get-buffer-create (tvix-repl-name v trace)))
+  (get-buffer-create (nixlike-repl-name nix-variant v trace)))
 
-(defun tvix-repl-process (v trace)
+(defun nixlike-repl-process (nix-variantv trace)
   (interactive)
-  (get-buffer-process (tvix-repl-buffer v trace)))
+  (get-buffer-process (nixlike-repl-buffer nix-variant v trace)))
 
-(defun tvix-repl-wait-for-output (v trace &optional timeout)
+(defun nixlike-repl-wait-for-output (nix-variant v trace &optional timeout)
   (unless timeout (setq timeout 10.0))
-  (accept-process-output (tvix-repl-process v trace) timeout))
+  (accept-process-output (nixlike-repl-process nix-variant v trace) timeout))
 
-(defun tvix-repl-print-fn (v trace)
+(defun nixlike-repl-print-fn (v trace)
   (cond ((>= v 2) "x: with collective-lib; with functions; strict (log.vprint (strict x))")
         ((= v 1) "x: with collective-lib; with functions; strict (log.print (strict x))")
         (t "x: with collective-lib; with functions; strict x")))
 
-(defun tvix-repl-run-preamble (v trace)
-  "Run the Tvix REPL preamble."
+(defun nixlike-repl-run-preamble (v trace)
+  "Run the Nixlike REPL preamble."
   (interactive)
   (let ((trace-level (if (null v) "null" (format "%d" v)))
         (enable-partial-trace (if (and (not (null v)) (>= v 1)) "true" "false"))
         (enable-verbose-trace (if (and (not (null v)) (>= v 2)) "true" "false")))
-    (tvix-repl-eval "\
+    (nixlike-repl-eval "\
 pkgs = import <nixpkgs> {}"
-                    v trace t t nil)
-    (tvix-repl-eval "\
+                       v trace t t nil)
+    (nixlike-repl-eval "\
 lib = pkgs.lib"
-                    v trace t t nil)
-    (tvix-repl-eval (format "\
+                       v trace t t nil)
+    (nixlike-repl-eval (format "\
 __ctx = _:\
   let\
     collective-lib =\
@@ -111,48 +115,48 @@ __ctx = _:\
       __replPrint = %s;\
     };\
   in self"
-                            trace-level
-                            enable-partial-trace
-                            enable-verbose-trace
-                            (tvix-repl-print-fn v trace))
-                    v trace t t nil)
+                               trace-level
+                               enable-partial-trace
+                               enable-verbose-trace
+                               (nixlike-repl-print-fn v trace))
+                       v trace t t nil)
     ))
 
-(defun tvix-repl-load (v trace &optional no-init)
-  (unless (comint-check-proc (tvix-repl-buffer v trace))
-    (pop-to-buffer (tvix-repl-buffer v trace) nil t)
-    (tvix--make-repl-in-buffer v trace (current-buffer))
+(defun nixlike-repl-load (v trace &optional no-init)
+  (unless (comint-check-proc (nixlike-repl-buffer v trace))
+    (pop-to-buffer (nixlike-repl-buffer v trace) nil t)
+    (nixlike--make-repl-in-buffer v trace (current-buffer))
     (nix-repl-mode)
-    (unless no-init (tvix-repl-run-preamble v trace))))
+    (unless no-init (nixlike-repl-run-preamble v trace))))
 
-(defun with-tvix-repl-buffer (v trace no-init body)
-  (tvix-repl-load v trace no-init)
-  (with-current-buffer (tvix-repl-buffer v trace) body))
+(defun with-nixlike-repl-buffer (v trace no-init body)
+  (nixlike-repl-load v trace no-init)
+  (with-current-buffer (nixlike-repl-buffer v trace) body))
 
-(defun tvix-repl (&optional v trace no-init)
-  "Load the Tvix-REPL."
+(defun nixlike-repl (&optional v trace no-init)
+  "Load the Nixlike-REPL."
   (interactive)
-  (tvix-repl-load v trace no-init))
+  (nixlike-repl-load v trace no-init))
 
-(defun tvix-format-expr (expr v trace)
-  "Format the given expr for the Tvix REPL."
+(defun nixlike-format-expr (expr v trace)
+  "Format the given expr for the Nixlike REPL."
   (interactive)
   (format "with __ctx {}; __replPrint (%s)" expr))
 
-(defun tvix-repl-eval (expr v trace &optional no-init no-wrap no-wait)
-  "Run the given expr (or current nix block) in the Tvix REPL."
+(defun nixlike-repl-eval (expr v trace &optional no-init no-wrap no-wait)
+  "Run the given expr (or current nix block) in the Nixlike REPL."
   (interactive)
-  (tvix-repl-load v trace no-init)
-  (with-current-buffer (tvix-repl-buffer v trace)
+  (nixlike-repl-load v trace no-init)
+  (with-current-buffer (nixlike-repl-buffer v trace)
     (comint-kill-input)
-    (insert (if no-wrap expr (tvix-format-expr expr v trace)))
+    (insert (if no-wrap expr (nixlike-format-expr expr v trace)))
     (comint-send-input)
-    (unless no-wait (tvix-repl-wait-for-output v trace))
+    (unless no-wait (nixlike-repl-wait-for-output v trace))
     (comint-kill-input)
     ))
 
 (defun tvix--make-repl-in-buffer (v trace buffer)
-  "Make Tvix Repl in BUFFER."
+  "Make Tvix Repl in BUFFER (just as nix--make-repl-in-buffer)."
   (let
       (
        (tvix-executable "~/code/tvix/target/debug/tvix")

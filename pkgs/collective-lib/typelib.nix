@@ -3475,14 +3475,22 @@ let
 
     in suite rec {
 
-      all = solo {
-        inherit Bootstrap;
-        fromU_0 = 
-          testInUniverses 
-            { inherit U_0 U_1 U_2 U_3; } #U_4 TS; }
+      all = solo (
+        mergeAttrsList [
+          { inherit Bootstrap; }
+          (testInUniverses 
+            { inherit U_0 U_1 U_2 U_3 U_4; }
             (U: {
               peripheral = peripheralTests U;
+            }))
+          (testInUniverses 
+            { inherit U_0 U_1 U_2 U_3; }
+            (U: {
               smoke = smokeTests U;
+            }))
+          (testInUniverses 
+            { inherit U_0 U_1 U_2; }
+            (U: {
               Typelib = TypelibTests U;
               typeFunctionality = typeFunctionalityTests U;
               inheritance = inheritanceTests U;
@@ -3490,14 +3498,13 @@ let
               builtin = builtinTests U;
               cast = castTests U;
               untyped = untypedTests U;
-            });
-        fromU_1 = 
-          testInUniverses 
-            { inherit U_1 U_2 U_3; } #U_4 TS; }
+            }))
+          (testInUniverses 
+            { inherit U_1 U_2 U_3; }
             (U: {
               typeChecking = typeCheckingTests U;
-            });
-      };
+            }))
+        ]);
 
       Bootstrap = testInUniverse U_0 (U:
         with U;
