@@ -109,7 +109,7 @@
   (accept-process-output (nixlike-repl-process nix-variant v trace raw) timeout))
 
 (defun nixlike-repl-print-fn (v trace raw)
-  (cond (raw "x: {string = lib.trace x x;}.${typeOf x} or (lib.traceSeqN 10 x x)")
+  (cond (raw "x: {string = lib.trace x x;}.${lib.typeOf x} or (lib.traceSeqN 10 x x)")
         ((= v 0) "x: lib.trace (log.print x) x")
         (t (format "x: lib.trace (log.vprintD %d x) x" v))))
 
