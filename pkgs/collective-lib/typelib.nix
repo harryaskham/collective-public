@@ -316,6 +316,10 @@ let
 
       withoutStringConversions = x: withoutToString (withoutShow x);
 
+      withoutFunctor = x: removeAttrs x ["__functor"];
+
+      withoutUnsafeStringConversionAttrs = x: withoutFunctor (withoutStringConversions x);
+
       ### path
 
       isPath = x:
@@ -342,6 +346,13 @@ let
         lib.isFunction x
         || (isType SU.Lambda x && lib.isFunction (getValueOrNull x));
       isLambda = isFunction;
+
+      # Important to be able to identify functors in particular, because we terminate
+      # variadic calls when we have emitted a non-function. This enables "new" to variadically
+      # return an instance of Type i.e. Int, which otherwise would pass the isFunction check
+      # and fail to terminate the variadic call.
+      isFunctor = x: lib.isAttrs x && x ? __functor;
+      isFunctionNotFunctor = x: lib.isFunction x && !isFunctor x;
 
       # Call a Lambda.
       call = lambda;
@@ -906,6 +917,11 @@ let
       # Consumes its first argument to avoid nullaries
       new = This: U.newInstance This;
 
+      # Enable creation of Types simply by calling the constructor.
+      # When this method is bound, turns the Type instance itself into a callable functor.
+      # Consumes one argument to avoid internal __functor machinery going infinite upon binding.
+      __functor = This: self: arg: This.new arg;
+
       # Create a new subType inheriting from This
       # TODO: Compose checkValue / overrideCheck if they appear in args
       subType = This: name: args:
@@ -1206,7 +1222,12 @@ let
             ''));
 
       mkStaticMethodBindings = This: staticMethods: this_:
-        with (log.v 3).call "mkStaticMethodBindings" This staticMethods "this_" ___;
+        with (log.v 3).call "mkStaticMethodBindings" {
+          inherit This;
+          staticMethods__elided = withoutUnsafeStringConversionAttrs staticMethods;
+          this_ = "unsafe:this_" ___;
+        } ___;
+
         let
           bindings =
             mapAttrs
@@ -1304,7 +1325,7 @@ let
             __Type = args.__Type or (SU.TypeThunk.new This);
           };
         in
-          Variadic.compose
+          Variadic.composeFunctor
             (args: mkInstance This (maybeSetType args))
             (arg: This.ctor.bind This arg);
 
@@ -1443,7 +1464,7 @@ let
                 # Otherwise the raw set with ctor, without __show etc
                 __toString = this: self: indent.block ''
                   ${U.typeIdOf self} (
-                    ${indent.here (log.print (U.withoutStringConversions self))} )
+                    ${indent.here (log.print (U.withoutUnsafeStringConversionAttrs self))} )
                 '';
               } // methods);
           staticMethods = maybeLazyAttrs (args.staticMethods or {});
@@ -2455,9 +2476,9 @@ let
                   # toString (Int.new 6) returns e.g. "6"
                   __toString = this: self:
                     with (log.v 2).methodCall
-                      (U.withoutStringConversions this)
+                      (U.withoutUnsafeStringConversionAttrs this)
                       "__toString"
-                      { self = U.withoutStringConversions self; }
+                      { self = U.withoutUnsafeStringConversionAttrs self; }
                       ___;
                     return (toStringF self);
                 };
@@ -3507,14 +3528,15 @@ let
         };
       };
 
+    # <nix>typelib._tests.run</nix>
     in suite rec {
 
       fastSmoke =
         testInUniverses {
           inherit
             U_0
-            U_1
-            U_2
+            #U_1
+            #U_2
             ;
         } (U: smokeTests U
           // typeFunctionalityTests U

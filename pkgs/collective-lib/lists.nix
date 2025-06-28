@@ -12,6 +12,7 @@ let
     length
     head tail
     take drop
+    foldl' foldr
     concatLists
     mergeAttrsList
     min max

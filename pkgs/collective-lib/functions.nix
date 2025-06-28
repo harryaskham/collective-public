@@ -11,6 +11,7 @@ with cutils.tests;
 let
   log = cutils.log;
   errors = cutils.errors;
+  typelib = cutils.typelib;
 in rec {
 
   # Compose two functions left-to-right
@@ -166,6 +167,10 @@ in rec {
     let g_ = fx: Variadic.compose (gx: mergeFn gx fx) g;
     in Variadic.compose g_ f;
 
+
+  # Variadic end-marker for otherwise-ambiguous termination
+  ___ = { __end = true; };
+
   # Variadic function builder.
   Variadic = rec {
     # Default settings for taking arguments of e.g. f { a = 1; } { b = 2; } -> { a = 1; b = 2; }
@@ -185,6 +190,8 @@ in rec {
     };
 
     # Construct a variadic function from the given spec.
+    # Variadic.mk or just Variadic { ...}
+    __functor = self: spec_: self.mk spec_;
     mk = spec_:
       let 
         # Pull in defaults.
@@ -228,7 +235,7 @@ in rec {
         else arg: f spec.initialState arg;
 
     mkThen = f: spec:
-      let g = Variadic.mk spec;
+      let g = Variadic spec;
       in Variadic.compose f g;
 
     # Build a variadic function that merges its attrset arguments.
@@ -241,11 +248,13 @@ in rec {
         else { xs = state.xs // x; };
       terminate = state: _: state.xs;
     };
-    mkSet_ = isTerminal: mk (set_ isTerminal);
-    mkSet = mkSet_ (_: x: x == end);
+    mkSet_ = isTerminal: Variadic (set_ isTerminal);
+    mkSet = mkSet_ (_: x: x == ___);
     mkSetThen = f: Variadic.compose f mkSet;
     mkSetFrom = init: mkSetThen (xs: init // xs);
     mkSetFromThen = init: f: Variadic.compose f (mkSetFrom init);
+    # Accrue arguments into a set until the given size is met
+    mkSetOfMinSize = l: mkSet_ (state: _: (size state.xs) >= l);
 
     # Build a variadic function that accepts partial attrsets until
     # exactly the given names are present.
@@ -253,7 +262,7 @@ in rec {
       isTerminal = state: _: attrNames state == names;
       check = _: x: isAttrs x && all (name: elem name names) (attrNames x);
     };
-    mkArgNames = names: mk (argNames names);
+    mkArgNames = names: Variadic (argNames names);
 
     # Expect arguments to be passed as single values in the order provided
     ordered = fieldOrder: {
@@ -276,67 +285,70 @@ in rec {
          };
       terminate = state: _: state.args;
     };
-    mkOrdered = fieldOrder: if fieldOrder == [] then {} else mk (ordered fieldOrder);
+    mkOrdered = fieldOrder: if fieldOrder == [] then {} else Variadic (ordered fieldOrder);
 
     # Expect a single argument to be embedded within an attrset with the given name.
     unary = fieldName: ordered [fieldName];
-    mkUnary = fieldName: mk (unary fieldName);
-
-    # Variadic end-marker for otherwise-ambiguous termination
-    end = { __end = true; };
+    mkUnary = fieldName: Variadic (unary fieldName);
 
     # Accrue arguments into a list until one satisfies isTerminal.
-    list_ = isTerminal: {
+    # Run f on the final list.
+    listThen_ = f: isTerminal: {
       inherit isTerminal;
       initialState = { xs = []; };
       handle = state: x: 
         if isTerminal state x
         then state
         else { xs = [x] ++ state.xs; };
-      terminate = state: _: reverseList state.xs;
+      terminate = state: x: f (reverseList state.xs) x;
     };
-    mkList_ = isTerminal: mk (list_ isTerminal);
+    mkListThenWith_ = f: isTerminal: Variadic (listThen_ f isTerminal);
+    mkListThen_ = f: isTerminal: Variadic (listThen_ (xs: _: f xs) isTerminal);
+    mkListThen = f: mkListThen_ f (_: x: x == ___);
 
     # Accrue arguments into a list until the end-marker is encountered.
-    mkList = mkList_ (_: x: x == end);
+    mkList = mkListThen_ id (_: x: x == ___);
 
     # Accrue arguments into a list until the given size is met
-    mkListOfLength = l: mkList_ (state: _: (length state.xs) == l);
-
-    # Accrue a list of arguments then apply a function to it.
-    mkListThen = f: Variadic.compose f mkList;
+    mkListOfLength = l: mkListThen_ id (state: _: (length state.xs) == l);
 
     # Accrue a list of function arguments then compose them
-    mkListCompose = mkListThen (foldl' compose id);
-
-    # Accrue a list of function arguments then compose them, then return the partial application of the composition
-    mkListComposeAp = mkListCompose;
-
-    # Accrue a list of function arguments then compose them, then return the a partial flipped application of the function
-    mkListComposeFlap =
-      let f = Variadic.mkListThen (fs: f: f (foldl' compose id fs));
-      in f;
+    mkListCompose_ = isTerminal: mkListThen_ (foldl' compose id) isTerminal;
+    mkListCompose = mkListCompose_ (_: x: x == ___);
 
     # Compose a variadic function f with a function g.
-    # The variadic can't return terminate with a function or this will not be able to detect termination
-    # since the Variadic is elided and we don't have g.isTerminal
-    # If g is n-ary or variadic, then the final result of f is passed as the first argument of g.
-    compose = g: f:
+    # Takes a predicate to check if the partially applied value f is a function - if so, continues
+    # to apply it, otherwise terminates the variadic call.
+    # If g is n-ary or variadic, then the final result of f is passed as the first argument of g,
+    # so that the composition continues to be variadic.
+    #j
+    # Intended termination of f can't return a function in general, or this will not be able to detect termination
+    # since the Variadic is elided and we don't have access to f.isTerminal
+    # Does not handle f returning a functor as its final object for the same reason.
+    # TODO: Can handle this by making Variadic return a functor carrying isTerminal?
+    # 
+    # Two variants are provided - one that terminates only when f emits a non-function non-functor,
+    # and one that terminates when f emits precisely a function.
+    compose_ = fIsFunction: g: f:
       if (!isFunction g) then throw "Cannot precompose a non-function (${typeOf g}) in Variadic.compose"
-      else if isFunction f then a: Variadic.compose g (f a)
+      else if fIsFunction f then a: Variadic.compose_ fIsFunction g (f a)
       else g f;
+
+    compose = compose_ isFunction;
+    composeFunctor = compose_ typelib.isFunctionNotFunctor;
   };
 
-  # Shorthand for variadic end marker
-  ___ = Variadic.end;
-
-  # Exhaust a function and do something with its first non-function curried output
-  exhaust = fThen: f: Variadic.mk {
+  # Exhaust a function and do something with its first non-function curried output.
+  # See compose_ for similar details about handling f returning a functor.
+  exhaust_ = fIsFunction: fThen: f: Variadic {
     initialState = { inherit f; };
     handle = state: x: { f = state.f x; };
-    isTerminal = nextState: _: !(isFunction nextState.f);
+    isTerminal = nextState: _: !(fIsFunction nextState.f);
     terminate = nextState: _: fThen nextState.f;
   };
+
+  exhaust = exhaust_ isFunction;
+  exhaustFunctor = exhaust_ typelib.isFunctionNotFunctor;
 
   # Convert a list of length n[ x ... y ] to a list
   # [ {index = 0; value = x;} ... {index = n - 1; value = y;} ]
@@ -360,7 +372,7 @@ in rec {
     Variadic = {
       default = {
         expr =
-          let f = Variadic.mk { isTerminal = _: arg: isAttrs arg && attrValues arg == [123]; };
+          let f = Variadic { isTerminal = _: arg: isAttrs arg && attrValues arg == [123]; };
           in f {x = "y";} {abc = 123;};
         expected = { x = "y"; abc = 123; };
       };
@@ -425,11 +437,21 @@ in rec {
             expr = sortOn id (Variadic.mkSetFromThen {x = 9;} attrNames {a = 1;} ___);
             expected = ["a" "x"];
           };
+          setOfMinSize = {
+            partial = {
+              expr = typeOf ((Variadic.mkSetOfMinSize 3) {a = 1;} {b = 2;});
+              expected = "lambda";
+            };
+            full = {
+              expr = (Variadic.mkSetOfMinSize 3) {a = 1;} {b = 2;} {c = 3;};
+              expected = {a = 1; b = 2; c = 3;};
+            };
+          };
         };
       };
 
       list = {
-        expr = Variadic.mkList 1 2 3 Variadic.end;
+        expr = Variadic.mkList 1 2 3 ___;
         expected = [ 1 2 3 ];
       };
 
@@ -456,20 +478,6 @@ in rec {
         expected = 5;
       };
 
-      listComposeAp = {
-        expr =
-          let f = Variadic.mkListComposeAp (x: x + 1) (x: x * 2) ___;
-          in f 2;
-        expected = 5;
-      };
-
-      listComposeFlap = {
-        expr =
-          let f = Variadic.mkListComposeFlap (x: x + 1) (x: x * 2) ___ map;
-          in f [1 2 3];
-        expected = [3 5 7];
-      };
-
       compose = {
         unaryWithVariadic = {
           expr =
@@ -488,7 +496,7 @@ in rec {
         variadicWithVariadic = {
           expr =
             let f = Variadic.mkOrdered ["a" "b"];
-                g = Variadic.mk { isTerminal = state: _: size state > 2; };
+                g = Variadic { isTerminal = state: _: size state > 2; };
                 gf = Variadic.compose g f;
             in gf 1 2 {c = 123;};
 
@@ -514,6 +522,25 @@ in rec {
           };
         };
 
+        functionWithFunctor = {
+          compose = {
+            expr =
+              let f = a: { __functor = self: b: c: a + b * c; };
+                  g = x: 1 + x;
+                  gf = Variadic.compose g f;
+              in gf 2 3 4;
+            expected = 15;
+          };
+
+          composeFunctor = {
+            expr =
+              let f = a: { __functor = self: b: c: a + b * c; };
+                  g = f: 1 + f 3 4;
+                  gf = Variadic.composeFunctor g f;
+              in gf 2;
+            expected = 15;
+          };
+        };
       };
 
       exhaust = {
@@ -522,6 +549,24 @@ in rec {
         binary = expect.eq (exhaust (x: x + 1) (a: b: a + b) 1 2) 4;
         trinary = expect.eq (exhaust (x: x + 1) (a: b: c: a + b + c) 1 2 3) 7;
         unexhausted = expect.True (isFunction (exhaust (x: x + 1) (a: b: c: a + b + c) 1 2));
+        functor = {
+          exhaust = 
+            expect.eq
+              (exhaust (x: x + 1) { __functor = self: a: b: c: a + b + c; } 1 2 3)
+              7;
+          exhaustFailsFunctorTerminal = 
+            expect.eqOn lib.typeOf
+              (exhaust (f: f 1) (a: b: c: { __functor = self: arg: a + b + c + arg; }) 1 2 3)
+              expect.anyLambda;
+          exhaustFunctorInitial = 
+            expect.eq 
+              (exhaustFunctor (f: f 1 2 3) { __functor = self: a: b: c: a + b + c; })
+              6;
+          exhaustFunctorTerminal = 
+            expect.eq 
+              (exhaustFunctor (f: f 1) (a: b: c: { __functor = self: arg: a + b + c + arg; }) 1 2 3)
+              7;
+        };
       };
 
       pipe = {
