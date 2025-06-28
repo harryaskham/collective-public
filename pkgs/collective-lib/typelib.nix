@@ -1871,14 +1871,11 @@ let
       in U;
 
     mkUniverseReference = opts: tag: U:
-      {
-        __toString = _: "<${tag}-universe ref: ${opts.name}>";
-        get = _: U;
-      };
+      NamedThunk "<${tag}-universe ref: ${opts.name}>" U;
 
     mkUniverseReferences = opts: SU: U: {
       _U = mkUniverseReference opts "self" U;
-      _SU = mkUniverseReference opts "super" SU;
+      _SU = SU;
     };
 
     printUniverse = U:
@@ -2877,7 +2874,7 @@ let
           String.subType "WrapString" {};
       };
 
-      TypelibTests = U: with U; let SU = resolve U._SU.get; in {
+      TypelibTests = U: with U; let SU = U._SU; in {
         isTypeSet = {
           Type = expect.True (isTypeSet Type);
           newType = expect.True (isTypeSet (Type.new "T" {}));
@@ -3039,7 +3036,7 @@ let
         };
       };
 
-      smokeTests = U: with U; let SU = resolve U._SU.get; in {
+      smokeTests = U: with U; let SU = U._SU; in {
 
         Type =
           assert Type ? new;
@@ -3484,7 +3481,7 @@ let
 
       };
 
-      peripheralTests = U: with U; let SU = resolve U._SU.get; in {
+      peripheralTests = U: with U; let SU = U._SU; in {
         checks = {
           isTyped = {
             string = expect.False (U.isTyped "hello");
@@ -3566,7 +3563,7 @@ let
 
       Bootstrap = testInUniverse U_0 (U:
         with U;
-        let SU = resolve U._SU.get; in 
+        let SU = U._SU; in 
         with __Bootstrap;
         {
           Type__args = {
@@ -3772,7 +3769,7 @@ _tests.run
 </nix>
 
 <nix>
-Types.Universe.U_4.Int.new 123
+Types.Universe.U_3
 </nix>
 
 <nix>
