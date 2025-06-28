@@ -120,10 +120,10 @@ let
       isTypeSet = T: bool (T.__isTypeSet or false);
 
       # Check if a given argument is a Type or a builtin type.
-      isTypeLike = T: bool (isTypeSet T || isbuiltinName T);
+      isTypeLike = T: isTypeSet T || isbuiltinName T;
 
       # Check if a given argument is a Type or a builtin type or null.
-      isTypeLikeOrNull = T: bool (isNull T || isTypeLike T);
+      isTypeLikeOrNull = T: isNull T || isTypeLike T;
 
       # Check if a given argument is a TypeThunk
       isTypeThunk = T: bool (T.__isTypeThunk or false);
@@ -342,6 +342,8 @@ let
 
       ### function
 
+      # Enables Lambda to be identified as a function.
+      # Note that every Type will show up as a function due to being a functor.
       isFunction = x:
         lib.isFunction x
         || (isType SU.Lambda x && lib.isFunction (getValueOrNull x));
@@ -900,14 +902,14 @@ let
               msg = "checkValue failed: ${log.print that} is not a value of type ${This.__TypeId {}}";
             }
           ]);
-        in if This.overrideCheck != null
+        in if !(U.isNull This.overrideCheck)
           then U.call This.overrideCheck that
           else runChecks;
 
       # Use the bound name with its ordered param assignments to determine type identity
       # and equality.
       # For bootstrap types this may not be bound yet, falling back to the name.
-      __TypeId = This: _: (This.getBoundName or This.getName) {};
+      __TypeId = This: _: U.call (This.getBoundName or This.getName) {};
 
       # Create a new instance of the type by providing at least all required field values.
       mk = This: U.mkInstance This;
@@ -916,11 +918,6 @@ let
       # When This == Type, creates a new Type.
       # Consumes its first argument to avoid nullaries
       new = This: U.newInstance This;
-
-      # Enable creation of Types simply by calling the constructor.
-      # When this method is bound, turns the Type instance itself into a callable functor.
-      # Consumes one argument to avoid internal __functor machinery going infinite upon binding.
-      __functor = This: self: arg: This.new arg;
 
       # Create a new subType inheriting from This
       # TODO: Compose checkValue / overrideCheck if they appear in args
@@ -950,8 +947,15 @@ let
         This: bindingsToSuper: name: tvars_: bindingsToArgs_:
         U.__newTemplate This bindingsToSuper name tvars_ bindingsToArgs_;
 
+      ### __implements: Converted to e.g. __toString upon binding
+
       # Print Type objects as just their name.
-      __toString = This: self: This.__TypeId {};
+      __implements__toString = This: self: This.__TypeId {};
+
+      # Enable creation of Types simply by calling the constructor.
+      # When this method is bound, turns the Type instance itself into a callable functor.
+      # Consumes one argument to avoid internal __functor machinery going infinite upon binding.
+      __implements__functor = This: self: arg: This.new arg;
     };
 
     # Type consists only of members of SU.
@@ -1211,7 +1215,7 @@ let
 
       checkNoNullaryBindings = check: This: bindings:
         let
-          nullaryBindings = filterAttrs (_: binding: !(isFunction binding)) bindings;
+          nullaryBindings = filterAttrs (_: binding: !(U.isFunctionNotFunctor binding)) bindings;
         in
         check
           "No nullary bindings"
@@ -1222,17 +1226,12 @@ let
             ''));
 
       mkStaticMethodBindings = This: staticMethods: this_:
-        with (log.v 3).call "mkStaticMethodBindings" {
-          inherit This;
-          staticMethods__elided = withoutUnsafeStringConversionAttrs staticMethods;
-          this_ = "unsafe:this_" ___;
-        } ___;
-
+        with (log.v 3).call "mkStaticMethodBindings" This staticMethods "unsafe:this_" ___;
         let
           bindings =
             mapAttrs
               (methodName: staticMethod: staticMethod this_)
-              (maybeResolve staticMethods);
+              (maybeResolve (This.staticMethods or {}));
         in
           assert checkNoNullaryBindings check This bindings;
           return bindings;
@@ -1270,6 +1269,11 @@ let
           # return (bindThis This this);
           bindThis This this;
 
+      # Convert the given special method name to its intended name.
+      # e.g. __implements__toString -> __toString
+      elideAttrName = replaceStrings ["__implements"] [""];
+      elideInstanceAttrNames = concatMapAttrs (name: value: { ${elideAttrName name} = value; });
+
       # Bind members that refer to this on construction and after any change.
       bindThis = This: this:
         let
@@ -1288,13 +1292,18 @@ let
               else {};
           accessorBindings = mkAccessorBindings This this_;
           methodBindings = mkMethodBindings This this_;
-          this_ = mergeAttrsList [
-            this
-            staticMethodInstanceBindings
-            staticMethodBindings
-            accessorBindings
-            methodBindings
-          ];
+          this_ = 
+            # We can only elide the __implements prefix after this merge, otherwise
+            # mergeAttrsList fails when it encounters a perceived functor (i.e. staticMethodBindings
+            # or methodBindings containing a bound __functor method).
+            elideInstanceAttrNames
+              (mergeAttrsList [
+                this
+                staticMethodInstanceBindings
+                staticMethodBindings
+                accessorBindings
+                methodBindings
+              ]);
         in
           this_;
 
@@ -1325,7 +1334,7 @@ let
             __Type = args.__Type or (SU.TypeThunk.new This);
           };
         in
-          Variadic.composeFunctor
+          Variadic.composeFunctorsAreAttrs
             (args: mkInstance This (maybeSetType args))
             (arg: This.ctor.bind This arg);
 
@@ -1380,20 +1389,22 @@ let
 
               staticMethodNames =
                 assign "staticMethodNames" (
-                  This.staticMethods.__attrNames {});
+                  map elideAttrName (This.staticMethods.__attrNames {}));
 
               populatedStaticMethodNames =
                 assign "populatedStaticMethodNames" (
-                  filter (name: this ? ${name}) (This.staticMethods.__attrNames {}));
+                  filter (name: this ? ${name}) staticMethodNames);
 
               missingStaticMethodNames = assign "missingStaticMethodNames" (
                 subtractLists populatedStaticMethodNames staticMethodNames);
             in [
               {
+                name = "unknownFieldNames == []";
                 cond = unknownFieldNames == [];
                 msg = "${log.print This}: Unknown fields in mkInstance call: ${joinSep ", " unknownFieldNames}";
               }
               {
+                name = "missingFieldNames == []";
                 cond = missingFieldNames == [];
                 msg = ''
                   ${log.print This}: Missing fields in mkInstance call: ${joinSep ", " missingFieldNames}
@@ -1403,6 +1414,7 @@ let
                 '';
               }
               {
+                name = "missingStaticMethodNames == []";
                 cond = missingStaticMethodNames == [];
                 msg = ''
                   ${log.print This}: Missing staticMethods in mkInstance call: ${joinSep ", " missingStaticMethodNames}
@@ -1462,7 +1474,7 @@ let
               (maybeLazyAttrs (args.methods or {}))
               (methods: {
                 # Otherwise the raw set with ctor, without __show etc
-                __toString = this: self: indent.block ''
+                __implements__toString = this: self: indent.block ''
                   ${U.typeIdOf self} (
                     ${indent.here (log.print (U.withoutUnsafeStringConversionAttrs self))} )
                 '';
@@ -2062,6 +2074,8 @@ let
           };
           getValue = _: value;
           __value.value = value;
+        } // optionalAttrs (typeName == "Lambda") {
+          __functor = self: arg: value arg;
         };
 
         # Create a builtin value shim without using any other machinery.
@@ -2082,6 +2096,8 @@ let
           __isTypeSet = mkSimpleValueShim "Bool" true;
           getValue = _: value;
           __value.value = value;
+        } // optionalAttrs (typeName == "Lambda") {
+          __functor = self: arg: value arg;
         };
 
         # Create shim types appearing as instances of Type.
@@ -2107,7 +2123,7 @@ let
               checkValue = mkValueShim "Null" null;
               overrideCheck = mkValueShim "Null" null;
             };
-          T = mkInstanceShim TypeShim get {
+          T = mkInstanceShim TypeShim get (attrs // {
             __TypeId = _: name;
             getBoundName = _: name;
             getName = _: name;
@@ -2116,8 +2132,10 @@ let
             __toString = _: "TypeShim<${name}>";
             __show = _: "TypeShim<${name}>";
             check = _: true;
-          };
-        in T // attrs // {
+            # Ensure shims also operate as functors.
+            __functor = self: arg: if T ? new then T.new arg else throw "__functor called on Type shim without .new: ${log.print T}";
+          });
+        in T // {
           fields = _: T.getFields {};
         };
 
@@ -2127,9 +2145,7 @@ let
                      __isTypeThunk = mkValueShim "Bool" true;};
           inherit strictGet;
           get = mapAttrs (_: thunk) strictGet;
-        } // attrs // strictGet // {
-
-        };
+        } // attrs // strictGet;
 
         # A shimmed version of Type.
         # Any args are provided as attrs to mkTypeShim.
@@ -2167,10 +2183,12 @@ let
                       ''));
                     x = unwrapper x_;
                     get = { __value = (BuiltinOf builtinName).new x; }; in
-                mkInstanceShim BuiltinTypeShim get rec {
+                mkInstanceShim BuiltinTypeShim get (rec {
                   getValue = _: x;
                   __toString = _: if name == "String" then x else log.print x;
-                };
+                } // optionalAttrs (name == "Lambda") {
+                  __functor = self: arg: x arg;
+                });
               mk = args: new args.__value.value;  # To enable cast to work
             };
           in
@@ -2472,14 +2490,10 @@ let
               in
                 methods // {
                   # show (Int.new 6) returns e.g. "Int(6)"
-                  __show = this: self: "${U.typeIdOf self}(${toStringF self})";
+                  __implements__show = this: self: "${U.typeIdOf self}(${toStringF self})";
                   # toString (Int.new 6) returns e.g. "6"
-                  __toString = this: self:
-                    with (log.v 2).methodCall
-                      (U.withoutUnsafeStringConversionAttrs this)
-                      "__toString"
-                      { self = U.withoutUnsafeStringConversionAttrs self; }
-                      ___;
+                  __implements__toString = this: self:
+                    with (log.v 2).methodCall this "__toString" self ___;
                     return (toStringF self);
                 };
 
@@ -2509,6 +2523,8 @@ let
                 };
                 Lambda = {
                   fmap = this: f: this.modify.__value (this: this.modify.value (compose f));
+                  # Enable Lambda instances to be used as functors.
+                  __implements__functor = this: self: arg: U.call this arg;
                 };
               }.${name} or {})));
               checkValue = that: {
@@ -3277,6 +3293,13 @@ let
                 isbuiltinValue (Bool.new true)
               );
           };
+
+          Lambda = {
+            invoke.directly = expect.eq ((Lambda.new (x: x+1)).getValue {} 2) 3;
+            invoke.call = expect.eq (call (Lambda.new (x: x+1)) 2) 3;
+            invoke.functor.new = expect.eq (Lambda.new (x: x+1) 2) 3;
+            invoke.functor.functor = expect.eq (Lambda (x: x+1) 2) 3;
+          };
         };
 
       untypedTests = U: with U;
@@ -3468,6 +3491,11 @@ let
           RootType = expect.stringEq Type.name "Type";
         };
 
+        init = {
+          byNew = expect.eq ((Type.new "MyType" {}).__TypeId {}) "MyType";
+          byFunctor = expect.eq ((Type "MyType" {}).__TypeId {}) "MyType";
+        };
+
         methodCalls = {
           MyType_methods = {
             expr = MyType.methods.__attrNames {};
@@ -3535,7 +3563,7 @@ let
         testInUniverses {
           inherit
             U_0
-            #U_1
+            U_1
             #U_2
             ;
         } (U: smokeTests U
@@ -3801,7 +3829,7 @@ _tests.run
 </nix>
 
 <nix>
-Types.Universe.U_3
+isFunction { __functor = self: arg: arg; }
 </nix>
 
 <nix>

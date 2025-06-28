@@ -66,9 +66,9 @@ in rec {
   };
 
   # recursiveMapAttrs that also allows for mapping over lists.
-  deepConcatMap = f: dispatchDef (_: id) {
+  deepConcatMap = f: dispatchDef id {
     list = map (deepConcatMap f);
-    set = concatMapAttrs f;
+    set = concatMapAttrs (k: v: f k (deepConcatMap f v));
   };
 
   deepFilter = f: dispatchDef id {
@@ -144,6 +144,20 @@ in rec {
             };
           };
         };
+
+        deepConcatMap = {
+          expr = 
+            deepConcatMap 
+            (k: v:
+              if k == "no" then { yes = v; } 
+              else if lib.typeOf v == "int" then { ${k} = v + 1; } 
+              else if lib.typeOf v == "string" then { ${k} = v; }
+              else { ${k} = v; })
+            { a = 1; no = 2; b = { no = { c = 3; no = 4; noChange = "not int"; }; }; };
+          expected = 
+            { a = 2; yes = 2; b = { yes = { c = 4; yes = 4; noChange = "not int"; }; }; };
+        };
+
       };
 
     };

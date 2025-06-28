@@ -302,16 +302,20 @@ in rec {
         else { xs = [x] ++ state.xs; };
       terminate = state: x: f (reverseList state.xs) x;
     };
-    mkListThenWith_ = f: isTerminal: Variadic (listThen_ f isTerminal);
-    mkListThen_ = f: isTerminal: Variadic (listThen_ (xs: _: f xs) isTerminal);
+    mkListThenWithFinalArg_ = f: isTerminal: Variadic (listThen_ f isTerminal);
+    mkListThen_ = f: isTerminal: mkListThenWithFinalArg_ (xs: arg: f xs) isTerminal;
     mkListThen = f: mkListThen_ f (_: x: x == ___);
 
     # Accrue arguments into a list until the end-marker is encountered.
     mkList = mkListThen_ id (_: x: x == ___);
 
     # Accrue arguments into a list until the given size is met
-    mkListOfLength = l: mkListThen_ id (state: _: (length state.xs) == l);
-
+    mkListOfLength = l: 
+      Variadic 
+        ((listThen_ (xs: _: xs) (state: _: (length state.xs) == l)) // {
+          handle = state: x: { xs = [x] ++ state.xs; };
+        });
+    
     # Accrue a list of function arguments then compose them
     mkListCompose_ = isTerminal: mkListThen_ (foldl' compose id) isTerminal;
     mkListCompose = mkListCompose_ (_: x: x == ___);
@@ -329,13 +333,18 @@ in rec {
     # 
     # Two variants are provided - one that terminates only when f emits a non-function non-functor,
     # and one that terminates when f emits precisely a function.
-    compose_ = fIsFunction: g: f:
-      if (!isFunction g) then throw "Cannot precompose a non-function (${typeOf g}) in Variadic.compose"
-      else if fIsFunction f then a: Variadic.compose_ fIsFunction g (f a)
-      else g f;
+    compose_ = isTerminal: g: fOrX:
+      assert assertMsg (isFunction g) "Cannot precompose a non-function (${typeOf g}) in Variadic.compose";
+      if isTerminal fOrX then let x = fOrX; in g x
+      else let f = fOrX; in a: compose_ isTerminal g (f a);
 
-    compose = compose_ isFunction;
-    composeFunctor = compose_ typelib.isFunctionNotFunctor;
+    # Compose, passing to g whenever a non-partial function is reached. If f
+    # returns a functor, then the functor continues being applied until a pure non-functor
+    # value is reached.
+    compose = compose_ (x: !(isFunction x));
+
+    # Like compose, but if f returns a functor, it is treated as a value.
+    composeFunctorsAreAttrs = compose_ (x: typelib.isFunctor x || !(isFunction x));
   };
 
   # Exhaust a function and do something with its first non-function curried output.
@@ -532,11 +541,11 @@ in rec {
             expected = 15;
           };
 
-          composeFunctor = {
+          composeFunctorsAreAttrs = {
             expr =
               let f = a: { __functor = self: b: c: a + b * c; };
                   g = f: 1 + f 3 4;
-                  gf = Variadic.composeFunctor g f;
+                  gf = Variadic.composeFunctorsAreAttrs g f;
               in gf 2;
             expected = 15;
           };

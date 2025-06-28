@@ -20,7 +20,11 @@ with cutils.strings;
 
 # Printing/logging utilities
 let
+  typelib = cutils.typelib;
   log = rec {
+    unsafeNames = [ "__toString" "__show" "__functor" ];
+    elideUnsafeName = name: if elem name unsafeNames then "ELIDED-${name}" else name;
+    elideUnsafeNames = deepConcatMap (k: v: { ${elideUnsafeName k} = v; });
 
     mkPrintArgs = {
       printStrictly = false;
@@ -28,6 +32,8 @@ let
       ignoreToString = false;
       # If true, do not respect __show
       ignoreShow = false;
+      # If true, elide all unsafe names (after checking for toString/show)
+      elideUnsafe = true;
       # Default here to leave indentation markers in until the top level call
       formatBlock = trimNewlines;
       formatLines = indent.linesSep "\n";
@@ -96,27 +102,29 @@ let
     maybeParen = x: if wordCount x <= 1 then x else "(${x})";
 
     # Convert a value of any type to a string, supporting the types module's Type values.
-    print_ = args: x_:
+    print_ = args: x__:
       with args;
       let
-        x = if printStrictly then strict x_ else x_;
+        x_ = if printStrictly then strict x__ else x__;
         block =
           if depth >= maxDepth then "..."
-          else if hasShow x && !ignoreShow then
-            show x
-          else if (x ? __toString) && !ignoreToString then
-            toString x
-          else {
-            null = "null";
-            path = toString x;
-            string = ''"${x}"'';
-            int = ''${builtins.toJSON x}'';
-            float = ''${builtins.toJSON x}'';
-            lambda = "<lambda>";
-            list = formatBlock (printList_ args x);
-            set = formatBlock (printAttrs_ args x);
-            bool = boolToString x;
-          }.${typeOf x};
+          else if hasShow x_ && !ignoreShow then
+            show x_
+          else if (x_ ? __toString) && !ignoreToString then
+            toString x_
+          else 
+            let x = if elideUnsafe then elideUnsafeNames x_ else x_;
+            in {
+              null = "null";
+              path = toString x;
+              string = ''"${x}"'';
+              int = ''${builtins.toJSON x}'';
+              float = ''${builtins.toJSON x}'';
+              lambda = "<lambda>";
+              list = formatBlock (printList_ args x);
+              set = formatBlock (printAttrs_ args x);
+              bool = boolToString x;
+            }.${typeOf x};
       in
         block;
 
@@ -127,8 +135,8 @@ let
     prints = rec {
       ___ = cutils.functions.___;
       put = x: Variadic.mkSetFromThen mkPrintArgs (args: print_ args x);
-      block = x: Variadic.compose indent.block (put x);
-      here = x: Variadic.compose indent.here (put x);
+      block = x: Variadic.composeFunctorsAreAttrs indent.block (put x);
+      here = x: Variadic.composeFunctorsAreAttrs indent.here (put x);
       putD = n: x: put x (using.depth n);
       using = {
         raw = { ignoreToString = true; ignoreShow = true; };
@@ -237,7 +245,7 @@ let
 
           buildCall = self: callName:
             Variadic.mkListThen
-              (l: buildInitialLogState self {call = [{name = callName;} {args = l;}]; });
+              (l: buildInitialLogState self {call = [{name = callName;} {args = elideUnsafeNames l;}]; });
 
           buildMethodCall = self: this: methodName:
             Variadic.mkListThen
@@ -245,7 +253,7 @@ let
                 method = [
                   { name = methodName; } 
                   { this = "unsafe:this"; }
-                  { args = l; }
+                  { args = elideUnsafeNames l; }
                 ]; 
               });
 
@@ -254,7 +262,7 @@ let
               (l: buildInitialLogState self {
                 attrs = (
                   [ {name = attrsName;} ]
-                  ++ (optionals (nonEmpty l) [{extra = l;}]));
+                  ++ (optionals (nonEmpty l) [{extra = elideUnsafeNames l;}]));
               });
 
           buildTest = self: testName:
@@ -262,16 +270,16 @@ let
               (l: buildInitialLogState self {
                 test = (
                   [{name = testName;}]
-                  ++ (optionals (nonEmpty l) [{args = l;}]));
+                  ++ (optionals (nonEmpty l) [{args = elideUnsafeNames l;}]));
               });
 
           traceCall = self: callName:
-            Variadic.compose
+            Variadic.composeFunctorsAreAttrs
               (xs: over xs)
               (buildCall self callName);
 
           traceMethodCall = self: this: methodName:
-            Variadic.compose
+            Variadic.composeFunctorsAreAttrs
               (xs: over xs)
               (buildMethodCall self this methodName);
 
@@ -331,7 +339,7 @@ let
                 # return x;
                 safety = safe_: mkGroupClosure (logState // { safe = safe_; });
                 safely = x: 
-                  if logState.safe then LazyAttrs x else x;
+                  if logState.safe then LazyAttrs (elideUnsafeNames x) else (elideUnsafeNames x);
 
                 # Return accumulated log state.
                 # Thunked due to self-reference.
@@ -341,7 +349,7 @@ let
                 __logEvents = NamedThunk "__logEvents" logState.events;
 
                 # Trace an arbitrary key/value event
-                event = name: value: events [{ ${name} = value; }];
+                event = name: value: events [safely { ${name} = value; }];
 
                 # Trace a message by showing the given value.
                 # When used with 'with', accrues logs by modifying the mkGroupClosure in scope.
@@ -401,6 +409,7 @@ let
                     (logState: logState // vars);
 
                 # Return a value from the group, tracing the value.
+                # Importantly, if the value is a functor, it will not be traced.
                 #
                 # Does not accrue; instead intended to terminate the group by emitting accrued
                 # values.
@@ -408,7 +417,7 @@ let
                   __withEventsAssertReturning
                     [{return = safely x;}]
                     (logState: over (tagged "RETURN:${groupType}:${groupName}" logState.events))
-                    (if isFunction x then returnEta x else x);
+                    (if typelib.isFunctionNotFunctor x then returnEta x else x);
 
                 # Return a (possibly variadic) function from the group, tracing the function's
                 # return value when it is fully invoked.
@@ -451,7 +460,7 @@ let
                           [{ returnEta = out; }]
                           (logState: over (tagged "RETURN_ETA:${groupType}:${groupName}" logState.events))
                           out;
-                  in Variadic.compose traceOut f;
+                  in Variadic.composeFunctorsAreAttrs traceOut f;
 
                 # Log a variadic composite function from the group, tracing the function's return value when it is fully invoked.
                 # Logs the intermediate value of the fully applied f before passing to g.
@@ -463,7 +472,7 @@ let
                           [{ vcompose = [ { inherit name; } {g = gName;} {f = fName;} { inherit varargs; } ]; }]
                           (logState: overPartial (tagged "VARIADIC_COMPOSE:${groupType}:${groupName}" logState.events))
                           (g varargs);
-                  in Variadic.compose gTraceVarargs f;
+                  in Variadic.composeFunctorsAreAttrs gTraceVarargs f;
               };
             in
               Variadic.compose
