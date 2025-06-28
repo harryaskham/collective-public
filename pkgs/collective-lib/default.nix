@@ -16,7 +16,10 @@ let
       # Merge all modules in base into a single module.
       # Includes the original base so that we have everything at top level, and can
       # still also access / override e.g. lib.strings via e.g. collective-lib.strings.
-      mergedBase = base // (lib.concatMapAttrs (_: module: module) base);
+      # Some modules are not intended to be used individually i.e. log
+      mergeableBase = removeAttrs base [ "log" ];
+      mergedBase = base 
+      // (lib.concatMapAttrs (_: module: module) mergeableBase);
 
       # Produce a new version of the collective-lib with 'lib' merged in.
       # Can be used as a drop-in replacement for 'lib' in modules that do not rely on the type system.
@@ -79,4 +82,16 @@ let
     };
 
 in 
-  mkCollectiveLib base
+  let collective-lib = mkCollectiveLib base;
+      __libCollisions =
+        # <nix>
+        {
+          base = lib.attrNames (lib.intersectAttrs collective-lib.mergedBase lib);
+          lists = lib.attrNames (lib.intersectAttrs collective-lib.lists lib.lists);
+          attrsets = lib.attrNames (lib.intersectAttrs collective-lib.attrsets lib.attrsets);
+          strings = lib.attrNames (lib.intersectAttrs collective-lib.attrsets lib.strings);
+        }
+        # </nix>
+        ;
+
+  in collective-lib
