@@ -947,7 +947,7 @@ let
     # in the method body, after Type is already constructed and bound.
     mkTypeArgsFor = SU: U: {
       # Set manually to enable mkInstance rather than newInstance
-      __Type = SU.TypeThunk.new SU.Type;
+      __Type = SU.TypeThunk.new U.Type;
       __isTypeSet = true;
       name = SU.String.new (U.opts.typeName);
       __Super = SU.Nil;
@@ -2382,9 +2382,12 @@ let
     # Next we create U.Type in terms of SU and the above tertiary parts of U.
     #
     # Finally we can construct the remainder of U as instances of U.Type:
+    # - Ctor
     # - Builtins
     # - Trivials
     # - Components (Field, Fields, Ctor, etc)
+    # 
+    # These are ordered such that we have minimal need to reach back up to SU to resolve circularity.
     mkSubUniverse = SU:
       let opts = resolve SU.opts.descend; in
       with (log.v 4).call "mkSubUniverse" opts "<SU>" ___;
@@ -3511,9 +3514,16 @@ let
           inherit
             U_0
             U_1
-            #U_2
+            U_2
             ;
-        } (U: smokeTests U // typeFunctionalityTests U // instantiationTests U);
+        } (U: smokeTests U
+          // typeFunctionalityTests U
+          // instantiationTests U
+          // peripheralTests U
+          // inheritanceTests U
+          // untypedTests U
+          // builtinTests U
+          );
 
     } // unless false {
 
