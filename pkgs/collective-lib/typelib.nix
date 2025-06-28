@@ -779,10 +779,10 @@ let
       getName = This: _: This.name.getValue {};
 
       # Get the resolved fields of the type.
-      getFields = This: _: (SU.lambda (This.fields)) This;
+      getFields = This: _: (U.lambda (This.fields)) This;
 
       # Is this instance an instance of type That.
-      isInstance = This: that: SU.isTyped that && thunkDo that.__Type (That: That.eq This);
+      isInstance = This: that: U.isTyped that && thunkDo that.__Type (That: That.eq This);
 
       # A = Type.new "A" {};
       # B = Type.new "B" { __Super = A; };
@@ -793,14 +793,12 @@ let
       # isSuperTypeOf Type A == true
       # isSuperTypeOf Type B == true
       isSuperTypeOf = This: That:
-        if SU.isNull That.__Super then false
-        else thunkDo That.__Super (SU.typeEq This)
+        if U.isNull That.__Super then false
+        else thunkDo That.__Super (U.typeEq This)
             || thunkDo That.__Super (ThatSuper: This.isSuperTypeOf ThatSuper);
       isSubTypeOf = This: That: That.isSuperTypeOf This;
 
       # Get the full templated name of the type.
-      # Usually would be safe to use SU.Void, except for the SU.Void.getBoundName binding,
-      # so uses SU.Void.
       getBoundName = This: thunk (
         with (log.v 4).methodCall This "getBoundName" ___;
         let tvars = resolve This.tvars;
@@ -816,11 +814,11 @@ let
                     T = tvarBindings.${tvarName} or SU.Void;
                 in
                   # Unbound
-                  if SU.typeEq SU.Void T
+                  if U.typeEq SU.Void T
                     then tvarName
 
                   # Bound to a type
-                  else if SU.isTypeSet T
+                  else if U.isTypeSet T
                   then T.getBoundName {}
 
                   # Bound to a literal or builtin
@@ -859,7 +857,7 @@ let
               else if (resolve This.tvarBindings) == null
                 then throwBindError "Type ${This.__TypeId {}} does not have bound or unbound type variable bindings"
 
-              else if !(SU.typeEq B SU.Void)
+              else if !(U.typeEq B SU.Void)
                 then throwBindError "Type ${This.__TypeId {}} already has type variable ${tvarName} bound to ${log.print B}"
 
               else if !(C.satisfiedBy T)
@@ -870,29 +868,29 @@ let
         in foldl' bindOne This tvarBindingsList;
 
       # Is That the same type as This?
-      eq = This: That: SU.typeEq This That;
+      eq = This: That: U.typeEq This That;
 
       # Does this type inherit from That?
       inheritsFrom = This: That:
-        SU.isTypeSet That
+        U.isTypeSet That
         && That.eq This
-        || (!(SU.isNull This.__Super)
+        || (!(U.isNull This.__Super)
             && thunkDo This.__Super (Super: Super.inheritsFrom That));
 
       check = This: that:
         let
           runChecks = errors.tryBool (errors.checks [
             {
-              cond = SU.isType This that;
-              msg = "Type check failed for ${This.__TypeId {}} (got ${SU.typeNameOf that})";
+              cond = U.isType This that;
+              msg = "Type check failed for ${This.__TypeId {}} (got ${U.typeNameOf that})";
             }
             {
-              cond = SU.isNull This.checkValue || SU.call This.checkValue that;
+              cond = U.isNull This.checkValue || U.call This.checkValue that;
               msg = "checkValue failed: ${log.print that} is not a value of type ${This.__TypeId {}}";
             }
           ]);
         in if This.overrideCheck != null
-          then This.overrideCheck that
+          then U.call This.overrideCheck that
           else runChecks;
 
       # Use the bound name with its ordered param assignments to determine type identity
@@ -901,21 +899,21 @@ let
       __TypeId = This: _: (This.getBoundName or This.getName) {};
 
       # Create a new instance of the type by providing at least all required field values.
-      mk = This: SU.mkInstance This;
+      mk = This: U.mkInstance This;
 
       # Create a new instance of the type by calling This's constructor
       # When This == Type, creates a new Type.
       # Consumes its first argument to avoid nullaries
-      new = This: SU.newInstance This;
+      new = This: U.newInstance This;
 
       # Create a new subType inheriting from This
       # TODO: Compose checkValue / overrideCheck if they appear in args
       subType = This: name: args:
-        SU.newSubType This name args;
+        U.newSubType This name args;
 
       # For a given This type, create a new template whose eventual bound type subtypes This.
       subTemplate = This: name: tvars_: bindingsToArgs_:
-        SU.__newTemplate This This name tvars_ bindingsToArgs_;
+        U.__newTemplate This This name tvars_ bindingsToArgs_;
 
       # Create a new template of a type accepting type parameters.
       # The parameters can be accessed via the _ argument surrounding the type specification.
@@ -928,13 +926,13 @@ let
           template: This is not Type:
             ${indent.here (log.print This)}
         '');
-        SU.newTemplate This name tvars bindingsToArgs;
+        U.newTemplate This name tvars bindingsToArgs;
 
       # Create a new template inheriting from a function of This plus any type variables.
       # TODO: Generic inheritance and tvar/tvarBinding merging.
       subTemplateOf =
         This: bindingsToSuper: name: tvars_: bindingsToArgs_:
-        SU.__newTemplate This bindingsToSuper name tvars_ bindingsToArgs_;
+        U.__newTemplate This bindingsToSuper name tvars_ bindingsToArgs_;
 
       # Print Type objects as just their name.
       __toString = This: self: This.__TypeId {};
@@ -953,7 +951,7 @@ let
       __isTypeSet = true;
       name = SU.String.new (U.opts.typeName);
       __Super = SU.Nil;
-      ctor = SU.Ctors.CtorType;
+      ctor = U.Ctors.CtorType;
       fields = This: mkTypeFieldsFor SU U;
       # We have these are both methods and staticMethods on Type s.t. we have
       # them present in bootstrap and in Type.new instances, which get these as
@@ -1398,7 +1396,7 @@ let
           return this;
     };
 
-    mkCtors = SU: _: rec {
+    mkCtors = SU: U: rec {
       Ctors = rec {
         None = SU.Ctor.new "None" (This: _: throw ''Ctors.None evoked'');
 
@@ -1410,7 +1408,7 @@ let
         # Accepts required field values in order of Fields definition
         CtorDefault = SU.Ctor.new "CtorDefault" (This:
           let
-            fields = SU.call This.fields This;
+            fields = U.call This.fields This;
             sortedFieldNames = map (s: (soloValue s).fieldName {}) (fields.instanceFields {});
           in
           with (log.v 3).call "CtorDefault.ctor" { inherit This; } ___;
@@ -1430,7 +1428,7 @@ let
           ctor = args.ctor or CtorDefault;
           fields =
             let fields_ = args.fields or (This: SU.Fields.new []);
-            in assert assertMsg (SU.isFunction fields_) (indent.block ''
+            in assert assertMsg (U.isFunction fields_) (indent.block ''
                 Non-function Fields provided:
                   fields = ${indent.here (log.print fields_)}
                   This = ${indent.here (log.print This)}
@@ -1444,8 +1442,8 @@ let
               (methods: {
                 # Otherwise the raw set with ctor, without __show etc
                 __toString = this: self: indent.block ''
-                  ${SU.typeIdOf self} (
-                    ${indent.here (log.print (SU.withoutStringConversions self))} )
+                  ${U.typeIdOf self} (
+                    ${indent.here (log.print (U.withoutStringConversions self))} )
                 '';
               } // methods);
           staticMethods = maybeLazyAttrs (args.staticMethods or {});
@@ -1525,10 +1523,6 @@ let
       };
     };
 
-    # Universe-independent types that only depend on Type.
-    mkTrivialTypes = SU: U: rec {
-    };
-
     # Construct templating functions for a given universe.
     # For Universe U, This == U.Type when these are bound during bootstrap, and for e.g.
     # components, This == U.Fields when they are constructed via U.Type.new.
@@ -1541,6 +1535,8 @@ let
     # when we call U.Fields.subType, we want this to defer to U.Type.newSubType, not
     # SU.Type.newSubType. The bound methods of U.Type are the only place where we can therefore refer to other parts
     # of U (lazily, after Type is properly built), as e.g. U.newSubType.
+    #
+    # Builtins do not use these, so we are safe to access e.g. U.Lambda
     mkTemplating = SU: U: rec {
 
       # Modify an argument set to inherit from a Super type, given as a TypeThunk.
@@ -1574,6 +1570,7 @@ let
           # If __Super is already set on ctorArgs, defer to this.
           # This should be overridden with caution; this enables TypeThunk's __Super
           # to be a shim, such that TypeThunk does not contain field values of type TypeThunk.
+          # Uses SU.TypeThunk, because TypeThunk relies on inheritFrom of (ThunkOf Type).
           __Super = ctorArgs.__Super or SU.TypeThunk.new Super;
 
           # Override or inherit the ctor
@@ -1583,13 +1580,13 @@ let
           # Merge fields inside Super into a new This: ... form
           # The Fields.update method handles the solo-list duplicate merge.
           fields = assign "fields" (
-            SU.Lambda.new (This:
+            U.Lambda.new (This:
               let superFields = Super.getFields {};
               in
                 if ctorArgs ? fields
                 then 
-                  let ctorFields = (SU.call ctorArgs.fields) This;
-                      ctorFieldSpecs = SU.call ctorFields.fieldSpecs {};
+                  let ctorFields = (U.call ctorArgs.fields) This;
+                      ctorFieldSpecs = U.call ctorFields.fieldSpecs {};
                   in superFields.update ctorFieldSpecs
                 else superFields)
           );
@@ -1611,6 +1608,7 @@ let
 
       # For a given type, create a new type in the same universe.
       # Inheritance is performed as per inheritFrom.
+      # Only ever used after U.Type is built, so we can safely access U.Type.new.
       newSubType = This: name: args:
         with (log.v 2).call "newSubType" { inherit This name args; } ___;
         assert check "U.isTypeSet This"
@@ -1817,9 +1815,11 @@ let
     #   - TS is fixed under subuniverse creation: deriving a subuniverse from TS gives
     #     exactly TS, modulo lambda equality
     # The final type system is then U_4 with any U_*, U, SU or opts references removed.
+    # 
     # TODO: Update TS to best current working universe
-    # U_4 is perfect but the constant rebuilds are slow
-    TSUniverse = Universe.U_2;
+    # U_4 is perfect but the constant rebuilds are slow.
+    # U_1 is functional but contains shims in the inner workings.
+    TSUniverse = Universe.U_1;
     TS = removeAttrs TSUniverse [
       "opts"
       "_U"
@@ -2392,422 +2392,421 @@ let
       let opts = resolve SU.opts.descend; in
       with (log.v 4).call "mkSubUniverse" opts "<SU>" ___;
       with msg "Constructing ${opts.name} universe";
-      let
-        U = 
-          withCommonUniverse SU (
-            mkTrivialTypes SU U
-            // rec {
-              # Store the opts as U.opts
-              inherit opts;
+      let U = withCommonUniverse SU (rec {
+        # Store the opts as U.opts
+        inherit opts;
 
-              __Bootstrap = mkBootstrappedType SU U;
-              Type = __Bootstrap.Type;
+        __Bootstrap = mkBootstrappedType SU U;
+        Type = __Bootstrap.Type;
 
-              ### Builtins
+        ### Builtins
 
-              AnyBuiltin = SU.Union SU.builtinNames;
+        AnyBuiltin = SU.Union SU.builtinNames;
 
-              BuiltinOf_ = U.Type.template "BuiltinOf" { T = AnyBuiltin; } (_: {
-                fields = This: SU.Fields.new [{ value = _.T; }];
+        BuiltinOf_ = U.Type.template "BuiltinOf" { T = AnyBuiltin; } (_: {
+          fields = This: SU.Fields.new [{ value = _.T; }];
+        });
+        BuiltinOf = T: BuiltinOf_.bind { inherit T; };
+
+        mkBuiltinType = name:
+          let
+            withGetValue = methods: methods // {
+              getValue = this: _: this.__value.value;
+            };
+
+            withToString = methods:
+              let
+                toStringF = {
+                  String = self: self.getValue {};
+                  Int = self: toString (self.getValue {});
+                  Float = self: toString (self.getValue {});
+                  Path = self: toString (self.getValue {});
+                  Lambda = self: "_: ...";
+                  Bool = self: boolToString (self.getValue {});
+                  Set = self: log.vprintD 1 (self.getValue {});
+                  List = self: log.vprintD 2 (self.getValue {});
+                  Null = self: "";
+                }.${name};
+              in
+                methods // {
+                  # show (Int.new 6) returns e.g. "Int(6)"
+                  __show = this: self: "${U.typeIdOf self}(${toStringF self})";
+                  # toString (Int.new 6) returns e.g. "6"
+                  __toString = this: self:
+                    with (log.v 2).methodCall
+                      (U.withoutStringConversions this)
+                      "__toString"
+                      { self = U.withoutStringConversions self; }
+                      ___;
+                    return (toStringF self);
+                };
+
+            hasSize = { String = true; Path = true; List = true; Set = true; }.${name} or false;
+            withSize = methods:
+              if hasSize
+              then let sizeFn = this: _: size (this.getValue {});
+                  in methods // { size = sizeFn; }
+              else methods;
+          in
+            Type.new name {
+              ctor = SU.Ctor.new "Ctor${name}" (This: x: {
+                __value = (U.BuiltinOf (toLower name)).new x;
               });
-              BuiltinOf = T: BuiltinOf_.bind { inherit T; };
+              fields = This: SU.Fields.new [{
+                __value = U.BuiltinOf (toLower name);
+              }];
+              methods = withToString (withSize (withGetValue ({
+                List = {
+                  fmap = this: f: this.modify.__value (this: this.modify.value (map f));
+                  append = this: x: this.modify.__value (this: this.modify.value (xs: xs ++ [x]));
+                };
+                Set = {
+                  fmap = this: f: this.modify.__value (this: this.modify.value (mapAttrs (_: f)));
+                  names = this: _: attrNames (this.getValue {});
+                  values = this: _: attrValues (this.getValue {});
+                };
+                Lambda = {
+                  fmap = this: f: this.modify.__value (this: this.modify.value (compose f));
+                };
+              }.${name} or {})));
+              checkValue = that: {
+                # Additional check on sets s.t. we don't accept a typed value when expecting
+                # a raw set.
+                Set = !((that.getValue {}) ? __Type);
+              }.${name} or true;
+            };
 
-              mkBuiltinType = name:
-                let
-                  withGetValue = methods: methods // {
-                    getValue = this: _: this.__value.value;
-                  };
+        BuiltinTypes = mapAttrs (BuiltinName: _: mkBuiltinType BuiltinName) U.BuiltinNameTobuiltinName;
 
-                  withToString = methods:
-                    let
-                      toStringF = {
-                        String = self: self.getValue {};
-                        Int = self: toString (self.getValue {});
-                        Float = self: toString (self.getValue {});
-                        Path = self: toString (self.getValue {});
-                        Lambda = self: "_: ...";
-                        Bool = self: boolToString (self.getValue {});
-                        Set = self: log.vprintD 1 (self.getValue {});
-                        List = self: log.vprintD 2 (self.getValue {});
-                        Null = self: "";
-                      }.${name};
-                    in
-                      methods // {
-                        # show (Int.new 6) returns e.g. "Int(6)"
-                        __show = this: self: "${U.typeIdOf self}(${toStringF self})";
-                        # toString (Int.new 6) returns e.g. "6"
-                        __toString = this: self:
-                          with (log.v 2).methodCall
-                            (U.withoutStringConversions this)
-                            "__toString"
-                            { self = U.withoutStringConversions self; }
-                            ___;
-                          return (toStringF self);
-                      };
-
-                  hasSize = { String = true; Path = true; List = true; Set = true; }.${name} or false;
-                  withSize = methods:
-                    if hasSize
-                    then let sizeFn = this: _: size (this.getValue {});
-                        in methods // { size = sizeFn; }
-                    else methods;
-                in
-                  U.Type.new name {
-                    ctor = SU.Ctor.new "Ctor${name}" (This: x: {
-                      __value = (U.BuiltinOf (toLower name)).new x;
-                    });
-                    fields = This: SU.Fields.new [{
-                      __value = U.BuiltinOf (toLower name);
-                    }];
-                    methods = withToString (withSize (withGetValue ({
-                      List = {
-                        fmap = this: f: this.modify.__value (this: this.modify.value (map f));
-                        append = this: x: this.modify.__value (this: this.modify.value (xs: xs ++ [x]));
-                      };
-                      Set = {
-                        fmap = this: f: this.modify.__value (this: this.modify.value (mapAttrs (_: f)));
-                        names = this: _: attrNames (this.getValue {});
-                        values = this: _: attrValues (this.getValue {});
-                      };
-                      Lambda = {
-                        fmap = this: f: this.modify.__value (this: this.modify.value (compose f));
-                      };
-                    }.${name} or {})));
-                    checkValue = that: {
-                      # Additional check on sets s.t. we don't accept a typed value when expecting
-                      # a raw set.
-                      Set = !((that.getValue {}) ? __Type);
-                    }.${name} or true;
-                  };
-
-              BuiltinTypes = mapAttrs (BuiltinName: _: mkBuiltinType BuiltinName) U.BuiltinNameTobuiltinName;
-
-              inherit (BuiltinTypes) Null Int Float String Path Bool List Set Lambda;
+        inherit (BuiltinTypes) Null Int Float String Path Bool List Set Lambda;
 
 
-              ### Trivial
+        ### Ctor
 
-              # Unit Type
-              Unit = U.Type.new "Unit" {
-                ctor = SU.Ctors.CtorNullary;
-              };
-              unit = Unit.new {};
+        Ctor = Type.new "Ctor" {
+          # Manually cast here for universes before typechecking to ensure homogeneity of
+          # ctor lambda. Ctor cannot have a Ctor of itself, so uses SU.Ctor.
+          ctor = SU.Ctor.new "CtorCtor" (This: name: ctorFn: {
+            name = String.new name;
+            ctor = Lambda.new ctorFn;
+          });
+          fields = This: SU.Fields.new [
+            { name = String; }
+            { ctor = Lambda; }
+          ];
+          methods = {
+            bind = this: This: this.ctor.getValue {} This;
+          };
+        };
 
-              # Uninhabited type
-              Void = U.Type.new "Void" {
-                ctor = SU.Ctor.new "CtorVoid" (_: thunk (throw "Void: ctor"));
-              };
 
-              # Any type
-              # Used in Type fields (via Literal binding) so must be SU.Type.
-              Any = U.Type.new "Any" {overrideCheck = _: true;};
+        ### Trivial
+
+        # Unit Type
+        Unit = U.Type.new "Unit" {
+          ctor = U.Ctors.CtorNullary;
+        };
+        unit = Unit.new {};
+
+        # Uninhabited type
+        Void = U.Type.new "Void" {
+          ctor = SU.Ctor.new "CtorVoid" (_: thunk (throw "Void: ctor"));
+        };
+
+        # Any type
+        # Used in Type fields (via Literal binding) so must be SU.Type.
+        Any = U.Type.new "Any" {overrideCheck = _: true;};
 
 
-              ### Components
+        ### Components
 
-              Ctor = Type.new "Ctor" {
-                # Manually cast here for universes before typechecking to ensure homogeneity of
-                # ctor lambda. Ctor cannot have a Ctor of itself, so uses SU.Ctor.
-                ctor = SU.Ctor.new "CtorCtor" (This: name: ctorFn: {
-                  name = U.String.new name;
-                  ctor = U.Lambda.new ctorFn;
-                });
+        # A constraint on a type variable.
+        Constraint = Type.new "Constraint" {
+          fields = This: SU.Fields.new [
+            { constraintType = SU.TypeThunk; }
+          ];
+          methods = {
+            # Whether a given type variable binding satisfies the constraint.
+            # If the constraint is unbound, we treat as satisfied, but instantiating the unbound type
+            # will throw an error.
+            satisfiedBy = this: That:
+              SU.typeEq SU.Void That
+              || That.isInstance (resolve this.constraintType)
+              || (resolve this.constraintType).check That;
+          };
+        };
+
+        ThunkOf_ = Type.template "ThunkOf" {T = Type;} (_: {
+          fields = This: SU.Fields.new [{ thunk = SU.Lambda; }];
+          ctor = SU.Ctor.new "CtorThunkOf" (This: x: {
+            thunk = SU.Lambda.new (_: x);
+          });
+          methods = {
+            __resolve = this: self: self.thunk.getValue {} {};
+          };
+          checkValue = resolvesWith (SU.isType _.T);
+        });
+        ThunkOf = T: ThunkOf_.bind { inherit T; };
+
+        # TypeThunk cannot have a __Type field of type TypeThunk, because
+        # we then have a cascade of non-lazy __Type.__Type.__Type.
+        # Instead, since we only ever access the resolvable property of __Type,
+        # fake this by unsafely injecting a regular resolvable {__resolve = _: ...}
+        TypeThunk = (ThunkOf Type).subType "TypeThunk" {
+          __Type = _: Type;
+          fields = This: SU.Fields.new [{
+            __isTypeThunk = SU.Default SU.Bool (SU.Bool.new true);
+          }];
+          ctor = SU.Ctor.new "CtorTypeThunk" (This: T:
+            let super = (ThunkOf Type).ctor.bind This T;
+            in super // { __Type = _: TypeThunk; });
+        };
+
+        # Subtype of List that enforces homogeneity of element types.
+        ListOf_ = U.List.subTemplate "ListOf" {T = Type;} (_: {
+          checkValue = that: all (x: SU.isType _.T x) (that.getValue {});
+        });
+        ListOf = T: ListOf_.bind { inherit T; };
+
+        # Subtype of Set that enforces homogeneity of value types.
+        SetOf_ = U.Set.subTemplate "SetOf" {T = Type;} (_: {
+          checkValue = that: all (x: SU.isType _.T x) (that.values {});
+        });
+        SetOf = T: SetOf_.bind { inherit T; };
+
+        # A type that enforces a size on the value.
+        Sized_ = Type.template "Sized" {N = Type; T = Type;} (_: {
+          fields = This: SU.Fields.new [{ getSized = _.T; }];
+          checkValue = that:
+            (_.T.checkValue or (const true)) that
+            && (that.size {}) == _.N.getLiteral {};
+        });
+        Sized = n: T:
+          let N = Literal n;
+          in Sized_.bind { inherit N T; };
+
+        # A type satisfied by any value of the given list of types.
+        Union_ = Type.template "Union" {Ts = Type;} (_: {
+          ctor = U.Ctors.None;
+          overrideCheck = that: any (T: SU.isType T that) (_.Ts.getLiteral {});
+        });
+        Union = Tlist:
+          let Ts = Literal Tlist;
+          in Union_.bind {inherit Ts;};
+
+        # A value or T or Null.
+        NullOr = T: U.Union ["null" SU.Null T];
+
+        # An attribute set with attributes zero-indexed by their definition order.
+        # xs = Ordered.new [ {c = 1;} {b = 2;} {a = 3;} ];
+        # xs.value == { a = 1; b = 2; c = 3; } (arbitrary order)
+        # xs.names == [ "c" "b" "a" ] (in order of definition)
+        # xs.values == [ 1 2 3 ] (in order of definition)
+        OrderedItem_ = Type.template "OrderedItem" { T = Type; } (_: {
+          # TODO: Could be a unary cast, or inherit from Sized 1 (SetOf T)
+          ctor = SU.Ctor.new "CtorOrderedItem" (This: x: {
+            value =
+              let setOfX = ((SU.SetOf _.T).new x);
+                  sizedSetOfX = (SU.Sized 1 (SU.SetOf _.T)).new setOfX;
+              in sizedSetOfX;
+          });
+
+          fields = This: SU.Fields.new [{
+            value = SU.Sized 1 (SU.SetOf _.T);
+          }];
+
+          methods = {
+            getSolo = this: _: this.value.getSized.getValue {};
+            getName = this: _: soloName (this.getSolo {});
+            getValue = this: _: soloValue (this.getSolo {});
+          };
+        });
+        OrderedItem = T: OrderedItem_.bind { inherit T; };
+
+        OrderedOf_ = Type.subTemplateOf (_: U.ListOf (U.OrderedItem _.T)) "OrderedOf" {T = Type;} (_: {
+          ctor = SU.Ctor.new "CtorOrderedOf" (This: xs:
+            # Pass OrderedItems to the underlying ListOf
+            (U.ListOf (U.OrderedItem _.T)).ctor.bind
+              This
+              (map (x: (U.OrderedItem _.T).new x) (solos xs)));
+
+          methods = {
+            # Map over the underlying [OrderedItem T]
+            # f :: (OrderedItem T -> a) -> [a]
+            mapItems = this: f: map f (this.getValue {});
+
+            # Get the solo attr list in order.
+            getSolos = this: _: this.mapItems (item: item.getSolo {});
+
+            # The merged attribute set with an additional 'index' field indicating
+            # its place in the order.
+            indexed = this: _: mergeAttrsList (indexed (this.getSolos {}));
+
+            # The ordered attribute names.
+            names = this: _: this.mapItems (item: item.getName {});
+
+            # The ordered attribute values.
+            values = this: _: this.mapItems (item: item.getValue {});
+
+            # Update by inserting the given items sequentially at the end of the order.
+            # If any already appear, they update the item in its original order.
+            update = this: items:
+              let newOrdered = (OrderedOf _.T).new (concatSolos (this.getSolos {}) (solos items));
+              in this.set.__value (newOrdered.__value);
+          };
+
+          checkValue = that:
+            # TODO: Make a __checkValue implicit method
+            thunkDo (typeOf that).__Super (Super:
+              Super.checkValue that
+              && assertMsg
+                (size (that.names {}) == size (that.indexed {}))
+                "Duplicate keys in OrderedOf: ${joinSep ", " (that.names {})}");
+        });
+        OrderedOf = T: OrderedOf_.bind { inherit T; };
+
+        # Base type for enums.
+        Enum = Type.new "Enum" {};
+
+        # Create an enum type from a list of item names.
+        # MyEnum = mkEnum "MyEnum" [ "Item1" "Item2" "Item3" ]
+        # MyEnum.names == [ "Item1" "Item2" "Item3" ]
+        # MyEnum.fromName "Item1" == 0
+        # MyEnum.fromIndex 0 == "Item1"
+        mkEnum = enumName: itemNames:
+          let Item = Enum.subType enumName {
                 fields = This: SU.Fields.new [
-                  { name = U.String; }
-                  { ctor = SU.Lambda; }
+                  {i = SU.Int;}
+                  {name = SU.String;}
                 ];
-                methods = {
-                  bind = this: This: this.ctor.getValue {} This;
-                };
-              };
-
-              # A constraint on a type variable.
-              Constraint = Type.new "Constraint" {
-                fields = This: SU.Fields.new [
-                  { constraintType = SU.TypeThunk; }
-                ];
-                methods = {
-                  # Whether a given type variable binding satisfies the constraint.
-                  # If the constraint is unbound, we treat as satisfied, but instantiating the unbound type
-                  # will throw an error.
-                  satisfiedBy = this: That:
-                    SU.typeEq SU.Void That
-                    || That.isInstance (resolve this.constraintType)
-                    || (resolve this.constraintType).check That;
-                };
-              };
-
-              ThunkOf_ = Type.template "ThunkOf" {T = Type;} (_: {
-                fields = This: SU.Fields.new [{ thunk = SU.Lambda; }];
-                ctor = SU.Ctor.new "CtorThunkOf" (This: x: {
-                  thunk = SU.Lambda.new (_: x);
-                });
-                methods = {
-                  __resolve = this: self: self.thunk.getValue {} {};
-                };
-                checkValue = resolvesWith (SU.isType _.T);
-              });
-              ThunkOf = T: ThunkOf_.bind { inherit T; };
-
-              # TypeThunk cannot have a __Type field of type TypeThunk, because
-              # we then have a cascade of non-lazy __Type.__Type.__Type.
-              # Instead, since we only ever access the resolvable property of __Type,
-              # fake this by unsafely injecting a regular resolvable {__resolve = _: ...}
-              TypeThunk = (ThunkOf Type).subType "TypeThunk" {
-                __Type = _: Type;
-                fields = This: SU.Fields.new [{
-                  __isTypeThunk = SU.Default SU.Bool (SU.Bool.new true);
-                }];
-                ctor = SU.Ctor.new "CtorTypeThunk" (This: T:
-                  let super = (ThunkOf Type).ctor.bind This T;
-                  in super // { __Type = _: TypeThunk; });
-              };
-
-              # Subtype of List that enforces homogeneity of element types.
-              ListOf_ = U.List.subTemplate "ListOf" {T = Type;} (_: {
-                checkValue = that: all (x: SU.isType _.T x) (that.getValue {});
-              });
-              ListOf = T: ListOf_.bind { inherit T; };
-
-              # Subtype of Set that enforces homogeneity of value types.
-              SetOf_ = U.Set.subTemplate "SetOf" {T = Type;} (_: {
-                checkValue = that: all (x: SU.isType _.T x) (that.values {});
-              });
-              SetOf = T: SetOf_.bind { inherit T; };
-
-              # A type that enforces a size on the value.
-              Sized_ = Type.template "Sized" {N = Type; T = Type;} (_: {
-                fields = This: SU.Fields.new [{ getSized = _.T; }];
-                checkValue = that:
-                  (_.T.checkValue or (const true)) that
-                  && (that.size {}) == _.N.getLiteral {};
-              });
-              Sized = n: T:
-                let N = Literal n;
-                in Sized_.bind { inherit N T; };
-
-              # A type satisfied by any value of the given list of types.
-              Union_ = Type.template "Union" {Ts = Type;} (_: {
-                ctor = SU.Ctors.None;
-                overrideCheck = that: any (T: SU.isType T that) (_.Ts.getLiteral {});
-              });
-              Union = Tlist:
-                let Ts = Literal Tlist;
-                in Union_.bind {inherit Ts;};
-
-              # A value or T or Null.
-              NullOr = T: U.Union ["null" SU.Null T];
-
-              # An attribute set with attributes zero-indexed by their definition order.
-              # xs = Ordered.new [ {c = 1;} {b = 2;} {a = 3;} ];
-              # xs.value == { a = 1; b = 2; c = 3; } (arbitrary order)
-              # xs.names == [ "c" "b" "a" ] (in order of definition)
-              # xs.values == [ 1 2 3 ] (in order of definition)
-              OrderedItem_ = Type.template "OrderedItem" { T = Type; } (_: {
-                # TODO: Could be a unary cast, or inherit from Sized 1 (SetOf T)
-                ctor = SU.Ctor.new "CtorOrderedItem" (This: x: {
-                  value =
-                    let setOfX = ((SU.SetOf _.T).new x);
-                        sizedSetOfX = (SU.Sized 1 (SU.SetOf _.T)).new setOfX;
-                    in sizedSetOfX;
-                });
-
-                fields = This: SU.Fields.new [{
-                  value = SU.Sized 1 (SU.SetOf _.T);
-                }];
-
-                methods = {
-                  getSolo = this: _: this.value.getSized.getValue {};
-                  getName = this: _: soloName (this.getSolo {});
-                  getValue = this: _: soloValue (this.getSolo {});
-                };
-              });
-              OrderedItem = T: OrderedItem_.bind { inherit T; };
-
-              OrderedOf_ = Type.subTemplateOf (_: U.ListOf (U.OrderedItem _.T)) "OrderedOf" {T = Type;} (_: {
-                ctor = SU.Ctor.new "CtorOrderedOf" (This: xs:
-                  # Pass OrderedItems to the underlying ListOf
-                  (U.ListOf (U.OrderedItem _.T)).ctor.bind
-                    This
-                    (map (x: (U.OrderedItem _.T).new x) (solos xs)));
-
-                methods = {
-                  # Map over the underlying [OrderedItem T]
-                  # f :: (OrderedItem T -> a) -> [a]
-                  mapItems = this: f: map f (this.getValue {});
-
-                  # Get the solo attr list in order.
-                  getSolos = this: _: this.mapItems (item: item.getSolo {});
-
-                  # The merged attribute set with an additional 'index' field indicating
-                  # its place in the order.
-                  indexed = this: _: mergeAttrsList (indexed (this.getSolos {}));
-
-                  # The ordered attribute names.
-                  names = this: _: this.mapItems (item: item.getName {});
-
-                  # The ordered attribute values.
-                  values = this: _: this.mapItems (item: item.getValue {});
-
-                  # Update by inserting the given items sequentially at the end of the order.
-                  # If any already appear, they update the item in its original order.
-                  update = this: items:
-                    let newOrdered = (OrderedOf _.T).new (concatSolos (this.getSolos {}) (solos items));
-                    in this.set.__value (newOrdered.__value);
-                };
-
-                checkValue = that:
-                  # TODO: Make a __checkValue implicit method
-                  thunkDo (typeOf that).__Super (Super:
-                    Super.checkValue that
-                    && assertMsg
-                      (size (that.names {}) == size (that.indexed {}))
-                      "Duplicate keys in OrderedOf: ${joinSep ", " (that.names {})}");
-              });
-              OrderedOf = T: OrderedOf_.bind { inherit T; };
-
-              # Base type for enums.
-              Enum = Type.new "Enum" {};
-
-              # Create an enum type from a list of item names.
-              # MyEnum = mkEnum "MyEnum" [ "Item1" "Item2" "Item3" ]
-              # MyEnum.names == [ "Item1" "Item2" "Item3" ]
-              # MyEnum.fromName "Item1" == 0
-              # MyEnum.fromIndex 0 == "Item1"
-              mkEnum = enumName: itemNames:
-                let Item = Enum.subType enumName {
-                      fields = This: SU.Fields.new [
-                        {i = SU.Int;}
-                        {name = SU.String;}
-                      ];
-                      staticMethods = {
-                        # Enum members live on the Enum type itself.
-                        __items = This: _: zipListsWith Item.new (range 0 (length itemNames - 1)) names;
-                        __indexToItem = This: _: keyByF (item: toString item.i) (This.__items {});
-                        __nameToItem = This: _: keyByName (This.__items {});
-                        fromIndex = This: i: (This.__indexToItem {}).${toString i} or throw "Invalid index in enum ${enumName}: ${toString i}";
-                        fromName = This: name: (This.__nameToItem {}).${name} or throw "Invalid name in enum ${enumName}: ${name}";
-                      };
-                    };
-                in Item;
-
-              # A type inhabited by only one value.
-              Literal_ = Type.template "Literal" {V = SU.Any;} (_: rec {
-                ctor = SU.Ctors.CtorNullary;
                 staticMethods = {
-                  getLiteral = This: thunk _.V;
-                };
-              });
-              Literal = V: Literal_.bind { inherit V; };
-              literal = v: (Literal v).new {};
-
-              # A type inhabited by literals of any of the given list of values
-              Literals = Vs: Union (map Literal values);
-
-              # A type indicating a default value.
-              Default_ = Type.template "Default" {T = Type; V = Type;} (_: {
-                ctor = SU.Ctors.None;
-                staticMethods = {
-                  defaultType = This: thunk _.T;
-                  defaultValue = This: thunk (_.V.getLiteral {});
-                };
-                overrideCheck = that: _.T == null || _.T.check that;
-              });
-              Default = T: v:
-                let V = Literal v;
-                in Default_.bind { inherit T V; };
-
-              # Newtype wrapper
-              Static_ = Type.template "Static" {T = Type;} (_: {
-                ctor = SU.Ctors.None;
-                staticMethods = {
-                  staticType = This: thunk _.T;
-                };
-              });
-              Static = T: Static_.bind {inherit T;};
-
-              # Either:
-              # (Field.new "myField" Int
-              # (Field.new "myField" (Static Int)) -> Field<Static<Int>>.fieldType == Int
-              # (Field.new "myField" (Default Int 123)) -> Field<Default<Int, 123>>.fieldType == Int
-              # (Field.new "myField" (Static (Default Int 123))) -> Field<Static<Default<Int, 123>>>.fieldType == Int
-              Field = Type.new "Field" {
-                ctor = SU.Ctor.new "CtorField" (This: rawFieldName: fieldSpec:
-                  with (log.v 2).call "CtorField" rawFieldName fieldSpec ___;
-                  return {
-                    rawFieldName = SU.String.new rawFieldName;
-                    fieldSpec = SU.TypeThunk.new fieldSpec;
-                  });
-                fields = This: SU.Fields.new [
-                  {rawFieldName = SU.String;}
-                  {fieldSpec = SU.TypeThunk;}
-                ];
-                methods = {
-                  parsedT = this: _: SU.parseFieldSpec (resolve this.fieldSpec);
-                  fieldName = this: _: SU.string this.rawFieldName;
-                  fieldType = this: _: (this.parsedT {}).fieldType;
-                  fieldDefault = this: _: when (this.hasDefault {}) (this.parsedT {}).fieldDefault;
-                  fieldStatic = this: _: (this.parsedT {}).fieldStatic;
-                  hasDefault = this: _: (this.parsedT {}).hasDefault;
+                  # Enum members live on the Enum type itself.
+                  __items = This: _: zipListsWith Item.new (range 0 (length itemNames - 1)) names;
+                  __indexToItem = This: _: keyByF (item: toString item.i) (This.__items {});
+                  __nameToItem = This: _: keyByName (This.__items {});
+                  fromIndex = This: i: (This.__indexToItem {}).${toString i} or throw "Invalid index in enum ${enumName}: ${toString i}";
+                  fromName = This: name: (This.__nameToItem {}).${name} or throw "Invalid name in enum ${enumName}: ${name}";
                 };
               };
+          in Item;
 
-              # Fields is an OrderedOf that first converts any RHS values into Field types.
-              Fields = (U.OrderedOf U.Field).subType "Fields" {
-                # Fields ctor just converts the incoming list or set of field specs into
-                # the list of Field that OrderedOf Field expects.
-                #
-                # Fields.new { field = FieldType; ... }
-                # Fields.new { field = Default FieldType defaultValue; ... }
-                # Fields.new { field = Static FieldType; ... }
-                # Fields.new [ { field = FieldType; ... } ... ]
-                # Fields.new [ { field = Default FieldType defaultValue; ... } ... ]
-                # Fields.new [ { field = Static FieldType; ... } ... ]
-                fields = This: SU.Fields.new [{
-                  fieldSpecs = SU.Lambda;
-                }];
-                ctor = SU.Ctor.new "Fields.ctor" (This: fieldSpecs_:
-                    with (log.v 2).call "Fields.ctor" fieldSpecs_ ___;
-                    with lets rec {
-                      # Include Type field on all instances.
-                      fieldSpecs = withCommonFieldSpecs opts SU fieldSpecs_;
-                      fieldSolos = mapSolos U.Field.new fieldSpecs;
-                    };
-                    # Call the OrderedOf constructor to construct this from the list of solos.
-                    return (
-                      ((U.OrderedOf U.Field).ctor.bind This fieldSolos) // {
-                        fieldSpecs = SU.Lambda.new (thunk fieldSpecs);
-                      }
-                    )
-                );
-                methods = {
-                  getField = this: name: (this.indexed {}).${name}.value;
-                  getFieldsWhere = this: pred: filterSolos pred (this.getSolos {});
-                  instanceFields = this: _:
-                    this.getFieldsWhere (rawFieldName: field:
-                      ((U.string field.rawFieldName) != "__Type")
-                      && (U.isNull field
-                          || !(field.fieldStatic {})));
-                  instanceFieldsWithType = this: _:
-                    this.getFieldsWhere (_: field:
-                      (U.isNull field)
-                      || !(field.fieldStatic {}));
-                  requiredFields = this: _:
-                    this.getFieldsWhere (_: field:
-                      (U.isNull field)
-                      || (!(field.fieldStatic {})
-                          && !(field.hasDefault {})));
-                  update = this: newFieldSpecs:
-                    let newFields =
-                      Fields.new (concatSolos
-                        ((SU.lambda this.fieldSpecs) {})
-                        (solos newFieldSpecs));
-                    in this.set.__value (newFields.__value);
-                };
-              };
+        # A type inhabited by only one value.
+        Literal_ = Type.template "Literal" {V = SU.Any;} (_: rec {
+          ctor = U.Ctors.CtorNullary;
+          staticMethods = {
+            getLiteral = This: thunk _.V;
+          };
+        });
+        Literal = V: Literal_.bind { inherit V; };
+        literal = v: (Literal v).new {};
+
+        # A type inhabited by literals of any of the given list of values
+        Literals = Vs: Union (map Literal values);
+
+        # A type indicating a default value.
+        Default_ = Type.template "Default" {T = Type; V = Type;} (_: {
+          ctor = U.Ctors.None;
+          staticMethods = {
+            defaultType = This: thunk _.T;
+            defaultValue = This: thunk (_.V.getLiteral {});
+          };
+          overrideCheck = that: _.T == null || _.T.check that;
+        });
+        Default = T: v:
+          let V = Literal v;
+          in Default_.bind { inherit T V; };
+
+        # Newtype wrapper
+        Static_ = Type.template "Static" {T = Type;} (_: {
+          ctor = U.Ctors.None;
+          staticMethods = {
+            staticType = This: thunk _.T;
+          };
+        });
+        Static = T: Static_.bind {inherit T;};
+
+        # Either:
+        # (Field.new "myField" Int
+        # (Field.new "myField" (Static Int)) -> Field<Static<Int>>.fieldType == Int
+        # (Field.new "myField" (Default Int 123)) -> Field<Default<Int, 123>>.fieldType == Int
+        # (Field.new "myField" (Static (Default Int 123))) -> Field<Static<Default<Int, 123>>>.fieldType == Int
+        Field = Type.new "Field" {
+          ctor = SU.Ctor.new "CtorField" (This: rawFieldName: fieldSpec:
+            with (log.v 2).call "CtorField" rawFieldName fieldSpec ___;
+            return {
+              rawFieldName = SU.String.new rawFieldName;
+              fieldSpec = SU.TypeThunk.new fieldSpec;
             });
-      in
-        U;
+          fields = This: SU.Fields.new [
+            {rawFieldName = SU.String;}
+            {fieldSpec = SU.TypeThunk;}
+          ];
+          methods = {
+            parsedT = this: _: SU.parseFieldSpec (resolve this.fieldSpec);
+            fieldName = this: _: SU.string this.rawFieldName;
+            fieldType = this: _: (this.parsedT {}).fieldType;
+            fieldDefault = this: _: when (this.hasDefault {}) (this.parsedT {}).fieldDefault;
+            fieldStatic = this: _: (this.parsedT {}).fieldStatic;
+            hasDefault = this: _: (this.parsedT {}).hasDefault;
+          };
+        };
+
+        # Fields is an OrderedOf that first converts any RHS values into Field types.
+        # Since it needs to inherit OrderedOf
+        Fields = (U.OrderedOf U.Field).subType "Fields" {
+          # Fields ctor just converts the incoming list or set of field specs into
+          # the list of Field that OrderedOf Field expects.
+          #
+          # Fields.new { field = FieldType; ... }
+          # Fields.new { field = Default FieldType defaultValue; ... }
+          # Fields.new { field = Static FieldType; ... }
+          # Fields.new [ { field = FieldType; ... } ... ]
+          # Fields.new [ { field = Default FieldType defaultValue; ... } ... ]
+          # Fields.new [ { field = Static FieldType; ... } ... ]
+          fields = This: SU.Fields.new [{
+            fieldSpecs = SU.Lambda;
+          }];
+          ctor = SU.Ctor.new "Fields.ctor" (This: fieldSpecs_:
+              with (log.v 2).call "Fields.ctor" fieldSpecs_ ___;
+              with lets rec {
+                # Include Type field on all instances.
+                fieldSpecs = withCommonFieldSpecs opts SU fieldSpecs_;
+                fieldSolos = mapSolos U.Field.new fieldSpecs;
+              };
+              # Call the OrderedOf constructor to construct this from the list of solos.
+              return (
+                ((U.OrderedOf U.Field).ctor.bind This fieldSolos) // {
+                  fieldSpecs = SU.Lambda.new (thunk fieldSpecs);
+                }
+              )
+          );
+          methods = {
+            getField = this: name: (this.indexed {}).${name}.value;
+            getFieldsWhere = this: pred: filterSolos pred (this.getSolos {});
+            instanceFields = this: _:
+              this.getFieldsWhere (rawFieldName: field:
+                ((U.string field.rawFieldName) != "__Type")
+                && (U.isNull field
+                    || !(field.fieldStatic {})));
+            instanceFieldsWithType = this: _:
+              this.getFieldsWhere (_: field:
+                (U.isNull field)
+                || !(field.fieldStatic {}));
+            requiredFields = this: _:
+              this.getFieldsWhere (_: field:
+                (U.isNull field)
+                || (!(field.fieldStatic {})
+                    && !(field.hasDefault {})));
+            update = this: newFieldSpecs:
+              let newFields =
+                Fields.new (concatSolos
+                  ((SU.lambda this.fieldSpecs) {})
+                  (solos newFieldSpecs));
+              in this.set.__value (newFields.__value);
+          };
+        };
+      });
+      in U;
   };
 
   # nix eval --impure --expr '(import ./cutils/types.nix {})._tests'
@@ -3503,12 +3502,14 @@ let
     in suite rec {
 
       fastSmoke =
-        #solo
-          (testInUniverses {
-            inherit
-              U_0
-              ;
-          } smokeTests);
+        testInUniverses {
+          inherit
+            U_0
+            U_1
+            ;
+        } (U: smokeTests U // typeFunctionalityTests U // instantiationTests U);
+
+    } // unless false {
 
       smoke =
         #solo
@@ -3521,7 +3522,6 @@ let
               ;
           } smokeTests);
 
-    } // unless false {
 
       all =
         #solo
@@ -3569,7 +3569,7 @@ let
                   __isTypeSet = true;
                   __Super = expected.__Super;  # TODO: Cheat due to named thunk comparison
                   checkValue = null;
-                  ctor = SU.Ctors.CtorDefault;
+                  ctor = U.Ctors.CtorDefault;
                   fields = This: SU.Fields.new [];
                   methods = expected.methods; # TODO: Cheat due to named thunk comparison
                   staticMethods = expected.staticMethods; # TODO: Cheat due to named thunk comparison
