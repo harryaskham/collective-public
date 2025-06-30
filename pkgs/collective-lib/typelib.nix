@@ -3932,7 +3932,7 @@ collective-lib._testsUntyped.debug
 </nix>
 
 <nix>
-Types.Universe.U_1.Any
+Types.Universe.U_0
 </nix>
 
 <nix>

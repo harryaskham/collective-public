@@ -48,11 +48,10 @@ let
 
     compactBlock = args: braceL: braceR: px:
       with args;
-      formatBlock (
-        let pxLines = splitLines (formatBlock (joinLines px));
-        in ''
-          ${braceL} ${indent.here (formatLines pxLines)} ${braceR}
-        '');
+      let pxLines = splitLines (formatBlock (joinLines px));
+      in formatBlock ''
+        ${braceL} ${indent.here (formatLines pxLines)} ${braceR}
+      '';
 
     printAttrs_ = args: x:
       with args;
@@ -137,7 +136,10 @@ let
         raw = { ignoreToString = true; ignoreShow = true; };
         strict = { printStrictly = true; };
         lazy = { printStrictly = false; };
-        line = { formatLines = indent.linesSep " "; };
+        line = {
+          formatBlock = indent.block;
+          formatLines = indent.linesSep " ";
+        };
         depth = n: { maxDepth = n; };
         mask = names: {
           replaceAttrs =
@@ -161,7 +163,7 @@ let
               then x.__show x
               else x;
           showXHandlingPartial =
-            if isAttrs x && isFunction showX
+            if isAttrs x && typelib.isFunctionNotFunctor showX
               then log.printAttrs x
               else showX;
       in
@@ -211,11 +213,11 @@ let
     };
 
     TraceShort = x: (TraceAt 0 x) // {
-      __depth = 2;
+      __depth = 3;
       __showTrace = self:
         if enableVerboseTrace
-          then "short: ${with log.prints; putD self.__depth self.__x _line _raw ___}"
-          else "short: ${with log.prints; putD self.__depth self.__x _line ___}";
+          then "> ${with log.prints; putD self.__depth self.__x _line _raw ___}"
+          else "> ${with log.prints; putD self.__depth self.__x _line ___}";
     };
     short = TraceShort;
 
@@ -452,7 +454,7 @@ let
                     ];}]
                     (logState: over [
                       (tagged "ASSIGN:${groupType}:${groupName}" logState.events)
-                      (short {assign = name;})
+                      #(short {assign = name;})
                     ])
                     value;
 
@@ -465,7 +467,7 @@ let
                     [{lets = safely vars;}]
                     (logState: overPartial [
                       (tagged "LETS:${groupType}:${groupName}" logState.events)
-                      (short {lets = attrNames vars;})
+                      #(short {lets = attrNames vars;})
                     ])
                     (logState: logState // vars);
 
@@ -479,7 +481,19 @@ let
                     [{return = safely x;}]
                     (logState: over [
                       (tagged "RETURN:${groupType}:${groupName}" logState.events)
-                      (short {return.typeOf = lib.typeOf x;})
+                      (
+                        let
+                          event = (head logState.events);
+                          call = event.call or event.methodCall;
+                          name = (head call).name;
+                          xStr = with log.prints; put x (_depth 1) _line ___;
+                          xStrRaw = with log.prints; put x (_depth 1) _line _raw ___;
+                          xStrWithRaw =
+                            if xStr == xStrRaw then xStr
+                            else "${xStr} (${xStrRaw})";
+                        #in short "${name}() -> <${lib.typeOf x}>"
+                        in short "${name}() -> ${xStrWithRaw}"
+                      )
                     ])
                     (if typelib.isFunctionNotFunctor x then returnEta x else x);
 
@@ -551,7 +565,7 @@ let
                   with logState;
                   assert (over [
                     (tagged "START:${groupType}:${groupName}" initialState.events)
-                    (short {start = groupType; name = groupName;})
+                    #(short {start = groupType; name = groupName;})
                   ]);
                   logState)
                 groupBuilder;
