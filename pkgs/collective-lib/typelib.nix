@@ -3825,24 +3825,25 @@ let
   # Final module
   typelib = 
     let 
-      self = Types.TS // {
+      module = Types.TS // {
         # Embed the whole of Types for isolated typelib.Types access.
         inherit Types;
-
+      };
+    in
+      module
+      // {
         # Exposes:
         # - The typesystem of this module at the top level
         # - .Types (just the Types, with the library-only functions available as .Typelib)
         # - .Typelib (isolated type library, replacing e.g. isNull)
         # - .lib (All the above merged deeply into lib)
-        # 
+        #
         # Not named as 'lib' so that 'with typelib;' does not make a global 'lib' unavailable.
-        library = lib.recursiveUpdate lib (removeAttrs self [ "library" "_tests"]);
+        library = lib.recursiveUpdate lib module;
 
         # Embed the whole of _tests
         inherit _tests;
       };
-    in 
-      self;
 
   # Placeholder to store multiline string for fast expr execution using nixlike.el
   __nixlikeExprs = ''
@@ -3870,6 +3871,13 @@ enumerate [1 2 3]
 </nix>
 
 <nix>
+123
+</nix>
+
+<nix>
+assert log.trace.over (log.short 123);
+assert log.trace.over [(log.short 123)];
+assert log.trace.over [(log.short 123)];
 123
 </nix>
 

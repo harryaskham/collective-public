@@ -8,6 +8,8 @@
   enablePartialTrace ? false,
   # If true, traces via vprint instead of print.
   enableVerboseTrace ? false,
+  # If true, trace short values at levels 0+.
+  traceShort ? false,
   ...
 }:
 
@@ -167,14 +169,58 @@ let
           string = id;
         } showXHandlingPartial;
 
-    mkTrace = level:
-      let
-        enableTrace = traceLevel != null && level <= traceLevel;
-        traceFn = if enableTrace then builtins.trace else (_: id);
-        printFn =
+    # Wrapper indicating the value should be traced at the given level
+    # using the given trace functions.
+    TraceAt = atLevel: x: {
+      __isTraceAt = true;
+      __x = x;
+
+      # Configurable
+      __atLevel = atLevel;
+      __traceFn = self: builtins.trace;
+
+      __trace = self: a:
+        let
+          enableTrace = traceLevel != null && self.__atLevel <= traceLevel;
+        in
+          if enableTrace
+          then (self.__traceFn self) (self.__showTrace self) a
+          else a;
+
+      __showTrace = self:
+        let printFn =
           if enableVerboseTrace
           then printWith (args: args // prints.using.depth (3 + 3 * traceLevel))
           else log.print;
+        in "\n\n[log.trace(${toString self.__atLevel}).show]\n${printFn self.__x}\n";
+
+      # TraceAt 3 { some = "value"; } outputValue
+      __functor = self: a:
+        self.__trace self a;
+    };
+    isTraceAt = x: x.__isTraceAt or false;
+
+    TraceSeqAt = atLevel: x: (TraceAt atLevel x) // {
+      __depth = 5;
+      __showTrace = self: {
+        level = self.__atLevel;
+        value = self.__x;
+      };
+      __traceFn = self:
+        builtins.traceSeqN self.__depth;
+    };
+
+    TraceShort = x: (TraceAt 0 x) // {
+      __depth = 2;
+      __showTrace = self:
+        if enableVerboseTrace
+          then "short: ${with log.prints; putD self.__depth self.__x _line _raw ___}"
+          else "short: ${with log.prints; putD self.__depth self.__x _line ___}";
+    };
+    short = TraceShort;
+
+    mkTrace = level:
+      let
         self = rec {
           # Options that can be set on a mkTrace object that influence any created
           # trace groups. Injected into the initial log state.
@@ -187,38 +233,46 @@ let
           # log.trace.show [ 456 { a = 2; }] 123
           # -> trace: [ 456 { a = 2; }]
           # 123
-          show = x: a: traceFn "\n\n[log.trace(${toString level}).show]\n${printFn x}\n" a;
+          show = xOrTraceAtF: a:
+            if isTraceAt xOrTraceAtF
+              then let f = xOrTraceAtF; in f a
+            else if typelib.isFunctionNotFunctor xOrTraceAtF
+              then let f = xOrTraceAtF; in f a
+            else
+              let x = xOrTraceAtF; in TraceAt level x a;
 
-          # log.trace.showId 123
+          # log.trace.over (showId 123)
           # -> trace: 123
           # 123
-          showId = x: self.show (x) x;
-          msg = x: over (showId x);
+          showId = x: self.show x x;
 
-          toTraceF = fs: {
-            list =
-              let fs_ = map (f: if isFunction f then f else show f) fs;
-                  f = foldl1 compose fs_;
-              in f;
-          }.${typeOf fs} or (show fs);
+          # log.trace.over (msg "123")
+          # -> trace: "123"
+          # 123
+          msg = showId;
+
+          maybeShow = dispatch.def self.show {
+            lambda = id;
+          };
 
           # For use with assert for low-paren tracing
           # e.g.
           # with log.trace; assert over ["msg" {a = 123;}]; expr
           # or
           # with log.trace; assert over {a = 123;}; expr
-          #
-          # Can't access expr for e.g. log.trace.id
-          # Can mix partially applied traces with raw values, which will be printed.
+          overNoAssert =
+            dispatch.def
+              (self.show)
+              {
+                lambda = id;
+                list = fs: composeMany (map maybeShow fs);
+              };
           over = fs:
-            # Short-circuit if trace disabled to save traceF construction.
-            if enableTrace
-              then (toTraceF fs) true
-              else true;
+            assert overNoAssert fs true; true;
 
           # Trace over the given fs only if intermediate tracing is enabled.
-          overPartial = fs:
-            if enablePartialTrace then over fs else true;
+          overPartial =
+            if enablePartialTrace then over else const true;
 
           # e.g. with log.trace; assert over (tagged "START_CALL" xs);
           tagged = tag: dispatch {
@@ -347,9 +401,14 @@ let
                 # Trace a message by showing the given value.
                 # When used with 'with', accrues logs by modifying the mkGroupClosure in scope.
                 msg = value:
-                  __withEventsAssert
-                    [{ msg = log.show value; }]
-                    (logState: overPartial (tagged "MSG:${groupType}:${groupName}" logState.events));
+                  let event = { msg = log.show value; };
+                  in __withEventsAssert
+                    [event]
+                    (logState:
+                      overPartial [
+                        (tagged "MSG:${groupType}:${groupName}" logState.events)
+                        (short event)
+                      ]);
 
                 # Check a cond is true and throw if it isn't.
                 # When used with 'with', accrues logs by modifying the mkGroupClosure in scope.
@@ -377,7 +436,10 @@ let
                       ++ (optionals (nonEmpty extra) [{inherit extra;}])
                     ); 
                     }]
-                    (logState: overPartial (tagged "WARNING:${groupType}:${groupName}" logState.events)));
+                    (logState: overPartial [
+                      (tagged "WARNING:${groupType}:${groupName}" logState.events)
+                      (short {warning = msg;})
+                    ]));
 
                 # Trace an assignment inline.
                 # Cannot be used with 'with' to accrue to the group; returns the assignment.
@@ -388,7 +450,10 @@ let
                       { inherit name; }
                       (safely { inherit value; })
                     ];}]
-                    (logState: over (tagged "ASSIGN:${groupType}:${groupName}" logState.events))
+                    (logState: over [
+                      (tagged "ASSIGN:${groupType}:${groupName}" logState.events)
+                      (short {assign = name;})
+                    ])
                     value;
 
                 # Trace a group of assignments and provide access to the results.
@@ -398,7 +463,10 @@ let
                   assert assertMsg (isAttrs vars) ''Non-attrset vars in 'lets': ${log.print mkVars}'';
                   __withEventsAssertWith
                     [{lets = safely vars;}]
-                    (logState: overPartial (tagged "LETS:${groupType}:${groupName}" logState.events))
+                    (logState: overPartial [
+                      (tagged "LETS:${groupType}:${groupName}" logState.events)
+                      (short {lets = attrNames vars;})
+                    ])
                     (logState: logState // vars);
 
                 # Return a value from the group, tracing the value.
@@ -409,7 +477,10 @@ let
                 return = x:
                   __withEventsAssertReturning
                     [{return = safely x;}]
-                    (logState: over (tagged "RETURN:${groupType}:${groupName}" logState.events))
+                    (logState: over [
+                      (tagged "RETURN:${groupType}:${groupName}" logState.events)
+                      (short {return.typeOf = lib.typeOf x;})
+                    ])
                     (if typelib.isFunctionNotFunctor x then returnEta x else x);
 
                 # Return a (possibly variadic) function from the group, tracing the function's
@@ -450,8 +521,11 @@ let
                 returnEta = f:
                   let traceOut = out:
                         __withEventsAssertReturning
-                          [{ returnEta = out; }]
-                          (logState: over (tagged "RETURN_ETA:${groupType}:${groupName}" logState.events))
+                          [{ returnEta = safely out; }]
+                          (logState: over [
+                            (tagged "RETURN_ETA:${groupType}:${groupName}" logState.events)
+                            (short {returnEta.typeOf = lib.typeOf out;})
+                          ])
                           out;
                   in Variadic.composeFunctorsAreAttrs traceOut f;
 
@@ -462,8 +536,11 @@ let
                 traceComposeVariadic = name: gName: fName: g: f:
                   let gTraceVarargs = varargs:
                         __withEventsAssertReturning
-                          [{ vcompose = [ { inherit name; } {g = gName;} {f = fName;} { inherit varargs; } ]; }]
-                          (logState: overPartial (tagged "VARIADIC_COMPOSE:${groupType}:${groupName}" logState.events))
+                          [{ vcompose = [ { inherit name; } {g = gName;} {f = fName;} { varargs = safely varargs; } ]; }]
+                          (logState: overPartial [
+                            (tagged "VARIADIC_COMPOSE:${groupType}:${groupName}" logState.events)
+                            (short {vcompose = name;})
+                          ])
                           (g varargs);
                   in Variadic.composeFunctorsAreAttrs gTraceVarargs f;
               };
@@ -472,7 +549,10 @@ let
                 (initialState:
                   let logState = mkGroupClosure initialState; in
                   with logState;
-                  assert (over (tagged "START:${groupType}:${groupName}" initialState.events));
+                  assert (over [
+                    (tagged "START:${groupType}:${groupName}" initialState.events)
+                    (short {start = groupType; name = groupName;})
+                  ]);
                   logState)
                 groupBuilder;
 
