@@ -12,7 +12,7 @@ with cutils.strings;
 # Nicer interface to runtests
 let
   log = cutils.log;
-  inherit (cutils.typelib) cast isCastError hasToString;
+  inherit (cutils.typelib) cast isCastError hasToString isFunctionNotFunctor;
 in rec {
 
   Status = {
@@ -36,9 +36,9 @@ in rec {
           then mapAttrs (_: Fields) (mapAttrs (_: maybeResolve) (removeAttrs this.get ["__Type"]))
           else this;
         this__ = deepConcatMap (k: v:
-          if elem k ["__toString" "__show"]
+          if elem k ["__toString" "__show" "__functor"]
           then { "elided-${k}" = k; }
-          else if isFunction v then { ${k} = "<lambda>"; }
+          else if isFunctionNotFunctor v then { ${k} = "<lambda>"; }
           else { ${k} = v; })
           this_;
       in

@@ -178,14 +178,12 @@ let
       __x = x;
 
       # Configurable
+      __enableTrace = self: traceLevel != null && self.__atLevel <= traceLevel;
       __atLevel = atLevel;
       __traceFn = self: builtins.trace;
 
       __trace = self: a:
-        let
-          enableTrace = traceLevel != null && self.__atLevel <= traceLevel;
-        in
-          if enableTrace
+          if self.__enableTrace self
           then (self.__traceFn self) (self.__showTrace self) a
           else a;
 
@@ -212,8 +210,11 @@ let
         builtins.traceSeqN self.__depth;
     };
 
-    TraceShort = x: (TraceAt 0 x) // {
+    TraceShort = x:
+      let T = TraceAt 0 x;
+      in T // {
       __depth = 3;
+      __enableTrace = self: (T.__enableTrace T) && traceShort;
       __showTrace = self:
         if enableVerboseTrace
           then "> ${with log.prints; putD self.__depth self.__x _line _raw ___}"
@@ -294,14 +295,19 @@ let
 
           buildCall = self: callName:
             Variadic.mkListThen
-              (l: buildInitialLogState self {call = [{name = callName;} {args = l;}]; });
+              (l: buildInitialLogState self {
+                call = [
+                  {name = callName;}
+                  {args = l;}
+                ];
+              });
 
           buildMethodCall = self: this: methodName:
             Variadic.mkListThen
               (l: buildInitialLogState self {
                 method = [
                   { name = methodName; } 
-                  { this = "unsafe:this"; }
+                  { inherit this; }
                   { args = l; }
                 ]; 
               });
@@ -471,6 +477,44 @@ let
                     ])
                     (logState: logState // vars);
 
+                # Create a one-line log for tersely tracing function calls.
+                shortReturn = logState: x:
+                  let
+                    event = (head logState.events);
+
+                    fnStr =
+                      if event ? call then
+                        (head event.call).name
+                      else if event ? method then
+                        let this = lookupSolos "this" event.method;
+                            methodName = lookupSolos "name" event.method;
+                            thisName =
+                              if isString this then this
+                              else if typelib.isTypeSet this && this ? getName then this.getName {}
+                              else if this ? __Type && (resolve this.__Type) ? getName
+                              then (resolve this.__Type).getName {}
+                              else "<unnamed>";
+                        in "${thisName}.${methodName}"
+                      else
+                        "<unnamed>";
+
+                    valueStr = x:
+                      if isSolo x then with log.prints; put x (_depth 2) _line ___
+                      else if typelib.isTypeSet x && x ? getName then "${x.getName {}} <TypeAttrs: ${toString (TerseAttrs x)}>"
+                      else if x ? __Type && (resolve x.__Type) ? getName then "Instance<${(resolve x.__Type).getName {}}> ${toString (TerseAttrs x)}"
+                      else if lib.isAttrs x then "set(${toString (TerseAttrs x)})"
+                      else with log.prints; "${typelib.typeOf x}(${put x (_depth 2) _line ___})";
+
+                    args = lookupSolosDef "args" ["<no event.call or event.method>"] (event.call or event.method or []);
+                    argsLines = map (arg: ellipsis 100 (valueStr arg)) args;
+
+                    xStr = valueStr x;
+
+                  in short ("\n" + indent.block ''
+                    ${fnStr}(${indent.here (indent.lines argsLines)})
+                      -> ${indent.here xStr}
+                  '');
+
                 # Return a value from the group, tracing the value.
                 # Importantly, if the value is a functor, it will not be traced.
                 #
@@ -481,19 +525,7 @@ let
                     [{return = safely x;}]
                     (logState: over [
                       (tagged "RETURN:${groupType}:${groupName}" logState.events)
-                      (
-                        let
-                          event = (head logState.events);
-                          call = event.call or event.methodCall;
-                          name = (head call).name;
-                          xStr = with log.prints; put x (_depth 1) _line ___;
-                          xStrRaw = with log.prints; put x (_depth 1) _line _raw ___;
-                          xStrWithRaw =
-                            if xStr == xStrRaw then xStr
-                            else "${xStr} (${xStrRaw})";
-                        #in short "${name}() -> <${lib.typeOf x}>"
-                        in short "${name}() -> ${xStrWithRaw}"
-                      )
+                      (shortReturn logState x)
                     ])
                     (if typelib.isFunctionNotFunctor x then returnEta x else x);
 
@@ -538,7 +570,7 @@ let
                           [{ returnEta = safely out; }]
                           (logState: over [
                             (tagged "RETURN_ETA:${groupType}:${groupName}" logState.events)
-                            (short {returnEta.typeOf = lib.typeOf out;})
+                            (shortReturn logState out)
                           ])
                           out;
                   in Variadic.composeFunctorsAreAttrs traceOut f;

@@ -73,6 +73,12 @@ in rec {
   # Get the ordered list of solo values.
   soloValues = map soloValue;
 
+  # Look up a solo value by name in a solo list.
+  lookupSolos = name: xs: (mergeSolos xs).${name};
+
+  # Look up a solo value by name in a solo list.
+  lookupSolosDef = name: def: xs: (mergeSolos xs).${name} or def;
+
   # Check if an attribute is solo.
   checkSolo = x:
     assert assertMsg (isAttrs x) "checkSolo: Not an attrset: ${log.print x}";
@@ -227,6 +233,11 @@ in rec {
       wrong = filterAttrs (k: v: !(pred k v)) xs;
     };
 
+  TerseAttrs = xs: {
+    __functor = self: _: xs;
+    __toString = self: "{${joinSep ", " (attrNames xs)}}";
+  };
+
   # Create an attrset that must be resolved via 'resolve'
   # but that still has attrNames capability.
   LazyAttrs_ = mkThunk: xs:
@@ -237,9 +248,9 @@ in rec {
       __isLazyAttrs = true;
       __attrNames = _: attrNames xs;
       __showValue = self: "${toString (size xs)} attrs";
-      __showExtra = self: indent.block ''
-        >> attrs: ${indent.here (log.show (self.__attrNames {}))}
-      '';
+      __showExtra = self:
+        let names = self.__attrNames {};
+        in optionalString (size names > 0) "(${joinSep ", " (self.__attrNames {})})";
     };
   isLazyAttrs = x: isThunkSet x && (x.__isLazyAttrs or false);
   LazyAttrs = LazyAttrs_ (NamedThunk "LazyAttrs");

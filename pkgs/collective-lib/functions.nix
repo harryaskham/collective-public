@@ -120,6 +120,9 @@ in rec {
         # This is picked up by 'resolve (mkThunk x)' to give x
         __resolve = self: self.__x {};
 
+        # Also implement functor s.t. thunks can be called via 'someThunk {}'
+        __functor = self: _: self.__x {};
+
         # Display thunks
         __toString = self:
           let arrow = if (self ? __ThunkName) then ">-[${self.__ThunkName}]->" else ">->";

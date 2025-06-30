@@ -3,6 +3,7 @@
   traceLevel ? 0,
   enablePartialTrace ? false,
   enableVerboseTrace ? false,
+  traceShort ? false,
   ... }:
 
 let
@@ -108,7 +109,7 @@ let
       font = import ./font.nix { inherit lib collective-lib cutils; };
       functions = import ./functions.nix { inherit lib collective-lib cutils; };
       lists = import ./lists.nix { inherit lib collective-lib cutils; };
-      log = import ./log.nix { inherit lib collective-lib cutils traceLevel enablePartialTrace enableVerboseTrace; };
+      log = import ./log.nix { inherit lib collective-lib cutils traceLevel enablePartialTrace enableVerboseTrace traceShort; };
       strings = import ./strings.nix { inherit lib collective-lib cutils; };
       tests = import ./tests.nix { inherit lib collective-lib cutils; };
       typelib = import ./typelib.nix { inherit lib collective-lib cutils; };
