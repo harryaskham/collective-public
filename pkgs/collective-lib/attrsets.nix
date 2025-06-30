@@ -1,7 +1,8 @@
 { pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, cutils ? import ./. { inherit lib; }, ... }:
 
 with lib;
-with cutils.dispatch;
+with cutils.collections;
+with cutils.dispatchlib;
 with cutils.errors;
 with cutils.functions;
 with cutils.strings;
@@ -73,7 +74,12 @@ in rec {
   soloValues = map soloValue;
 
   # Check if an attribute is solo.
-  isSolo = xs: isAttrs xs && size xs == 1;
+  checkSolo = x:
+    assert assertMsg (isAttrs x) "checkSolo: Not an attrset: ${log.print x}";
+    assert assertMsg (size x == 1) "checkSolo: Expected exactly one attribute, got ${log.print x}";
+    x;
+
+  isSolo = xs: tryBool (checkSolo xs);
 
   # true iff xs is a valid solo list.
   isSolos = xs: tryBool (checkSolos xs);
@@ -117,13 +123,21 @@ in rec {
   # - an attribute set to a list of solo attributes.
   # - a list of attributes to itself, with assertions that they are solo.
   solos = dispatch {
-    list = xs: checkSolos xs;
+    list = checkSolos;
     set = mapAttrsToList (k: v: { ${k} = v; });
   };
 
-  # Map an (f :: k -> a -> b) over a list of solos [{k -> a}], returning another list of solos [{k -> b}].
+  # Map an (f :: k -> v -> a) over a list of solos [{k -> a}], returning any list of values [a].
   # If xs is a set, it is first converted to solos.
   mapSolos = f: xs: map (mapAttrs f) (solos xs);
+
+  # Map an (f :: k -> v -> {k' = v'}) over a list of solos [{k -> v}], returning another list of solos [{k' -> v'}].
+  # If xs is a set, it is first converted to solos.
+  # f must return a solo; this preserves the solos form for lists.
+  concatMapSolos = f: dispatch {
+    list = map (x: checkSolo (f (soloName x) (soloValue x)));
+    set = xs: mergeSolos (concatMapSolos f (solos xs));
+  };
 
   # Merge a list of solos [{k -> a}] into a single attrset {k -> a}.
   # Fails if any element is not a solo.
@@ -140,16 +154,11 @@ in rec {
         ysFiltered = filterSolos (yName: y: !(xsMerged ? ${yName})) ys;
     in xsUpdated ++ ysFiltered;
 
-  # Map an (f :: k -> a -> b) over a list of solos [{k -> a}], returning an attrset of combined solos {k -> b}.
-  # If xs is a set, it is first converted to solos to map it.
-  concatMapSolos = f: xs: mergeSolos (mapSolos f xs);
-
-  # Map an (f :: k -> a -> b) over a collection of solos {k -> a}.
-  # Preserve the type s.t. a set is converted to solos, has f applied, and is then merged back.
-  fmapSolos = f: dispatch {
-    list = mapSolos f;
-    set = concatMapSolos f;
-  };
+  # Adds a solo to the front of a list of solos, or update it in place if it already exists.
+  consSolo = x: xs:
+    if (mergeSolos xs) ? ${soloName x}
+      then concatSolos xs [x]
+      else concatSolos [x] xs;
 
   # Map an (f :: int -> k -> a -> b) over a list of solos [{k -> a}], returning another list of solos [{k -> b}].
   # f has access to the index in the list.
@@ -171,8 +180,8 @@ in rec {
   # Add an attribute name to each attrset in the list containing its index.
   # Defaults to "__index"
   indexed = xs: ifmapSolos (index: _: value: { inherit index value; }) xs;
-  indices = fmapSolos (_: x: x.index);
-  unindexed = xs: fmapSolos (_: x: x.value) xs;
+  indices = concatMapSolos (k: x: mkSolo k x.index);
+  unindexed = concatMapSolos (k: x: mkSolo k x.value);
 
   # Diff two attrsets, returning any divergent keys and their values.
   diff = a: b:
@@ -207,6 +216,16 @@ in rec {
     else { __unequal = { inherit a b; }; };
 
   diffShort = a: b: deepFilter (x: !(x ? __equal)) (diff a b);
+
+  # Merge attrs in a list deeply, allowing for modules to combine named dicts implicitly.
+  recursiveMergeAttrsList = foldl' lib.recursiveUpdate {};
+
+  # Partition attrs based on a predicate.
+  # Follows lib.partition interface for lists.
+  partitionAttrs = pred: xs:
+    { right = filterAttrs pred xs;
+      wrong = filterAttrs (k: v: !(pred k v)) xs;
+    };
 
   # Create an attrset that must be resolved via 'resolve'
   # but that still has attrNames capability.
@@ -337,17 +356,25 @@ in rec {
         nonSoloListRHS = expect.error (concatSolos soloList notSoloList);
         nonSoloListBoth = expect.error (concatSolos notSoloList notSoloList);
       };
-      concatMapSolos = {
-        setToList = expect.eq (concatMapSolos (_: x: x+1) soloSet) {abc = 124; def = 457;};
-        listToList = expect.eq (concatMapSolos (_: x: x+1) soloList) {abc = 124; def = 457;};
-        notSoloList = expect.error (concatMapSolos (_: x: x+1) notSoloList);
-        withName = expect.eq (concatMapSolos (n: x: "${n}${toString x}") soloList) {abc = "abc123"; def = "def456";};
+      consSolo = {
+        consSolo01 = expect.eq (consSolo s0 [s1]) [{abc = 123;} {def = 456;}];
+        consSolo10 = expect.eq (consSolo s1 [s0]) [{def = 456;} {abc = 123;}];
+        consSolo00 = expect.eq (consSolo s0 [s0]) [{abc = 123;}];
+        consSolo11 = expect.eq (consSolo s1 [s1]) [{def = 456;}];
+        preserveOrder =
+          expect.eq
+            (consSolo {b = 2;} [{a = 1;} {b = null;} {c = 3;}])
+            [{a = 1;} {b = 2;} {c = 3;}];
+        consSolo011 = expect.error (consSolo s0 [s1 s1]);
+        nonSoloListLHS = expect.error (consSolo notSolo soloList);
+        nonSoloListRHS = expect.error (consSolo s0 notSoloList);
+        nonSoloListBoth = expect.error (consSolo notSolo notSoloList);
       };
-      fmapSolos = {
-        setToSet = expect.eq (fmapSolos (_: x: x+1) soloSet) {abc = 124; def = 457;};
-        listToList = expect.eq (fmapSolos (_: x: x+1) soloList) [ {abc = 124;} {def = 457;} ];
-        notSolo = expect.eq (fmapSolos (_: x: x+1) notSolo) { a = 2; b = 3; };
-        notSoloList = expect.error (fmapSolos (_: x: x+1) notSoloList);
+      concatMapSolos = {
+        setToList = expect.eq (concatMapSolos (k: x: mkSolo k (x+1)) soloSet) {abc = 124; def = 457;};
+        listToList = expect.eq (concatMapSolos (k: x: mkSolo k (x+1)) soloList) [ {abc = 124;} {def = 457;} ];
+        notSoloList = expect.error (concatMapSolos (k: x: mkSolo k (x+1)) notSoloList);
+        withName = expect.eq (concatMapSolos (n: x: mkSolo n "${n}${toString x}") soloList) [ {abc = "abc123";} {def = "def456";} ];
       };
       ifmapSolos = {
         setToSet = expect.eq (ifmapSolos (i: _: x: x+(1000*(i+1))) soloSet) {abc = 1123; def = 2456;};

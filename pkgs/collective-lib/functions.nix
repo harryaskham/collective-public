@@ -1,7 +1,8 @@
 { pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, cutils ? import ./. { inherit lib; }, ... }:
 
 with lib;
-with cutils.dispatch;
+with cutils.collections;
+with cutils.dispatchlib;
 with cutils.errors;
 with cutils.lists;
 with cutils.strings;
@@ -52,11 +53,14 @@ in rec {
   resolve = x:
     if (x ? __resolve) then
       x.__resolve x
-    else if isFunction x then
+    else if typelib.isFunction x then
       x (throw ''Resolved lambda-thunk made use of its thunk-argument.'')
     else if isThunkSet x then
       x.__get {}
-    else throw ''resolve: Invalid argument type: ${typeOf x}: ${log.print x}'';
+    else throw (indent.block ''
+      resolve: Invalid argument type: ${typeOf x}
+        ${indent.here (log.print x)}
+    '');
 
   # Resolve a thunk, throwing an error if the resolving value is used.
   # Any catchable error thrown by the thunk will be propagated with extra logging.

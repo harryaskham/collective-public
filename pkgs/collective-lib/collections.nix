@@ -4,7 +4,7 @@
 
 with lib;
 with cutils.attrsets;
-with cutils.dispatch;
+with cutils.dispatchlib;
 with cutils.errors;
 with cutils.functions;
 with cutils.lists;
@@ -13,6 +13,62 @@ with cutils.tests;
 
 let log = cutils.log;
 in rec {
+  # Identify values that have elements.
+  # Paths are collections, treated as normalised lists of components.
+  collection = {
+    __functor = self: dispatch.def (const false) {
+      list = const true;
+      set = const true;
+      string = const true;
+      path = const true;
+    };
+    check = x: assert assertMsg (collection x) "collection.check: Got non-collection ${typeOf x}"; x;
+  };
+
+  # Get the elements of a collection.
+  elems = {
+    __functor = self: dispatch {
+      list = id;
+      set = attrValues;
+      string = stringToCharacters;
+      path = p: 
+        let go = pSplit: [pSplit.root] ++ (lib.path.splitComponents pSplit.rest);
+        in go (lib.path.splitRoot p);
+    };
+    head = xs: head (elems (nonEmpty.check xs));
+    tail = xs: tail (elems (nonEmpty.check xs));
+  };
+
+  # Polymorphic collection size
+  size = dispatch {
+    list = length;
+    set = compose length attrValues;
+    string = stringLength;
+    path = compose length lib.path.subpath.components;
+  };
+
+  # Polymorphic collection emptiness check
+  empty = {
+    __functor = self: dispatch {
+      list = l: l == [];
+      set = s: s == {};
+      string = s: s == "";
+      path = s: s == [];
+    };
+    check = x_: 
+      let x = collection.check x; in
+      assert assertMsg (empty x) "empty.check: Got non-empty ${typeOf x}"; 
+      x;
+  };
+
+  # Polymorphic collection non-emptiness check
+  nonEmpty = {
+    __functor = self: x: !(empty x);
+    check = x_: 
+      let x = collection.check x_; in
+      assert assertMsg (nonEmpty x) "nonEmpty.check: Got empty ${typeOf x}"; 
+      x;
+  };
 
   # Prepend a collection to another collection.
   # The type of the second argument dictates the type of the result.
@@ -40,6 +96,29 @@ in rec {
   };
 
   _tests = with cutils.tests; suite {
+    collection = {
+      list.empty = expect.True (collection []);
+      list.full = expect.True (collection [1 2 3]);
+      set.empty = expect.True (collection {});
+      set.full = expect.True (collection {a = 1; b = 2; c = 3;});
+      string.empty = expect.True (collection "");
+      string.full = expect.True (collection "abc");
+      path = expect.True (collection ./abc);
+    };
+
+    size = {
+      list_0 = { expr = size []; expected = 0; };
+      list_1 = { expr = size [1]; expected = 1; };
+      list_2 = { expr = size [1 2]; expected = 2; };
+      set_0 = { expr = size {}; expected = 0; };
+      set_1 = { expr = size { a = 1; }; expected = 1; };
+      set_2 = { expr = size { a = 1; b = 2; }; expected = 2; };
+      string_0 = { expr = size ""; expected = 0; };
+      string_1 = { expr = size "a"; expected = 1; };
+      string_2 = { expr = size "ab"; expected = 2; };
+      null_0 = expect.error (size null);
+    };
+
     prepend = {
       listToList = {
         simple = expect.eq (prepend [1 2] [3 4]) [1 2 3 4];

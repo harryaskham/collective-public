@@ -2,7 +2,8 @@
 
 with lib;
 with cutils.attrsets;
-with cutils.dispatch;
+with cutils.collections;
+with cutils.dispatchlib;
 with cutils.errors;
 with cutils.functions;
 with cutils.lists;
@@ -109,6 +110,11 @@ in rec {
     };
 
     error = expr: { inherit expr; expected = failure; };
+    lazyError = expr: {
+      expr = NamedThunk "lazyError.expr" expr;
+      expected = NamedThunk "lazyError.expected" failure;
+      compare = Compare.Resolve;
+    };
 
     lazyEq = expr: expected: {
       expr = NamedThunk "expr" expr;

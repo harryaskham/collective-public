@@ -13,7 +13,8 @@
 
 with lib;
 with cutils.attrsets;
-with cutils.dispatch;
+with cutils.collections;
+with cutils.dispatchlib;
 with cutils.lists;
 with cutils.functions;
 with cutils.strings;
@@ -22,18 +23,12 @@ with cutils.strings;
 let
   typelib = cutils.typelib;
   log = rec {
-    unsafeNames = [ "__toString" "__show" "__functor" ];
-    elideUnsafeName = name: if elem name unsafeNames then "ELIDED-${name}" else name;
-    elideUnsafeNames = deepConcatMap (k: v: { ${elideUnsafeName k} = v; });
-
     mkPrintArgs = {
       printStrictly = false;
       # If true, do not respect __toString
       ignoreToString = false;
       # If true, do not respect __show
       ignoreShow = false;
-      # If true, elide all unsafe names (after checking for toString/show)
-      elideUnsafe = true;
       # Default here to leave indentation markers in until the top level call
       formatBlock = trimNewlines;
       formatLines = indent.linesSep "\n";
@@ -102,29 +97,27 @@ let
     maybeParen = x: if wordCount x <= 1 then x else "(${x})";
 
     # Convert a value of any type to a string, supporting the types module's Type values.
-    print_ = args: x__:
+    print_ = args: x_:
       with args;
       let
-        x_ = if printStrictly then strict x__ else x__;
+        x = if printStrictly then strict x_ else x_;
         block =
           if depth >= maxDepth then "..."
-          else if hasShow x_ && !ignoreShow then
-            show x_
-          else if (x_ ? __toString) && !ignoreToString then
-            toString x_
-          else 
-            let x = if elideUnsafe then elideUnsafeNames x_ else x_;
-            in {
-              null = "null";
-              path = toString x;
-              string = ''"${x}"'';
-              int = ''${builtins.toJSON x}'';
-              float = ''${builtins.toJSON x}'';
-              lambda = "<lambda>";
-              list = formatBlock (printList_ args x);
-              set = formatBlock (printAttrs_ args x);
-              bool = boolToString x;
-            }.${typeOf x};
+          else if hasShow x && !ignoreShow then
+            show x
+          else if (x ? __toString) && !ignoreToString then
+            toString x
+          else {
+            null = "null";
+            path = toString x;
+            string = ''"${x}"'';
+            int = ''${builtins.toJSON x}'';
+            float = ''${builtins.toJSON x}'';
+            lambda = "<lambda>";
+            list = formatBlock (printList_ args x);
+            set = formatBlock (printAttrs_ args x);
+            bool = boolToString x;
+          }.${typeOf x};
       in
         block;
 
@@ -170,7 +163,7 @@ let
               then log.printAttrs x
               else showX;
       in
-        dispatchDef print {
+        dispatch.def print {
           string = id;
         } showXHandlingPartial;
 
@@ -199,7 +192,7 @@ let
           # log.trace.showId 123
           # -> trace: 123
           # 123
-          showId = x: self.show x x;
+          showId = x: self.show (x) x;
           msg = x: over (showId x);
 
           toTraceF = fs: {
@@ -245,7 +238,7 @@ let
 
           buildCall = self: callName:
             Variadic.mkListThen
-              (l: buildInitialLogState self {call = [{name = callName;} {args = elideUnsafeNames l;}]; });
+              (l: buildInitialLogState self {call = [{name = callName;} {args = l;}]; });
 
           buildMethodCall = self: this: methodName:
             Variadic.mkListThen
@@ -253,7 +246,7 @@ let
                 method = [
                   { name = methodName; } 
                   { this = "unsafe:this"; }
-                  { args = elideUnsafeNames l; }
+                  { args = l; }
                 ]; 
               });
 
@@ -262,7 +255,7 @@ let
               (l: buildInitialLogState self {
                 attrs = (
                   [ {name = attrsName;} ]
-                  ++ (optionals (nonEmpty l) [{extra = elideUnsafeNames l;}]));
+                  ++ (optionals (nonEmpty l) [{extra = l;}]));
               });
 
           buildTest = self: testName:
@@ -270,7 +263,7 @@ let
               (l: buildInitialLogState self {
                 test = (
                   [{name = testName;}]
-                  ++ (optionals (nonEmpty l) [{args = elideUnsafeNames l;}]));
+                  ++ (optionals (nonEmpty l) [{args = l;}]));
               });
 
           traceCall = self: callName:
@@ -339,7 +332,7 @@ let
                 # return x;
                 safety = safe_: mkGroupClosure (logState // { safe = safe_; });
                 safely = x: 
-                  if logState.safe then LazyAttrs (elideUnsafeNames x) else (elideUnsafeNames x);
+                  if logState.safe then LazyAttrs x else x;
 
                 # Return accumulated log state.
                 # Thunked due to self-reference.
