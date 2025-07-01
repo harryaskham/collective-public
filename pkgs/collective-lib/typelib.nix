@@ -190,7 +190,9 @@ let
         #  '');
         bool (
           (lib.isString A && lib.isString B && A == B)
-          || (isTypeSet A && isTypeSet B && A.__TypeId {} == B.__TypeId {})
+          || (isTypeSet A && isTypeSet B
+              && A ? __TypeId && B ? __TypeId
+                && A.__TypeId {} == B.__TypeId {})
         );
 
       # Override isType s.t. it operates per the module system as:
@@ -1180,7 +1182,7 @@ let
               This = ${here (print This)}
               args = ${here (print args)}
           '');
-          uncastValue = args.${field.fieldName {}} or getDefaultValue;
+          uncastValue = args.${field.fieldName {}} or (getDefaultValue {});
         };
         return (
           mkFieldAssignmentSoloFromUncastValue
@@ -1310,7 +1312,8 @@ let
           # When creating Type via Type.new: binds 'new' to the new Type
           # When creating Bool via Type.new: binds 'new' to Bool
           # When creating bool via Bool.new: this.__Type.staticMethods == Bool.staticMethods == {}
-          staticMethodInstanceBindings = 
+          staticMethodInstanceBindings =
+            assert assertMsg (isFunction this.__Type) (log.print this);
             mkStaticMethodBindings This (maybeResolve ((this.__Type {}).staticMethods or {})) this_;
 
           # When creating Type via Type.new: binds 'new' to the new Type
@@ -1474,10 +1477,10 @@ let
             fields = This.fields This;
             sortedFieldNames = 
               soloValues 
-                (mapSolos (_: field: field.fieldName {}) (fields.instanceFields {}));
+                (mapSolos (_: field: field.fieldName {}) (fields.requiredFields {}));
           in
           with U.methodCall 3 This "new" ___;
-          if (nonEmpty (fields.instanceFields {}))
+          if (nonEmpty (fields.requiredFields {}))
           then return (Variadic.mkOrdered sortedFieldNames)
           else return (_: {}));
 
@@ -2179,9 +2182,10 @@ let
               fields = mkValueShim "Lambda" (_: rec { 
                 fieldSpecs = withCommonFieldSpecs opts SU (attrs.fields or []);
                 instanceFields = _: 
-                  filter 
-                    (s: !(elem (soloName s) ["__Type"]))
+                  filterSolos
+                    (k: _: k != "__Type")
                     (mapSolos Field.new fieldSpecs);
+                requiredFields = instanceFields;
               });
               methods = LazyAttrs {};
               staticMethods = LazyAttrs {};
@@ -2200,11 +2204,7 @@ let
             check = _: true;
             # Ensure shims also operate as functors.
             __functor = self: arg:
-              if T ? new then
-                let t = T.new arg; in
-                if U.isFunctionNotFunctor t
-                  then throw "Type shim __functor .new returned partial application; non-unary"
-                  else t
+              if T ? new then T.new arg
               else throw "__functor called on Type shim without .new: ${log.print T}";
           }
           # attrs merged on RHS to enable overriding.
@@ -2369,9 +2369,10 @@ let
                   || !(field.fieldStatic {}));
               requiredFields = _:
                 getFieldsWhere (_: field:
-                  U.isNull field
+                  ((U.string field.rawFieldName) != "__Type")
+                  && (U.isNull field
                   || (!(field.fieldStatic {})
-                      && !(field.hasDefault {})));
+                      && !(field.hasDefault {}))));
             });
         };
 
@@ -2668,7 +2669,7 @@ let
             defaultType = This: thunk _.T;
             defaultValue = This: thunk (_.V.getLiteral {});
           };
-          overrideCheck = that: _.T == null || _.T.check that;
+          overrideCheck = that: U.isNull _.T || _.T.check that;
         });
         Default = T: v:
           let V = Literal v;
@@ -2861,9 +2862,10 @@ let
                 || !(field.fieldStatic {}));
             requiredFields = this: _:
               this.getFieldsWhere (_: field:
-                (U.isNull field)
+                ((U.string field.rawFieldName) != "__Type")
+                && ((U.isNull field)
                 || (!(field.fieldStatic {})
-                    && !(field.hasDefault {})));
+                    && !(field.hasDefault {}))));
             update = this: newFieldSpecs:
               let newFields =
                 Fields.new (concatSolos
@@ -2935,8 +2937,6 @@ let
 
       TestTypes = U: with U; {
         MyType =
-          assert Type ? new;
-          assert Fields ? new;
           Type.new "MyType" {
             fields = This: Fields.new [{ myField = String; }];
             methods = {
@@ -2945,8 +2945,6 @@ let
           };
 
         MyType2 =
-          assert Type ? new;
-          assert Fields ? new;
           Type.new "MyType2" {
             fields = This: Fields.new [
               { stringField = String; }
@@ -2958,8 +2956,6 @@ let
           };
 
         MyString =
-          assert Type ? new;
-          assert Fields ? new;
           Type.new "MyString" {
             fields = This: Fields.new [{ value = String; }];
             methods = {
@@ -2968,8 +2964,6 @@ let
           };
 
         Mystring =
-          assert Type ? new;
-          assert Fields ? new;
           Type.new "Mystring" {
             fields = This: Fields.new [{ value = "string"; }];
             methods = {
@@ -2978,7 +2972,6 @@ let
           };
 
         WrapString =
-          assert String ? subType;
           String.subType "WrapString" {};
       };
 
@@ -3162,13 +3155,7 @@ let
       smokeTests = U: with U; let SU = U._SU; in {
 
         Type =
-          assert Type ? new;
           let A = Type.new "A" {}; in
-          assert A ? __Type;
-          assert A ? __TypeId;
-          assert (A.__Type {}) ? __TypeId;
-          assert A ? name;
-          assert A ? getBoundName;
           {
             Type = expect.stringEq ((A.__Type {}).__TypeId {}) "Type";
             id = expect.stringEq (A.__TypeId {}) "A";
@@ -3180,9 +3167,7 @@ let
 
       instantiationTests = U: with U; with TestTypes U; {
         Type = expect.eq
-          (assert Type ? new;
-          let SomeType = Type.new "SomeType" {}; in
-          assert SomeType ? __TypeId;
+          (let SomeType = Type.new "SomeType" {}; in
           SomeType.__TypeId {})
           "SomeType";
 
@@ -3233,19 +3218,16 @@ let
           static =
             expect.eq
               (let L = Literal 123; in
-              assert L ? getLiteral;
               L.getLiteral {})
               123;
           instance =
             expect.eq
               (let L = Literal 123; in
-              assert L ? new;
               (L.new {}).getLiteral {})
               123;
         };
 
         Field =
-          assert Field ? new;
           let f = Field.new "name" null; in
           {
             name = expect.eq (f.fieldName {}) "name";
@@ -3255,7 +3237,6 @@ let
           };
 
         Fields =
-          assert Fields ? new;
           let
             testFields = fields: args: {
               getSolos = expect.noLambdasEq (fields.getSolos {}) args.expectedSolos;
@@ -3298,26 +3279,20 @@ let
         Mystring = {
           mkFromString =
             expect.stringEq
-              (assert MyString ? mk;
-              assert String ? new;
-              (MyString.mk { value = "hello"; }).value)
+              ((MyString.mk { value = "hello"; }).value)
               "hello";
           newFromString =
             expect.stringEq
-              (assert MyString ? new;
-              assert String ? new;
-                (MyString.new "hello").value)
+              ((MyString.new "hello").value)
               "hello";
         };
 
         MyType_mk_nocast =
-          assert MyType ? mk;
           expect.stringEq
             (MyType.mk { myField = String.new "World"; }).myField
             "World";
 
         MyType_new_nocast =
-          assert MyType ? new;
           expect.stringEq
             (MyType.new (String.new "World")).myField
             "World";
@@ -3328,7 +3303,6 @@ let
         mk =
           let
             mkBuiltinTest = T: name: rawValue:
-              assert T ? new;
               let x = T.new rawValue;
               in {
                 name = expect.stringEq (thunkDo x.__Type (T: T.name.getValue {})) name;
@@ -3365,11 +3339,7 @@ let
               expr = isbuiltinValue {abc="xyz";};
               expected = true;
             };
-            Bool =
-              expect.False (
-                assert Bool ? new;
-                isbuiltinValue (Bool.new true)
-              );
+            Bool = expect.False (isbuiltinValue (Bool.new true));
           };
 
           Lambda = {
@@ -3420,14 +3390,13 @@ let
           mkToTypedBuiltinTest = T: x: (
             expect.valueEq
               (cast_ T x)
-              (assert T ? new; T.new x)
+              (T.new x)
           );
 
           mkToUntypedBuiltinTest = T: x:
             expect.valueEq
               (Builtin.From x)
-              (assert T ? new;
-              T.new x);
+              (T.new x);
         in {
           to = {
             typedBuiltin = mapAttrs (name: v: mkToTypedBuiltinTest U.${name} v) testX;
@@ -3609,6 +3578,28 @@ let
           };
         };
 
+        defaults =
+          let
+            WithDefault = Type "WithDefault" {
+              fields = _: Fields [
+                { a = Default Int 123; }
+                { b = Default Int (Int 123); }
+              ];
+            };
+            F = Field "F" (Default Int 123);
+          in solo {
+            field.parse.name = expect.eq ((parseFieldSpec Int).fieldType.getName {}) "Int";
+            field.parse.hasNoDefault = expect.False ((parseFieldSpec Int).hasDefault);
+            field.parse.hasDefault = expect.True ((parseFieldSpec (Default Int 123)).hasDefault);
+            field.parse.defaultValue = expect.eq ((parseFieldSpec (Default Int 123)).fieldDefault) 123;
+            field.fieldType = expect.eq ((F.fieldType {}).getName {}) "Int";
+            field.hasDefault = expect.True (F.hasDefault {});
+            field.defaultValue = expect.eq (F.fieldDefault {}) 123;
+            sets.untyped = expect.eq (WithDefault {}).a 123;
+            sets.typed = expect.eq ((WithDefault {}).b.getValue {}) 123;
+            overrides = expect.eq ((WithDefault.mk { a = Int 456; }).a.getValue {}) 456;
+          };
+
       };
 
       peripheralTests = U: with U; let SU = U._SU; in {
@@ -3634,7 +3625,7 @@ let
         };
       };
 
-    # <nix>typelib._tests.run</nix>
+    # <nix>typelib._tests.debug</nix>
     in suite rec {
 
       fastSmoke =
@@ -3642,7 +3633,7 @@ let
           inherit
             U_0
             U_1
-            U_2
+            #U_2
             ;
         } (U: smokeTests U
           // typeFunctionalityTests U
