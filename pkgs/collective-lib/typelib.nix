@@ -3642,7 +3642,7 @@ let
           inherit
             U_0
             U_1
-            #U_2
+            U_2
             ;
         } (U: smokeTests U
           // typeFunctionalityTests U
@@ -3952,6 +3952,10 @@ collective-lib._testsUntyped.debug
 <nix>
 with Types.Universe.U_1;
 (Literal 123).getLiteral {}
+</nix>
+
+<nix>
+Types.Universe.U_2
 </nix>
 
 <nix>
