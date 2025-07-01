@@ -8,12 +8,15 @@
   enablePartialTrace ? false,
   # If true, traces via vprint instead of print.
   enableVerboseTrace ? false,
+  # If true, trace short values at levels 0+.
+  traceShort ? false,
   ...
 }:
 
 with lib;
 with cutils.attrsets;
-with cutils.dispatch;
+with cutils.collections;
+with cutils.dispatchlib;
 with cutils.lists;
 with cutils.functions;
 with cutils.strings;
@@ -22,18 +25,12 @@ with cutils.strings;
 let
   typelib = cutils.typelib;
   log = rec {
-    unsafeNames = [ "__toString" "__show" "__functor" ];
-    elideUnsafeName = name: if elem name unsafeNames then "ELIDED-${name}" else name;
-    elideUnsafeNames = deepConcatMap (k: v: { ${elideUnsafeName k} = v; });
-
     mkPrintArgs = {
       printStrictly = false;
       # If true, do not respect __toString
       ignoreToString = false;
       # If true, do not respect __show
       ignoreShow = false;
-      # If true, elide all unsafe names (after checking for toString/show)
-      elideUnsafe = true;
       # Default here to leave indentation markers in until the top level call
       formatBlock = trimNewlines;
       formatLines = indent.linesSep "\n";
@@ -51,11 +48,10 @@ let
 
     compactBlock = args: braceL: braceR: px:
       with args;
-      formatBlock (
-        let pxLines = splitLines (formatBlock (joinLines px));
-        in ''
-          ${braceL} ${indent.here (formatLines pxLines)} ${braceR}
-        '');
+      let pxLines = splitLines (formatBlock (joinLines px));
+      in formatBlock ''
+        ${braceL} ${indent.here (formatLines pxLines)} ${braceR}
+      '';
 
     printAttrs_ = args: x:
       with args;
@@ -102,29 +98,27 @@ let
     maybeParen = x: if wordCount x <= 1 then x else "(${x})";
 
     # Convert a value of any type to a string, supporting the types module's Type values.
-    print_ = args: x__:
+    print_ = args: x_:
       with args;
       let
-        x_ = if printStrictly then strict x__ else x__;
+        x = if printStrictly then strict x_ else x_;
         block =
           if depth >= maxDepth then "..."
-          else if hasShow x_ && !ignoreShow then
-            show x_
-          else if (x_ ? __toString) && !ignoreToString then
-            toString x_
-          else 
-            let x = if elideUnsafe then elideUnsafeNames x_ else x_;
-            in {
-              null = "null";
-              path = toString x;
-              string = ''"${x}"'';
-              int = ''${builtins.toJSON x}'';
-              float = ''${builtins.toJSON x}'';
-              lambda = "<lambda>";
-              list = formatBlock (printList_ args x);
-              set = formatBlock (printAttrs_ args x);
-              bool = boolToString x;
-            }.${typeOf x};
+          else if hasShow x && !ignoreShow then
+            show x
+          else if (x ? __toString) && !ignoreToString then
+            toString x
+          else {
+            null = "null";
+            path = toString x;
+            string = ''"${x}"'';
+            int = ''${builtins.toJSON x}'';
+            float = ''${builtins.toJSON x}'';
+            lambda = "<lambda>";
+            list = formatBlock (printList_ args x);
+            set = formatBlock (printAttrs_ args x);
+            bool = boolToString x;
+          }.${typeOf x};
       in
         block;
 
@@ -142,7 +136,10 @@ let
         raw = { ignoreToString = true; ignoreShow = true; };
         strict = { printStrictly = true; };
         lazy = { printStrictly = false; };
-        line = { formatLines = indent.linesSep " "; };
+        line = {
+          formatBlock = indent.block;
+          formatLines = indent.linesSep " ";
+        };
         depth = n: { maxDepth = n; };
         mask = names: {
           replaceAttrs =
@@ -166,22 +163,67 @@ let
               then x.__show x
               else x;
           showXHandlingPartial =
-            if isAttrs x && isFunction showX
+            if isAttrs x && typelib.isFunctionNotFunctor showX
               then log.printAttrs x
               else showX;
       in
-        dispatchDef print {
+        dispatch.def print {
           string = id;
         } showXHandlingPartial;
 
-    mkTrace = level:
-      let
-        enableTrace = traceLevel != null && level <= traceLevel;
-        traceFn = if enableTrace then builtins.trace else (_: id);
-        printFn =
+    # Wrapper indicating the value should be traced at the given level
+    # using the given trace functions.
+    TraceAt = atLevel: x: {
+      __isTraceAt = true;
+      __x = x;
+
+      # Configurable
+      __enableTrace = self: traceLevel != null && self.__atLevel <= traceLevel;
+      __atLevel = atLevel;
+      __traceFn = self: builtins.trace;
+
+      __trace = self: a:
+          if self.__enableTrace self
+          then (self.__traceFn self) (self.__showTrace self) a
+          else a;
+
+      __showTrace = self:
+        let printFn =
           if enableVerboseTrace
           then printWith (args: args // prints.using.depth (3 + 3 * traceLevel))
           else log.print;
+        in "\n\n[log.trace(${toString self.__atLevel}).show]\n${printFn self.__x}\n";
+
+      # TraceAt 3 { some = "value"; } outputValue
+      __functor = self: a:
+        self.__trace self a;
+    };
+    isTraceAt = x: x.__isTraceAt or false;
+
+    TraceSeqAt = atLevel: x: (TraceAt atLevel x) // {
+      __depth = 5;
+      __showTrace = self: {
+        level = self.__atLevel;
+        value = self.__x;
+      };
+      __traceFn = self:
+        builtins.traceSeqN self.__depth;
+    };
+
+    TraceShort = x:
+      let T = TraceAt 0 x;
+      in T // {
+      __depth = 3;
+      __enableTrace = self: (T.__enableTrace T) && traceShort;
+      __showTrace = self:
+        if enableVerboseTrace
+          then "> ${with log.prints; putD self.__depth self.__x _line _raw ___}"
+          else "> ${with log.prints; putD self.__depth self.__x _line ___}";
+    };
+    short = TraceShort;
+
+    mkTrace = level:
+      let
         self = rec {
           # Options that can be set on a mkTrace object that influence any created
           # trace groups. Injected into the initial log state.
@@ -194,38 +236,46 @@ let
           # log.trace.show [ 456 { a = 2; }] 123
           # -> trace: [ 456 { a = 2; }]
           # 123
-          show = x: a: traceFn "\n\n[log.trace(${toString level}).show]\n${printFn x}\n" a;
+          show = xOrTraceAtF: a:
+            if isTraceAt xOrTraceAtF
+              then let f = xOrTraceAtF; in f a
+            else if typelib.isFunctionNotFunctor xOrTraceAtF
+              then let f = xOrTraceAtF; in f a
+            else
+              let x = xOrTraceAtF; in TraceAt level x a;
 
-          # log.trace.showId 123
+          # log.trace.over (showId 123)
           # -> trace: 123
           # 123
           showId = x: self.show x x;
-          msg = x: over (showId x);
 
-          toTraceF = fs: {
-            list =
-              let fs_ = map (f: if isFunction f then f else show f) fs;
-                  f = foldl1 compose fs_;
-              in f;
-          }.${typeOf fs} or (show fs);
+          # log.trace.over (msg "123")
+          # -> trace: "123"
+          # 123
+          msg = showId;
+
+          maybeShow = dispatch.def self.show {
+            lambda = id;
+          };
 
           # For use with assert for low-paren tracing
           # e.g.
           # with log.trace; assert over ["msg" {a = 123;}]; expr
           # or
           # with log.trace; assert over {a = 123;}; expr
-          #
-          # Can't access expr for e.g. log.trace.id
-          # Can mix partially applied traces with raw values, which will be printed.
+          overNoAssert =
+            dispatch.def
+              (self.show)
+              {
+                lambda = id;
+                list = fs: composeMany (map maybeShow fs);
+              };
           over = fs:
-            # Short-circuit if trace disabled to save traceF construction.
-            if enableTrace
-              then (toTraceF fs) true
-              else true;
+            assert overNoAssert fs true; true;
 
           # Trace over the given fs only if intermediate tracing is enabled.
-          overPartial = fs:
-            if enablePartialTrace then over fs else true;
+          overPartial =
+            if enablePartialTrace then over else const true;
 
           # e.g. with log.trace; assert over (tagged "START_CALL" xs);
           tagged = tag: dispatch {
@@ -245,15 +295,20 @@ let
 
           buildCall = self: callName:
             Variadic.mkListThen
-              (l: buildInitialLogState self {call = [{name = callName;} {args = elideUnsafeNames l;}]; });
+              (l: buildInitialLogState self {
+                call = [
+                  {name = callName;}
+                  {args = l;}
+                ];
+              });
 
           buildMethodCall = self: this: methodName:
             Variadic.mkListThen
               (l: buildInitialLogState self {
                 method = [
                   { name = methodName; } 
-                  { this = "unsafe:this"; }
-                  { args = elideUnsafeNames l; }
+                  { inherit this; }
+                  { args = l; }
                 ]; 
               });
 
@@ -262,7 +317,7 @@ let
               (l: buildInitialLogState self {
                 attrs = (
                   [ {name = attrsName;} ]
-                  ++ (optionals (nonEmpty l) [{extra = elideUnsafeNames l;}]));
+                  ++ (optionals (nonEmpty l) [{extra = l;}]));
               });
 
           buildTest = self: testName:
@@ -270,7 +325,7 @@ let
               (l: buildInitialLogState self {
                 test = (
                   [{name = testName;}]
-                  ++ (optionals (nonEmpty l) [{args = elideUnsafeNames l;}]));
+                  ++ (optionals (nonEmpty l) [{args = l;}]));
               });
 
           traceCall = self: callName:
@@ -339,7 +394,7 @@ let
                 # return x;
                 safety = safe_: mkGroupClosure (logState // { safe = safe_; });
                 safely = x: 
-                  if logState.safe then LazyAttrs (elideUnsafeNames x) else (elideUnsafeNames x);
+                  if logState.safe then LazyAttrs x else x;
 
                 # Return accumulated log state.
                 # Thunked due to self-reference.
@@ -354,9 +409,14 @@ let
                 # Trace a message by showing the given value.
                 # When used with 'with', accrues logs by modifying the mkGroupClosure in scope.
                 msg = value:
-                  __withEventsAssert
-                    [{ msg = log.show value; }]
-                    (logState: overPartial (tagged "MSG:${groupType}:${groupName}" logState.events));
+                  let event = { msg = log.show value; };
+                  in __withEventsAssert
+                    [event]
+                    (logState:
+                      overPartial [
+                        (tagged "MSG:${groupType}:${groupName}" logState.events)
+                        (short event)
+                      ]);
 
                 # Check a cond is true and throw if it isn't.
                 # When used with 'with', accrues logs by modifying the mkGroupClosure in scope.
@@ -384,7 +444,10 @@ let
                       ++ (optionals (nonEmpty extra) [{inherit extra;}])
                     ); 
                     }]
-                    (logState: overPartial (tagged "WARNING:${groupType}:${groupName}" logState.events)));
+                    (logState: overPartial [
+                      (tagged "WARNING:${groupType}:${groupName}" logState.events)
+                      (short {warning = msg;})
+                    ]));
 
                 # Trace an assignment inline.
                 # Cannot be used with 'with' to accrue to the group; returns the assignment.
@@ -395,7 +458,10 @@ let
                       { inherit name; }
                       (safely { inherit value; })
                     ];}]
-                    (logState: over (tagged "ASSIGN:${groupType}:${groupName}" logState.events))
+                    (logState: over [
+                      (tagged "ASSIGN:${groupType}:${groupName}" logState.events)
+                      #(short {assign = name;})
+                    ])
                     value;
 
                 # Trace a group of assignments and provide access to the results.
@@ -405,8 +471,49 @@ let
                   assert assertMsg (isAttrs vars) ''Non-attrset vars in 'lets': ${log.print mkVars}'';
                   __withEventsAssertWith
                     [{lets = safely vars;}]
-                    (logState: overPartial (tagged "LETS:${groupType}:${groupName}" logState.events))
+                    (logState: overPartial [
+                      (tagged "LETS:${groupType}:${groupName}" logState.events)
+                      #(short {lets = attrNames vars;})
+                    ])
                     (logState: logState // vars);
+
+                # Create a one-line log for tersely tracing function calls.
+                shortReturn = logState: x:
+                  let
+                    event = (head logState.events);
+
+                    fnStr =
+                      if event ? call then
+                        (head event.call).name
+                      else if event ? method then
+                        let this = lookupSolos "this" event.method;
+                            methodName = lookupSolos "name" event.method;
+                            thisName =
+                              if isString this then this
+                              else if typelib.isTypeSet this && this ? getName then this.getName {}
+                              else if this ? __Type && (resolve this.__Type) ? getName
+                              then (resolve this.__Type).getName {}
+                              else "<unnamed>";
+                        in "${thisName}.${methodName}"
+                      else
+                        "<unnamed>";
+
+                    valueStr = x:
+                      if isSolo x then with log.prints; put x (_depth 2) _line ___
+                      else if typelib.isTypeSet x && x ? getName then "${x.getName {}} <TypeAttrs: ${toString (TerseAttrs x)}>"
+                      else if x ? __Type && (resolve x.__Type) ? getName then "Instance<${(resolve x.__Type).getName {}}> ${toString (TerseAttrs x)}"
+                      else if lib.isAttrs x then "set(${toString (TerseAttrs x)})"
+                      else with log.prints; "${typelib.typeOf x}(${put x (_depth 2) _line ___})";
+
+                    args = lookupSolosDef "args" ["<no event.call or event.method>"] (event.call or event.method or []);
+                    argsLines = map (arg: ellipsis 100 (valueStr arg)) args;
+
+                    xStr = valueStr x;
+
+                  in short ("\n" + indent.block ''
+                    ${fnStr}(${indent.here (indent.lines argsLines)})
+                      -> ${indent.here xStr}
+                  '');
 
                 # Return a value from the group, tracing the value.
                 # Importantly, if the value is a functor, it will not be traced.
@@ -416,7 +523,10 @@ let
                 return = x:
                   __withEventsAssertReturning
                     [{return = safely x;}]
-                    (logState: over (tagged "RETURN:${groupType}:${groupName}" logState.events))
+                    (logState: over [
+                      (tagged "RETURN:${groupType}:${groupName}" logState.events)
+                      (shortReturn logState x)
+                    ])
                     (if typelib.isFunctionNotFunctor x then returnEta x else x);
 
                 # Return a (possibly variadic) function from the group, tracing the function's
@@ -457,8 +567,11 @@ let
                 returnEta = f:
                   let traceOut = out:
                         __withEventsAssertReturning
-                          [{ returnEta = out; }]
-                          (logState: over (tagged "RETURN_ETA:${groupType}:${groupName}" logState.events))
+                          [{ returnEta = safely out; }]
+                          (logState: over [
+                            (tagged "RETURN_ETA:${groupType}:${groupName}" logState.events)
+                            (shortReturn logState out)
+                          ])
                           out;
                   in Variadic.composeFunctorsAreAttrs traceOut f;
 
@@ -469,8 +582,11 @@ let
                 traceComposeVariadic = name: gName: fName: g: f:
                   let gTraceVarargs = varargs:
                         __withEventsAssertReturning
-                          [{ vcompose = [ { inherit name; } {g = gName;} {f = fName;} { inherit varargs; } ]; }]
-                          (logState: overPartial (tagged "VARIADIC_COMPOSE:${groupType}:${groupName}" logState.events))
+                          [{ vcompose = [ { inherit name; } {g = gName;} {f = fName;} { varargs = safely varargs; } ]; }]
+                          (logState: overPartial [
+                            (tagged "VARIADIC_COMPOSE:${groupType}:${groupName}" logState.events)
+                            (short {vcompose = name;})
+                          ])
                           (g varargs);
                   in Variadic.composeFunctorsAreAttrs gTraceVarargs f;
               };
@@ -479,7 +595,10 @@ let
                 (initialState:
                   let logState = mkGroupClosure initialState; in
                   with logState;
-                  assert (over (tagged "START:${groupType}:${groupName}" initialState.events));
+                  assert (over [
+                    (tagged "START:${groupType}:${groupName}" initialState.events)
+                    #(short {start = groupType; name = groupName;})
+                  ]);
                   logState)
                 groupBuilder;
 

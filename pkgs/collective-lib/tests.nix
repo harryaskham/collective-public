@@ -2,7 +2,8 @@
 
 with lib;
 with cutils.attrsets;
-with cutils.dispatch;
+with cutils.collections;
+with cutils.dispatchlib;
 with cutils.errors;
 with cutils.functions;
 with cutils.lists;
@@ -11,7 +12,7 @@ with cutils.strings;
 # Nicer interface to runtests
 let
   log = cutils.log;
-  inherit (cutils.typelib) cast isCastError hasToString;
+  inherit (cutils.typelib) cast isCastError hasToString isFunctionNotFunctor;
 in rec {
 
   Status = {
@@ -35,9 +36,9 @@ in rec {
           then mapAttrs (_: Fields) (mapAttrs (_: maybeResolve) (removeAttrs this.get ["__Type"]))
           else this;
         this__ = deepConcatMap (k: v:
-          if elem k ["__toString" "__show"]
+          if elem k ["__toString" "__show" "__functor"]
           then { "elided-${k}" = k; }
-          else if isFunction v then { ${k} = "<lambda>"; }
+          else if isFunctionNotFunctor v then { ${k} = "<lambda>"; }
           else { ${k} = v; })
           this_;
       in
@@ -109,6 +110,11 @@ in rec {
     };
 
     error = expr: { inherit expr; expected = failure; };
+    lazyError = expr: {
+      expr = NamedThunk "lazyError.expr" expr;
+      expected = NamedThunk "lazyError.expected" failure;
+      compare = Compare.Resolve;
+    };
 
     lazyEq = expr: expected: {
       expr = NamedThunk "expr" expr;
@@ -166,7 +172,7 @@ in rec {
   };
 
   runOneTest = test: results_:
-    with log.vtrace.test test.name results_ ___;
+    with log.trace.test test.name results_ ___;
     return rec {
       evalStatus =
         if test.skip then EvalStatus.Skipped

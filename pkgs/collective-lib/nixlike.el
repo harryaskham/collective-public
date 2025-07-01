@@ -18,6 +18,11 @@
   "The tvix executable, either absolute or as discoverable in the PATH.")
 
 (defcustom
+  nixlike-nix-eval-strategy
+  'eval
+  "The Nix evaluation strategy ('eval or 'instantiate)")
+
+(defcustom
   nixlike-default-nix-variant
   'nix
   "The default Nix variant to use in run-nix when none is specified.")
@@ -59,9 +64,33 @@
   (interactive)
   (get-buffer shell-command-buffer-name))
 
+(defun nixlike-log (nix-variant v trace raw expr msg &rest args)
+  (apply 'message
+         (format "\n\
+  /--------\n\
+ / nixlike\n\
+/----------\n\
+|  nix-variant: %%s\n\
+|  verbosity: %%d\n\
+|  trace: %%s\n\
+|  raw: %%s\n\
+|  expr: %%s\n\
+|----------\n\
+| %s\n\
+\\---------" msg)
+         nix-variant
+         v
+         (if trace "yes" "no")
+         (if raw "yes" "no")
+         expr
+         args))
+
 (defun nixlike-run-nix-shell (nix-variant v trace raw expr)
   (interactive)
-  (shell-command (nixlike-eval-command nix-variant expr v trace raw))
+  (let ((command (nixlike-eval-command nix-variant 'shell expr v trace raw)))
+    (nixlike-log nix-variant v trace raw expr
+                 "Running shell command: %s" command)
+    (shell-command command))
   (let ((this-buffer (current-buffer)))
     (pop-to-buffer (shell-command-buffer) nil t)
     (goto-char (point-max))
@@ -150,29 +179,33 @@
      trace-runtime-arg
      trace-runtime-timing-arg)))
 
-(defun nixlike-eval-command-args (nix-variant expr v trace raw)
-  (letrec ((expr-with-ctx (concat "with __mkCtx {}; " expr))
-           (expr-str (format
-                      "'%s'"
-                      (replace-regexp-in-string
-                       "'" "\\'"
-                       (nixlike-expr-with-preamble nix-variant expr-with-ctx v trace raw)))))
+(defun nixlike-eval-command-argv (nix-variant mode expr-raw v trace raw)
+  (letrec ((expr-with-ctx (concat "with __mkCtx {}; " expr-raw))
+           (expr-with-ctx-printed (nixlike-replprint-expr nix-variant mode expr-with-ctx v trace raw))
+           (expr (format
+                  "'%s'"
+                  (replace-regexp-in-string
+                   "'" "\\'"
+                   (nixlike-expr-with-preamble nix-variant expr-with-ctx-printed v trace raw)))))
     (append
-     (cond ((eq nix-variant 'nix) `("eval" "--impure" "--expr" ,expr-str))
+     (cond ((eq nix-variant 'nix)
+            (cond ((eq nixlike-nix-eval-strategy 'eval)
+                   `(,(nixlike-executable 'nix) "eval" "--impure" "--expr" ,expr))
+                  ((eq nixlike-nix-eval-strategy 'instantiate)
+                   `(,(concat (nixlike-executable 'nix) "-instantiate")
+                     ,(if raw "--strict" "")
+                     "--eval"
+                     "-E" ,expr))
+                  (t (error "Unknown nix-eval-strategy: %s" nixlike-nix-eval-strategy))))
            ((eq nix-variant 'tvix) (append
+                                    `(,(nixlike-executable 'tvix))
                                     (if raw '("--raw") '())
-                                    `("-E" ,expr-str)))
+                                    `("-E" ,expr)))
            (t (error "Unknown nix-variant: %s" nix-variant)))
      (nixlike-common-args nix-variant v trace raw))))
 
-(defun nixlike-eval-command-argv (nix-variant expr v trace raw)
-  (letrec ((args (nixlike-eval-command-args nix-variant expr v trace raw))
-           (exe (nixlike-executable nix-variant))
-           (argv (push exe args)))
-    argv))
-
-(defun nixlike-eval-command (nix-variant expr v trace raw)
-  (string-join (nixlike-eval-command-argv nix-variant expr v trace raw) " "))
+(defun nixlike-eval-command (nix-variant mode expr v trace raw)
+  (string-join (nixlike-eval-command-argv nix-variant mode expr v trace raw) " "))
 
 (defun nixlike-enable-partial-trace (v) (if (>= v 1) "true" "false"))
 
@@ -260,7 +293,7 @@
   "Format the given expr for the Nixlike REPL."
   (cond ((and (eq mode 'repl) (eq nix-variant 'nix))
          (format "(%s) (%s)" (nixlike-repl-print-fn v trace raw) expr))
-        (t (format "with __ctx; (%s) (%s)" (nixlike-repl-print-fn v trace raw) expr))))
+        (t (format "with __mkCtx {}; (%s) (%s)" (nixlike-repl-print-fn v trace raw) expr))))
 
 (defun nixlike-repl-eval (nix-variant expr v trace raw &optional no-init no-wrap no-wait)
   "Run the given expr (or current nix block) in the Nixlike REPL."

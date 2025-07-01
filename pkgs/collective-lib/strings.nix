@@ -267,7 +267,10 @@ in rec {
       handle = s:
         let
           # Initial linefold state
-          init = { lines = []; indentFn = id; };
+          init = {
+            lines = [];
+            indentFn = id;
+          };
 
           # Function to handle each line in the fold
           handleLine = (acc @ {lines, indentFn}: line:

@@ -1,6 +1,6 @@
 { pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, cutils ? import ./. { inherit lib; }, ... }:
 
-with cutils.dispatch;
+with cutils.dispatchlib;
 with cutils.functions;
 with cutils.attrsets;
 
@@ -32,7 +32,7 @@ in rec {
     take pos xs ++ [x] ++ drop pos xs;
 
   # Polymorphic concat for [[a]] and [{_=a}]
-  concat = dispatchElem {
+  concat = dispatch.elem {
     list = concatLists;
     set = mergeAttrsList;
   };
