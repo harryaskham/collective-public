@@ -13,14 +13,9 @@ with cutils.lists;
 with cutils.strings;
 
 # TODO:
-# - TypeClasses using mkMerge - i.e. instances form a fixed-point class dictionary
-# - Enums
+# - Remove laziness while retaining safety.
+# - Test out enums
 # - Maybe / ADTs
-#
-# - rename to __Type
-# - thunkof subtype istypethunk
-# - replace builtin usage with BuiltinOf
-# - shims can start to go with the lib overrides
 
 # Typesystem for use outside of the module system.
 #
