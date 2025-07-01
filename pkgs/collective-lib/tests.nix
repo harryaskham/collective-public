@@ -172,7 +172,7 @@ in rec {
   };
 
   runOneTest = test: results_:
-    with log.trace.test test.name results_ ___;
+    with (log.v 1).test test.name results_ ___;
     return rec {
       evalStatus =
         if test.skip then EvalStatus.Skipped

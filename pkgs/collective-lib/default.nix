@@ -123,9 +123,9 @@ let
     with collective-lib;
     {
       base = lib.attrNames (lib.intersectAttrs baseMerged lib);
-      lists = lib.attrNames (lib.intersectAttrs lists lib.lists);
-      attrsets = lib.attrNames (lib.intersectAttrs attrsets lib.attrsets);
-      strings = lib.attrNames (lib.intersectAttrs attrsets lib.strings);
+      lists = lib.attrNames (lib.intersectAttrs base.lists lib.lists);
+      attrsets = lib.attrNames (lib.intersectAttrs base.attrsets lib.attrsets);
+      strings = lib.attrNames (lib.intersectAttrs base.strings lib.strings);
     })
     # </nix>
     ;

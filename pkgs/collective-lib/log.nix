@@ -271,7 +271,9 @@ let
                 list = fs: composeMany (map maybeShow fs);
               };
           over = fs:
-            assert overNoAssert fs true; true;
+            # Short-circuit if tracing is disabled.
+            if level > traceLevel && !traceShort then true
+            else assert overNoAssert fs true; true;
 
           # Trace over the given fs only if intermediate tracing is enabled.
           overPartial =

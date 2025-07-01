@@ -3196,9 +3196,10 @@ let
             wrap.typed = typedExpectFn (wrap (T x)) (T x);
             unwrap.raw = untypedExpectFn (unwrap x) x;
             unwrap.wrapped = untypedExpectFn (unwrap (wrap x)) x;
+            unwrap.unwrapped.typed = untypedExpectFn (unwrap (unwrap (T x))) x;
             unwrap.typed = untypedExpectFn (unwrap (T x)) x;
           };
-          in {
+          in solo {
             _null = wrapEq expect.valueEq expect.eq Null null;
             bool = wrapEq expect.valueEq expect.eq Bool true;
             int = wrapEq expect.valueEq expect.eq Int 123;
@@ -3468,8 +3469,8 @@ let
           };
         in {
           Int = {
-            valid = expect.eq ((Int.new 123).getValue {}) 123;
-            invalid = expect.error (Int.new "123");
+            valid = expect.eq ((Int 123).getValue {}) 123;
+            invalid = expect.error (Int "123");
           };
 
           A = {
@@ -3478,7 +3479,7 @@ let
               in
                 expect.eq
                   [x.a (x.b.getValue {}) (x.c.getValue {}) (x.d.getValue {})]
-                  [1 2 3 4];
+                  [1 2 5 10];
             #wrongType = {
             #  a = expect.error (A.new "1" 2 3 4);
             #  b = expect.error (A.new 1 "2" 3 4);
@@ -3835,35 +3836,30 @@ let
           };
         });
 
-      all = mergeAttrsList [
-        { inherit Bootstrap; }
-        (testInUniverses
-          { inherit U_0 U_1 U_2 U_3 U_4; }
-          (U: {
-            peripheral = peripheralTests U;
-          }))
-        (testInUniverses
-          { inherit U_0 U_1 U_2 U_3; }
-          (U: {
-            smoke = smokeTests U;
-          }))
-        (testInUniverses
-          { inherit U_0 U_1 U_2; }
-          (U: {
-            Typelib = TypelibTests U;
-            typeFunctionality = typeFunctionalityTests U;
-            inheritance = inheritanceTests U;
-            instantiation = instantiationTests U;
-            builtin = builtinTests U;
-            cast = castTests U;
-            untyped = untypedTests U;
-          }))
-        (testInUniverses
-          { inherit U_1 U_2 U_3; }
-          (U: {
-            typeChecking = typeCheckingTests U;
-          }))
-      ];
+      all = 
+        let fromU_0 = { inherit U_0 U_1; };
+            fromU_1 = removeAttrs fromU_0 [ "U_0" ];
+        in mergeAttrsList [
+          { inherit Bootstrap; }
+          (testInUniverses
+            fromU_0
+            (U: {
+              peripheral = peripheralTests U;
+              smoke = smokeTests U;
+              Typelib = TypelibTests U;
+              typeFunctionality = typeFunctionalityTests U;
+              inheritance = inheritanceTests U;
+              instantiation = instantiationTests U;
+              builtin = builtinTests U;
+              cast = castTests U;
+              untyped = untypedTests U;
+            }))
+          (testInUniverses
+            fromU_1
+            (U: {
+              typeChecking = typeCheckingTests U;
+            }))
+        ];
 
     };
 
