@@ -679,15 +679,18 @@ let
                           TFieldNames;
                       castPartitioned = partitionSolos (_: isCastSuccess) castTArgs;
                       castArgs =
-                        mapSolos (_: castResult: castResult.castSuccess) castPartitioned.right;
+                        mergeSolos
+                          (mapSolos (_: castResult: castResult.castSuccess) castPartitioned.right);
                       castErrorMsgs =
-                        (mapSolos
-                          (name: castResult: "${name}: ${castResult.castError}")
-                          castPartitioned.wrong);
+                        soloValues
+                          (mapSolos
+                            (name: castResult: "${name}: ${castResult.castError}")
+                            castPartitioned.wrong);
                       castSuccessMsgs =
-                        (mapAttrsToLIst
-                          (name: castResult: "${name}: ${castResult.castSuccessMsg}")
-                          castTArgs);
+                        soloValues
+                          (mapSolos
+                            (name: castResult: "${name}: ${castResult.castSuccessMsg}")
+                            castPartitioned.right);
                   in if size castErrorMsgs > 0
                     then mkCastError (indent.blocks castErrorMsgs)
                     else mkCastSuccess (T.mk castArgs) (indent.blocks castSuccessMsgs);
