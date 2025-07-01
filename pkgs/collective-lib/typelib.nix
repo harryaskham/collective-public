@@ -2539,7 +2539,7 @@ let
                     with U.methodCall 2 this "__toString" self ___;
                     return (toStringF self);
                 } 
-                // (optionalAttrs (builtinHasToShellValue name) {
+                // (optionalAttrs (builtinHasToShellValue (toLower name)) {
                   __implements__toShellValue = this: self:
                     toShellValue (self.getValue {});
                 });
@@ -2913,7 +2913,7 @@ let
 
             implementedByType = this: T:
               let methodsC = this.implementsPrefixedClassMethods {};
-                  methodsT = T.methods {};
+                  methodsT = T.methods {} // T.staticMethods {};
               in U.isTypeSet T && (empty (removeAttrs methodsC (attrNames methodsT)));
 
             implementedByValue = this: x:
@@ -3202,7 +3202,7 @@ let
             unwrap.unwrapped.typed = untypedExpectFn (unwrap (unwrap (T x))) x;
             unwrap.typed = untypedExpectFn (unwrap (T x)) x;
           };
-          in solo {
+          in {
             _null = wrapEq expect.valueEq expect.eq Null null;
             bool = wrapEq expect.valueEq expect.eq Bool true;
             int = wrapEq expect.valueEq expect.eq Int 123;
