@@ -1,9 +1,9 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, cutils ? import ./. { inherit lib; }, ... }:
+{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
 
 with lib;
 with lib.strings;
-with cutils.lists;
-with cutils.functions;
+with collective-lib.lists;
+with collective-lib.functions;
 
 # String formatting and indentation utilities.
 # Allows for multi-line indentation in indented strings where
@@ -39,7 +39,8 @@ with cutils.functions;
 #       string
 #   }'';
 let
-  log = cutils.log;
+  log = collective-lib.log;
+  typed = collective-lib.typed;
 in rec {
   # Join a list of strings into a string with a separator.
   # Just shorthand for concatStringsSep.
@@ -387,8 +388,8 @@ in rec {
       then ''"${replaceStrings [ ''"'' ] [ ''\"'' ] string}"''
       else string;
 
-  # Convert a value to a shell value
-  # Handles each type ("int", "bool", "string", "path", "null", "set", "list", "lambda", "float")
+  # Convert a value to a shell value.
+  # Has default implementation for each type, but can be overridden by adding a (__toShellValue = self: ...) method.
   #
   # strings without special chars are left unchanged:
   # toShellValue "some_safe-string" == "some_safe-$string"
@@ -408,22 +409,35 @@ in rec {
   # Numbers use toString:
   # toShellValue 1 == "1"
   # toShellValue 123.3 == "123.300000"
+  #
+  # null goes to the empty string literal
   toShellValue = arg:
-    let convert = {
-      int = toString;
-      bool = b: if b then "true" else "false";
-      string = shellQuote;
-      path = shellQuote;
-      null = "";
-      set = throw "Cannot convert set to shell value";
-      list = xs: ''(${joinSep " " (map toShellValue xs)})'';
-      lambda = throw "Cannot convert lambda to shell value";
-      float = toString;
+    (ToShellValue.try arg).toShellValue or (
+      let convert = {
+        int = toString;
+        bool = b: if b then "true" else "false";
+        string = shellQuote;
+        path = shellQuote;
+        null = _: ''""'';
+        set = _: throw "Cannot convert set to shell value";
+        list = xs: ''(${joinSep " " (map toShellValue xs)})'';
+        lambda = _: throw "Cannot convert lambda to shell value";
+        float = toString;
+      };
+      in convert.${typeOf arg} arg);
+
+  ToShellValue =
+    with typed;
+    Class "ToShellValue" {
+      toShellValue = ClassMethod;
     };
-    in convert.${typeOf arg} arg;
+
+  # Types that can be converted to a shell value.
+  builtinHasToShellValue = T: 
+    elem T ["int" "float" "bool" "string" "path" "null" "list"];
 
   # nix eval --impure --expr '(import ./cutils/strings.nix {})._tests'
-  _tests = with cutils.tests; suite {
+  _tests = with collective-lib.tests; suite {
     split = {
       whitespace = {
         expr = splitWhitespace " \n hell   o \n\n  \t \n wor\t\tld  \n";
@@ -524,6 +538,30 @@ in rec {
         test1 = expect.eq (pluralises 1 "test") "test";
         test2 = expect.eq (pluralises 2 "test") "tests";
       };
+    };
+
+    toShellValue = {
+      int = expect.eq (toShellValue 1) "1";
+      word = expect.eq (toShellValue "word") "word";
+      quote = expect.eq (toShellValue ''"quote"'' ) ''"\"quote\""'';
+      safeQuote = expect.eq (toShellValue "'safe quote'") "\"'safe quote'\"";
+      bool = expect.eq (toShellValue true) "true";
+      boolFalse = expect.eq (toShellValue false) "false";
+      list = expect.eq (toShellValue [1 "xxx" "$YYY" true]) "(1 xxx \"$YYY\" true)";
+      float = expect.eq (toShellValue 123.3) "123.300000";
+      typed =
+        with typed;
+        let A = Type.new "A" {
+          methods = {
+            __implements__toShellValue = this: self: "A-shell";
+          };
+        };
+        in {
+          dispatches = expect.eq (toShellValue (A {})) "A-shell";
+          implemented = expect.True (ToShellValue.implementedByType A);
+          implements.type = expect.True (A.implements ToShellValue);
+          implements.class = expect.True ((Implements ToShellValue).check A);
+        };
     };
 
   };

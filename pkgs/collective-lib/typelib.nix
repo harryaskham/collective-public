@@ -90,10 +90,12 @@ let
     };
 
     # Nix library overrides to take Types into account.
-    mkTypelib = opts: SU: rec {
+    # U is provided for forward-references only to e.g. Builtins for 'wrap'; using those
+    # functions here will cause a circular dependency.
+    mkTypelib = U: SU: rec {
 
       ### logging wrappers
-      mkLoggingWrapper = f: name: f name {inherit (opts) level;};
+      mkLoggingWrapper = f: name: f name {inherit (U.opts) level;};
       call = v: mkLoggingWrapper (log.v v).call;
       methodCall = v: This: mkLoggingWrapper ((log.v v).methodCall This);
       callSafe = v: mkLoggingWrapper (log.safe.v v).call;
@@ -135,6 +137,24 @@ let
       unwrappers = mergeAttrsList (attrValues BuiltinNameToUnwrapperSolo);
 
       inherit (unwrappers) nil bool string int float path list set lambda;
+
+      unwrap = x:
+        if isUntypedAttrs x then x
+        else dispatch.type.name.def id BuiltinNameToUnwrapper x;
+
+      wrap = x: 
+        if isTyped x then x
+        else dispatch.type.name.def id {
+          null = U.Null;
+          int = U.Int;
+          float = U.Float;
+          string = U.String;
+          path = U.Path;
+          bool = U.Bool;
+          list = U.List;
+          set = U.Set;
+          lambda = U.Lambda;
+        } x;
 
       ### type utilities
 
@@ -254,7 +274,7 @@ let
               x = ${indent.here (log.vprintD 5 x)}
               T = ${indent.here (log.vprintD 5 T)}
           '')
-          else T.name;
+          else T.getName {};
 
       # Get the type name as a string ID. For builtins, operates as typeOf, and for others returns
       # a raw string.
@@ -270,12 +290,18 @@ let
         type = {
           # Dispatch on __TypeId
           # Matches full bound name string
-          id = cutils.dispatchlib.dispatch.on typeIdOf;
+          id = {
+            __functor = self: cutils.dispatchlib.dispatch.on typeIdOf;
+            def = cutils.dispatchlib.dispatch.def.on typeIdOf;
+          };
 
           # Dispatch on type name
           # Matches only the type name, not its bindings
           # i.e. can match any Union, not just Union<[Int Float]>
-          name = cutils.dispatchlib.dispatch.on typeNameOf;
+          name = {
+            __functor = self: cutils.dispatchlib.dispatch.on typeNameOf;
+            def = cutils.dispatchlib.dispatch.def.on typeNameOf;
+          };
         };
       };
 
@@ -651,22 +677,20 @@ let
                           })
                           xFieldNames
                           TFieldNames;
-                      castErrors = filterAttrs (_: isCastError) castTArgs;
+                      castPartitioned = partitionSolos (_: isCastSuccess) castTArgs;
                       castArgs =
-                        mapAttrs (_: castResult: castResult.castSuccess) castTArgs;
+                        mapSolos (_: castResult: castResult.castSuccess) castPartitioned.right;
                       castErrorMsgs =
-                        indent.blocks
-                          (mapAttrsToList
-                            (name: castResult: "${name}: ${castResult.castError}")
-                            castTArgs);
+                        (mapSolos
+                          (name: castResult: "${name}: ${castResult.castError}")
+                          castPartitioned.wrong);
                       castSuccessMsgs =
-                        indent.blocks
-                          (mapAttrsToLIst
-                            (name: castResult: "${name}: ${castResult.castSuccessMsg}")
-                            castTArgs);
-                  in if size castErrors > 0
-                    then mkCastError castErrorMsgs
-                    else mkCastSuccess (T.mk castArgs) castSuccessMsgs;
+                        (mapAttrsToLIst
+                          (name: castResult: "${name}: ${castResult.castSuccessMsg}")
+                          castTArgs);
+                  in if size castErrorMsgs > 0
+                    then mkCastError (indent.blocks castErrorMsgs)
+                    else mkCastSuccess (T.mk castArgs) (indent.blocks castSuccessMsgs);
                 failMsg = castErrorMsg: indent.block ''
                   Sidecast failed:
                     ${xTName} -> ${TName}
@@ -821,7 +845,7 @@ let
     # it reached the Quasiverse.
     typeMethodsFor = SU: U: {
       # Get the resolved name of the type.
-      getName = This: _: This.name.getValue {};
+      getName = This: _: U.string This.name;
 
       # Get the resolved fields of the type.
       getFields = This: _: (U.lambda (This.fields)) This;
@@ -919,6 +943,9 @@ let
         && That.eq This
         || (!(U.isNull This.__Super)
             && thunkDo This.__Super (Super: Super.inheritsFrom That));
+
+      implements = This: C:
+        U.typeImplements This C;
 
       check = This: that:
         let
@@ -1302,8 +1329,9 @@ let
 
       # Convert the given special method name to its intended name.
       # e.g. __implements__toString -> __toString
-      elideAttrName = replaceStrings ["__implements"] [""];
-      elideInstanceAttrNames = concatMapAttrs (name: value: { ${elideAttrName name} = value; });
+      elideImplementsPrefix = replaceStrings ["__implements"] [""];
+      elideImplementsPrefixAttrs = 
+        concatMapAttrs (name: value: { ${elideImplementsPrefix name} = value; });
 
       # Bind members that refer to this on construction and after any change.
       bindThis = This: this:
@@ -1328,7 +1356,7 @@ let
             # We can only elide the __implements prefix after this merge, otherwise
             # mergeAttrsList fails when it encounters a perceived functor (i.e. staticMethodBindings
             # or methodBindings containing a bound __functor method).
-            elideInstanceAttrNames
+            elideImplementsPrefixAttrs
               (mergeAttrsList [
                 this
                 staticMethodInstanceBindings
@@ -1422,7 +1450,7 @@ let
 
               staticMethodNames =
                 assign "staticMethodNames" (
-                  map elideAttrName (This.staticMethods.__attrNames {}));
+                  map elideImplementsPrefix (This.staticMethods.__attrNames {}));
 
               populatedStaticMethodNames =
                 assign "populatedStaticMethodNames" (
@@ -1520,74 +1548,6 @@ let
           checkValue = args.checkValue or null;
           overrideCheck = args.overrideCheck or null;
         });
-      };
-    };
-
-    mkBuiltinUtils = SU: U: rec {
-      # Wrap up some builtin constructors.
-      # TODO: Builtin to a base type for all builtins.
-      # TODO: Move to common
-      Builtin = {
-        # Get the Builtin type corresponding to the given builtin type.
-        # Returns null if builtinType is not a builtin type string.
-        maybeFromT = builtinType:
-          if (!isString builtinType) then null
-          else {
-            null = U.Null;
-            int = U.Int;
-            float = U.Float;
-            string = U.String;
-            path = U.Path;
-            bool = U.Bool;
-            list = U.List;
-            set = U.Set;
-            lambda = U.Lambda;
-          }.${builtinType} or null;
-
-        # Get the Builtin type corresponding to the given builtin type.
-        # Throws if builtinType is not a builtin type string.
-        FromT = builtinType:
-          let T = maybeFromT builtinType;
-          in if T == null then (throw ''
-            Invalid T argument for Builtin.FromT:
-            ${with log.prints; here builtinType ___}
-          '')
-          else T;
-
-        From = x:
-          let 
-            builtinT = lib.typeOf x;
-            T = {
-                int = U.Int;
-                float = U.Float;
-                string = U.String;
-                path = U.Path;
-                bool = U.Bool;
-                list = U.List;
-                set = assert !(x ? __Type); U.Set;
-                lambda = U.Lambda;
-              }."${typeOf x}" or (throw ''
-                Invalid type for Builtin.From:
-                ${with log.prints; here (U.typeNameOf x) ___}
-              '');
-          in 
-            if builtinT == "null" then U.Nil
-            else T.new x;
-
-        getBuiltin = T: {
-          Null = "null";
-          Int = "int";
-          Float = "float";
-          String = "string";
-          Path = "path";
-          Bool = "bool";
-          List = "list";
-          Set = "set";
-          Lambda = "lambda";
-        }."${T.name}" or (throw ''
-          Invalid type for Builtin.getBuiltin:
-          ${with log.prints; here T ___}
-        '');
       };
     };
 
@@ -1919,13 +1879,12 @@ let
           U_
           [ (SU: U: {
               # Ensure the lib for a universe is accessible by reference.
-              Typelib = mkTypelib opts SU;
+              Typelib = mkTypelib U SU;
 
               # Tersely print universes.
               __toString = _: "<Universe: ${opts.name}>";
             })
             (SU: U: U.Typelib) # Embed the contents of created typelib.
-            (SU: U: mkBuiltinUtils SU U)
             (SU: U: mkCast SU U)
             (SU: U: mkInstantiation SU U)
             (SU: U: mkUniverseReferences opts SU U)
@@ -2456,6 +2415,9 @@ let
           getName = _: "Default";
           defaultType = _: T;
           defaultValue = _: V;
+          # Make casting work in shims
+          fields = T.getFields {};
+          overrideCheck = that: U.isNull T || T.check that;
         };
 
         Union = Ts: mkTypeShim "Union<${toString (Literal Ts)}>" {
@@ -2564,14 +2526,20 @@ let
                   Null = self: "";
                 }.${name};
               in
-                methods // {
+                methods 
+                // {
                   # show (Int.new 6) returns e.g. "Int(6)"
                   __implements__show = this: self: "${U.typeIdOf self}(${toStringF self})";
+
                   # toString (Int.new 6) returns e.g. "6"
                   __implements__toString = this: self:
                     with U.methodCall 2 this "__toString" self ___;
                     return (toStringF self);
-                };
+                } 
+                // (optionalAttrs (builtinHasToShellValue name) {
+                  __implements__toShellValue = this: self:
+                    toShellValue (self.getValue {});
+                });
 
             hasSize = { String = true; Path = true; List = true; Set = true; }.${name} or false;
             withSize = methods:
@@ -2657,7 +2625,7 @@ let
           in Union_.bind {inherit Ts;};
 
         # A type inhabited by literals of any of the given list of values
-        Literals = Vs: Union (map Literal values);
+        Literals = Vs: Union (map Literal Vs);
 
         # A value or T or Null.
         NullOr = T: Union ["null" Null T];
@@ -2709,6 +2677,9 @@ let
         ListOf = T: ListOf_.bind { inherit T; };
 
         # Subtype of Set that enforces homogeneity of value types.
+        # TODO: Cast doesn't occur deeply
+        # e.g. SetOf Lambda {a = _: 123;} fails
+        # e.g. SetOf Lambda {a = Lambda (_: 123);} succeeds
         SetOf_ = Set.subTemplate "SetOf" {T = Type;} (_: {
           checkValue = that: all (x: U.isType _.T x) (that.values {});
         });
@@ -2919,6 +2890,68 @@ let
               };
           in Item;
 
+        ### Typeclasses
+
+        Class = Type "Class" {
+          fields = This: Fields [
+            { name = String; }
+            { classMethods = SetOf Lambda; }
+          ];
+          methods = {
+            implementsPrefixedClassMethods = this: _:
+              concatMapAttrs
+                (name: method: { "__implements__${name}" = method; })
+                (this.classMethods.getValue {});
+
+            underscorePrefixedClassMethods = this: _:
+              concatMapAttrs
+                (name: method: { "__${name}" = method; })
+                (this.classMethods.getValue {});
+
+            implementedByType = this: T:
+              let methodsC = this.implementsPrefixedClassMethods {};
+                  methodsT = T.methods {};
+              in U.isTypeSet T && (empty (removeAttrs methodsC (attrNames methodsT)));
+
+            implementedByValue = this: x:
+              let methodsC = this.underscorePrefixedClassMethods {};
+              in lib.isAttrs x && empty (removeAttrs methodsC (attrNames x));
+
+            # e.g. (ToString 123).toString
+            __implements__functor = this: self: x:
+              assert assertMsg (this.implementedByValue x) (indent.block ''
+                Value of type ${U.typeIdOf x} does not implement Class ${this.name}:
+                  value = ${indent.here (log.print x)}
+              '');
+              mapAttrs
+                (name: _: x."__${name}" x)
+                (this.classMethods.getValue {});
+
+            # e.g. (ToString.try 123).toString or "failed"
+            try = this: x:
+              if this.implementedByValue x then (this x)
+              else {};
+          };
+        };
+
+        ClassMethod = Lambda (this: self: throw "Unimplemented: ${this.name}");
+
+        # True iff type T implements Class C.
+        typeImplements = T: C: 
+          U.isTypeSet T && U.isType Class C
+          && C.implementedByType T;
+
+        # True iff Class C is implemented by type T.
+        implementedByType = flip typeImplements;
+
+        ToString = Class "ToString" {
+          toString = ClassMethod;
+        };
+
+        Implements_ = Type.template "Implements" { C = Class; } (_: {
+          overrideCheck = That: _.C.implementedByType That;
+        });
+        Implements = C: Implements_.bind { inherit C; };
       });
 
       in U;
@@ -3032,18 +3065,18 @@ let
           newNull = expect.True (isTyped (Nil));
         };
 
-        isAttrs = solo {
+        isAttrs = {
           set.empty.typed = expect.True (isAttrs {});
           set.empty.untyped = expect.True (isUntypedAttrs {});
           Set.empty.typed = expect.True (isAttrs (Set {}));
-          Set.empty.untyped = expect.True (isUntypedAttrs (Set {}));
+          Set.empty.untyped = expect.False (isUntypedAttrs (Set {}));  # Set is itself typed
           set.solo.Type.typed = expect.True (isAttrs {__Type = _: "string";});
-          set.solo.Type.untyped = expect.True (isUntypedAttrs {__Type = _: "string";});
+          set.solo.Type.untyped = expect.False (isUntypedAttrs {__Type = _: "string";});
           Set.solo.Type.typed = expect.True (isAttrs (Set {__Type = _: "string";}));
-          Set.solo.Type.untyped = expect.True (isUntypedAttrs (Set {__Type = _: "string";}));
+          Set.solo.Type.untyped = expect.False (isUntypedAttrs (Set {__Type = _: "string";}));
           int.typed = expect.False (isAttrs 123);
           int.untyped = expect.False (isUntypedAttrs 123);
-          Int.typed = expect.False (isAttrs (Int 123));
+          Int.typed = expect.True (isAttrs (Int 123));
           Int.untyped = expect.False (isUntypedAttrs (Int 123));
         };
 
@@ -3094,7 +3127,9 @@ let
           newNull = expect.eqWith typeEq (typeOf (Nil)) Null;
           set = expect.eqWith typeEq (typeOf {}) "set";
           Set = expect.eqWith typeEq (typeOf (Set.new {})) Set;
-          TypedSet = expect.eqWith typeEq (typeOf {__Type = _: "string";}) "string";
+          # Presence of __Type triggers isTyped
+          TypedSetstring = expect.eqWith typeEq (typeOf {__Type = TypeThunk "string";}) "string";
+          TypedSetThunk = expect.eqWith typeEq (typeOf {__Type = TypeThunk Int;}) Int;
         };
 
         typeIdOf = {
@@ -3111,8 +3146,9 @@ let
           newNull = expect.eq (typeIdOf (Nil)) "Null";
           set = expect.eq (typeIdOf {}) "set";
           Set = expect.eq (typeIdOf (Set.new {})) "Set";
-          TypedSetString = expect.eq (typeIdOf {__Type = _: "string";}) "string";
-          TypedSetThunk = expect.eq (typeIdOf {__Type = _: {__TypeId = _: "string";};}) "string";
+          # Presence of __Type triggers isTyped
+          TypedSetstring = expect.eq (typeIdOf {__Type = TypeThunk "string";}) "string";
+          TypedSetThunk = expect.eq (typeIdOf {__Type = TypeThunk (Literal 123);}) "Literal<123>";
         };
 
         typeNameOf = {
@@ -3129,8 +3165,9 @@ let
           newNull = expect.eq (typeNameOf (Nil)) "Null";
           set = expect.eq (typeNameOf {}) "set";
           Set = expect.eq (typeNameOf (Set.new {})) "Set";
-          TypedSetstring = expect.eq (typeNameOf {__Type = _: "fake";}) "fake";
-          TypedSetThunk = expect.eq (typeNameOf {__Type = _: {name = String.new "fake";};}) "fake";
+          # Presence of __Type triggers isTyped
+          TypedSetstring = expect.eq (typeNameOf {__Type = TypeThunk "string";}) "string";
+          TypedSetThunk = expect.eq (typeNameOf {__Type = TypeThunk (Literal 123);}) "Literal";
         };
 
         typeBoundNameOf = {
@@ -3147,9 +3184,30 @@ let
           newNull = expect.eq (typeBoundNameOf (Nil)) "Null";
           set = expect.eq (typeBoundNameOf {}) "set";
           Set = expect.eq (typeBoundNameOf (Set.new {})) "Set";
-          TypedSetstring = expect.eq (typeBoundNameOf {__Type = _: "fake";}) "fake";
-          TypedSetThunk = expect.eq (typeBoundNameOf {__Type = _: {getBoundName = _: "fake";};}) "fake";
+          # Presence of __Type triggers isTyped
+          TypedSetstring = expect.eq (typeBoundNameOf {__Type = TypeThunk "string";}) "string";
+          TypedSetThunk = expect.eq (typeBoundNameOf {__Type = TypeThunk (Literal 123);}) "Literal<123>";
         };
+
+        wrapping = 
+          let wrapEq = typedExpectFn: untypedExpectFn: T: x: {
+            wrap.raw = typedExpectFn (wrap x) (T x);
+            wrap.wrapped = typedExpectFn (wrap (wrap x)) (T x);
+            wrap.typed = typedExpectFn (wrap (T x)) (T x);
+            unwrap.raw = untypedExpectFn (unwrap x) x;
+            unwrap.wrapped = untypedExpectFn (unwrap (wrap x)) x;
+            unwrap.typed = untypedExpectFn (unwrap (T x)) x;
+          };
+          in {
+            _null = wrapEq expect.valueEq expect.eq Null null;
+            bool = wrapEq expect.valueEq expect.eq Bool true;
+            int = wrapEq expect.valueEq expect.eq Int 123;
+            string = wrapEq expect.valueEq expect.eq String "abc";
+            list = wrapEq expect.valueEq expect.eq List [1 2 3];
+            set = wrapEq expect.valueEq expect.eq Set {a = 1; b = 2; c = 3;};
+            path = wrapEq expect.valueEq expect.eq Path ./.;
+            lambda = wrapEq (expect.eqOn (f: f 2)) (expect.eqOn (f: f 2)) Lambda (x: x + 1);
+          };
       };
 
       smokeTests = U: with U; let SU = U._SU; in {
@@ -3376,7 +3434,7 @@ let
 
       castTests = U: with U;
         let
-          testX = {
+          testValues = {
             Null = null;
             Int = 123;
             Float = 12.3;
@@ -3386,28 +3444,22 @@ let
             List = [1 2 3];
             Set = { a = 1; b = 2; c = 3; };
           };
-
-          mkToTypedBuiltinTest = T: x: (
-            expect.valueEq
-              (cast_ T x)
-              (T.new x)
-          );
-
-          mkToUntypedBuiltinTest = T: x:
-            expect.valueEq
-              (Builtin.From x)
-              (T.new x);
         in {
-          to = {
-            typedBuiltin = mapAttrs (name: v: mkToTypedBuiltinTest U.${name} v) testX;
-            untypedBuiltin = mapAttrs (name: v: mkToUntypedBuiltinTest U.${name} v) testX;
-          };
+          to = mapAttrs (name: testValue: 
+            let T = U.${name};
+                t = T testValue;
+            in {
+              cast = expect.valueEq (cast_ T testValue) t;
+              wrap = expect.valueEq (wrap testValue) t;
+              new = expect.valueEq (T.new testValue) t;
+              functor = expect.valueEq (T testValue) t;
+            }) testValues;
         };
 
       typeCheckingTests = U: with U;
         let
           A = Type.new "A" {
-            fields = This: Fields.new [
+            fields = This: Fields [
               { a = "int"; }
               { b = Int; }
               { c = Default Int 5; }
@@ -3422,7 +3474,7 @@ let
 
           A = {
             valid =
-              let x = A.new 1 (Int.new 2) (Int.new 3) (Int.new 4);
+              let x = A.new 1 (Int.new 2);
               in
                 expect.eq
                   [x.a (x.b.getValue {}) (x.c.getValue {}) (x.d.getValue {})]
@@ -3587,7 +3639,7 @@ let
               ];
             };
             F = Field "F" (Default Int 123);
-          in solo {
+          in {
             field.parse.name = expect.eq ((parseFieldSpec Int).fieldType.getName {}) "Int";
             field.parse.hasNoDefault = expect.False ((parseFieldSpec Int).hasDefault);
             field.parse.hasDefault = expect.True ((parseFieldSpec (Default Int 123)).hasDefault);
@@ -3595,7 +3647,7 @@ let
             field.fieldType = expect.eq ((F.fieldType {}).getName {}) "Int";
             field.hasDefault = expect.True (F.hasDefault {});
             field.defaultValue = expect.eq (F.fieldDefault {}) 123;
-            sets.untyped = expect.eq (WithDefault {}).a 123;
+            sets.untyped = expect.eq (int (WithDefault {}).a) 123;
             sets.typed = expect.eq ((WithDefault {}).b.getValue {}) 123;
             overrides = expect.eq ((WithDefault.mk { a = Int 456; }).a.getValue {}) 456;
           };
@@ -3625,74 +3677,141 @@ let
         };
       };
 
-    # <nix>typelib._tests.debug</nix>
-    in suite rec {
-
-      fastSmoke =
-        testInUniverses {
-          inherit
-            U_0
-            U_1
-            #U_2
-            ;
-        } (U: smokeTests U
-          // typeFunctionalityTests U
-          // instantiationTests U
-          // peripheralTests U
-          // inheritanceTests U
-          // untypedTests U
-          // builtinTests U
-          );
-
-    } // unless false {
-
-      smoke =
-        #solo
-          (testInUniverses {
+      __separatedTests = {
+        tmpTests =
+          testInUniverses {
             inherit
               U_0
               U_1
-              U_2
-              U_3
+              #U_2
               ;
-          } smokeTests);
+          } (U: smokeTests U
+            // typeFunctionalityTests U
+            // instantiationTests U
+            // peripheralTests U
+            // inheritanceTests U
+            // untypedTests U
+            // builtinTests U
+            // TypelibTests U
+            );
 
 
-      all =
-        #solo
-          (mergeAttrsList [
-            { inherit Bootstrap; }
-            (testInUniverses
-              { inherit U_0 U_1 U_2 U_3 U_4; }
-              (U: {
-                peripheral = peripheralTests U;
-              }))
-            (testInUniverses
-              { inherit U_0 U_1 U_2 U_3; }
-              (U: {
-                smoke = smokeTests U;
-              }))
-            (testInUniverses
-              { inherit U_0 U_1 U_2; }
-              (U: {
-                Typelib = TypelibTests U;
-                typeFunctionality = typeFunctionalityTests U;
-                inheritance = inheritanceTests U;
-                instantiation = instantiationTests U;
-                builtin = builtinTests U;
-                cast = castTests U;
-                untyped = untypedTests U;
-              }))
-            (testInUniverses
-              { inherit U_1 U_2 U_3; }
-              (U: {
-                typeChecking = typeCheckingTests U;
-              }))
-          ]);
+        smoke =
+          #solo
+            (testInUniverses {
+              inherit
+                U_0
+                U_1
+                U_2
+                U_3
+                ;
+            } smokeTests);
+
+        peripheral =
+          #solo
+            (testInUniverses {
+              inherit
+                U_0
+                U_1
+                U_2
+                U_3
+                U_4
+                TS
+                ;
+            } peripheralTests);
+
+        Typelib =
+          #solo
+            (testInUniverses {
+              inherit
+                U_0
+                U_1
+                U_2
+                #U_3
+                ;
+            } TypelibTests);
+
+        typeFunctionality =
+          #solo
+            (testInUniverses {
+              inherit
+                U_0
+                U_1
+                U_2
+                ;
+            } typeFunctionalityTests);
+
+        inheritance =
+          #solo
+            (testInUniverses {
+              inherit
+                U_0
+                U_1
+                U_2
+                # U_3
+                ;
+            } inheritanceTests);
+
+        instantiation =
+          #solo
+            (testInUniverses {
+              inherit
+                U_0
+                U_1
+                U_2
+                #U_3
+                ;
+            } instantiationTests);
+
+        builtin =
+          #solo
+            (testInUniverses {
+              inherit
+                U_0
+                U_1
+                U_2
+                #U_3
+                ;
+            } builtinTests);
+
+        cast =
+          #solo
+            (testInUniverses {
+              inherit
+                U_0
+                U_1
+                U_2
+                #U_3
+                ;
+            } castTests);
+
+        untyped =
+          #solo
+            (testInUniverses {
+              inherit
+                U_0
+                U_1
+                U_2
+                #U_3
+                ;
+            } untypedTests);
+
+        typeChecking =
+          #solo
+            (testInUniverses {
+              inherit
+                U_1  # U_1+ due to reliance upon subtype
+                U_2
+                ;
+            } typeCheckingTests);
+      };
+
+    # <nix>typelib._tests.run</nix>
+    in suite rec {
 
       Bootstrap = testInUniverse U_0 (U:
         with U;
-        let SU = U._SU; in 
+        let SU = U._SU; in
         with __Bootstrap;
         {
           Type__args = {
@@ -3716,103 +3835,35 @@ let
           };
         });
 
-      peripheral =
-        #solo
-          (testInUniverses {
-            inherit
-              U_0
-              U_1
-              U_2
-              U_3
-              U_4
-              TS
-              ;
-          } peripheralTests);
-
-      Typelib =
-        #solo
-          (testInUniverses {
-            inherit
-              U_0
-              U_1
-              U_2
-              #U_3
-              ;
-          } TypelibTests);
-
-      typeFunctionality =
-        #solo
-          (testInUniverses {
-            inherit
-              U_0
-              U_1
-              U_2
-              ;
-          } typeFunctionalityTests);
-
-      inheritance =
-        #solo
-          (testInUniverses {
-            inherit
-              U_0
-              U_1
-              U_2
-              # U_3
-              ;
-          } inheritanceTests);
-
-      instantiation =
-        #solo
-          (testInUniverses {
-            inherit
-              U_0
-              U_1
-              U_2
-              #U_3
-              ;
-          } instantiationTests);
-
-      builtin =
-        #solo
-          (testInUniverses {
-            inherit
-              U_0
-              U_1
-              U_2
-              #U_3
-              ;
-          } builtinTests);
-
-      cast =
-        #solo
-          (testInUniverses {
-            inherit
-              U_0
-              U_1
-              U_2
-              #U_3
-              ;
-          } castTests);
-
-      untyped =
-        #solo
-          (testInUniverses {
-            inherit
-              U_0
-              U_1
-              U_2
-              #U_3
-              ;
-          } untypedTests);
-
-      typeChecking =
-        #solo
-          (testInUniverses {
-            inherit
-              U_1  # U_1+ due to reliance upon subtype
-              U_2
-              ;
-          } typeCheckingTests);
+      all = mergeAttrsList [
+        { inherit Bootstrap; }
+        (testInUniverses
+          { inherit U_0 U_1 U_2 U_3 U_4; }
+          (U: {
+            peripheral = peripheralTests U;
+          }))
+        (testInUniverses
+          { inherit U_0 U_1 U_2 U_3; }
+          (U: {
+            smoke = smokeTests U;
+          }))
+        (testInUniverses
+          { inherit U_0 U_1 U_2; }
+          (U: {
+            Typelib = TypelibTests U;
+            typeFunctionality = typeFunctionalityTests U;
+            inheritance = inheritanceTests U;
+            instantiation = instantiationTests U;
+            builtin = builtinTests U;
+            cast = castTests U;
+            untyped = untypedTests U;
+          }))
+        (testInUniverses
+          { inherit U_1 U_2 U_3; }
+          (U: {
+            typeChecking = typeCheckingTests U;
+          }))
+      ];
 
     };
 
@@ -3974,6 +4025,10 @@ attrsets._tests.debug
 
 <nix>
 lists
+</nix>
+
+<nix>
+Types.Universe.U_2
 </nix>
 '';
 

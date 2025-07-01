@@ -166,6 +166,13 @@ in rec {
       then concatSolos xs [x]
       else concatSolos [x] xs;
 
+  # Partition a list of solos [{k -> a}] based on a predicate.
+  # Follows lib.partition interface for lists.
+  partitionSolos = pred: xs:
+    { right = filter (x: pred (soloName x) (soloValue x)) xs;
+      wrong = filter (x: !(pred (soloName x) (soloValue x))) xs;
+    };
+
   # Map an (f :: int -> k -> a -> b) over a list of solos [{k -> a}], returning another list of solos [{k -> b}].
   # f has access to the index in the list.
   # If xs is a set, it is first converted to solos.
