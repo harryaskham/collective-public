@@ -13,6 +13,11 @@ with cutils.lists;
 with cutils.strings;
 
 # TODO:
+# - Cache + mkmerge / functor setup - instances have unique IDs and can persist things at e.g.
+#   cache.<instanceid>.<fieldname> = <value>
+#   but means state needs threading through the whole usage of TS
+# - could also just remove thunks, allow infinite Type->Type properties
+#   - just never log deeply i.e. SeqN always
 # - TypeClasses using mkMerge - i.e. instances form a fixed-point class dictionary
 # - Enums
 # - Maybe / ADTs
@@ -1823,19 +1828,13 @@ let
     # Universe.U_0 == Quasiverse
     # Universe.U_1 == mkSubUniverse (Universe 0)
     # ...
-    Universe =
-      let
-        # Generate a list of n universes, starting with Quasiverse.
-        # The first universe is Quasiverse, the rest are generated from the previous one.
-        genUniverses = maxLevel:
-          let go = level: SU:
-                if level > maxLevel then {}
-                else let U = mkSubUniverse SU;
-                    in { ${SU.opts.name} = SU; }
-                        // go (level + 1) U;
-          in go 0 Quasiverse;
-      in
-        genUniverses 4;
+    Universe = rec {
+      U_0 = Quasiverse;
+      U_1 = mkSubUniverse U_0;
+      U_2 = mkSubUniverse U_1;
+      U_3 = mkSubUniverse U_2;
+      U_4 = mkSubUniverse U_3;
+    };
 
     #  We can then expose U_4 as a self-consistent base typesystem comprised of:
     #    - The U_4 constituent types, instances of U_4.Type
@@ -2101,33 +2100,6 @@ let
           __functor = self: arg: value arg;
         };
 
-        # Create a shim for a field value.
-        #mkFieldShim = 
-        #  fieldName: fieldSpec:
-        #    mkInstanceShim Field {
-        #      rawFieldName = mkSimpleValueShim "String" fieldName;
-        #      fieldSpec = {
-        #        __resolve = self: fieldSpec;
-        #        __isTypeThunk = mkSimpleValueShim "Bool" true;
-        #      };
-        #    } 
-        #    {
-        #      fieldName = _: fieldName;
-        #      fieldType = _: fieldSpec;
-        #      fieldStatic = _: false;
-        #      fieldDefault = _: throw "mkFieldShim: fieldDefault used";
-        #      hasDefault = _: false;
-        #    };
-
-        # Create a shim for the fields lambda of a type.
-        #mkFieldsShim = fieldSpecs_: mkValueShim "Lambda" (_:
-        #  mkInstanceShim Fields {
-        #    fieldSpecs = withCommonFieldSpecs opts SU fieldSpecs_;
-        #  } rec { 
-        #    instanceFieldsWithType = _: mapSolos mkFieldShim fieldSpecs;
-        #    instanceFields = _: mapSolos mkFieldShim fieldSpecs_;
-        #  });
-
         # Create shim types appearing as instances of Type.
         mkTypeShim = name: attrs:
           let 
@@ -2139,8 +2111,6 @@ let
               tvarBindings = LazyAttrs {};
               ctor = { bind = _: attrs.new or throw "Shim type '${name}' has no 'new' fn"; };
               # Field/Fields must be extra-shimmed to avoid recursion when shimming Fields itself.
-              # fields = mkFieldsShim (attrs.fields or []);
-              # fields = Lambda (_: Fields.new (attrs.fields or []));
               fields = mkValueShim "Lambda" (_: rec { 
                 fieldSpecs = withCommonFieldSpecs opts SU (attrs.fields or []);
                 instanceFields = _: 
