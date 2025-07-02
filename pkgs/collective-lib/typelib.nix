@@ -1026,6 +1026,14 @@ let
         This: bindingsToSuper: name: tvars_: bindingsToArgs_:
         U.__newTemplate This bindingsToSuper name tvars_ bindingsToArgs_;
 
+      # True iff we have a tvarbinding for every tvar.
+      isFullyBound = This: _: empty (This.getUnboundTvars {})
+
+      # A list of the unbound tvars
+      # TODO: Arbitrary ordering here, convert tvars to canonical list.
+      unboundTvars = This: _:
+        removeAttrs (This.tvars {}) [attrNames (This.tvarBindings {})];
+
       ### __implements: Converted to e.g. __toString upon binding
 
       # Print Type objects as just their name.
@@ -1034,7 +1042,26 @@ let
       # Enable creation of Types simply by calling the constructor.
       # When this method is bound, turns the Type instance itself into a callable functor.
       # Consumes one argument to avoid internal __functor machinery going infinite upon binding.
-      __implements__functor = This: self: arg: This.new arg;
+      # For templates, however, this acts as a template binding constructor:
+      #
+      # List [1 2 3] -> List([1 2 3])
+      # ListOf {T = Int} (map Int [1 2 3]) -> ListOf<Int>([1 2 3])
+      # ListOf Int (map Int [1 2 3]) -> ListOf<Int>([1 2 3])
+      #
+      # If the bindings are supplied as a set, then the tvar name is taken from the key.
+      # If provided as type arguments, the names are inferred from the tvar bindings order,
+      # just as with the default constructor and the field list order.
+      __implements__functor = This: self: arg:
+        if This.isFullyBound {}
+          then This.new arg
+
+        else if isUntypedAttrs arg
+          then This.bind arg;
+        
+        else
+          let tvarSolos = solos (This.unboundTvars {});
+              tvarName = soloName (head tvarSolos);
+          in This.bind { ${tvarName} = arg; };
     };
 
     # Type consists only of members of SU.
