@@ -1,18 +1,18 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, cutils ? import ./. { inherit lib; }, ... }:
+{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
 
 with lib;
-with cutils.attrsets;
-with cutils.collections;
-with cutils.dispatchlib;
-with cutils.errors;
-with cutils.functions;
-with cutils.lists;
-with cutils.strings;
+with collective-lib.attrsets;
+with collective-lib.collections;
+with collective-lib.dispatchlib;
+with collective-lib.errors;
+with collective-lib.functions;
+with collective-lib.lists;
+with collective-lib.strings;
 
 # Nicer interface to runtests
 let
-  log = cutils.log;
-  inherit (cutils.typelib) cast isCastError hasToString isFunctionNotFunctor;
+  log = collective-lib.log;
+  inherit (collective-lib.typelib) cast isCastError hasToString isFunctionNotFunctor;
 in rec {
 
   Status = {

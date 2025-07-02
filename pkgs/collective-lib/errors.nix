@@ -1,8 +1,8 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, cutils ? import ./. { inherit lib; }, ... }:
+{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
 
 with lib;
-with cutils.strings;
-with cutils.functions;
+with collective-lib.strings;
+with collective-lib.functions;
 
 rec {
   # Is x the result of calling builtins.tryEval

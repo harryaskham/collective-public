@@ -1,7 +1,7 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, cutils ? import ./. { inherit lib; }, ... }:
+{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
 
-with cutils;
-with cutils.clib;
+with collective-lib;
+with collective-lib.clib;
 
 # Utilities for configuring window management intents and bindings independently from the WM.
 # i.e. maps desktop manipulation in a way that can be shared across sway/i3/hyprland/etc

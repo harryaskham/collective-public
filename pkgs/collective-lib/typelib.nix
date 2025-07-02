@@ -1,16 +1,15 @@
 { pkgs ? import <nixpkgs> {},
   collective-lib ? import ./. { inherit lib; },
-  cutils ? collective-lib,
   lib ? pkgs.lib,
   ... }:
 
 with lib.strings;
-with cutils.collections;
-with cutils.clib;
-with cutils.attrsets;
-with cutils.functions;
-with cutils.lists;
-with cutils.strings;
+with collective-lib.collections;
+with collective-lib.clib;
+with collective-lib.attrsets;
+with collective-lib.functions;
+with collective-lib.lists;
+with collective-lib.strings;
 
 # TODO:
 # - Cache + mkmerge / functor setup - instances have unique IDs and can persist things at e.g.
@@ -81,8 +80,8 @@ with cutils.strings;
 # bob.show = "Robert (Bob), 40y old! Cool."
 
 let
-  log = cutils.log;
-  errors = cutils.errors;
+  log = collective-lib.log;
+  errors = collective-lib.errors;
 
   Types =
     with lib;  # lib == untyped default pkgs.lib throughout Types
@@ -113,9 +112,9 @@ let
       elideName = name: if elem name unsafeNames then "ELIDED-${name}" else name;
       unelideName = replaceStrings ["ELIDED-"] [""];
 
-      elideNames = cutils.dispatchlib.deepMapNamesCond (k: k != "__Type") elideName;
+      elideNames = collective-lib.dispatchlib.deepMapNamesCond (k: k != "__Type") elideName;
 
-      unelideNames = cutils.dispatchlib.deepMapNamesCond (k: k != "__Type") unelideName;
+      unelideNames = collective-lib.dispatchlib.deepMapNamesCond (k: k != "__Type") unelideName;
 
       withElidedNames = xs: f:
         let xsElided = elideNames xs;
@@ -296,16 +295,16 @@ let
           # Dispatch on __TypeId
           # Matches full bound name string
           id = {
-            __functor = self: cutils.dispatchlib.dispatch.on typeIdOf;
-            def = cutils.dispatchlib.dispatch.def.on typeIdOf;
+            __functor = self: collective-lib.dispatchlib.dispatch.on typeIdOf;
+            def = collective-lib.dispatchlib.dispatch.def.on typeIdOf;
           };
 
           # Dispatch on type name
           # Matches only the type name, not its bindings
           # i.e. can match any Union, not just Union<[Int Float]>
           name = {
-            __functor = self: cutils.dispatchlib.dispatch.on typeNameOf;
-            def = cutils.dispatchlib.dispatch.def.on typeNameOf;
+            __functor = self: collective-lib.dispatchlib.dispatch.on typeNameOf;
+            def = collective-lib.dispatchlib.dispatch.def.on typeNameOf;
           };
         };
       };
@@ -903,44 +902,59 @@ let
               printBindings = joinSep ", " (map printBinding (This.tvars.__attrNames {}));
             in "${This.getName {}}<${printBindings}>";
 
+    # Check that the given binding solo is permissible.
+    # Returns true iff all checks pass.
+    # Does not bind; instead This.bind { T = Int; U = ...} enables multiple bindings without
+    # needing to foldl' and construct many intermediate types.
+    # e.g. ListOf.bind { T = Int; } == ListOf<Int>
+    # C = Constraint (e.g. ListOf { T = Type; } -> C == Type)
+    # T = binding type (e.g. ListOf.bind { T = Int; } -> T == Int)
+    checkBinding = This: tvarName: T:
+      let 
+        tvars = This.tvars {};
+        tvarBindings = This.tvarBindings {};
+        throwBindError = msg: throw (indent.block ''
+          Bind error:
+            ${indent.here "${This.getName {}}.${tvarName} <- ${log.print T}"}
+            Constraints: ${indent.here "${log.print C} (${if TSatC then "" else "not "}satisfied)"}
+            Existing binding: ${log.print B}
+            ${indent.here msg}
+          '');
+      in
+      assert checks [
+        {
+          name = "bindSolo: tvar ${tvarName} exists on ${log.print This}";
+          cond = tvars ? ${tvarName};
+          msg = "Type ${This.getName {}} does not have type variable ${tvarName}";
+        }
+        {
+          name = "bindSolo: tvar ${tvarName} not already bound";
+          cond = !(tvarBindings ? ${tvarName});
+          msg = "Type ${This.getName {}} already has type variable ${tvarName} bound to ${tvarBindings.${tvarName}}";
+        }
+      ];
+      let
+        C = tvars.${tvarName};
+        TSatC = C.satisfiedBy T;
+      in
+        assert checks [
+          {
+            name = "bindSolo: ${log.print T} satisfies constraint: ${tvarName} = ${log.print C}";
+            cond = C.satisfiedBy T;
+            msg = "bindSolo: Binding ${log.print T} does not satisfy constraint: ${tvarName} = ${log.print C}";
+          }
+        ];
+        true;
+
       # Construct the type resulting from applying the given bindings to the parameterized This type.
       # Bind is only exposed after U.Type is constructed on instances of U.Type.
       # TODO: TypeVar object plus bootstraps
-      bind = This: tvarBindingsAttrs:
-        let
-          tvarBindingsList =
-            mapAttrsToList
-              (tvarName: T: {inherit tvarName T;})
-              tvarBindingsAttrs;
+      # e.g. ListOf.bind { T = Int; } == ListOf<Int>
+      bind = This: bindings:
+        assert (all.attrs This.checkBinding bindings);
+        # Return a modified Type with the tvar bound to T.
+        This.modify.tvarBindings (bs: thunkFmap bs (bs: bs // bindings));
 
-          bindOne = This: {tvarName, T}:
-            let
-              throwBindError = msg: throw (indent.block ''
-                Bind error:
-                  ${indent.here "${This.getName {}}.${tvarName} <- ${log.print T}"}
-                  Constraints: ${indent.here "${log.print C} (${if TSatC then "" else "not "}satisfied)"}
-                  Existing binding: ${log.print B}
-                  ${indent.here msg}
-                '');
-              C = (This.tvars {}).${tvarName} or null;
-              B = (This.tvarBindings {}).${tvarName} or SU.Void;
-              TSatC = C.satisfiedBy T;
-            in
-              if C == null
-              then throwBindError "Type ${This.getName {}} does not have type variable ${tvarName}"
-
-              else if (This.tvarBindings {}) == null
-                then throwBindError "Type ${This.__TypeId {}} does not have bound or unbound type variable bindings"
-
-              else if !(U.typeEq B SU.Void)
-                then throwBindError "Type ${This.__TypeId {}} already has type variable ${tvarName} bound to ${log.print B}"
-
-              else if !(C.satisfiedBy T)
-                then throwBindError "Binding ${log.print T} does not satisfy constraint: ${log.print C}"
-
-              else This.modify.tvarBindings (bs: thunkFmap bs (bs: bs // {${tvarName} = T;}));
-
-        in foldl' bindOne This tvarBindingsList;
 
       # Is That the same type as This?
       eq = This: That: U.typeEq This That;
@@ -1911,7 +1925,7 @@ let
       with log.prints; put U using.raw (using.maxDepth 3) ___;
 
     assertFixedUnderF = fLabel: xLabel: f: x:
-      with cutils.tests.Compare;
+      with collective-lib.tests.Compare;
       let
         fx = f x;
         x_NL = NoLambdas x;
@@ -2240,7 +2254,7 @@ let
               getValue = _: get.__value.value;
               mapItems = f: map f (getValue {});
               getSolos = _: mapItems (item: item.getSolo {});
-              indexed = _: mergeAttrsList (cutils.attrsets.indexed (getSolos {}));
+              indexed = _: mergeAttrsList (collective-lib.attrsets.indexed (getSolos {}));
               names = _: mapItems (item: item.getName {});
               values = _: mapItems (item: item.getValue {});
               update = items: (OrderedOf T).new (concatSolos (getSolos {}) (solos items));
@@ -2284,7 +2298,7 @@ let
             in return (mkInstanceShim Fields strictGet rec {
               getValue = _: mapSolos (OrderedItem Field).new fieldShims;
               getSolos = _: fieldShims;
-              indexed = _: mergeAttrsList (cutils.attrsets.indexed (getSolos {}));
+              indexed = _: mergeAttrsList (collective-lib.attrsets.indexed (getSolos {}));
               # Override update here to avoid requiring use of this.set in OrderedOf super.
               update = newFieldSpecs:
                 Fields.new (concatSolos (strictGet.fieldSpecs {}) (solos newFieldSpecs));
@@ -2932,7 +2946,7 @@ let
 
   # nix eval --impure --expr '(import ./cutils/types.nix {})._tests'
   _tests =
-    with cutils.tests;
+    with collective-lib.tests;
     with lib;  # lib == untyped default pkgs.lib throughout __tests
     with Types;
     with Universe;
@@ -3272,7 +3286,7 @@ let
           let
             testFields = fields: args: {
               getSolos = expect.noLambdasEq (fields.getSolos {}) args.expectedSolos;
-              # indexed = mergeAttrsList (cutils.attrsets.indexed fieldSolos);
+              # indexed = mergeAttrsList (collective-lib.attrsets.indexed fieldSolos);
               # update = newFieldSpecs:
               #   Fields.new (concatSolos (solos fieldSpecs) (solos newFieldSpecs));
               # getField = name: indexed.${name}.value;
@@ -3953,7 +3967,7 @@ types
 </nix>
 
 <nix>
-collective-lib._testsUntyped.run
+collective-lib._tests.run
 </nix>
 
 <nix>
@@ -3998,6 +4012,10 @@ lists
 
 <nix>
 Types.Universe.U_2
+</nix>
+
+<nix>
+_testsUntyped.run
 </nix>
 '';
 

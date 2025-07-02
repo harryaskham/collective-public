@@ -1,17 +1,17 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, cutils ? import ./. { inherit lib; }, ... }:
+{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
 
 # TODO: Move other polymorphic collection functions here e.g. size.
 
 with lib;
-with cutils.attrsets;
-with cutils.dispatchlib;
-with cutils.errors;
-with cutils.functions;
-with cutils.lists;
-with cutils.strings;
-with cutils.tests;
+with collective-lib.attrsets;
+with collective-lib.dispatchlib;
+with collective-lib.errors;
+with collective-lib.functions;
+with collective-lib.lists;
+with collective-lib.strings;
+with collective-lib.tests;
 
-let log = cutils.log;
+let log = collective-lib.log;
 in rec {
   # Identify values that have elements.
   # Paths are collections, treated as normalised lists of components.
@@ -95,7 +95,54 @@ in rec {
     };
   };
 
-  _tests = with cutils.tests; suite {
+  # Centraliser for 'all'
+  # Exposes lib.lists.all by default, otherwise uses fold.*._1 structure.
+  # Uses structure of global merged fold._1.left
+  all = {
+    __functor = self: self.list;
+    list = lib.lists.all;
+    attrs = pred: collective-lib.fold.attrs.left (acc: k: v: acc && pred k v) true;
+    solos = pred: collective-lib.fold.solos.left (acc: k: v: acc && pred k v) true;
+  };
+  # // (
+  #all = {
+  #  __functor = self: lib.lists.all;
+  #} // (
+  #  deepConcatMapCond
+  #    # Don't use fold1 variants, treat specs as leaves.
+  #    (k: v: k != "_1" && !isFoldSpec v)
+  #    (k: v:
+  #      # Take the left fold for handling unary/binary folds like fold vs fold.solo.left
+  #      if k == "left" && isFoldSpec v then
+  #      # Replace e.g. fold.solos with pred: fold.solos.left (acc && ... ) in all.solos pred
+  #        (pred: 
+  #          v.left 
+  #            (acc: x0:
+  #              dispatch.def
+  #                (ex: "all.${k}: predicate returned non-bool/lambda (${log.print ex} of type ${lib.typeOf ex})")
+  #                {
+  #                  # If the predicate is unary, regular 'all'
+  #                  bool = px0: acc && px0;
+  #                  # If the predicate is binary, expect another argument
+  #                  # Handles e.g. pred k v for fold attrs / solos.
+  #                  lambda = pred': x1:
+  #                    dispatch.def
+  #                      (ex: "all.${k}: binary predicate returned non-bool (${log.print ex} of type ${lib.typeOf ex})")
+  #                      {
+  #                        bool = px01: acc && px01;
+  #                      } (pred' x1);
+  #                } (pred x0)
+  #            )
+  #            true
+  #            xs
+  #        )
+  #      else
+  #        # Discard the rest.
+  #        {})
+  #    collective-lib.fold);
+
+
+  _tests = with collective-lib.tests; suite {
     collection = {
       list.empty = expect.True (collection []);
       list.full = expect.True (collection [1 2 3]);
@@ -152,6 +199,23 @@ in rec {
         setToEmpty = expect.eq (prepend {a = 1; b = 2;} []) [ {a = 1;} {b = 2;} ];
         emptyToEmpty = expect.eq (prepend {} []) [];
       };
+    };
+
+    all = {
+      default.true = expect.True (all (x: x > 0) [1 2 3]);
+      default.false = expect.False (all (x: x > 1) [1 2 3]);
+
+      attrs.true.value = expect.True (all.attrs (k: v: v > 0) {a=1;b=2;c=3;});
+      attrs.false.value = expect.False (all.attrs (k: v: v > 1) {a=1;b=2;c=3;});
+      attrs.true.key = expect.True (all.attrs (k: v: size k == 1) {a=1;b=2;c=3;});
+      attrs.false.key = expect.False (all.attrs (k: v: size k == 1) {a=1;b=2;ccc=3;});
+
+      solos.true.value = expect.True (all.solos (k: v: v > 0) [{a=1;}{b=2;}{c=3;}]);
+      solos.false.value = expect.False (all.solos (k: v: v > 1) [{a=1;}{b=2;}{c=3;}]);
+      solos.true.key = expect.True (all.solos (k: v: size k == 1) [{a=1;}{b=2;}{c=3;}]);
+      solos.false.key = expect.False (all.solos (k: v: size k == 1) [{a=1;}{b=2;}{ccc=3;}]);
+      solos.nonSolos.list = expect.error (all.solos (k: v: size k == 1) [{a=1;b=2;c=3;}]);
+      solos.nonSolos.set = expect.error (all.solos (k: v: size k == 1) {a=1;b=2;c=3;});
     };
   };
 

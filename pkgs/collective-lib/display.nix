@@ -1,7 +1,7 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, cutils ? import ./. { inherit lib; }, ... }:
+{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
 
 with lib;
-with cutils.clib;
+with collective-lib.clib;
 
 # Build monitor configs agnostically to the display manager / window manager
 # Resolution and position are modelled as a list of [ width height ]

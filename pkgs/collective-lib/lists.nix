@@ -1,12 +1,12 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, cutils ? import ./. { inherit lib; }, ... }:
+{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
 
-with cutils.dispatchlib;
-with cutils.functions;
-with cutils.attrsets;
+with collective-lib.dispatchlib;
+with collective-lib.functions;
+with collective-lib.attrsets;
 
 # List utils and aliases.
 let 
-  log = cutils.log;
+  log = collective-lib.log;
   inherit 
     (lib)
     length
@@ -37,23 +37,65 @@ in rec {
     set = mergeAttrsList;
   };
 
-  # Left-fold f over x with initial value (head xs).
-  # Throws if the list is empty.
-  foldl1 = f: xs:
-    if (length xs == 0) then throw "foldl1: empty list"
-    else foldl' f (head xs) (tail xs);
+  # Fold centraliser.
+  # Merges with other modules that define fold functions.
+  # A fold variant spec must have __mkF to produce a binary foldl or foldr f function
+  # and a __mkList to produce a list to fold over.
+  mkFoldSpec = xs: xs // {
+    __isFoldSpec = true;
+  };
 
-  # Right-fold f over x with initial value (head xs).
-  # Throws if the list is empty.
-  foldr1 = f: xs:
-    if (length xs == 0) then throw "foldr1: empty list"
-    else foldr f (head xs) (tail xs);
+  isFoldSpec = xs: xs.__isFoldSpec or false;
+
+  fold = {
+    __functor = self: self.left;
+
+    left = mkFoldSpec rec {
+      __mkF = id;
+      __mkList = id;
+      __functor = self: foldl';
+    };
+
+    right = mkFoldSpec rec {
+      __mkF = id;
+      __mkList = id;
+      __functor = self: foldr;
+    };
+
+    _1 = {
+      __functor = self: self.left;
+
+      # Left-fold f over x with initial value (head xs).
+      # Throws if the list is empty.
+      left = mkFoldSpec rec {
+        __mkF = id;
+        __mkList = id;
+        __functor = self: f: xs:
+          if (length xs == 0) then throw "fold._1.left: empty list"
+          else fold.left f (head xs) (tail xs);
+      };
+
+      # Right-fold f over x with initial value (head xs).
+      # Throws if the list is empty.
+      right = mkFoldSpec rec {
+        __mkF = id;
+        __mkList = id;
+        __functor = self: f: xs:
+          if (length xs == 0) then throw "fold._1.right: empty list"
+          else fold.right f (head xs) (tail xs);
+      };
+    };
+  };
+
+  # Legacy aliases.
+  foldl1 = fold._1.left;
+  foldr1 = fold._1.right;
 
   # Get the minimum of a list of numbers.
-  minimum = foldr1 min;
+  minimum = fold._1.right min;
 
   # Get the maximum of a list of numbers.
-  maximum = foldr1 max;
+  maximum = fold._1.right max;
 
   # Get the tail of a list or null if empty.
   maybeHead = xs: if xs == [] then null else head xs;
@@ -97,26 +139,27 @@ in rec {
   maybeNamedLazyList = name: x: if isLazyList x then setThunkName name x else NamedLazyList name x;
   NamedLazyList = name: LazyList_ (NamedThunk name);
 
-  _tests = with cutils.tests; suite {
-    foldl' = {
-      sum = {
-        expr = foldl' (a: b: a + b) 4 [1 2 3];
-        expected = 10;
-      };
-      reverse = {
-        expr = foldl' (xs: x: [x] ++ xs) [] [1 2 3];
-        expected = [3 2 1];
-      };
+  _tests = with collective-lib.tests; suite {
+    fold.default = {
+      sum = expect.eq 10 (fold (a: b: a + b) 4 [1 2 3]);
+      reverse = expect.eq [3 2 1] (fold (xs: x: [x] ++ xs) [] [1 2 3]);
     };
-    foldr = {
-      sum = {
-        expr = foldr (a: b: a + b) 4 [1 2 3];
-        expected = 10;
-      };
-      reverse = {
-        expr = foldr (x: xs: xs ++ [x]) [] [1 2 3];
-        expected = [3 2 1];
-      };
+    fold.left = {
+      sum = expect.eq 10 (fold.left (a: b: a + b) 4 [1 2 3]);
+      reverse = expect.eq [3 2 1] (fold.left (xs: x: [x] ++ xs) [] [1 2 3]);
+    };
+    fold.right = {
+      sum = expect.eq 10 (fold.right (a: b: a + b) 4 [1 2 3]);
+      reverse = expect.eq [3 2 1] (fold.right (x: xs: xs ++ [x]) [] [1 2 3]);
+    };
+    fold._1.default = {
+      sum = expect.eq 6 (fold._1 (a: b: a + b) [1 2 3]);
+    };
+    fold._1.left = {
+      sum = expect.eq 6 (fold._1.left (a: b: a + b) [1 2 3]);
+    };
+    fold._1.right = {
+      sum = expect.eq 6 (fold._1.right (a: b: a + b) [1 2 3]);
     };
     append = {
       expr = append 5 [1 2 3];

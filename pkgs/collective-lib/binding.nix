@@ -1,7 +1,7 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, cutils ? import ./. { inherit lib; }, ... }:
+{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
 
 with lib;
-with cutils.clib;
+with collective-lib.clib;
 
 # Generate keybindings for i3, sway, and hyprland
 rec {

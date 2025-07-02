@@ -7,7 +7,26 @@
   ... }:
 
 let
+  # Functions required for building the collective-lib.
+  # Can't put this inside e.g. lists/attrsets otherwise it gets merged into itself here.
+  modulelib = {
+    # Partition attrs based on a predicate.
+    # Follows lib.partition interface for lists.
+    partitionAttrs = pred: xs:
+      { right = lib.filterAttrs pred xs;
+        wrong = lib.filterAttrs (k: v: !(pred k v)) xs;
+      };
+
+    # Merge attrs in a list deeply, allowing for modules to combine named dicts implicitly.
+    recursiveMergeAttrsList = lib.foldl' lib.recursiveUpdate {};
+  };
+
   # Merge all modules in base into a single module.
+  #
+  # Individual modules should not use the merged version, instead explicitly calling into
+  # the specific module's partial set as needed.
+  # e.g. attrsets.fold.solos rather than fold.solos, lists.fold.left rather than fold.left
+  # When used merged, fold.solos and fold.left are both exposed.
   #
   # Includes the original base so that we have everything at top level, and can
   # still also access / override e.g. lib.strings via e.g. collective-lib.strings.
@@ -19,25 +38,24 @@ let
   # and expose the result as mergedBase.dispatch.
   # We cannot then in general have a top-level value in a module with the same
   # name as a module, unless we are happy to have it merged.
-
+  #
   # Modules and top-level attributes in modules that should not be merged.
   # These are only exposed either as collective-lib.log or e.g. collective-lib.base.typelib._tests.
   # In the case of _tests, a new suite is created at collective-lib._tests.
   mergeBase = base:
     let
       unmergeableAttrNames = [ "_tests" ];
-      splitModule = base.attrsets.partitionAttrs (k: _: lib.elem k unmergeableAttrNames);
+      splitModule = modulelib.partitionAttrs (k: _: lib.elem k unmergeableAttrNames);
 
       unmergeableModuleNames = [ "log" ];
-      splitModules = base.attrsets.partitionAttrs (k: _: lib.elem k unmergeableModuleNames);
+      splitModules = modulelib.partitionAttrs (k: _: lib.elem k unmergeableModuleNames);
 
       moduleMergeable = _: module: (splitModule module).wrong;
 
       baseSplit = splitModules base;
       baseMergeable = lib.mapAttrs moduleMergeable baseSplit.wrong;
     in
-      base 
-      // (base.attrsets.recursiveMergeAttrsList (lib.attrValues baseMergeable));
+      base // (modulelib.recursiveMergeAttrsList (lib.attrValues baseMergeable));
 
   mkCollectiveLib = base:
     let baseMerged = mergeBase base; in
@@ -93,30 +111,32 @@ let
       _testsUntyped = base.tests.mergeSuites (removeAttrs base [ "typelib" ]);
     };
 
-  base = 
-    # TODO: Remove legacy alias.
-    let cutils = base; in {
-      attrsets = import ./attrsets.nix { inherit lib collective-lib cutils; };
-      binding = import ./binding.nix { inherit lib collective-lib cutils; };
-      clib = import ./clib.nix { inherit lib collective-lib cutils; };
-      collections = import ./collections.nix { inherit lib collective-lib cutils; };
-      colors = import ./colors.nix { inherit lib collective-lib cutils; };
-      disk = import ./disk.nix { inherit lib collective-lib cutils; };
-      dispatchlib = import ./dispatchlib.nix { inherit lib collective-lib cutils; };
-      display = import ./display.nix { inherit lib collective-lib cutils; };
-      errors = import ./errors.nix { inherit lib collective-lib cutils; };
-      fan = import ./fan.nix { inherit lib collective-lib cutils; };
-      font = import ./font.nix { inherit lib collective-lib cutils; };
-      functions = import ./functions.nix { inherit lib collective-lib cutils; };
-      lists = import ./lists.nix { inherit lib collective-lib cutils; };
-      log = import ./log.nix { inherit lib collective-lib cutils traceLevel enablePartialTrace enableVerboseTrace traceShort; };
-      strings = import ./strings.nix { inherit lib collective-lib cutils; };
-      tests = import ./tests.nix { inherit lib collective-lib cutils; };
-      typelib = import ./typelib.nix { inherit lib collective-lib cutils; };
-      wm = import ./wm.nix { inherit lib collective-lib cutils; };
+  baseModules = 
+    let args = { inherit lib collective-lib; }; in
+    {
+      attrsets = import ./attrsets.nix args;
+      binding = import ./binding.nix args;
+      clib = import ./clib.nix args;
+      collections = import ./collections.nix args;
+      colors = import ./colors.nix args;
+      disk = import ./disk.nix args;
+      dispatchlib = import ./dispatchlib.nix args;
+      display = import ./display.nix args;
+      errors = import ./errors.nix args;
+      fan = import ./fan.nix args;
+      font = import ./font.nix args;
+      functions = import ./functions.nix args;
+      lists = import ./lists.nix args;
+      log = import ./log.nix (args // { 
+        inherit traceLevel enablePartialTrace enableVerboseTrace traceShort;
+      });
+      strings = import ./strings.nix args;
+      tests = import ./tests.nix args;
+      typelib = import ./typelib.nix args;
+      wm = import ./wm.nix args;
     };
 
-  collective-lib = mkCollectiveLib base;
+  collective-lib = mkCollectiveLib baseModules;
 
   __libCollisions =
     (# <nix>

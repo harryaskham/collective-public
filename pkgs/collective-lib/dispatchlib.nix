@@ -1,14 +1,14 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, cutils ? import ./. { inherit lib; }, ... }:
+{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
 
 with lib;
-with cutils.collections;
-with cutils.errors;
-with cutils.functions;
-with cutils.lists;
-with cutils.strings;
-with cutils.tests;
+with collective-lib.collections;
+with collective-lib.errors;
+with collective-lib.functions;
+with collective-lib.lists;
+with collective-lib.strings;
+with collective-lib.tests;
 
-let log = cutils.log;
+let log = collective-lib.log;
 in rec {
   dispatch = rec {
     # Default behaviour is to dispatch on the simple Nix builtin type of the argument.
@@ -170,7 +170,7 @@ in rec {
 
   # nix eval --impure --expr '(import collective-public/pkgs/collective-utils/functions.nix {})._tests.run'
   _tests =
-    with cutils.tests;
+    with collective-lib.tests;
     suite {
       deepMap = {
         deepMap = {

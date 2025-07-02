@@ -1,18 +1,18 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, cutils ? import ./. { inherit lib; }, ... }:
+{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
 
 with lib;
-with cutils.collections;
-with cutils.dispatchlib;
-with cutils.errors;
-with cutils.lists;
-with cutils.strings;
-with cutils.tests;
+with collective-lib.collections;
+with collective-lib.dispatchlib;
+with collective-lib.errors;
+with collective-lib.lists;
+with collective-lib.strings;
+with collective-lib.tests;
 
 # Misc functional utilities
 let
-  log = cutils.log;
-  errors = cutils.errors;
-  typelib = cutils.typelib;
+  log = collective-lib.log;
+  errors = collective-lib.errors;
+  typelib = collective-lib.typelib;
 in rec {
 
   # Compose two functions left-to-right
@@ -375,7 +375,7 @@ in rec {
       xs;
 
   # nix eval --impure --expr '(import collective-public/pkgs/collective-utils/functions.nix {})._tests.run'
-  _tests = with cutils.tests; suite {
+  _tests = with collective-lib.tests; suite {
     compose = {
       expr =
         let f = a: a + 1;

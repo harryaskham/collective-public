@@ -1,5 +1,5 @@
 { pkgs ? import <nixpkgs> {},
-  lib ? pkgs.lib, cutils ? import ./. { inherit lib; },
+  lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; },
   # Default trace level, 0 = all (log.trace), 1 = vtrace, 2+ = custom
   # Null to disable.
   traceLevel ? 0,
@@ -14,16 +14,16 @@
 }:
 
 with lib;
-with cutils.attrsets;
-with cutils.collections;
-with cutils.dispatchlib;
-with cutils.lists;
-with cutils.functions;
-with cutils.strings;
+with collective-lib.attrsets;
+with collective-lib.collections;
+with collective-lib.dispatchlib;
+with collective-lib.lists;
+with collective-lib.functions;
+with collective-lib.strings;
 
 # Printing/logging utilities
 let
-  typelib = cutils.typelib;
+  typelib = collective-lib.typelib;
   log = rec {
     mkPrintArgs = {
       printStrictly = false;
@@ -127,7 +127,7 @@ let
     print = printWith id;
     vprintD = n: printWith (args: args // prints.using.raw // prints.using.depth n);
     prints = rec {
-      ___ = cutils.functions.___;
+      ___ = collective-lib.functions.___;
       put = x: Variadic.mkSetFromThen mkPrintArgs (args: print_ args x);
       block = x: Variadic.composeFunctorsAreAttrs indent.block (put x);
       here = x: Variadic.composeFunctorsAreAttrs indent.here (put x);
@@ -435,7 +435,7 @@ let
                   __withEventsAssertReturning
                     [{ checks = map (c: c.name or "unnamed") cs; }]
                     (logState: overPartial (tagged "CHECKS:${groupType}:${groupName}" logState.events))
-                    (assert cutils.errors.checks cs; true);
+                    (assert collective-lib.errors.checks cs; true);
 
                 # Print a warning message
                 # When used with 'with', accrues logs by modifying the mkGroupClosure in scope.
@@ -655,7 +655,7 @@ let
   };
 
 in log // {
-  _tests = with cutils.tests; suite {
+  _tests = with collective-lib.tests; suite {
     print = {
       string = expect.eq (log.print "abc") ''"abc"'';
       int = expect.eq (log.print 123) ''123'';
