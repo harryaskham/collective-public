@@ -14,11 +14,15 @@ with collective-lib.strings;
 # TODO:
 # - Have the act of binding a field containing a typevar infer that typevar's value
 #   - e.g. ListOf [1 2 3] -> ListOf<Int>
+# - Hindley-Milner s.t. A {a = T}, A 123 ->A<Int>
 # - Cache + mkmerge / functor setup - instances have unique IDs and can persist things at e.g.
 #   cache.<instanceid>.<fieldname> = <value>
 #   but means state needs threading through the whole usage of TS
 # - could also just remove thunks, allow infinite Type->Type properties
 #   - just never log deeply i.e. SeqN always
+#   - issue only when recurrent usage to build WHNF value e.g. fields = Fields
+#     - but getFeilds accessed always in newinstance so only deferring issue
+#     - SU reference fixes this
 # - TypeClasses using mkMerge - i.e. instances form a fixed-point class dictionary
 # - Enums
 # - Maybe / ADTs
