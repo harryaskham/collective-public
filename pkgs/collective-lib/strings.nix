@@ -226,18 +226,18 @@ in rec {
   #
   # t == ''
   #   someFn() {
-  #     __COLLECTIVE_LIB_START_INDENT__
+  #     __START_INDENT__
   # line1
   # myFn() {
   #   line2
   # }
-  # __CUTILS_END_INDENT__
+  # __END_INDENT__
   #   }
   # '';
   #
   # codeBlock first calls handleIndentMarkers which passes through the string and
-  # upon seeing __CUTILS_START_INDENT__ will set indentation to the indentation of
-  # the start marker until the __CUTILS_END_INDENT_ marker is reached, removing
+  # upon seeing __START_INDENT__ will set indentation to the indentation of
+  # the start marker until the __END_INDENT_ marker is reached, removing
   # both markers. The indentation added will match whatever occurs on the line of
   # the embed, whether this is spaces, tabs or a mixture.
   #
@@ -258,8 +258,8 @@ in rec {
     print_ = log.print_;
     vprint = log.vprint;
     markers = {
-      start = ''__CUTILS_START_INDENT__'';
-      end = ''__CUTILS_END_INDENT__'';
+      start = ''__START_INDENT__'';
+      end = ''__END_INDENT__'';
       regex = {
         start = ''^(.*)${markers.start}(.*)$'';
         end = ''^(.*)${markers.end}(.*)$'';
@@ -436,7 +436,6 @@ in rec {
   builtinHasToShellValue = T: 
     elem T ["int" "float" "bool" "string" "path" "null" "list"];
 
-  # nix eval --impure --expr '(import ./cutils/strings.nix {})._tests'
   _tests = with collective-lib.tests; suite {
     split = {
       whitespace = {

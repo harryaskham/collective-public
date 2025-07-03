@@ -12,6 +12,8 @@ with collective-lib.lists;
 with collective-lib.strings;
 
 # TODO:
+# - Have the act of binding a field containing a typevar infer that typevar's value
+#   - e.g. ListOf [1 2 3] -> ListOf<Int>
 # - Cache + mkmerge / functor setup - instances have unique IDs and can persist things at e.g.
 #   cache.<instanceid>.<fieldname> = <value>
 #   but means state needs threading through the whole usage of TS
@@ -905,13 +907,14 @@ let
             in "${This.getName {}}<${printBindings}>";
 
     # Check that the given binding solo is permissible.
-    # Returns true iff all checks pass.
+    # If so, returns the bindings with attrValues cast to the type.
+    # e.g. Union [A B] -> Union { Ts = ListOf Type [A B];}
     # Does not bind; instead This.bind { T = Int; U = ...} enables multiple bindings without
     # needing to foldl' and construct many intermediate types.
     # e.g. ListOf.bind { T = Int; } == ListOf<Int>
     # C = Constraint (e.g. ListOf { T = Type; } -> C == Type)
     # T = binding type (e.g. ListOf.bind { T = Int; } -> T == Int)
-    checkBinding = This: tvarName: T:
+    castBinding = This: tvarName: T:
       let 
         tvars = This.tvars {};
         tvarBindings = This.tvarBindings {};
@@ -942,30 +945,37 @@ let
       ];
       let
         C = tvars.${tvarName};
-        TSatC = C.satisfiedBy T;
+        castT = C.cast T;
       in
         assert errors.checks [
           {
             name = "bindSolo: ${log.print T} satisfies constraint: ${tvarName} = ${log.print C}";
-            cond = C.satisfiedBy T;
-            msg = "bindSolo: Binding ${log.print T} does not satisfy constraint: ${tvarName} = ${log.print C}";
+            cond = U.isCastSuccess castT;
+            msg = indent.block ''
+              bindSolo: Binding ${log.print T} does not satisfy constraint: ${tvarName} = ${log.print C}
+              Cast error:
+                ${indent.here (log.print castT.castError)}
+            '';
           }
         ];
-        true;
+        # Return the cast result ready to be merged into the bindings.
+        castT.castSuccess;
 
       # Construct the type resulting from applying the given bindings to the parameterized This type.
       # Bind is only exposed after U.Type is constructed on instances of U.Type.
       # TODO: TypeVar object plus bootstraps
       # e.g. ListOf.bind { T = Int; } == ListOf<Int>
       bind = This: bindings:
-        assert (collective-lib.collections.all.attrs This.checkBinding bindings);
         # Set the new bindings
-        let This' = This.modify.tvarBindings (bs: thunkFmap bs (bs: bs // bindings)); in
-        # Rebuild the type to reflect that it may inherit from the new bindings, or have attributes that
-        # depend upon them.
-        if (U.isNull This'.rebuild)
-          then This'
-          else This'.rebuild (This'.tvarBindings {});
+        let 
+          castBindings = mapAttrs This.castBinding bindings;
+          This' = This.modify.tvarBindings (bs: thunkFmap bs (bs: bs // castBindings));
+        in
+          # Rebuild the type to reflect that it may inherit from the new bindings, or have attributes that
+          # depend upon them.
+          if (U.isNull This'.rebuild)
+            then This'
+            else This'.rebuild (This'.tvarBindings {});
 
       # Is That the same type as This?
       eq = This: That: U.typeEq This That;
@@ -1751,7 +1761,7 @@ let
           # This can use U.Constraint, because we have U.Type
           # U.Constraint uses SU.Fields, which subtype an (SU.OrderedOf_ SU.Field) bound template.
           # That bound template uses SU.Constraint.
-          tvars = mapAttrs (_: T: SU.Constraint.new (SU.TypeThunk.new T)) tvars_;
+          tvars = mapAttrs (_: T: SU.Constraint T) tvars_;
           voidBindings = mapAttrs (_: _: U.Void) tvars;
 
           # Construct a new args set with the given bindings and rebuild function.
@@ -2411,10 +2421,16 @@ let
 
         Constraint = mkTypeShim "Constraint" {
           fields = [{constraintType = TypeThunk;}];
-          new = x:
-            let get = { constraintType = U.TypeThunk.new x; }; in
+          new = T:
+            let get = { constraintType = U.TypeThunk.new T; }; in
             mkInstanceShim Constraint get {
-              satisfiedBy = _: true;
+              # Cast the given type variable according to the constraint.
+              # Only do so if it doesn't already satisfy i.e. don't try to cast Void, Union, All, etc.
+              cast = that:
+                if (U.isTypeSet that && U.typeEq U.Void that)
+                   || (U.isTypeSet T && T.check that)
+                then U.mkCastSuccess that "ConstraintShim.cast no-op"
+                else U.cast T that;
             };
         };
 
@@ -2464,7 +2480,7 @@ let
           overrideCheck = that: U.isNull T || T.check that;
         };
 
-        Union = Ts: mkTypeShim "Union<${toString (Literal Ts)}>" {
+        Union = T: mkTypeShim "Union<${toString T}>" {
           getName = _: "Union";
         };
 
@@ -2658,15 +2674,13 @@ let
         });
 
         # A type satisfied by any value of the given list of types.
-        # TODO: Constraint cast Ts = List
-        Union_ = Type.template "Union" {Ts = Type;} (_: {
+        Union = Type.template "Union" {T = List;} (_: {
           ctor = U.Ctors.None;
-          overrideCheck = that: any (T: U.isType T that) (_.Ts.getLiteral {});
+          overrideCheck = that: any (T: U.isType T that) (_.T.getValue {});
         });
-        Union = Ts: Union { Ts = Literal Ts; };
 
         # A value or T or Null.
-        NullOr = T: Union ["null" Null T];
+        NullOr = T: Union [Null T];
 
         # A type indicating a default field type and value.
         # TODO: Constraint cast V = Literal
@@ -2696,7 +2710,7 @@ let
             thunk = Lambda (_: x);
           });
           methods = {
-            __functor = this: self: _: self.thunk {};
+            __implements__functor = this: self: _: self.thunk {};
           };
           checkValue = resolvesWith (U.isType _.T);
         });
@@ -2882,18 +2896,24 @@ let
         ### Independent (Only ever accessed as e.g. SU.Constraint) 
 
         # A constraint on a type variable.
-        Constraint = Type.new "Constraint" {
-          fields = This: Fields.new [
+        Constraint = Type "Constraint" {
+          ctor = Ctor "Contraint.ctor" (This: T: {
+            constraintType = TypeThunk T;
+          });
+          fields = This: Fields [
             { constraintType = TypeThunk; }
           ];
           methods = {
-            # Whether a given type variable binding satisfies the constraint.
-            # If the constraint is unbound, we treat as satisfied, but instantiating the unbound type
-            # will throw an error.
-            satisfiedBy = this: That:
-              U.typeEq Void That
-              || That.isInstance (this.constraintType {})
-              || (this.constraintType {}).check That;
+            # Cast the given type variable according to the constraint.
+            # Only do so if it doesn't already satisfy i.e. don't try to cast Void, Union, All, etc.
+            cast = this: that:
+              let
+                T = this.constraintType {};
+              in
+                if (U.isTypeSet that && Void.eq that)
+                   || (U.isTypeSet T && T.check that)
+              then U.mkCastSuccess that "Constraint.cast no-op"
+              else U.cast T that;
           };
         };
 
@@ -2989,7 +3009,6 @@ let
       in U;
   };
 
-  # nix eval --impure --expr '(import ./cutils/types.nix {})._tests'
   _tests =
     with collective-lib.tests;
     with lib;  # lib == untyped default pkgs.lib throughout __tests
@@ -4033,6 +4052,17 @@ with Types.Universe.U_1;
 
 <nix>
 Types.Universe.U_2
+</nix>
+
+<nix>
+let
+  script-utils = import ../../../pkgs/script-utils { inherit pkgs lib collective-lib; };
+in
+  script-utils.log-utils._tests.run
+</nix>
+
+<nix>
+Union 1
 </nix>
 
 <nix>

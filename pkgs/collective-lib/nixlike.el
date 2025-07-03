@@ -3,9 +3,10 @@
 ;;; (load-file "nixlike.el")
 
 (defcustom
-  collective-public-dir
-  "~/collective/collective-public"
-  "The absolute path of the directory of the collective-public repository.")
+  collective-dir
+  "~/collective"
+  ;;"~/collective/collective-public"
+  "The absolute path of the directory of the collective or collective-public repository.")
 
 (defcustom
   nixlike-nix-executable
@@ -264,7 +265,7 @@
    inherit lib; \
    inherit collective-lib; \
    }"
-          collective-public-dir
+          collective-dir
           v
           (nixlike-enable-partial-trace v)
           (nixlike-enable-verbose-trace v)))
