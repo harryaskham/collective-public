@@ -226,7 +226,7 @@ in rec {
   #
   # t == ''
   #   someFn() {
-  #     __CUTILS_START_INDENT__
+  #     __COLLECTIVE_LIB_START_INDENT__
   # line1
   # myFn() {
   #   line2
@@ -551,7 +551,7 @@ in rec {
       float = expect.eq (toShellValue 123.3) "123.300000";
       typed =
         with typed;
-        let A = Type.new "A" {
+        let A = Type "A" {
           methods = {
             __implements__toShellValue = this: self: "A-shell";
           };

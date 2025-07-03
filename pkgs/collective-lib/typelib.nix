@@ -839,6 +839,8 @@ let
       {checkValue = maybeNulled U.opts SU (SU.Default (SU.NullOr SU.Lambda) SU.Nil);}
       # If set, ignore all other checks and use this check function only.
       {overrideCheck = maybeNulled U.opts SU (SU.Default (SU.NullOr SU.Lambda) SU.Nil);}
+      # If set, use this lambda of (bindings: This') to rebuild the type after binding a type variable.
+      {rebuild = maybeNulled U.opts SU (SU.Default (SU.NullOr SU.Lambda) SU.Nil);}
     ];
 
     # We need to be very careful here to only access U from sites that are
@@ -921,15 +923,20 @@ let
             ${indent.here msg}
           '');
       in
-      assert checks [
+      assert errors.checks [
         {
           name = "bindSolo: tvar ${tvarName} exists on ${log.print This}";
           cond = tvars ? ${tvarName};
           msg = "Type ${This.getName {}} does not have type variable ${tvarName}";
         }
         {
+          name = "bindSolo: tvarBinding ${tvarName} exists on ${log.print This}";
+          cond = tvarBindings ? ${tvarName};
+          msg = "Type ${This.getName {}} does not have a tvarBinding ${tvarName} (either Void or defined)";
+        }
+        {
           name = "bindSolo: tvar ${tvarName} not already bound";
-          cond = !(tvarBindings ? ${tvarName});
+          cond = U.Void.eq tvarBindings.${tvarName};
           msg = "Type ${This.getName {}} already has type variable ${tvarName} bound to ${tvarBindings.${tvarName}}";
         }
       ];
@@ -937,7 +944,7 @@ let
         C = tvars.${tvarName};
         TSatC = C.satisfiedBy T;
       in
-        assert checks [
+        assert errors.checks [
           {
             name = "bindSolo: ${log.print T} satisfies constraint: ${tvarName} = ${log.print C}";
             cond = C.satisfiedBy T;
@@ -951,10 +958,14 @@ let
       # TODO: TypeVar object plus bootstraps
       # e.g. ListOf.bind { T = Int; } == ListOf<Int>
       bind = This: bindings:
-        assert (all.attrs This.checkBinding bindings);
-        # Return a modified Type with the tvar bound to T.
-        This.modify.tvarBindings (bs: thunkFmap bs (bs: bs // bindings));
-
+        assert (collective-lib.collections.all.attrs This.checkBinding bindings);
+        # Set the new bindings
+        let This' = This.modify.tvarBindings (bs: thunkFmap bs (bs: bs // bindings)); in
+        # Rebuild the type to reflect that it may inherit from the new bindings, or have attributes that
+        # depend upon them.
+        if (U.isNull This'.rebuild)
+          then This'
+          else This'.rebuild (This'.tvarBindings {});
 
       # Is That the same type as This?
       eq = This: That: U.typeEq This That;
@@ -1027,12 +1038,18 @@ let
         U.__newTemplate This bindingsToSuper name tvars_ bindingsToArgs_;
 
       # True iff we have a tvarbinding for every tvar.
-      isFullyBound = This: _: empty (This.getUnboundTvars {})
+      isFullyBound = This: _: empty (This.getUnboundTvars {});
 
       # A list of the unbound tvars
       # TODO: Arbitrary ordering here, convert tvars to canonical list.
-      unboundTvars = This: _:
-        removeAttrs (This.tvars {}) [attrNames (This.tvarBindings {})];
+      getUnboundTvars = This: _:
+        let 
+          tvars = This.tvars {};
+          tvarBindings = This.tvarBindings {};
+        in
+          filterAttrs 
+            (tvarName: _: U.Void.eq tvarBindings.${tvarName})
+            tvars;
 
       ### __implements: Converted to e.g. __toString upon binding
 
@@ -1055,11 +1072,11 @@ let
         if This.isFullyBound {}
           then This.new arg
 
-        else if isUntypedAttrs arg
-          then This.bind arg;
+        else if U.isUntypedAttrs arg
+          then This.bind arg
         
         else
-          let tvarSolos = solos (This.unboundTvars {});
+          let tvarSolos = solos (This.getUnboundTvars {});
               tvarName = soloName (head tvarSolos);
           in This.bind { ${tvarName} = arg; };
     };
@@ -1088,6 +1105,7 @@ let
       tvarBindings = LazyAttrs {};
       checkValue = SU.Nil;
       overrideCheck = SU.Nil;
+      rebuild = SU.Nil;
     };
 
     mkInstantiation = SU: U: rec {
@@ -1596,6 +1614,7 @@ let
           tvarBindings = maybeLazyAttrs (args.tvarBindings or {});
           checkValue = args.checkValue or null;
           overrideCheck = args.overrideCheck or null;
+          rebuild = args.rebuild or null;
         });
       };
     };
@@ -1636,8 +1655,8 @@ let
       #     this inherited ctor will not produce valid argument sets for consumption by mkInstance.
       #     One can manually call the super ctor when constructing a new ctor by:
       #     (This.Super.do (T: T.ctor.bind This)) args
-      inheritFrom = Super: ctorArgs:
-        with U.call 3 "inheritFrom" Super ctorArgs ___;
+      inheritFrom = Super: name: ctorArgs:
+        with U.call 3 "inheritFrom" Super name ctorArgs ___;
         assert check "U.isTypeSet Super"
           (U.isTypeSet Super)
           "inheritFrom: Super must be a Type, got ${log.print Super}";
@@ -1647,8 +1666,12 @@ let
           # If __Super is already set on ctorArgs, defer to this.
           # This should be overridden with caution; this enables TypeThunk's __Super
           # to be a shim, such that TypeThunk does not contain field values of type TypeThunk.
-          # Uses SU.TypeThunk, because TypeThunk relies on inheritFrom of (ThunkOf Type).
-          __Super = ctorArgs.__Super or (SU.TypeThunk.new Super);
+          # Uses SU.TypeThunk as a special case for TypeThunk, because TypeThunk relies on inheritFrom of (ThunkOf Type).
+          # This means TypeThunk's __Super is a shim in U_1.
+          __Super = ctorArgs.__Super or (
+            if U.string name == "TypeThunk"
+              then SU.TypeThunk Super
+              else U.TypeThunk Super);
 
           # Override or inherit the ctor
           # TODO: Merge, or make super() available
@@ -1695,11 +1718,14 @@ let
               ${log.print This}
           '');
         with safety true;
-        return (U.Type.new name (inheritFrom This args));
+        return (U.Type.new name (inheritFrom This name args));
 
       # Create a new template of a type accepting type parameters.
       # The parameters can be accessed via the _ argument surrounding the type specification.
-      # Returns a function from {bindings} to a new bound type.
+      # We can't instantiate the type until we get bindings, since we inherit from
+      # the bindings in the general case.
+      # For now we end up inheriting from Void e.g. ListOf<T> -> ListOf<Void> until bound,
+      # and we rebuild to e.g. ListOf<Int>.
       #
       # e.g.
       # MyInt = Int.subType "MyInt" {};
@@ -1719,63 +1745,47 @@ let
       # For example:
       # ListOfSetOf = newSubTemplateOf (_: ListOf (SetOf T)) "ListOfSetOf" { T = Type; } (_: { ... });
       # (ListOfSetOf {T = Int}).new [{x = 123;}]; typechecks
-      __newTemplate =
-        This: bindingsToSuperOrSuper: name: tvars_: bindingsToArgs_:
+      __newTemplate = This: bindingsToSuperOrSuper: name: tvars_: bindingsToArgs_:
         let
           # Convert the given tvars into a SetOf Constraints
           # This can use U.Constraint, because we have U.Type
           # U.Constraint uses SU.Fields, which subtype an (SU.OrderedOf_ SU.Field) bound template.
           # That bound template uses SU.Constraint.
           tvars = mapAttrs (_: T: SU.Constraint.new (SU.TypeThunk.new T)) tvars_;
+          voidBindings = mapAttrs (_: _: U.Void) tvars;
 
-          # Convert the given (_: {...}) type template definition into one that
-          # explicitly extends args with tvars and tvarBindings
-          bindingsToArgs = tvarBindings:
-            let args = bindingsToArgs_ tvarBindings;
-            in args // {
-              # Set the tvars to exactly those given.
-              tvars = LazyAttrs tvars;
-              tvarBindings = LazyAttrs tvarBindings;
-            };
-        in
-          # No supertype; just create a new type with unbound args.
-          # 'This' goes unused here. MyString.template is not meaningful vs Type.template.
-          if bindingsToSuperOrSuper == null
-            then
-              { bind = bindings:
-                  # TODO: constraints skipped here
-                  let args = bindingsToArgs bindings;
-                  in U.Type.new name args;
-              }
+          # Construct a new args set with the given bindings and rebuild function.
+          mkArgsWithRebuild = bindings: rebuild: bindingsToArgs_ bindings // {
+            tvars = LazyAttrs tvars;
+            tvarBindings = LazyAttrs bindings;
+            inherit rebuild;
+          };
+          mkVoidArgsWithRebuild = mkArgsWithRebuild voidBindings;
 
-          # Rigid supertype; just create a new subtemplate.
-          else if U.isTypeSet bindingsToSuperOrSuper
-            then
-              { bind = bindings:
-                  let args = bindingsToArgs bindings;
-                      # TODO: constraints skipped here
-                      Super = bindingsToSuperOrSuper;
-                  in Super.subType name args;
-              }
+          # Homogenise so that we always have a (bindings: Super/null) function to work with in rebuild.
+          bindingsToSuper =
+            if U.isNull bindingsToSuperOrSuper then
+              _: null
+            else if U.isTypeSet bindingsToSuperOrSuper then 
+              let Super = bindingsToSuperOrSuper;
+              in _: Super
+            else
+              assert assertMsg (U.isFunction bindingsToSuperOrSuper) ''
+                __newTemplate: bindingsToSuperOrSuper must be a Type or function returning a Type, got:
+                ${log.print bindingsToSuperOrSuper}
+              '';
+              bindingsToSuperOrSuper;
 
-          else
-            assert assertMsg (U.isFunction bindingsToSuperOrSuper) ''
-              __newTemplate: bindingsToSuperOrSuper must be a Type or function returning a Type, got:
-              ${log.print bindingsToSuperOrSuper}
-            '';
-
-            # We can't instantiate the type until we get bindings, since we inherit from
-            # the bindings in the general case.
-            # For now we just return a bind thunk that requires full-boundedness
-            # before instantiating.
-            # TODO: A Template type with static bind method
-            { bind = bindings:
-                let Super = bindingsToSuperOrSuper bindings;
-                    # TODO: constraints skipped here
-                    args = bindingsToArgs bindings;
-                    T = Super.subType name args;
-                  in T;
-            };
+          # rebuild recursively carries the ability to reconstruct the type from its current bindings.
+          # Danger - any other modifications to the type not reflected in its original args will be lost.
+          rebuild = bindings:
+            let Super = bindingsToSuper bindings;
+                args = mkArgsWithRebuild bindings rebuild;
+            in if U.isNull Super 
+              then U.Type.new name args
+              else Super.subType name args;
+        in 
+          rebuild voidBindings;
 
       # Create a new template with no inheritance.
       newTemplate = This: name: tvars: bindingsToArgs:
@@ -2148,8 +2158,8 @@ let
               __isTypeSet = mkValueShim "Bool" true;
               __Super = mkValueShim "Null" null;
               name = mkValueShim "String" name;
-              tvars = LazyAttrs {};
-              tvarBindings = LazyAttrs {};
+              tvars = attrs.tvars or LazyAttrs {};
+              tvarBindings = attrs.tvarBindings or LazyAttrs {};
               ctor = { bind = _: attrs.new or throw "Shim type '${name}' has no 'new' fn"; };
               # Field/Fields must be extra-shimmed to avoid recursion when shimming Fields itself.
               fields = mkValueShim "Lambda" (_: rec { 
@@ -2204,6 +2214,8 @@ let
         BuiltinOf = T: mkTypeShim "BuiltinOf<${T}>" rec {
           getName = _: "BuiltinOf";
           fields = [{value = T;}];
+          tvars = LazyAttrs { T = Type; };
+          tvarBindings = LazyAttrs { inherit T; };
           new = x:
             let strictGet = { value = x; }; in
             mkInstanceShim (BuiltinOf T) strictGet {};
@@ -2261,6 +2273,8 @@ let
         # with U == SU == Quasiverse.
         OrderedItem = T: mkTypeShim "OrderedItem" {
           fields = [{value = Sized 1 (SetOf T);}];
+          tvars = LazyAttrs { T = Any; };
+          tvarBindings = LazyAttrs { inherit T; };
           new = x:
             let setOf = (SetOf T).new x;
                 sized = (Sized 1 (SetOf T)).new setOf;
@@ -2274,6 +2288,8 @@ let
 
         OrderedOf = T: mkTypeShim "OrderedOf<${toString T}>" {
           fields = [{value = ListOf (OrderedItem T);}];
+          tvars = LazyAttrs { T = Any; };
+          tvarBindings = LazyAttrs { inherit T; };
           new = xs:
             let listOf = (ListOf (OrderedItem T)).new (map (OrderedItem T).new (solos xs));
                 get = listOf.strictGet; in
@@ -2351,6 +2367,8 @@ let
 
         ThunkOf = T: mkTypeShim "ThunkOf<${toString T}>" rec {
           fields = [{thunk = Lambda;}];
+          tvars = LazyAttrs { T = Any; };
+          tvarBindings = LazyAttrs { inherit T; };
           getName = _: "ThunkOf";
           new = x:
             let get = { thunk = Lambda.new (_: x); }; in
@@ -2371,6 +2389,8 @@ let
 
         SetOf = T: mkTypeShim "SetOf<${toString T}>" {
           fields = [{value = SetOf T;}];
+          tvars = LazyAttrs { T = Any; };
+          tvarBindings = LazyAttrs { inherit T; };
           getName = _: "SetOf";
           new = x:
             let set = Set.new x;
@@ -2380,6 +2400,8 @@ let
 
         ListOf = T: mkTypeShim "ListOf<${toString T}>" {
           fields = [{value = ListOf T;}];
+          tvars = LazyAttrs { T = Any; };
+          tvarBindings = LazyAttrs { inherit T; };
           getName = _: "ListOf";
           new = x:
             let list = U.List.new x;
@@ -2398,6 +2420,8 @@ let
 
         Literal = V: mkTypeShim "Literal<${log.print V}>" {
           fields = [{value = V;}];
+          tvars = LazyAttrs { V = Any; };
+          tvarBindings = LazyAttrs { inherit V; };
           getName = _: "Literal";
           new = _:
             let get = {}; in
@@ -2409,6 +2433,8 @@ let
 
         Sized = n: T: mkTypeShim "Sized<${toString (Literal n)}, ${toString T}>" {
           fields = [{getSized = T;}];
+          tvars = LazyAttrs { N = Any; T = Any; };
+          tvarBindings = LazyAttrs { N = Literal n; inherit T; };
           getName = _: "Sized";
           new = x:
             let get = { getSized = x; }; in
@@ -2421,11 +2447,15 @@ let
         Void = mkTypeShim "Void" {};
 
         Static = T: mkTypeShim "Static<${toString T}>" { 
+          tvars = LazyAttrs { T = Any; };
+          tvarBindings = LazyAttrs { inherit T; };
           getName = _: "Static";
           staticType = _: T;
         };
 
         Default = T: V: mkTypeShim "Default<${toString T}, ${toString (Literal V)}>" {
+          tvars = LazyAttrs { T = Any; V = Any; };
+          tvarBindings = LazyAttrs { inherit T; V = Literal V; };
           getName = _: "Default";
           defaultType = _: T;
           defaultValue = _: V;
@@ -2515,10 +2545,9 @@ let
 
         AnyBuiltin = SU.Union SU.builtinNames;
 
-        BuiltinOf_ = Type.template "BuiltinOf" { T = AnyBuiltin; } (_: {
+        BuiltinOf = Type.template "BuiltinOf" { T = AnyBuiltin; } (_: {
           fields = This: SU.Fields.new [{ value = _.T; }];
         });
-        BuiltinOf = T: BuiltinOf_.bind { inherit T; };
 
         mkBuiltinType = name:
           let
@@ -2620,31 +2649,27 @@ let
         ### Field Types
 
         # A type inhabited by only one value.
-        Literal_ = Type.template "Literal" {V = Any;} (_: rec {
+        Literal = Type.template "Literal" {V = Any;} (_: rec {
           ctor = U.Ctors.CtorNullary;
           staticMethods = {
-            getLiteral = This: __: _.V;
+            of = This: v: (Literal v).new {};
+            getLiteral = This: unused: _.V;
           };
         });
-        Literal = V: Literal_.bind { inherit V; };
-        literal = v: (Literal v).new {};
 
         # A type satisfied by any value of the given list of types.
+        # TODO: Constraint cast Ts = List
         Union_ = Type.template "Union" {Ts = Type;} (_: {
           ctor = U.Ctors.None;
           overrideCheck = that: any (T: U.isType T that) (_.Ts.getLiteral {});
         });
-        Union = Tlist:
-          let Ts = Literal Tlist;
-          in Union_.bind {inherit Ts;};
-
-        # A type inhabited by literals of any of the given list of values
-        Literals = Vs: Union (map Literal Vs);
+        Union = Ts: Union { Ts = Literal Ts; };
 
         # A value or T or Null.
         NullOr = T: Union ["null" Null T];
 
         # A type indicating a default field type and value.
+        # TODO: Constraint cast V = Literal
         Default_ = Type.template "Default" {T = Type; V = Type;} (_: {
           ctor = U.Ctors.None;
           staticMethods = {
@@ -2653,22 +2678,19 @@ let
           };
           overrideCheck = that: U.isNull _.T || _.T.check that;
         });
-        Default = T: v:
-          let V = Literal v;
-          in Default_.bind { inherit T V; };
+        Default = T: V: Default_ { inherit T; V = Literal V; };
 
         # A type indicating a static field type.
-        Static_ = Type.template "Static" {T = Type;} (_: {
+        Static = Type.template "Static" {T = Type;} (_: {
           ctor = U.Ctors.None;
           staticMethods = {
             staticType = This: thunk _.T;
           };
         });
-        Static = T: Static_.bind {inherit T;};
 
         ### Components
 
-        ThunkOf_ = Type.template "ThunkOf" {T = Type;} (_: {
+        ThunkOf = Type.template "ThunkOf" {T = Type;} (_: {
           fields = This: SU.Fields.new [{ thunk = Lambda; }];
           ctor = Ctor.new "CtorThunkOf" (This: x: {
             thunk = Lambda (_: x);
@@ -2678,28 +2700,26 @@ let
           };
           checkValue = resolvesWith (U.isType _.T);
         });
-        ThunkOf = T: ThunkOf_.bind { inherit T; };
 
         TypeThunk = (ThunkOf Type).subType "TypeThunk" {
           methods.__isTypeThunk = this: _: true;
         };
 
         # Subtype of List that enforces homogeneity of element types.
-        ListOf_ = List.subTemplate "ListOf" {T = Type;} (_: {
+        ListOf = List.subTemplate "ListOf" {T = Type;} (_: {
           checkValue = that: all (x: U.isType _.T x) (that.getValue {});
         });
-        ListOf = T: ListOf_.bind { inherit T; };
 
         # Subtype of Set that enforces homogeneity of value types.
         # TODO: Cast doesn't occur deeply
         # e.g. SetOf Lambda {a = _: 123;} fails
         # e.g. SetOf Lambda {a = Lambda (_: 123);} succeeds
-        SetOf_ = Set.subTemplate "SetOf" {T = Type;} (_: {
+        SetOf = Set.subTemplate "SetOf" {T = Type;} (_: {
           checkValue = that: all (x: U.isType _.T x) (that.values {});
         });
-        SetOf = T: SetOf_.bind { inherit T; };
 
         # A type that enforces a size on the value.
+        # TODO: Constraint cast N = Literal, T = Implements Size
         Sized_ = Type.template "Sized" {N = Type; T = Type;} (_: {
           fields = This: SU.Fields.new [{ getSized = _.T; }];
           checkValue = that:
@@ -2708,14 +2728,14 @@ let
         });
         Sized = n: T:
           let N = Literal n;
-          in Sized_.bind { inherit N T; };
+          in Sized_ { inherit N T; };
 
         # An attribute set with attributes zero-indexed by their definition order.
         # xs = Ordered.new [ {c = 1;} {b = 2;} {a = 3;} ];
         # xs.value == { a = 1; b = 2; c = 3; } (arbitrary order)
         # xs.names == [ "c" "b" "a" ] (in order of definition)
         # xs.values == [ 1 2 3 ] (in order of definition)
-        OrderedItem_ = Type.template "OrderedItem" { T = Type; } (_: {
+        OrderedItem = Type.template "OrderedItem" { T = Type; } (_: {
           # TODO: Could be a unary cast, or inherit from Sized 1 (SetOf T)
           ctor = Ctor.new "CtorOrderedItem" (This: x: {
             value =
@@ -2734,9 +2754,8 @@ let
             getValue = this: _: soloValue (this.getSolo {});
           };
         });
-        OrderedItem = T: OrderedItem_.bind { inherit T; };
 
-        OrderedOf_ = Type.subTemplateOf (_: ListOf (OrderedItem _.T)) "OrderedOf" {T = Type;} (_: {
+        OrderedOf = Type.subTemplateOf (_: ListOf (OrderedItem _.T)) "OrderedOf" {T = Type;} (_: {
           ctor = Ctor.new "CtorOrderedOf" (This: xs:
             # Pass OrderedItems to the underlying ListOf
             (ListOf (OrderedItem _.T)).ctor.bind
@@ -2776,7 +2795,6 @@ let
                 (size (that.names {}) == size (that.indexed {}))
                 "Duplicate keys in OrderedOf: ${joinSep ", " (that.names {})}");
         });
-        OrderedOf = T: OrderedOf_.bind { inherit T; };
 
         # Either:
         # (Field.new "myField" Int
@@ -2965,7 +2983,7 @@ let
         Implements_ = Type.template "Implements" { C = Class; } (_: {
           overrideCheck = That: _.C.implementedByType That;
         });
-        Implements = C: Implements_.bind { inherit C; };
+        Implements = C: Implements_ { inherit C; };
       });
 
       in U;
@@ -3846,6 +3864,7 @@ let
                   overrideCheck = null;
                   tvars = LazyAttrs {};
                   tvarBindings = LazyAttrs {};
+                  rebuild = null;
                 };
           };
         });
@@ -3913,6 +3932,9 @@ let
 (setq nixlike-default-nix-variant 'nix)
 (setq nixlike-default-nix-variant 'tvix)
 
+(setq nixlike-kill-repl-after-eval nil)
+(setq nixlike-kill-repl-after-eval t)
+
 (setq nixlike-default-mode 'shell)
 (setq nixlike-default-mode 'repl)
 
@@ -3937,7 +3959,7 @@ assert log.trace.over [(log.short 123)];
 </nix>
 
 <nix>
-Types.Universe.U_2.Any
+Types.Universe.U_0.Any
 </nix>
 
 <nix>
@@ -3998,7 +4020,10 @@ collective-lib._tests.run
 </nix>
 
 <nix>
-collective-lib._testsUntyped.debug
+collective-lib._testsUntyped.run
+</nix>
+<nix>
+collective-lib._testsUntyped.run
 </nix>
 
 <nix>

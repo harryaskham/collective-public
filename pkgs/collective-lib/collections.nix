@@ -98,49 +98,24 @@ in rec {
   # Centraliser for 'all'
   # Exposes lib.lists.all by default, otherwise uses fold.*._1 structure.
   # Uses structure of global merged fold._1.left
-  all = {
-    __functor = self: self.list;
-    list = lib.lists.all;
-    attrs = pred: collective-lib.fold.attrs.left (acc: k: v: acc && pred k v) true;
-    solos = pred: collective-lib.fold.solos.left (acc: k: v: acc && pred k v) true;
-  };
-  # // (
-  #all = {
-  #  __functor = self: lib.lists.all;
-  #} // (
-  #  deepConcatMapCond
-  #    # Don't use fold1 variants, treat specs as leaves.
-  #    (k: v: k != "_1" && !isFoldSpec v)
-  #    (k: v:
-  #      # Take the left fold for handling unary/binary folds like fold vs fold.solo.left
-  #      if k == "left" && isFoldSpec v then
-  #      # Replace e.g. fold.solos with pred: fold.solos.left (acc && ... ) in all.solos pred
-  #        (pred: 
-  #          v.left 
-  #            (acc: x0:
-  #              dispatch.def
-  #                (ex: "all.${k}: predicate returned non-bool/lambda (${log.print ex} of type ${lib.typeOf ex})")
-  #                {
-  #                  # If the predicate is unary, regular 'all'
-  #                  bool = px0: acc && px0;
-  #                  # If the predicate is binary, expect another argument
-  #                  # Handles e.g. pred k v for fold attrs / solos.
-  #                  lambda = pred': x1:
-  #                    dispatch.def
-  #                      (ex: "all.${k}: binary predicate returned non-bool (${log.print ex} of type ${lib.typeOf ex})")
-  #                      {
-  #                        bool = px01: acc && px01;
-  #                      } (pred' x1);
-  #                } (pred x0)
-  #            )
-  #            true
-  #            xs
-  #        )
-  #      else
-  #        # Discard the rest.
-  #        {})
-  #    collective-lib.fold);
-
+  all = 
+    (concatMapAttrs 
+      (k: foldType: 
+      if elem k ["__functor" "_1" "left" "right"] then {}
+      else { 
+        ${k} = p: xs: 
+          foldType.left
+            (acc: x: 
+              let px = p x;
+              in if isBool px then acc && px
+              else y: let pxy = px y; in acc && pxy)
+            true
+            xs;
+      })
+      collective-lib.fold
+      ) // {
+        __functor = self: self.list;
+      };
 
   _tests = with collective-lib.tests; suite {
     collection = {

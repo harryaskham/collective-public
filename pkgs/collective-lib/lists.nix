@@ -47,42 +47,52 @@ in rec {
 
   isFoldSpec = xs: xs.__isFoldSpec or false;
 
-  fold = {
+  fold = rec {
     __functor = self: self.left;
+    inherit (list) left right;
 
-    left = mkFoldSpec rec {
-      __mkF = id;
-      __mkList = id;
-      __functor = self: foldl';
-    };
-
-    right = mkFoldSpec rec {
-      __mkF = id;
-      __mkList = id;
-      __functor = self: foldr;
-    };
-
-    _1 = {
+    list = {
       __functor = self: self.left;
 
-      # Left-fold f over x with initial value (head xs).
-      # Throws if the list is empty.
       left = mkFoldSpec rec {
         __mkF = id;
         __mkList = id;
-        __functor = self: f: xs:
-          if (length xs == 0) then throw "fold._1.left: empty list"
-          else fold.left f (head xs) (tail xs);
+        __functor = self: foldl';
       };
 
-      # Right-fold f over x with initial value (head xs).
-      # Throws if the list is empty.
       right = mkFoldSpec rec {
         __mkF = id;
         __mkList = id;
-        __functor = self: f: xs:
-          if (length xs == 0) then throw "fold._1.right: empty list"
-          else fold.right f (head xs) (tail xs);
+        __functor = self: foldr;
+      };
+    };
+
+    _1 = rec {
+      __functor = self: self.left;
+      inherit (list) left right;
+
+      list = {
+        __functor = self: self.left;
+
+        # Left-fold f over x with initial value (head xs).
+        # Throws if the list is empty.
+        left = mkFoldSpec rec {
+          __mkF = id;
+          __mkList = id;
+          __functor = self: f: xs:
+            if (length xs == 0) then throw "fold._1.left: empty list"
+            else fold.left f (head xs) (tail xs);
+        };
+
+        # Right-fold f over x with initial value (head xs).
+        # Throws if the list is empty.
+        right = mkFoldSpec rec {
+          __mkF = id;
+          __mkList = id;
+          __functor = self: f: xs:
+            if (length xs == 0) then throw "fold._1.right: empty list"
+            else fold.right f (head xs) (tail xs);
+        };
       };
     };
   };
