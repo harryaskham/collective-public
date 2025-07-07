@@ -83,10 +83,10 @@ let
                    segment = detectedCycle; }
             else null;
         in
-          traceValSeq (args.cycles // rec {
+          args.cycles // rec {
             revPath = revPath';
             cycle = cycle';
-          });
+          };
     };
 
     compactBlock = args: braceL: braceR: px:
@@ -173,9 +173,12 @@ let
 
     # print x using a function of the default print options
     printWith = f: x: indent.block (print_ (f defPrintArgs) x);
-    print = printWith id;
+    print = printSafe;
     printSafe = printWith (args: args // prints.using.safe);
+    printUnsafe = printWith id;
     vprintD = n: printWith (args: args // prints.using.raw // prints.using.depth n // prints.using.safe);
+    vprintUnsafe = printWith (args: args // prints.using.raw);
+    vprintDUnsafe = n: printWith (args: args // prints.using.raw // prints.using.depth n);
     prints = rec {
       ___ = collective-lib.functions.___;
       put = x: Variadic.mkSetFromThen defPrintArgs (args: print_ args x);
@@ -205,7 +208,7 @@ let
       _depth = using.depth;
       _mask = using.mask;
     };
-    vprint = x: with prints; put x using.raw ___;
+    vprint = x: with prints; put x using.raw using.safe ___;
 
     # Either print to string using __show if it exists, or return an already-string
     hasShow = x: (x ? __show) && (isFunction x.__show);

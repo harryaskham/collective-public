@@ -48,7 +48,7 @@ in rec {
       if hasToString this then toString this
       else throw (indent.block ''
         Error occurred treating this as string:
-          ${indent.here (log.print this)}
+          ${indent.here (log.vprint this)}
       '');
 
     # Resolve thunks in the expr and expected.
@@ -82,7 +82,7 @@ in rec {
       in go 0 this;
 
     # Compare test outputs only on their canonical stringified form.
-    Print = this: log.print this;
+    Print = this: log.vprintUnsafe this;
   };
 
   # Detect a raw test object
@@ -146,7 +146,7 @@ in rec {
     valueEq = eqOn (this: 
       assert assertMsg (this ? getValue) (indent.block ''
         expect.valueEq: No getValue on this
-          ${indent.here (log.print this)}
+          ${indent.here (log.vprint this)}
         '');
       this.getValue {}
     );
@@ -176,6 +176,7 @@ in rec {
   runOneTest = test: results_:
     with (log.v 1).test test.name results_ ___;
     return rec {
+      inherit test;
       evalStatus =
         if test.skip then EvalStatus.Skipped
         else if isTryEvalFailure results_ then EvalStatus.Error
@@ -211,7 +212,7 @@ in rec {
                   ${msg}: ${indent.here (log.print result)}
                   ${optionalString (status == Status.Failed) ''
                   Diff:
-                    ${indent.here (log.vprintD 9 (diffShort test.expected result))}
+                    ${indent.here (log.vprintDUnsafe 9 (diffShort test.expected result))}
                   ''}
                 '';
             };
@@ -224,7 +225,7 @@ in rec {
             let errorResult =
                   # TODO: Redundant check
                   assert assertMsg (isTryEvalFailure results)
-                    "Eval error handled without being a tryEval failure: ${log.print results}";
+                    "Eval error handled without being a tryEval failure: ${log.vprintUnsafe results}";
                   results;
             in mkActual "ERROR" errorResult
 
@@ -246,10 +247,10 @@ in rec {
 
           Expected:
             ${indent.here (indent.blocks [
-                (log.print test.rawExpected)
+                (log.vprintUnsafe test.rawExpected)
                 (optionalString (test.compare != null) (indent.lines [
                   "Comparing on:"
-                  (log.print test.expected)
+                  (with log.prints; put test.rawExpected _raw ___)
                 ]))
             ])}
 
@@ -276,7 +277,7 @@ in rec {
   _t = x:
     if isAttrs x then mkTest "_t" x
     else if isFunction x then exhaust (mkTest "_t") x
-    else throw "Invalid test argument (expected test attrset or function): ${log.print x}";
+    else throw "Invalid test argument (expected test attrset or function): ${log.vprintUnsafe x}";
 
   # Create a test attribute set adding extra functionality to a runTests-style
   # test of format { expr = ...; expected = ...; }
@@ -398,6 +399,7 @@ in rec {
           mapAttrs
             (statusName: _: joinLines (map (result: result.msg) byStatus.${statusName}))
             Status;
+        failedTestNamesBlock = joinLines (map (result: "FAIL: ${result.test.name}") byStatus.Failed);
         maybeDebugAfterRun =
           optionalString (debugOnFailure && counts.Failed > 0) debug;
 
@@ -405,9 +407,8 @@ in rec {
         header
         headers.Skipped
         msgs.Skipped
-        headers.Passed
-        msgs.Passed
-        headers.Failed
+        (indent.blocks [headers.Passed msgs.Passed])
+        (indent.blocks [headers.Failed failedTestNamesBlock])
         msgs.Failed
         maybeDebugAfterRun
       ];
