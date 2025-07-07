@@ -3,7 +3,7 @@
   traceLevel ? 0,
   enablePartialTrace ? false,
   enableVerboseTrace ? false,
-  traceShort ? false,
+  traceShort ? true,
   ... }:
 
 let

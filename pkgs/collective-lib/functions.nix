@@ -272,57 +272,71 @@ in rec {
     mkArgNames = names: Variadic (argNames names);
 
     # Expect arguments to be passed as single values in the order provided
-    ordered = fieldOrder: {
-      initialState = {
-        inherit fieldOrder;
-        args = {};
-      };
-      isTerminal = state: _: state.fieldOrder == [];
-      handle = state: x:
-        let ht = maybeSnoc state.fieldOrder;
-         in if ht == null then state
-         else state // {
-           fieldOrder = ht.tail;
-           args =
-             assert assertMsg (isString ht.head) ''
-               Variadic.mkOrdered: expected a string field name, got ${typeOf ht.head}: ${log.print ht.head}
-               fieldOrder: ${log.print state.fieldOrder}
-             '';
-             state.args // { ${ht.head} = x; };
-         };
-      terminate = state: _: state.args;
-    };
-    mkOrdered = fieldOrder: if fieldOrder == [] then {} else Variadic (ordered fieldOrder);
+    mkOrderedThen_ = f: allowPartial: fieldOrder:
+      Variadic.compose
+        (xs:
+          let xs' =
+            mergeAttrsList
+              (zipListsWith
+                (name: value: { ${name} = value; })
+                fieldOrder
+                xs);
+          in f xs')
+        (if allowPartial then mkListOfMaxLength (length fieldOrder)
+         else mkListOfLength (length fieldOrder));
+
+    # Variadic function that accepts exactly the given field names in the order provided.
+    mkOrdered = mkOrderedThen_ id false;
+    mkOrderedThen = f: mkOrderedThen_ f false;
+
+    # Variadic function that accepts the given field names in the order provided,
+    # but allows for early termination via ___ in which case the remaining fields
+    # are not set in the resulting attrset.
+    mkOrderedPartial = mkOrderedThen_ id true;
+    mkOrderedPartialThen = f: mkOrderedThen_ f true;
 
     # Expect a single argument to be embedded within an attrset with the given name.
-    unary = fieldName: ordered [fieldName];
-    mkUnary = fieldName: Variadic (unary fieldName);
+    mkUnary = fieldName: mkOrdered [fieldName];
 
     # Accrue arguments into a list until one satisfies isTerminal.
-    # Run f on the final list.
-    listThen_ = f: isTerminal: {
+    # includeFinal is a function of (partial list) -> (most recent arg) -> bool
+    list = includeFinal: isTerminal: {
       inherit isTerminal;
       initialState = { xs = []; };
       handle = state: x: 
-        if isTerminal state x
-        then state
-        else { xs = [x] ++ state.xs; };
-      terminate = state: x: f (reverseList state.xs) x;
+        if !(isTerminal state x) || includeFinal state x
+          then { xs = [x] ++ state.xs; }
+          else state;
+      terminate = state: x: reverseList state.xs;
     };
-    mkListThenWithFinalArg_ = f: isTerminal: Variadic (listThen_ f isTerminal);
-    mkListThen_ = f: isTerminal: mkListThenWithFinalArg_ (xs: arg: f xs) isTerminal;
-    mkListThen = f: mkListThen_ f (_: x: x == ___);
+    isTerminator = _: x: x == ___;
+    # mkListThen_ discards the final arg; f is now only a function of the final list.
+    mkList_ = includeFinal: isTerminal: Variadic (list includeFinal isTerminal);
 
     # Accrue arguments into a list until the end-marker is encountered.
-    mkList = mkListThen_ id (_: x: x == ___);
+    mkListExclusive = mkList_ (_: _: false);
+    mkListInclusive = mkList_ (_: _: true);
+    mkList = mkListExclusive isTerminator;
 
-    # Accrue arguments into a list until the given size is met
-    mkListOfLength = l: 
-      Variadic 
-        ((listThen_ (xs: _: xs) (state: _: (length state.xs) == l)) // {
-          handle = state: x: { xs = [x] ++ state.xs; };
-        });
-    
+    # Accrue until the terminator and then apply f to the list.
+    mkListThen_ = f: isTerminal: Variadic.compose f (mkListExclusive isTerminal);
+    mkListThen = f: mkListThen_ f isTerminator;
+
+    # Accrue arguments into a list until the given size is met.
+    mkListOfLength = n: 
+      let spec = list (_: _: true) (state: _: (length state.xs) == n);
+      in Variadic (spec // {
+        handle = state: x:
+          assert assertMsg (x != ___) "mkListOfLength: got ___";
+          spec.handle state x;
+      });
+
+    # Accrue arguments into a list until the given size is met or the end marker is returned
+    mkListOfMaxLength = n:
+      let includeFinal = state: x: x != ___;
+          isTerminal = state: x: length state.xs == n || x == ___;
+      in mkList_ includeFinal isTerminal;
+
     # Accrue a list of function arguments then compose them
     mkListCompose_ = isTerminal: mkListThen_ (foldl' compose id) isTerminal;
     mkListCompose = mkListCompose_ (_: x: x == ___);
@@ -394,17 +408,35 @@ in rec {
       };
 
       ordered = {
-        _0 = {
-          expr = Variadic.mkOrdered [];
-          expected = {};
+        noPartial = {
+          _0 = expect.eq (Variadic.mkOrdered []) {};
+          _1 = expect.eq ((Variadic.mkOrdered ["a"]) 1) {a = 1;};
+          _2.full = expect.eq ((Variadic.mkOrdered ["a" "b"]) 1 2) {a = 1; b = 2;};
+          _2.partial = expect.isLambda ((Variadic.mkOrdered ["a" "b"]) 1);
+          _2.early = expect.error ((Variadic.mkOrdered ["a" "b"]) 1 ___);
         };
-        _1 = {
-          expr = (Variadic.mkOrdered ["a"] ) 1;
-          expected = { a = 1; };
+        noPartialThen = {
+          _0 = expect.eq (Variadic.mkOrderedThen attrValues []) [];
+          _1 = expect.eq ((Variadic.mkOrderedThen attrValues ["a"]) 1) [1];
+          _2.full = expect.eq ((Variadic.mkOrderedThen attrValues ["a" "b"]) 1 2) [1 2];
+          _2.partial = expect.isLambda ((Variadic.mkOrderedThen attrValues ["a" "b"]) 1);
+          _2.early = expect.error ((Variadic.mkOrderedThen attrValues ["a" "b"]) 1 ___);
         };
-        _2 = {
-          expr = (Variadic.mkOrdered ["a" "b"]) 1 2;
-          expected = { a = 1; b = 2; };
+        partial = {
+          _0 = expect.eq (Variadic.mkOrderedPartial []) {};
+          _1 = expect.eq ((Variadic.mkOrderedPartial ["a"]) 1) {a = 1;};
+          _2.full = expect.eq ((Variadic.mkOrderedPartial ["a" "b"]) 1 2) {a = 1; b = 2;};
+          _2.partial = expect.isLambda ((Variadic.mkOrderedPartial ["a" "b"]) 1);
+          _2.early = expect.eq ((Variadic.mkOrderedPartial ["a" "b"]) 1 ___) {a = 1;};
+          _2.veryEarly = expect.eq ((Variadic.mkOrderedPartial ["a" "b"]) ___) {};
+        };
+        partialThen = {
+          _0 = expect.eq (Variadic.mkOrderedPartialThen attrValues []) [];
+          _1 = expect.eq ((Variadic.mkOrderedPartialThen attrValues ["a"]) 1) [1];
+          _2.full = expect.eq ((Variadic.mkOrderedPartialThen attrValues ["a" "b"]) 1 2) [1 2];
+          _2.partial = expect.isLambda ((Variadic.mkOrderedPartialThen attrValues ["a" "b"]) 1);
+          _2.early = expect.eq ((Variadic.mkOrderedPartialThen attrValues ["a" "b"]) 1 ___) [1];
+          _2.veryEarly = expect.eq ((Variadic.mkOrderedPartialThen attrValues ["a" "b"]) ___) [];
         };
       };
 
@@ -467,18 +499,21 @@ in rec {
       };
 
       list = {
-        expr = Variadic.mkList 1 2 3 ___;
-        expected = [ 1 2 3 ];
-      };
-
-      listOfLength = {
-        partial = {
-          expr = typeOf ((Variadic.mkListOfLength 3) 1 2);
-          expected = "lambda";
+        default = {
+          empty = expect.eq (Variadic.mkList ___) [];
+          partial = expect.isLambda ((Variadic.mkList) 1 2);
+          full = expect.eq ((Variadic.mkList) 1 2 3 ___) [1 2 3];
         };
-        full = {
-          expr = (Variadic.mkListOfLength 3) 1 2 3;
-          expected = [1 2 3];
+        ofLength = {
+          empty = expect.eq (Variadic.mkListOfLength 0) [];
+          partial = expect.isLambda ((Variadic.mkListOfLength 3) 1 2);
+          early = expect.error ((Variadic.mkListOfLength 3) 1 2 ___);
+          full = expect.eq ((Variadic.mkListOfLength 3) 1 2 3) [1 2 3];
+        };
+        ofMaxLength = {
+          partial = expect.isLambda ((Variadic.mkListOfMaxLength 3) 1 2);
+          early = expect.eq ((Variadic.mkListOfMaxLength 3) 1 2 ___) [1 2];
+          full = expect.eq ((Variadic.mkListOfMaxLength 3) 1 2 3) [1 2 3];
         };
       };
 
@@ -632,6 +667,7 @@ in rec {
           "Thunk >-> set";
         do = expect.eq (thunkDo (Thunk 123) (x: x+1)) 124;
         fmap = expect.eq (resolve (thunkFmap (Thunk 123) (x: x+1))) 124;
+        fmapRetainsThunk = expect.True (isThunkSet (thunkFmap (Thunk 123) (x: x+1)));
       };
 
       fjoin = {

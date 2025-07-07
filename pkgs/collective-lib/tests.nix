@@ -137,6 +137,8 @@ in rec {
 
     stringEq = eqOn Compare.String;
 
+    isLambda = x: eqOn typeOf x anyLambda;
+
     fieldsEq = eqOn Compare.Fields;
 
     noLambdasEq = eqOn Compare.NoLambdas;

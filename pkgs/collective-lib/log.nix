@@ -233,10 +233,15 @@ let
             safe = false;
           };
 
+          # Short-circuit if tracing is disabled.
+          enableTrace = traceLevel != null && (level <= traceLevel) || traceShort;
+
           # log.trace.show [ 456 { a = 2; }] 123
           # -> trace: [ 456 { a = 2; }]
           # 123
           show = xOrTraceAtF: a:
+            if !enableTrace then a else
+
             if isTraceAt xOrTraceAtF
               then let f = xOrTraceAtF; in f a
             else if typelib.isFunctionNotFunctor xOrTraceAtF
@@ -270,10 +275,11 @@ let
                 lambda = id;
                 list = fs: composeMany (map maybeShow fs);
               };
-          over = fs:
+
+          over =
             # Short-circuit if tracing is disabled.
-            if level > traceLevel && !traceShort then true
-            else assert overNoAssert fs true; true;
+            if enableTrace then (fs: assert overNoAssert fs true; true)
+            else const true;
 
           # Trace over the given fs only if intermediate tracing is enabled.
           overPartial =
@@ -363,6 +369,7 @@ let
               mkGroupClosure = logState: logState // rec {
                 # Store an arbitrary list of events and rebuild the closure.
                 # Also perform an assertion over the updated state, which can perform logging.
+                # The assertion is always run even if tracing is disabled to enable checks.
                 __withEventsAssert = events: assertion:
                   let
                     logState' = mkGroupClosure (logState // {
@@ -376,6 +383,7 @@ let
                 # Also perform an assertion over the updated state, which can perform logging.
                 # Returns a modified state, under application of f (i.e. for storing any extra 'with' context)
                 # which has its bindings rebuilt.
+                # The assertion is always run even if tracing is disabled to enable checks.
                 __withEventsAssertWith = events: assertion: f:
                   let logState = __withEventsAssert events assertion;
                   in mkGroupClosure (f logState);
@@ -383,6 +391,7 @@ let
                 # Store an arbitrary list of events and rebuild the closure.
                 # Also perform an assertion over the updated state, which can perform logging.
                 # Discard the state in favor of returning x
+                # The assertion is always run even if tracing is disabled to enable checks.
                 __withEventsAssertReturning = events: assertion: x:
                   seq (__withEventsAssert events assertion) x;
 
@@ -599,7 +608,6 @@ let
                   with logState;
                   assert (over [
                     (tagged "START:${groupType}:${groupName}" initialState.events)
-                    #(short {start = groupType; name = groupName;})
                   ]);
                   logState)
                 groupBuilder;

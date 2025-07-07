@@ -532,9 +532,12 @@ let
             ["a" "b"];
         resolves.value = expect.eq (resolve (LazyAttrs {a = 123;})) {a = 123;};
         resolves.throw = expect.error (resolve (LazyAttrs {a = throw "no";}));
+        fmap.retains = expect.True (isLazyAttrs (thunkFmap (LazyAttrs {a = 123;}) (xs: xs // {a = xs.a + 1;})));
+        fmap.resolves = expect.eq (resolve (thunkFmap (LazyAttrs {a = 123;}) (xs: xs // {a = xs.a + 1;}))) { a = 124; };
       };
     };
 
   };
-in 
+in
+  # <nix>attrsets._tests.run</nix>
   attrsets
