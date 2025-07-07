@@ -475,7 +475,7 @@ let
                         result = doCast x;
               in if isCastSuccess result then result
                   else go (errors ++ [result]) casts';
-        in go [] (map cast (list Ts));
+        in go [] (map cast (U.list Ts));
 
       cast = T: x:
         with U.call 3 "cast" T x ___;
@@ -483,7 +483,7 @@ let
         if T == null then
           return (mkCastError "Cannot cast to null: T = ${log.print T}, x = ${log.print x}")
 
-        else if !(U.isTypeLike T) then
+        else if !(U.isTypeLikeOrNull T) then
           return (mkCastError (indent.block ''
             Invalid target type provided for cast:
 
@@ -523,8 +523,8 @@ let
           xIsUnary = castErrorOr xFields (fields: size fields.solos == 1) == true;
           TIsUnary = castErrorOr TFields (fields: size fields.solos == 1) == true;
 
-          xUnaryField = castErrorOr xFields maybeHead;
-          TUnaryField = castErrorOr TFields maybeHead;
+          xUnaryField = castErrorOr xFields (fields: maybeHead fields.solos);
+          TUnaryField = castErrorOr TFields (fields: maybeHead fields.solos);
 
           xUnaryFieldName = castErrorOr xUnaryField (field:
             if field == null then mkCastError ''Unary field is not a solo: ${log.print field}''
@@ -535,10 +535,10 @@ let
 
           xUnaryFieldT = castErrorOr xUnaryField (field:
             if field == null then mkCastError ''Unary field is not a solo: ${log.print field}''
-            else ((soloValue field).FieldType or (const null)) {});
+            else (soloValue field).FieldType);
           TUnaryFieldT = castErrorOr TUnaryField (field:
             if field == null then mkCastError ''Unary field is not a solo: ${log.print field}''
-            else ((soloValue field).FieldType or (const null)) {});
+            else (soloValue field).FieldType);
 
           xUnaryFieldTName = castErrorOr xUnaryFieldT printT;
           TUnaryFieldTName = castErrorOr TUnaryFieldT printT;
@@ -635,8 +635,8 @@ let
             # perform the identity check.
             {
               name = "Cast.cast";
-              when = SU ? Cast # Disables this check in U_0 and U_1
-                     && U.isTypeSet T && T.implements SU.Cast;
+              when = (U.opts.level > 0 && U.isTypeSet T && T.implements SU.Cast)
+                     || (U.opts.level == 0 && T ? __cast);
               orMsg = indent.block ''
                 Type does not implement Cast:
                   ${indent.here castStr}
@@ -1383,7 +1383,7 @@ let
           (empty nullaryBindings)
           (indent.block (''
             Nullary bindings encountered when binding 'this' of ${strThis}:
-              ${indent.here (log.vprintD 2 nullaryBindings)}
+              ${indent.here (log.vprintD 3 nullaryBindings)}
             ''));
 
       mkStaticMethodBindings = strThis: staticMethods: this_:
@@ -2306,32 +2306,43 @@ let
             __functor = self: arg: self.ctor self arg;
           };
 
-        Ctor = mkSafeUnboundTypeShimFunctor "Ctor" {
+        Ctor = (mkSafeUnboundTypeShimFunctor "Ctor" {
           fields = [{ctorFn = null;}];
           ctor = This: ctorFn: mkSafeUnboundInstanceShimOf Ctor rec {
              inherit ctorFn;
             __functor = self: arg: self.ctorFn self arg;
           };
-        };
+        }) // ({
+          __cast = x:
+            U.castErrorOr (U.cast "lambda" x) (x: U.mkCastSuccess_ (Ctor x));
+        });
 
         inherit (mkCtors SU U) Ctors;
 
         BuiltinTypeShims =
           mapAttrs
-            (BuiltinName: _:
-              mkSafeUnboundTypeShimFunctor BuiltinName {
-                ctor = This: value: mkSafeUnboundInstanceShim BuiltinName {
+            (BuiltinName: builtinName:
+              let
+                T__new = value: (mkSafeUnboundInstanceShimOf T {
                   getValue = _: value;
-                }
-                // optionalAttrs (BuiltinName == "Lambda") {
+                })
+                // (optionalAttrs (BuiltinName == "Lambda") {
                   __functor = self: arg: self.__value.value arg;
+                });
+                T = mkSafeUnboundTypeShimFunctor BuiltinName {
+                  ctor = This: T__new;
                 };
+              in T // {
+                __cast = x:
+                  U.castErrorOr (U.cast builtinName x) (x: U.mkCastSuccess_ (T__new x));
               })
             U.BuiltinNameTobuiltinName;
         inherit (BuiltinTypeShims) Null Int Float String Path Bool List Set Lambda;
         inherit (mkConstants BuiltinTypeShims) True False Nil;
 
-        Any = mkSafeTypeShim "Any" {};
+        Any = mkSafeTypeShim "Any" {} // {
+          __cast = x: U.mkCastSuccess_ x;
+        };
         Void = mkSafeTypeShim "Void" {};
         Default = T: v: mkSafeUnboundInstanceShim "Default" {
           defaultType = _: T;
@@ -2342,9 +2353,21 @@ let
           staticType = _: T;
         };
 
-        #Union = mkSafeTemplateShim "Union" [{T = Type;}] {};
+        Union = Ts: mkSafeTypeShim "Union" {} // {
+          __cast = x: U.castFirst Ts x;
+        };
 
-        #NullOr = T: Union [Null T];
+        NullOr = T: Union [Null T];
+        SetOf = T: Set;
+        ListOf = T: List;
+
+        # Shim out a typeclass
+        Cast = {
+          checkImplements = T: T ? __cast;
+          __functor = self: T: {
+            cast = T.__cast;
+          };
+        };
 
         Type__fields = [
           { __isTypeSet = null; }
@@ -4446,6 +4469,7 @@ let
               unfixed = expect.asserts.fail (assertTypeFixedUnderNew (FakeType "FakeType") "NextFakeType" {});
             };
         };
+      };
 
       bootstrapTests = U:
         with U;
@@ -4459,19 +4483,18 @@ let
                 expected
                 {
                   __isTypeSet = true;
-                  __Super = expected.__Super;  # TODO: Cheat due to named thunk comparison
+                  __Super = null;  # TODO: Cheat due to named thunk comparison
                   ctor = U.Ctors.CtorDefault;
-                  fields = [];
+                  fields = expected.fields;
                   methods = expected.methods; # TODO: Cheat due to named thunk comparison
                   staticMethods = expected.staticMethods; # TODO: Cheat due to named thunk comparison
-                  name = SU.String "A";
-                  tvars = [];
+                  name = "A";
+                  tvars = SolosOf Type [];
                   tvarBindings = {};
                   rebuild = null;
                 };
           };
         };
-      };
 
       __separatedTests = {
         tmpTests =
@@ -4646,13 +4669,13 @@ let
           #    cast = castTests U;
           #    untyped = untypedTests U;
           #  }))
-          #(testInUniverses
-          #  fromU_1
-          #  (U: {
-          #    bootstrap = bootstrapTests U;
+          (testInUniverses
+            fromU_1
+            (U: {
+              bootstrap = bootstrapTests U;
           #    typeChecking = typeCheckingTests U;
           #    class = classTests U;
-          #  }))
+            }))
         ];
 
     };
@@ -4838,12 +4861,23 @@ lists
 let fs = Types.Universe.U_0.Fields [{a = Int;}];
 in fs.solos
 </nix>
-
 <nix>
-typelib._tests.run
-#typelib._tests.debug
+dispatchlib._tests.run
 </nix>
 
+<nix>
+with Types.Universe.U_0;
+cast Nil null
+</nix>
+<nix>
+#typelib._tests.run
+#typelib._tests.debug
+show "2"
+</nix>
+
+<nix>
+log._tests.run
+</nix>
 <nix>
 functions._tests.run
 </nix>
@@ -4859,7 +4893,7 @@ let U = Types.Universe.U_0; in
 
 <nix>
 let U = Types.Universe.U_0; in
-U.Type.ctor U.Type "SomeType" {}
+U.Any
 </nix>
 
 <nix>

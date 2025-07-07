@@ -4,6 +4,16 @@ with lib;
 
 # Misc library fns
 rec {
+  simpleEnum = name: unitValues: mapAttrs (k: _: "${name}__${k}") unitValues;
+
+  # Module utils
+  ConfigType = simpleEnum "ConfigType" {
+    HomeManager = {};
+    NixOS = {};
+    NixDarwin = {};
+    NixOnDroid = {};
+  };
+
   # Options factories
   mkEnum = (values: desc: mkOption {
     type = types.enum values;

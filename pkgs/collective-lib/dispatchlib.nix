@@ -101,6 +101,50 @@ in rec {
     };
   };
 
+  # Constant dispatch.
+  #
+  # Examples:
+  #
+  # f = x: switch x {
+  #   a = "got a";
+  #   b = "got b";
+  # };
+  # f "a" == "got a"
+  # f "b" == "got b"
+  # f "c" => throws error
+  #
+  # f = x: switch.on (x: x.name) x {
+  #   a = "got a";
+  #   b = "got b";
+  # };
+  # f {name = "a";} == "got a"
+  # f {name = "b";} == "got b"
+  # f {name = "c";} => throws error
+  # f "a" => throws error
+  #
+  # f = x: switch.def "no key" x {
+  #   a = "got a";
+  #   b = "got b";
+  # };
+  # f "a" == "got a"
+  # f "b" == "got b"
+  # f "c" => "no key"
+  switch = {
+    __functor = self: self.on id;
+    def = {
+      __functor = self: self.on id;
+      on = getValue: defaultV: x: dict:
+        dispatch.def.on getValue (const defaultV) (mapAttrs (_: value: _: value) dict) x;
+    };
+    on = getValue: x: dict:
+      let defaultV = throw ''
+        Unsupported value in switch.
+        Expected: ${joinSep ", " (attrNames dict)}
+        Got ${lib.typeOf x} of value: ${with log.prints; put x _safe ___}
+      '';
+      in switch.def.on getValue defaultV x dict;
+  };
+
   ### Polymorphic functions
 
   # Polymorphic map.
@@ -172,6 +216,26 @@ in rec {
   _tests =
     with collective-lib.tests;
     suite {
+      dispatch = {
+        present = expect.eq (dispatch { int = x: x + 1; } 3) 4;
+        absent = expect.error (dispatch { int = x: x + 1; } "str");
+        def.present = expect.eq (dispatch.def (x: x - 1) { int = x: x + 1; } 3) 4;
+        def.absent = expect.eq (dispatch.def (x: x - 1) { int = x: x + 1; } 7.0) 6.0;
+        on.present = expect.eq (dispatch.on (x: "_${toString (size x)}") { _1 = x: x.a; } { a = 1; }) 1;
+        on.absent = expect.error (dispatch.on (x: "_${toString (size x)}") { _1 = x: x.a; } { a = 1; b = 2; });
+        def.on.present = expect.eq (dispatch.def.on (x: "_${toString (size x)}") (x: x.b) { _1 = x: x.a; } { a = 1; }) 1;
+        def.on.absent = expect.eq (dispatch.def.on (x: "_${toString (size x)}") (x: x.b) { _1 = x: x.a; } { a = 1; b = 2; }) 2;
+      };
+      switch = {
+        present = expect.eq (switch "ok" { ok = "good"; }) "good";
+        absent = expect.error (switch "no" { ok = "good"; });
+        on.present = expect.eq (switch.on (x: "_${toString (size x)}") "ok" { _2 = "good"; }) "good";
+        on.absent = expect.error (switch.on (x: "_${toString (size x)}") "bad" { _2 = "good"; });
+        def.present = expect.eq (switch.def "mid" "ok" { ok = "good"; }) "good";
+        def.absent = expect.eq (switch.def "mid" "bad" { ok = "good"; }) "mid";
+        def.on.present = expect.eq (switch.def.on (x: "_${toString (size x)}") "mid" "ok" { _2 = "good"; }) "good";
+        def.on.absent = expect.eq (switch.def.on (x: "_${toString (size x)}") "mid" "bad" { _2 = "good"; }) "mid";
+      };
       deepMap = {
         deepMap = {
           expr = deepMap (x: x + 1) { a = 1; b = [2 3]; c = { d = 4; }; };

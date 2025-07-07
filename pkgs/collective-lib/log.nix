@@ -24,8 +24,12 @@ with collective-lib.strings;
 # Printing/logging utilities
 let
   typelib = collective-lib.typelib;
+  errors = collective-lib.errors;
   log = rec {
-    mkPrintArgs = {
+    defPrintArgs = {
+      # If true, all conversions happen under tryEval
+      printSafely = false;
+      # If true, print under deepseq
       printStrictly = false;
       # If true, do not respect __toString
       ignoreToString = false;
@@ -43,8 +47,47 @@ let
       # A set of attribute names to replace, with functions from the value
       # to replace to the string value to display instead.
       replaceAttrs = {};
+      # cycle detection
+      cycles = rec {
+        minLength = 5;
+        maxLength = 10;
+        revPath = [];
+        cycle = null;
+      };
     };
-    descend = args: args // { depth = args.depth + 1; };
+
+    descend = key: args: args // rec {
+      depth = args.depth + 1;
+      cycles =
+        let
+          revPath' = [key] ++ args.cycles.revPath;
+          # e.g. { "a.b.c" = {
+          #   # Index in the non-reversed path first seen at
+          #   index = 7;
+          #   # The segment of the path
+          #   segment = ["a" "b" "c"];}
+          # }
+          go = n:
+            if n > args.cycles.maxLength then null
+            else let segment = take n revPath';
+                     lastSegment = take n (drop n revPath');
+                 in if segment == lastSegment then segment
+                    else go (n + 1);
+          detectedCycle =
+            if length revPath' < (2 * args.cycles.minLength)
+            then null
+            else go args.cycles.minLength;
+          cycle' =
+            if args.cycles.cycle == null && detectedCycle != null
+            then { path = reverseList revPath';
+                   segment = detectedCycle; }
+            else null;
+        in
+          traceValSeq (args.cycles // rec {
+            revPath = revPath';
+            cycle = cycle';
+          });
+    };
 
     compactBlock = args: braceL: braceR: px:
       with args;
@@ -61,7 +104,7 @@ let
         let maybePrintValue = k: v:
               if replaceAttrs ? ${k}
               then let f = replaceAttrs.${k}; in f v
-              else print_ (descend args) v;
+              else print_ (descend k args) v;
         in formatBlock (
           let px = mapAttrsToList (k: v: "${k} = ${maybePrintValue k v};") x;
               pxLine = "{ ${head px} }";
@@ -74,14 +117,14 @@ let
               "}"
             ]);
 
-    printAttrs = xs: indent.block (printAttrs_ mkPrintArgs xs);
+    printAttrs = xs: indent.block (printAttrs_ defPrintArgs xs);
 
     printList_ = args: x:
       with args;
       if depth >= maxDepth then "..."
       else if x == [] then "[]"
       else
-        let px = map (print_ (descend args)) x;
+        let px = imap0 (i: print_ (descend i args)) x;
             pxLine = formatBlock "[ ${formatBlock (joinLines px)} ]";
         in
           if lineCount pxLine <= 1 then pxLine
@@ -92,7 +135,7 @@ let
             "]"
           ]);
 
-    printList = xs: indent.block (printList_ mkPrintArgs xs);
+    printList = xs: indent.block (printList_ defPrintArgs xs);
 
     # Add parens around a string only if it contains whitespace.
     maybeParen = x: if wordCount x <= 1 then x else "(${x})";
@@ -101,6 +144,12 @@ let
     print_ = args: x_:
       with args;
       let
+        safeWrapper =
+          if args.cycles.cycle != null then
+            _: "<LOOP: ${joinSep "." (map toString args.cycles.cycle.segment)}>"
+          else if printSafely then
+          value: errors.try value (_: "<eval error>")
+          else id;
         x = if printStrictly then strict x_ else x_;
         block =
           if depth >= maxDepth then "..."
@@ -120,19 +169,21 @@ let
             bool = boolToString x;
           }.${typeOf x};
       in
-        block;
+        safeWrapper block;
 
     # print x using a function of the default print options
-    printWith = f: x: indent.block (print_ (f mkPrintArgs) x);
+    printWith = f: x: indent.block (print_ (f defPrintArgs) x);
     print = printWith id;
-    vprintD = n: printWith (args: args // prints.using.raw // prints.using.depth n);
+    printSafe = printWith (args: args // prints.using.safe);
+    vprintD = n: printWith (args: args // prints.using.raw // prints.using.depth n // prints.using.safe);
     prints = rec {
       ___ = collective-lib.functions.___;
-      put = x: Variadic.mkSetFromThen mkPrintArgs (args: print_ args x);
+      put = x: Variadic.mkSetFromThen defPrintArgs (args: print_ args x);
       block = x: Variadic.composeFunctorsAreAttrs indent.block (put x);
       here = x: Variadic.composeFunctorsAreAttrs indent.here (put x);
       putD = n: x: put x (using.depth n);
       using = {
+        safe = { printSafely = true; };
         raw = { ignoreToString = true; ignoreShow = true; };
         strict = { printStrictly = true; };
         lazy = { printStrictly = false; };
@@ -146,6 +197,7 @@ let
             mergeAttrsList (map (name: v: "<masked: ${name}>") names);
         };
       };
+      _safe = using.safe;
       _raw = using.raw;
       _strict = using.strict;
       _lazy = using.lazy;
@@ -667,6 +719,44 @@ in log // {
     print = {
       string = expect.eq (log.print "abc") ''"abc"'';
       int = expect.eq (log.print 123) ''123'';
+      cycles.none = expect.eq (with log.prints; put { a = 123; } _line ___) "{ a = 123; }";
+      cycles.tooShort =
+        expect.eq
+          (with log.prints;
+            put { a = { a = { a = { a = { a = { a = { a = { a = { a = 123; }; }; }; }; }; }; }; }; } _line ___)
+          "{ a = { a = { a = { a = { a = { a = { a = { a = { a = 123; }; }; }; }; }; }; }; }; }";
+      cycles.falsePositive =
+        expect.eq
+          (with log.prints;
+            put { a = { a = { a = { a = { a = { a = { a = { a = { a = {a = 123; }; }; }; }; }; }; }; }; }; } _line ___)
+          "{ a = { a = { a = { a = { a = { a = { a = { a = { a = { a = <LOOP: a.a.a.a.a>; }; }; }; }; }; }; }; }; }; }";
+      cycles.trueCycle.aaa =
+        expect.eq
+          (with log.prints; put (let a = { a = { a = a; }; }; in a) _line ___)
+          "{ a = { a = { a = { a = { a = { a = { a = { a = { a = { a = <LOOP: a.a.a.a.a>; }; }; }; }; }; }; }; }; }; }";
+      cycles.trueCycle.aba =
+        expect.eq
+          (with log.prints; put rec { a = { b = { a = a; }; }; } _line ___)
+          "{ a = { b = { a = { b = { a = { b = { a = { b = { a = { b = { a = { b = <LOOP: b.a.b.a.b.a>; }; }; }; }; }; }; }; }; }; }; }; }";
+      cycles.trueCycle._000 =
+        expect.eq
+          (with log.prints; put (let a = [a]; in a) _line ___)
+          "[ [ [ [ [ [ [ [ [ [ <LOOP: 0.0.0.0.0> ] ] ] ] ] ] ] ] ] ]";
+      cycles.trueCycle.a1b2 =
+        expect.eq
+          (with log.prints; put rec { a = [ 0 { b = [ 0 1 a ]; } ]; } _line ___)
+          "{ a = [ 0 { b = [ 0 1 [ 0 { b = [ 0 1 [ 0 { b = [ 0 1 [ 0 { b = [ 0 1 <LOOP: 2.b.1.2.b.1> ]; } ] ]; } ] ]; } ] ]; } ]; }";
+      cycles.trueCycle.max =
+        expect.eq
+          (with log.prints;
+            put (let a = { a = { b = { c = {d = {e = {f = {g = {h = {i = {j =  a;};};};};};};};};};}; in a)  _line ___)
+          "{ a = { b = { c = { d = { e = { f = { g = { h = { i = { j = { a = { b = { c = { d = { e = { f = { g = { h = { i = { j = <LOOP: j.i.h.g.f.e.d.c.b.a>; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }";
+      cycles.trueCycle.tooLong =
+        expect.eq
+          (with log.prints;
+            put (let a = { a = { b = { c = {d = {e = {f = {g = {h = {i = {j = {k = a;};};};};};};};};};};}; in a)  _line ___)
+          # Undetected; falls back to ellipsis-at-20
+          "{ a = { b = { c = { d = { e = { f = { g = { h = { i = { j = { k = { a = { b = { c = { d = { e = { f = { g = { h = { i = ...; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }";
     };
 
     show = {
