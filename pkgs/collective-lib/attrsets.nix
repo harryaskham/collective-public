@@ -88,16 +88,16 @@ let
       assert assertMsg (size x == 1) "checkSolo: Expected exactly one attribute, got ${log.print x}";
       x;
 
-    isSolo = xs: tryBool (checkSolo xs);
+    isSolo = xs: isAttrs xs && size xs == 1;
 
     # true iff xs is a valid solo list.
-    isSolos = xs: tryBool (checkSolos xs);
+    isSolos = xs: all isSolo xs;
 
     # Throw if xs is not a valid solo list.
     # Cannot use mapSolo/filterSolo as they use this for typechecking.
     checkSolos = xs:
       let
-        nonSoloXs = filter (x: !isSolo x) xs;
+        nonSoloXs = filter (x: !(isSolo x)) xs;
         nonSoloXSizes = map size nonSoloXs;
         names = soloNames xs;
         nameToCountSolos = map (name: { ${name} = count (name_: name == name_) names; }) names;

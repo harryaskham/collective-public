@@ -12,9 +12,11 @@ with collective-lib.lists;
 with collective-lib.strings;
 
 # TODO:
+# - nix-in-nix via eval:
+#   - enables program transformation / quasiquoting(can get the argument names of functions)
+#   - can layer typechecking on in a zero-cost or one-cost way
 # - disallow null fields again
 # - do notation using variadic
-# - nix-in-nix via eval
 # - error/either monad
 # - methods chain by being functors
 # - Have the act of binding a field containing a typevar infer that typevar's value
@@ -94,6 +96,7 @@ let
   log = collective-lib.log;
   errors = collective-lib.errors;
   collections = collective-lib.collections;
+  dispatchlib = collective-lib.dispatchlib;
 
   Types =
     with lib;  # lib == untyped default pkgs.lib throughout Types
@@ -113,9 +116,21 @@ let
       ### logging wrappers
       mkLoggingWrapper = f: name: f name {inherit (U.opts) level;};
       call = v: mkLoggingWrapper (log.v v).call;
+      typedCall = v: mkLoggingWrapper (log.v v).typedCall;
       methodCall = v: This: mkLoggingWrapper ((log.v v).methodCall This);
       callSafe = v: mkLoggingWrapper (log.safe.v v).call;
       methodCallSafe = v: This: mkLoggingWrapper ((log.safe.v v).methodCall This);
+
+      ### warning wrappers
+      warnTyped = fname: x:
+        if isTyped x 
+        then with log.trace; msg "WARN: ${fname} over typed value ${with log.prints; put x _line ___}"
+        else x;
+      warnTyped1 = fname: f: a: f (warnTyped fname a);
+      warnTyped2 = fname: f: a: b: f a (warnTyped fname b);
+      mapAttrs = warnTyped2 "mapAttrs" lib.mapAttrs;
+      concatMapAttrs = warnTyped2 "concatMapAttrs" lib.concatMapAttrs;
+      mapAttrsToList = warnTyped2 "mapAttrsToList" lib.mapAttrsToList;
 
       ### naming workarounds
 
@@ -124,9 +139,9 @@ let
       elideName = name: if elem name unsafeNames then "ELIDED-${name}" else name;
       unelideName = replaceStrings ["ELIDED-"] [""];
 
-      elideNames = collective-lib.dispatchlib.deepMapNamesCond (k: k != "__Type") elideName;
+      elideNames = dispatchlib.deepMapNamesCond (k: k != "__Type") elideName;
 
-      unelideNames = collective-lib.dispatchlib.deepMapNamesCond (k: k != "__Type") unelideName;
+      unelideNames = dispatchlib.deepMapNamesCond (k: k != "__Type") unelideName;
 
       withElidedNames = xs: f:
         let xsElided = elideNames xs;
@@ -139,12 +154,14 @@ let
         if builtinName == "null" then "nil" else builtinName;
 
       BuiltinNameToUnwrapperSolo = 
-        mapAttrs 
+        mapAttrs
           (BuiltinName: builtinName: { 
-            ${unwrapperName builtinName} = dispatch.type.id {
-              ${builtinName} = id;
-              ${BuiltinName} = x: x.getValue {};
-            };
+            ${unwrapperName builtinName} = 
+              let unwrapByCast = x: SU.unwrapCastResult (SU.cast builtinName x);
+              in dispatch.type.id.def unwrapByCast {
+                ${builtinName} = id;
+                ${BuiltinName} = x: x.getValue {};
+              };
           })
         BuiltinNameTobuiltinName;
 
@@ -173,6 +190,9 @@ let
         } x;
 
       ### type utilities
+
+      # Get the Universe level of a type.
+      getLevel = T: int T.__level;
 
       # Check if a given argument is a Type in the Type system.
       # 'isType' collides with lib.isType.
@@ -306,16 +326,16 @@ let
           # Dispatch on __TypeId
           # Matches full bound name string
           id = {
-            __functor = self: collective-lib.dispatchlib.dispatch.on typeIdOf;
-            def = collective-lib.dispatchlib.dispatch.def.on typeIdOf;
+            __functor = self: dispatchlib.dispatch.on typeIdOf;
+            def = dispatchlib.dispatch.def.on typeIdOf;
           };
 
           # Dispatch on type name
           # Matches only the type name, not its bindings
           # i.e. can match any Union, not just Union<[Int Float]>
           name = {
-            __functor = self: collective-lib.dispatchlib.dispatch.on typeNameOf;
-            def = collective-lib.dispatchlib.dispatch.def.on typeNameOf;
+            __functor = self: dispatchlib.dispatch.on typeNameOf;
+            def = dispatchlib.dispatch.def.on typeNameOf;
           };
         };
       };
@@ -479,28 +499,28 @@ let
       # Unwrap a cast result to its value if successful, otherwise handle the error.
       unwrapCastResult = x: unwrapCastResultOr x id;
       unwrapCastResultOr = x: handleError:
-        assert assertMsg (isCastResult x) "unwrapCastResultOr: x is not a cast result";
-        if isCastSuccess x then x.castSuccess
-        else handleError x;
+        if isCastError x then handleError x
+        else if isCastSuccess x then unwrapCastResultOr x.castSuccess handleError
+        else x;
 
       # Return the first successful cast from the types given,
       # or the combined cast errors.
       castFirst = Ts: x: castFirstOr Ts x id;
       castFirstOr = Ts: x: handleError:
         assert assertMsg (nonEmpty Ts) "castFirstOr: no casts given";
-        let go = errors: casts:
-              if casts == [] then combineCastErrors errors
-              else let doCast = head casts;
-                        casts' = tail casts;
-                        result = doCast x;
-              in if isCastSuccess result then result
-                  else go (errors ++ [result]) casts';
-            result = go [] (map cast (U.list Ts));
+        let go = errors: castFns:
+              if castFns == [] then combineCastErrors errors
+              else let castFn = head castFns;
+                       castFns' = tail castFns;
+                       result = castFn x;
+              in if isCastError result then go (errors ++ [result]) castFns'
+              else wrapCastResult result;
+            result = go [] (map (T: a: castEither T a id id) (U.list Ts));
         in unwrapCastResultOr result handleError;
 
       cast = T: x: unwrapCastResult (castEither T x id id);
-      castEither = T: x: handleError: handleSuccess:
-        with U.call 3 "castEither" T x handleError handleSuccess ___;
+      castEither = T: x: handleSuccess: handleError:
+        with U.call 3 "castEither" T x handleSuccess handleError ___;
 
         if T == null then
           return (mkCastError "Cannot cast to null: T = ${log.print T}, x = ${log.print x}")
@@ -662,7 +682,7 @@ let
                 Type does not implement Cast:
                   ${indent.here castStr}
               '';
-              result = wrapCastResult ((SU.Cast T).cast x);
+              result = (SU.Cast T).cast x;
               failMsg = castErrorMsg: indent.block ''
                 Cast.cast failed for ${castStr}:
                   ${indent.here castErrorMsg}
@@ -686,7 +706,7 @@ let
               result = castErrorOr xUnaryFieldName (fieldName:
                 if !(x ? ${fieldName})
                 then mkCastError "x does not have detected unary field x.${fieldName} set"
-                else wrapCastResultWith (cast T x.${fieldName}) "Downcast from Unary succeeded");
+                else cast T x.${fieldName});
               failMsg = castErrorMsg: indent.block ''
                 Downcast failed from unary field ${xTName}.${xUnaryFieldName}: ${xUnaryFieldTName} -> ${TName}
 
@@ -695,7 +715,7 @@ let
               successMsg = castSuccessMsg: ''
                 Downcast succeeded from unary field ${xTName}.${xUnaryFieldName}: ${xUnaryFieldTName} -> ${TName}";
 
-                ${indent.here "Upcast success: ${castSuccessMsg}"}
+                ${indent.here "Downcast success: ${castSuccessMsg}"}
               '';
             }
 
@@ -712,11 +732,8 @@ let
                 '')
                 else
                   let xCast = cast TUnaryFieldT x;
-                  in if isCastError xCast then xCast
-                  else
-                    mkCastSuccess
-                      (T.mk { ${TUnaryFieldName} = xCast.castSuccess; })
-                      xCast.castSuccessMsg;
+                  in castErrorOr xCast (x':
+                    mkCastSuccess (T.mk { ${TUnaryFieldName} = x'; }) (xCast.castSuccessMsg or ""));
               failMsg = castErrorMsg: indent.block ''
                 Upcast failed to unary field ${TName}.${TUnaryFieldName}:
                   ${xTName} -> ${TUnaryFieldTName}
@@ -821,30 +838,25 @@ let
                 then let msgs' = msgs ++ [(getFailMsg castResult)]; in tryCasts msgs' casts'
 
               # Cast succeeded
-              else if isCastSuccess castResult.result
-                then
-                  let msgs' = msgs ++ [(getSuccessMsg castResult)];
-                  in
-                    mkCastSuccessWith.uncastValue x castResult.result.castSuccess (indent.block ''
-                      Cast succeeded: ${xTName} -> ${TName}
+              else 
+                let wrappedResult = castResult // { result = wrapCastResult castResult.result; };
+                    msgs' = msgs ++ [(getSuccessMsg wrappedResult)];
+                in
+                  mkCastSuccessWith.uncastValue x wrappedResult.result.castSuccess (indent.block ''
+                    Cast succeeded: ${xTName} -> ${TName}
 
-                      ${xTName} instance:
-                        ${indent.here (log.print x)}
+                    ${xTName} instance:
+                      ${indent.here (log.print x)}
 
-                      Attempted casts:
-                        ${indent.here (joinLines msgs')}
-                    '')
-              else
-                throw (indent.block ''
-                  Cast result is neither castSuccess nor castError (malformed 'casts = [ ... ]' entry?):
-                    ${indent.here (log.print castResult)}
-                '');
+                    Attempted casts:
+                      ${indent.here (joinLines msgs')}
+                  '');
 
             result = tryCasts [] casts;
         };
-        assert assertMsg (isCastResult result) "tryCasts: result is not a cast result";
         if isCastError result then handleError result
-        else handleSuccess result;
+        else if isCastSuccess result then handleSuccess result
+        else handleSuccess (wrapCastResultWith result "cast: success");
     };
 
     # "string" -> null
@@ -876,6 +888,8 @@ let
     mkTypeFieldSolosFor = SU: U: [
       # Indicates that this is a type. Should never be set manually.
       {__isTypeSet = maybeNulled U.opts SU (SU.Default SU.Bool SU.True);}
+      # The Universe level on which this type is created.
+      {__level = maybeNulled U.opts SU (SU.Default SU.Int (SU.Int U.level));}
       # The supertype of the type.
       {__Super = maybeNulled U.opts SU (SU.Default (SU.NullOr SU.TypeThunk) SU.Nil);}
       # The name of the type.
@@ -1188,6 +1202,7 @@ let
       # Set manually to enable mkInstance rather than newInstance
       __Type = SU.TypeThunk U.Type;
       __isTypeSet = true;
+      __level = U.opts.level;
       name = U.opts.typeName;
       __Super = null;
       ctor = U.Ctors.CtorType;
@@ -1306,49 +1321,55 @@ let
 
         #      field = ${here (print field)}
         #  '');
-        with lets { fieldHasType = field ? FieldType && !(U.isNull field.FieldType); };
+        with lets { 
+          allowUntyped = U.opts.allowUntypedFields field; 
+          fieldHasType = field ? FieldType && !(U.isNull field.FieldType);
+        };
         return (
           if fieldHasType then U.cast field.FieldType uncastValue
-          else if U.opts.allowUntypedFields then U.mkCastSuccess uncastValue "Untyped field ${fieldName}: no cast"
-          else with indent; throws ''
-            Got disallowed null field:
-              ${This.name}.${fieldName} = ${log.print field}
-          '');
+          else 
+            if allowUntyped
+              then U.mkCastSuccess uncastValue "Untyped field ${fieldName}: no cast"
+              else throw (indent.block ''
+                Got disallowed null field:
+                  ${This.name}.${fieldName} = ${log.print field}
+              ''));
 
       castFieldArgValue = This: args: fieldName: field:
         let
           uncastValue =
             args.${fieldName}
               or field.defaultValue
-              or (with indent; throws.block ''
+              or (throw (indent.block ''
                     Field ${fieldName} is not set in args and has no default value:
                       This = ${here (print This)}
                       args = ${here (print args)}
-                  '');
+                  ''));
         in castFieldValue This uncastValue fieldName field;
 
       # Make all field assignments on the instance
-      mkFieldAssignmentSolos = This: args:
-        with U.call 2 "mkFieldAssignments" This args ___;
-
-        with lets rec {
-          fieldCastSolos = This.fields.instanceFieldsWithType.fmap (castFieldArgValue This args);
-          partitioned = fieldCastSolos.partition (_: castResult: U.isCastSuccess castResult);
-          castErrorMsgs =
-            (partitioned.wrong.fmap (name: e: "${This}.${name}: ${e.castError}")
-            ).values;
-          fieldAssignmentsSolos =
-            partitioned.right.fmap (_: result: result.castSuccess);
-        };
-
-        assert check "Field assignment casts succeeded"
-          (empty castErrorMsgs)
-          (with indent; throws.block ''
-            Errors occurred casting field assignment values for ${This} fields:
-              ${here (blocks castErrorMsgs)}
-          '');
-
-        return fieldAssignmentsSolos;
+      mkFieldAssignmentSolos =
+        U.typedCall 2 "mkFieldAssignments" {This = U.Type;} {args = U.Set;} ___
+        (logState: This: args: with logState;
+          with lets rec {
+            fieldCastSolos = This.fields.instanceFieldsWithType.fmap (castFieldArgValue This args);
+            partitioned = fieldCastSolos.partition (_: castResult: U.isCastError castResult);
+            castErrorMsgs =
+              (partitioned.right.fmap (name: e: "${This}.${name}: ${e.castError}")
+              ).values;
+            fieldAssignmentsSolos =
+              partitioned.wrong.fmap (_: result: U.unwrapCastResult result);
+          };
+          assert checks [{
+            name = "Field assignment casts succeeded";
+            cond = empty castErrorMsgs;
+            msg = with indent; block ''
+              Errors occurred casting field assignment values for ${This} fields:
+                ${here (blocks castErrorMsgs)}
+            '';
+          }];
+          return fieldAssignmentsSolos
+        );
 
       # Accessors to include on all instances.
       # Where these need binding, they are bound similarly to methods s.t. methods can call
@@ -1423,13 +1444,13 @@ let
           bindings =
             mapAttrs
               (methodName: staticMethod: staticMethod this_)
-              staticMethods;
+              (U.set staticMethods);
         in
           assert checkNoNullaryBindings check strThis vstrThis bindings;
           return bindings;
 
       mkMethodBindings = strThis: vstrThis: methods: this_:
-        with U.call 3 "mkMethodBindings" strThis vstrThis "unsafe:this_" ___;
+        with U.call 3 "mkMethodBindings" strThis vstrThis methods "unsafe:this_" ___;
         let
           bindings =
             mapAttrs
@@ -1486,15 +1507,15 @@ let
                 this = ${log.vprint this}
             '');
             assert assertMsg (lib.isFunction this.__Type) (log.print this);
-            mkStaticMethodBindings strThis vstrThis ((this.__Type {}).staticMethods or {}) this_;
+            mkStaticMethodBindings strThis vstrThis (U.set ((this.__Type {}).staticMethods or {})) this_;
 
           # When creating Type via Type.new: binds 'new' to the new Type
           # When creating Bool via Type.new: this.staticMethods == Bool.staticMethods == {}
           # When creating bool via Bool.new: this ? staticMethods == false
           staticMethodBindings =
-            mkStaticMethodBindings strThis vstrThis (this.staticMethods or {}) this_;
+            mkStaticMethodBindings strThis vstrThis (U.set (this.staticMethods or {})) this_;
 
-          methodBindings = mkMethodBindings strThis vstrThis (This.methods or {}) this_;
+          methodBindings = mkMethodBindings strThis vstrThis (U.set (This.methods or {})) this_;
 
           accessorBindings = mkAccessorBindings This this_;
 
@@ -1599,7 +1620,7 @@ let
             thisFieldNames = intersectLists (attrNames this) allFieldNames;
             unknownFieldNames = subtractLists allFieldNames thisFieldNames;
             missingFieldNames = subtractLists thisFieldNames requiredFieldNames;
-            staticMethodNames = map elideImplementsPrefix (attrNames This.staticMethods);
+            staticMethodNames = map elideImplementsPrefix (attrNames (U.set This.staticMethods));
             thisStaticMethodNames = intersectLists (attrNames this) staticMethodNames;
             missingStaticMethodNames = subtractLists thisStaticMethodNames staticMethodNames;
             checks = [
@@ -1660,6 +1681,7 @@ let
         # SU.Ctor since stored top-level on Type.
         CtorType = This: name: args: {
           __isTypeSet = true;
+          __level = U.opts.level;
           __Super = args.__Super or null;
           inherit name;
           ctor = args.ctor or CtorDefault;
@@ -1732,10 +1754,10 @@ let
             else Super.fields;
 
           # Merge methods with Super's, overriding any named the same.
-          methods = Super.methods // (ctorArgs.methods or {});
+          methods = U.set Super.methods // (U.set (ctorArgs.methods or {}));
 
           # Merge methods with Super's, overriding any named the same.
-          staticMethods = Super.staticMethods // (ctorArgs.staticMethods or {});
+          staticMethods = U.set Super.staticMethods // (U.set (ctorArgs.staticMethods or {}));
         });
 
       # For a given type, create a new type in the same universe.
@@ -2027,14 +2049,14 @@ let
 
     # Lazily cascading options that disable typechecking at levels U_0 and U_1.
     # Options for the next universe can be produced via 'resolve opts.descend'.
-    mkUniverseOpts = level: rec {
+    mkUniverseOpts = U: level: rec {
       inherit level;
       name = "U_${toString level}";
       # Type is named identically at all levels.
       typeName = "Type";
       # Whether to allow 'null' to be used as an 'untyped' type.
       # Used in shims to break recursion.
-      allowUntypedFields = level == 0;
+      allowUntypedFields = field: U.getLevel (U.typeOf field) == 0;
       # TODO: not needed with shims being good
       # During the bootstrap, do not enable typechecking.
       # All fields have type 'null' and do not make use of builtin types
@@ -2058,7 +2080,7 @@ let
       # types themselves made of final typed elements.
       checkTypeFixedUnderNew = level >= 5;
       # A thunk returning the options for the next-lower subuniverse.
-      descend = NamedThunk "${name}.descend" (mkUniverseOpts (level + 1));
+      descend = SubU: NamedThunk "${name}.descend" (mkUniverseOpts SubU (level + 1));
     };
 
     # Make the "Type" Type in terms of the SU (and U, where safe)
@@ -2136,7 +2158,7 @@ let
       withCommonUniverseSelf rec {
         # Take on the intial options for a root universe.
         # All other opts are generated from here via 'resolve opts.descend'
-        opts = mkUniverseOpts 0;
+        opts = mkUniverseOpts U 0;
 
         # Can't check against U.isNull here due to Builtin recursion.
         safeIsNull = builtins.isNull;
@@ -2176,7 +2198,7 @@ let
         #   This.staticMethods == typeStaticMethodsFor SU U + {any extra staticMethods defined on This}
         bindTypeShim = This:
           let methods = typeMethodsFor SU U;
-              staticMethods = typeStaticMethodsFor SU U // This.staticMethods;
+              staticMethods = typeStaticMethodsFor SU U // U.set This.staticMethods;
           in bindShim "bindTypeShim" This methods staticMethods;
 
         # An instance this of type This has bindings for This.methods.
@@ -2186,8 +2208,8 @@ let
         # called inside new/ctor and not during Type definition itself.
         bindInstanceShim = this:
           let This = this.__Type {};
-              methods = This.methods;
-              staticMethods = this.staticMethods or {};
+              methods = U.set This.methods;
+              staticMethods = U.set (this.staticMethods or {});
           in bindShim "bindInstanceShim" this methods staticMethods;
 
         TypeThunk__new__lambdasOnly = T: {
@@ -2309,6 +2331,7 @@ let
         mkSafeUnboundTypeShim = name: args: rec {
           __Type = args.__Type or (TypeThunk__new Type);
           __isTypeSet = args.__isTypeSet or True;
+          __level = args.__level or 0;
           inherit name;
           __Super = args.__Super or null;
           fields = Fields__new (args.fields or []);
@@ -2353,7 +2376,7 @@ let
             __functor = self: arg: self.ctorFn self arg;
           };
         }) // ({
-          __cast = x: U.castErrorOr (U.cast "lambda" x) Ctor;
+          __cast = x: U.castEither "lambda" x (r: Ctor (U.unwrapCastResult r)) id;
         });
 
         inherit (mkCtors SU U) Ctors;
@@ -2362,18 +2385,41 @@ let
           mapAttrs
             (BuiltinName: builtinName:
               let
+                BuiltinOf = mkSafeUnboundTypeShim "BuiltinOf<${builtinName}>" rec {
+                  fields = [{value = builtinName;}];
+                  ctor = This: value: mkSafeUnboundInstanceShimOf BuiltinOf {
+                    inherit value;
+                  };
+                } // {
+                  __cast = x: U.castEither builtinName x (r: BuiltinOf (U.unwrapCastResult r)) id;
+                  mk = args: BuiltinOf args.value;
+                  __functor = self: arg: self.ctor self arg;
+                };
+
                 T__new = value: (mkSafeUnboundInstanceShimOf T {
                   getValue = _: value;
+                  __value = BuiltinOf value;
                 })
                 // (optionalAttrs (BuiltinName == "Lambda") {
                   __functor = self: arg: self.__value.value arg;
                 });
+
                 T = mkSafeUnboundTypeShimFunctor BuiltinName {
                   ctor = This: T__new;
+                  fields = [{__value = BuiltinOf;}];
+                } // {
+                  __functor = self: arg: self.ctor self arg;
+                  mk = args: T args.__value;
+                  __cast = dispatchlib.switch.def (x: U.castEither builtinName x (r: T (U.unwrapCastResult r)) id) BuiltinName {
+                    Set = x:
+                      if U.isTyped x && size x != 1
+                      then U.mkCastError "Set: cannot construct from non-solo attrs with __Type"
+                      else U.castEither "set" x Set id;
+                  };
                 };
-              in T // {
-                __cast = x: U.castErrorOr (U.cast builtinName x) T;
-              })
+              in 
+                T
+            )
             U.BuiltinNameTobuiltinName;
         inherit (BuiltinTypeShims) Null Int Float String Path Bool List Set Lambda;
         inherit (mkConstants BuiltinTypeShims) True False Nil;
@@ -2381,7 +2427,9 @@ let
         Any = mkSafeTypeShim "Any" {} // {
           __cast = x: x;
         };
+
         Void = mkSafeTypeShim "Void" {};
+
         Default = T: v: mkSafeUnboundInstanceShim "Default" {
           defaultType = _: T;
           defaultValue = _: v;
@@ -2392,23 +2440,38 @@ let
         };
 
         Union = Ts: mkSafeTypeShim "Union" {} // {
-          __cast = x: U.castFirst Ts x;
+          __cast = x: U.unwrapCastResult (U.castFirst Ts x);
         };
 
         NullOr = T: Union [Null T];
-        SetOf = T: Set;
-        ListOf = T: List;
+
+        SetOf = T: Set // {
+          __cast = x:
+            let xs_ = mapAttrs (_: U.cast T) x;
+                errors = filterAttrs (_: U.isCastError) xs_;
+                xs = mapAttrs (_: U.unwrapCastResult) xs_;
+            in if errors == [] then Set xs else U.combineCastErrors (attrValues errors);
+        };
+
+        ListOf = T: List // {
+          __cast = x:
+            let xs_ = map (U.cast T) x;
+                errors = filter U.isCastError xs_;
+                xs = map U.unwrapCastResult xs_;
+            in if errors == [] then List xs else U.combineCastErrors errors;
+        };
 
         # Shim out typeclass for (Cast T).cast x
         Cast = {
           checkImplements = T: T ? __cast;
           __functor = self: T: rec {
-            cast = x: T.__cast x;
+            cast = x: U.unwrapCastResult (T.__cast x);
           };
         };
 
         Type__fields = [
           { __isTypeSet = null; }
+          { __level = null; }
           { name = null; }
           { __Super = null; }
           { ctor = null; }
@@ -2570,6 +2633,7 @@ let
         #    this = rec {
         #      __Type = _: Type;
         #      __isTypeSet = true;
+        #      __level = attrs.__level or 0;
         #      inherit name;
         #      __Super = null;
         #      ctor = attrs.ctor or (This: attrs.new or (U.Ctors.CtorDefault This));
@@ -2710,6 +2774,7 @@ let
         #    # Set defaults and take what we can from args.
         #    strictGet = {
         #      __isTypeSet = mkBuiltinInstanceShim "Bool" true;
+        #      __level = mkBuiltinInstanceShim "Int" 0;
         #      __Super = mkBuiltinInstanceShim "Null" null;
         #      name = mkBuiltinInstanceShim "String" name;
         #      fields = mkFieldsInstanceShim (args.fields or []);
@@ -2993,11 +3058,10 @@ let
     # 
     # These are ordered such that we have minimal need to reach back up to SU to resolve circularity.
     mkSubUniverse = SU:
-      let opts = SU.opts.descend {}; in
-      with SU.call 4 "mkSubUniverse" opts "unsafe:SU" ___;
+      with SU.call 4 "mkSubUniverse" "unsafe:SU" ___;
       with msg "Constructing ${opts.name} universe";
-
-      let U = withCommonUniverse SU (rec {
+      let opts = SU.opts.descend U {};
+          U = withCommonUniverse SU (rec {
         ### Universe
 
         inherit opts;
@@ -3469,13 +3533,13 @@ let
               let
                 methodsC = this.implementsPrefixedClassMethods {};
                 defaultMethodsC = this.getDefaultInstanceMethods {};
-                methodsT = T.methods;
+                methodsT = U.set T.methods;
                 prefixedInstanceMethodsT = intersectAttrs methodsC methodsT;
                 elidedInstanceMethodsT = elideImplementsPrefixAttrs prefixedInstanceMethodsT;
                 instanceMethodsT = defaultMethodsC // elidedInstanceMethodsT;
                 instance = Instance T instanceMethodsT;
               in
-                assert assertMsg (attrNames instanceMethodsT == attrNames (set this.classMethods)) (indent.block ''
+                assert assertMsg (attrNames instanceMethodsT == attrNames (U.set this.classMethods)) (indent.block ''
                   Class.getTypeSetInstance: TypeSet does not implement ${this.name}:
                     Expected methods: ${indent.here (log.print this.classMethods)}
                     Default methods: ${indent.here (log.print defaultMethodsC)}
@@ -3624,12 +3688,9 @@ let
   _tests =
     with collective-lib.tests;
     with lib;  # lib == untyped default pkgs.lib throughout __tests
-    with Types;
-    with Universe;
 
     let
-      testInUniverse = U: test: test U;
-      testInUniverses = Us: test: mapAttrs (_: U: testInUniverse U test) Us;
+      testInUniverses = Us: test: mapAttrs (_: U: test U) Us;
 
       TestTypes = U: with U; {
         MyType =
@@ -4205,7 +4266,7 @@ let
             mkBuiltinTest = T: name: rawValue:
               let x = T rawValue;
               in {
-                name = expect.stringEq (thunkDo x.__Type (T: T.name.getValue {})) name;
+                name = expect.stringEq (x.__Type {}).name name;
                 value = expect.eq
                   (if name == "Lambda" then null else x.getValue {})
                   (if name == "Lambda" then null else rawValue);
@@ -4248,6 +4309,21 @@ let
             invoke.functor.new = expect.eq (Lambda.new (x: x+1) 2) 3;
             invoke.functor.functor = expect.eq (Lambda (x: x+1) 2) 3;
           };
+
+          Set = {
+            notype.invoke.new = 
+              expect.eq ((Set.new {a = 1; b = 2; c = 3;}).getValue {}) {a = 1; b = 2; c = 3;};
+            notype.invoke.functor = 
+              expect.eq ((Set {a = 1; b = 2; c = 3;}).getValue {}) {a = 1; b = 2; c = 3;};
+            typeSolo.invoke.new = 
+              expect.eq ((Set.new {__Type = null;}).getValue {}) {__Type = null;};
+            typeSolo.invoke.functor = 
+              expect.eq ((Set {__Type = null;}).getValue {}) {__Type = null;};
+            type.invoke.new =
+              expect.error (Set.new {__Type = null; other = 123;});
+            type.invoke.functor =
+              expect.error (Set {__Type = null; other = 123;});
+          };
         };
 
       untypedTests = U: with U;
@@ -4289,8 +4365,10 @@ let
         in {
           to = mergeAttrsList (map (case: {
             ${case.name} = {
-              cast = expect.eq ((cast case.T case.v).getValue {}) case.v;
-              castEither = expect.eq ((castEither case.T case.v id (r: r.castSuccess.getValue {}))) case.v;
+              cast = expect.valueEq (cast case.T case.v) (case.T case.v);
+              castEither = 
+                let result = castEither case.T case.v unwrapCastResult id;
+                in expect.eq (result.getValue {}) case.v;
               wrap = expect.eq ((wrap case.v).getValue {}) case.v;
               new = expect.eq ((case.T.new case.v).getValue {}) case.v;
               functor = expect.eq ((case.T case.v).getValue {}) case.v;
@@ -4456,7 +4534,7 @@ let
 
         methodCalls = {
           MyType_methods = {
-            expr = MyType.methods.__attrNames {};
+            expr = attrNames (U.set MyType.methods);
             expected = [ "helloMyField" ];
           };
           MyType_call = {
@@ -4548,6 +4626,7 @@ let
                 expected
                 {
                   __isTypeSet = true;
+                  __level = U.opts.level;
                   __Super = null;  # TODO: Cheat due to named thunk comparison
                   ctor = U.Ctors.CtorDefault;
                   fields = expected.fields;
@@ -4564,7 +4643,7 @@ let
       __separatedTests = {
         tmpTests =
           testInUniverses {
-            inherit
+            inherit (Types.Universe)
               U_0
               U_1
               #U_2
@@ -4583,12 +4662,12 @@ let
             );
 
         quasiverseInstantiation =
-          testInUniverses { inherit U_0; } (U: quasiverseInstantiationTests U);
+          testInUniverses { inherit (Types.Universe) U_0; } (U: quasiverseInstantiationTests U);
 
         smoke =
           #solo
             (testInUniverses {
-              inherit
+              inherit (Types.Universe)
                 U_0
                 U_1
                 U_2
@@ -4599,7 +4678,7 @@ let
         shim =
           #solo
             (testInUniverses {
-              inherit
+              inherit (Types.Universe)
                 U_0
                 ;
             } shimTests);
@@ -4607,7 +4686,7 @@ let
         peripheral =
           #solo
             (testInUniverses {
-              inherit
+              inherit (Types.Universe)
                 U_0
                 U_1
                 U_2
@@ -4620,7 +4699,7 @@ let
         Typelib =
           #solo
             (testInUniverses {
-              inherit
+              inherit (Types.Universe)
                 U_0
                 U_1
                 U_2
@@ -4631,7 +4710,7 @@ let
         typeFunctionality =
           #solo
             (testInUniverses {
-              inherit
+              inherit (Types.Universe)
                 U_0
                 U_1
                 U_2
@@ -4641,7 +4720,7 @@ let
         class =
           #solo
             (testInUniverses {
-              inherit
+              inherit (Types.Universe)
                 U_1
                 ;
             } classTests);
@@ -4649,7 +4728,7 @@ let
         inheritance =
           #solo
             (testInUniverses {
-              inherit
+              inherit (Types.Universe)
                 U_0
                 U_1
                 U_2
@@ -4660,7 +4739,7 @@ let
         instantiation =
           #solo
             (testInUniverses {
-              inherit
+              inherit (Types.Universe)
                 U_0
                 U_1
                 U_2
@@ -4671,7 +4750,7 @@ let
         builtin =
           #solo
             (testInUniverses {
-              inherit
+              inherit (Types.Universe)
                 U_0
                 U_1
                 U_2
@@ -4682,7 +4761,7 @@ let
         cast =
           #solo
             (testInUniverses {
-              inherit
+              inherit (Types.Universe)
                 U_0
                 U_1
                 U_2
@@ -4693,7 +4772,7 @@ let
         untyped =
           #solo
             (testInUniverses {
-              inherit
+              inherit (Types.Universe)
                 U_0
                 U_1
                 U_2
@@ -4704,7 +4783,7 @@ let
         typeChecking =
           #solo
             (testInUniverses {
-              inherit
+              inherit (Types.Universe)
                 U_1  # U_1+ due to reliance upon subtype
                 U_2
                 ;
@@ -4713,16 +4792,21 @@ let
 
     # <nix>typelib._tests.run</nix>
     # <nix>functions._tests.run</nix>
+    # <nix>log._tests.run</nix>
     in suite rec {
 
       all = 
-        let onlyU_0 = { inherit U_0; };
-            fromU_0 = { inherit U_0 U_1; };
+        let onlyU_0 = { inherit (Types.Universe) U_0; };
+            fromU_0 = { inherit (Types.Universe) U_0 U_1; };
             fromU_1 = removeAttrs fromU_0 [ "U_0" ];
         in mergeAttrsList [
-          (testInUniverses onlyU_0 shimTests)
           (testInUniverses
-            fromU_0
+            { inherit (Types.Universe) U_0; }
+            (U: {
+              shim = shimTests U;
+            }))
+          (testInUniverses
+            { inherit (Types.Universe) U_0 U_1; }
             (U: {
           #    peripheral = peripheralTests U;
           #    smoke = smokeTests U;
@@ -4730,15 +4814,15 @@ let
           #    typeFunctionality = typeFunctionalityTests U;
           #    inheritance = inheritanceTests U;
           #    instantiation = instantiationTests U;
-          #    builtin = builtinTests U;
+              builtin = builtinTests U;
               cast = castTests U;
           #    untyped = untypedTests U;
             }))
           (testInUniverses
-            fromU_1
+            { inherit (Types.Universe) U_1; }
             (U: {
               # bootstrap = bootstrapTests U;
-              #typeChecking = typeCheckingTests U;
+              typeChecking = typeCheckingTests U;
           #    class = classTests U;
             }))
         ];
@@ -4957,8 +5041,7 @@ let U = Types.Universe.U_0; in
 </nix>
 
 <nix>
-let U = Types.Universe.U_0; in
-U.Any
+Types.Universe.U_1.opts.name
 </nix>
 
 <nix>

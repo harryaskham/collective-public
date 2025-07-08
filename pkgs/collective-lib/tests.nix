@@ -166,7 +166,6 @@ in rec {
       };
     };
 
-
     True = expr: eq expr true;
     lazyTrue = expr: lazyEq expr true;
     False = expr: eq expr false;

@@ -20,8 +20,10 @@ in rec {
   composeMany = foldl' compose id;
 
   # Apply a function to a value
-  ap = f: a: f a;
-  apply = f: a: f a;
+  ap = {
+    __functor = self: f: a: f a;
+    list = f: xs: fold ap f xs;
+  };
 
   # Apply a function to a value with the arguments flipped.
   flap = a: f: ap f a;
@@ -190,8 +192,6 @@ in rec {
       terminate = state: _: state;
       # Simple bool checks on {state, arg}
       check = _: _: true;
-      # Function from {prevState, nextState, arg} to list of { cond, msg }
-      checks = _: null;
       # Function from nextState, arg to true iff arg is the final arg.
       isTerminal = throw "Variadic.mk: isTerminal must be set";
     };
@@ -390,6 +390,13 @@ in rec {
 
   # nix eval --impure --expr '(import collective-public/pkgs/collective-utils/functions.nix {})._tests.run'
   _tests = with collective-lib.tests; suite {
+    ap = {
+      functor.partial = expect.isLambda (ap (a: b: a + b) 1);
+      functor.full = expect.eq (ap (a: a + 1) 1) 2;
+      list.partial = expect.isLambda (ap.list (a: b: c: a + 2 * b + 3 * c) [1 2]);
+      list.full = expect.eq (ap.list (a: b: c: a + 2 * b + 3 * c) [1 2 3]) 14;
+    };
+
     compose = {
       expr =
         let f = a: a + 1;

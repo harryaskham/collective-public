@@ -24,6 +24,7 @@ with collective-lib.strings;
 # Printing/logging utilities
 let
   typelib = collective-lib.typelib;
+  typed = collective-lib.typed;
   errors = collective-lib.errors;
   log = rec {
     defPrintArgs = {
@@ -349,16 +350,123 @@ let
           mkSurround = tag: fs: [ "\n\n" "START:${tag}" (toTraceF fs) "END:${tag}" "\n\n" ];
           surround = tag: fs: over mkSurround tag fs;
 
-          # e.g.
-          # with log.trace; assert call "callName" arg1 arg2
-          buildInitialLogState = self: initEvent: {
+          buildInitialLogState = buildInitialLogStateWith {};
+
+          # Builds the initial log state for a call, methodCall, etc.
+          # Anything provided in 'extra' is merged into the state (i.e. __functor,
+          # or lets/arg assignments)
+          buildInitialLogStateWith = extra: self: initEvent: {
             events = [initEvent];
             safe = self.opts.safe;
+          } // extra;
+
+          # The function that sits as a __functor on the state for typed calls.
+          # Accepts type args until a fnBody is reached, then returns a checked wrapped function
+          # of those arguments.
+          constructTypedCall = self: callName: Variadic {
+            initialState = {
+              ArgTypeSolos = [];
+            };
+
+            isTerminal = _: x: lib.isFunction x;
+
+            check = _: x:
+              (isSolo x && typed.isTypeLike (soloValue x))
+              || lib.isFunction x;
+
+            handle = state: x:
+              if isSolo x then state // {
+                ArgTypeSolos = concatSolos state.ArgTypeSolos [x];
+              }
+              else state;
+
+            # When we reach a function body, wrap it with an arg-acceptor that
+            # typechecks the arguments and passes them to the function body.
+            # The first argument is the log state so that we can propagate
+            terminate = state: fnBody:
+              let
+                ArgTypeSolos = state.ArgTypeSolos;
+                ArgTypes = mergeSolos ArgTypeSolos;
+                argNames = soloNames ArgTypeSolos;
+                # fn should have the same signature as fnBody after this wrapping.
+                fn = lib.traceSeq {
+                  inherit ArgTypeSolos argNames;
+                } fn_;
+                fn_ = 
+                  (flip Variadic.mkOrderedThen) argNames (uncheckedArgs:
+                    let 
+                      argCastResultSolos =
+                        mapSolos
+                          (argName: ArgType:
+                            let uncheckedArg = uncheckedArgs.${argName}; in
+                            if (!typelib.isTypeLike ArgType)
+                              then mkCastError "Invalid argument type"
+                            else
+                              typed.unwrapCastResult (typed.cast ArgType uncheckedArg)
+                          )
+                          ArgTypeSolos;
+                      partitionedArgSolos = partitionSolos (_: typed.isCastError) argCastResultSolos;
+                      argErrorMsgSolos = mapSolos (_: e: e.castError) partitionedArgSolos.right;
+                      argSolos = partitionedArgSolos.wrong;
+                      args = mergeSolos argSolos;
+                      argList = soloValues argSolos;
+                      mkSignature = rec {
+                        arg = name: "${name} :: ${log.print ArgTypes.${name}}";
+                        argWithMsg = msg: name:
+                          if nonEmpty msg then "${arg name} <- ${msg}"
+                          else arg name;
+                        call = msgs: indent.block ''
+                            ${callName} (
+                              ${indent.here (indent.lines
+                                  (map (name: argWithMsg (msgs.${name} or "") name) argNames))}
+                              )
+                        '';
+                      };
+                      signature = mkSignature.call (mergeSolos argErrorMsgSolos);
+                      typecheckPassed = empty argErrorMsgSolos;
+
+                      mkLogState = 
+                        let st = ap.list (self.call callName) argList ___;
+                        in st // {
+                          call = st.call ++ [
+                            {typedCall = true;}
+                            {inherit ArgTypes;}
+                            {inherit signature;}
+                          ];
+                        };
+                    in
+                      lib.traceSeq { inherit 
+                        argCastResultSolos uncheckedArgs argList args argSolos signature argErrorMsgSolos partitionedArgSolos; } (
+                      assert assertMsg typecheckPassed (indent.block ''
+                        Type check failed:
+                          ${indent.here signature}
+                      '');
+                      with mkLogState;
+                      return (ap.list fnBody argList)
+                      )
+                    );
+              in
+                buildInitialLogStateWith
+                  { __functor = functorSelf: arg: fn arg; }
+                  self
+                  {
+                    call = [
+                      {name = callName;}
+                      {typedCall = true;}
+                    ];
+                  };
           };
 
+          # Builds the initial log state for a typed function call.
+          # The state includes a __functor member that consumes as many arguments as are
+          # specified in the signature, checks their types, casts if necessary, and invokes the
+          # function body against the checked arguments.
+          buildTypedCall = self: callName: 
+            constructTypedCall self callName; 
+
           buildCall = self: callName:
-            Variadic.mkListThen
-              (l: buildInitialLogState self {
+            Variadic.mkListThen (l: 
+              buildInitialLogState self {
                 call = [
                   {name = callName;}
                   {args = l;}
@@ -366,8 +474,8 @@ let
               });
 
           buildMethodCall = self: this: methodName:
-            Variadic.mkListThen
-              (l: buildInitialLogState self {
+            Variadic.mkListThen (l: 
+              buildInitialLogState self {
                 method = [
                   { name = methodName; } 
                   { inherit this; }
@@ -655,9 +763,11 @@ let
                           ])
                           (g varargs);
                   in Variadic.composeFunctorsAreAttrs gTraceVarargs f;
+
               };
             in
-              Variadic.compose
+              # Output of composition is exposed as call, typedCall, etc.
+              Variadic.composeFunctorsAreAttrs
                 (initialState:
                   let logState = mkGroupClosure initialState; in
                   with logState;
@@ -673,6 +783,10 @@ let
             attrs = mkEventGroup "attrs" (buildAttrs self);
             test = mkEventGroup "test" (buildTest self);
 
+            # Different pattern since this uses 'call' internally after constructing
+            # the typed variadic wrapper.
+            typedCall = mkEventGroup "typedCall" (buildTypedCall self);
+
             # Set options on the bound self and rebind such that they are
             # available on the unbound methods.
             setOpts = opts: bindSelf (self // { inherit opts; });
@@ -683,7 +797,9 @@ let
           };
         };
         # Bind the self reference to the unbound methods.
-        bindSelf = self: self // self.unbound self;
+        bindSelf = self: 
+          let self_ = self // self.unbound self_;
+          in self_;
       in 
         bindSelf self;
 
@@ -766,9 +882,37 @@ in log // {
       stringToString = expect.eq (log.show "abc") "abc";
       intToString = expect.eq (log.show 123) "123";
     };
-    
+
+    # <nix>log._tests.run</nix>
     trace = {
       call = {
+        typed = {
+          # Not permitted due to inability to detect termination when we get a function.
+          nullary = expect.error (log.trace.typedCall "nullary" 1);
+          unary.Any = expect.eq
+            (let f = log.trace.typedCall "f" { a = typed.Any; } (a: (a + 1));
+             in [(f 3) (f 3.5)])
+            [4 4.5];
+          unary.Int.Int = expect.eq
+            (with typed; with log.trace;
+            let f = typedCall "f" { a = Int; } (a: int a + 1);
+             in f (Int 1))
+             2;
+          unary.Int.int = expect.eq
+            (with typed; with log.trace;
+            let f = typedCall "f" { abc = Int; } (abc: int abc + 1);
+             in f 1)
+             2;
+          binary.intInt.partial = expect.isLambda
+            (with typed; with log.trace;
+            let f = typedCall "f" { a = Int; b = Int; } (a: b: int a + int b);
+             in f 1);
+          binary.intInt.full = expect.eq
+            (with typed; with log.trace;
+            let f = typedCall "f" { a = Int; b = Int; } (a: b: int a + int b);
+             in f 1 2)
+             3;
+        };
         combined = {
           expr =
             with log.vtrace.call "callName" "arg0" "arg1" ___;
