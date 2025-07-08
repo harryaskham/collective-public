@@ -389,10 +389,7 @@ let
                 ArgTypes = mergeSolos ArgTypeSolos;
                 argNames = soloNames ArgTypeSolos;
                 # fn should have the same signature as fnBody after this wrapping.
-                fn = lib.traceSeq {
-                  inherit ArgTypeSolos argNames;
-                } fn_;
-                fn_ = 
+                fn = 
                   (flip Variadic.mkOrderedThen) argNames (uncheckedArgs:
                     let 
                       argCastResultSolos =
@@ -435,16 +432,13 @@ let
                           ];
                         };
                     in
-                      lib.traceSeq { inherit 
-                        argCastResultSolos uncheckedArgs argList args argSolos signature argErrorMsgSolos partitionedArgSolos; } (
                       assert assertMsg typecheckPassed (indent.block ''
                         Type check failed:
                           ${indent.here signature}
                       '');
                       with mkLogState;
                       return (ap.list fnBody argList)
-                      )
-                    );
+                  );
               in
                 buildInitialLogStateWith
                   { __functor = functorSelf: arg: fn arg; }
@@ -884,32 +878,49 @@ in log // {
     };
 
     # <nix>log._tests.run</nix>
+    # <nix>log._tests.debug</nix>
     trace = {
       call = {
         typed = {
           # Not permitted due to inability to detect termination when we get a function.
           nullary = expect.error (log.trace.typedCall "nullary" 1);
           unary.Any = expect.eq
-            (let f = log.trace.typedCall "f" { a = typed.Any; } (a: (a + 1));
+            (with typed;
+             let f = log.trace.typedCall "f" { a = Any; } (a: (a + 1));
              in [(f 3) (f 3.5)])
             [4 4.5];
           unary.Int.Int = expect.eq
             (with typed; with log.trace;
-            let f = typedCall "f" { a = Int; } (a: int a + 1);
+             let f = typedCall "f" { a = Int; } (a: int a + 1);
              in f (Int 1))
              2;
           unary.Int.int = expect.eq
             (with typed; with log.trace;
-            let f = typedCall "f" { abc = Int; } (abc: int abc + 1);
+             let f = typedCall "f" { abc = Int; } (abc: int abc + 1);
              in f 1)
              2;
+          unary.int.Int = expect.eq
+            (with typed; with log.trace;
+             let f = typedCall "f" { abc = "int"; } (abc: abc + 1);
+             in f (Int 1))
+             2;
+          unary.Lambda.lambda = expect.eq
+            (with typed; with log.trace;
+             let f = typedCall "f" { fn = Lambda; } (fn: fn 3);
+             in f (x: x + 4))
+             7;
+          unary.returnLambda = expect.eq
+            (with typed; with log.trace;
+             let f = typedCall "f" { abc = Any; } (abc: x: 123);
+             in f 1 null)
+             123;
           binary.intInt.partial = expect.isLambda
             (with typed; with log.trace;
-            let f = typedCall "f" { a = Int; b = Int; } (a: b: int a + int b);
+             let f = typedCall "f" { a = Int; } { b = Int; } (a: b: int a + int b);
              in f 1);
           binary.intInt.full = expect.eq
             (with typed; with log.trace;
-            let f = typedCall "f" { a = Int; b = Int; } (a: b: int a + int b);
+             let f = typedCall "f" { a = Int; } { b = Int; } (a: b: int a + int b);
              in f 1 2)
              3;
         };
