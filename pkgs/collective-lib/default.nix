@@ -1,25 +1,20 @@
 { pkgs ? import <nixpkgs> {},
   lib ? pkgs.lib,
-  traceLevel ? 0,
-  enablePartialTrace ? false,
-  enableVerboseTrace ? false,
-  traceShort ? true,
-  ... }:
+  traceOpts ? null,
+  ... 
+}:
 
 let
+  defaultTraceOpts = {
+    traceLevel = 0;
+    enablePartialTrace = false;
+    enableVerboseTrace = false;
+    traceShort = false;
+  };
+
   # Functions required for building the collective-lib.
   # Can't put this inside e.g. lists/attrsets otherwise it gets merged into itself here.
-  modulelib = {
-    # Partition attrs based on a predicate.
-    # Follows lib.partition interface for lists.
-    partitionAttrs = pred: xs:
-      { right = lib.filterAttrs pred xs;
-        wrong = lib.filterAttrs (k: v: !(pred k v)) xs;
-      };
-
-    # Merge attrs in a list deeply, allowing for modules to combine named dicts implicitly.
-    recursiveMergeAttrsList = lib.foldl' lib.recursiveUpdate {};
-  };
+  modulelib = import ./modulelib.nix { inherit lib; };
 
   # Merge all modules in base into a single module.
   #
@@ -127,10 +122,10 @@ let
       font = import ./font.nix args;
       functions = import ./functions.nix args;
       lists = import ./lists.nix args;
-      log = import ./log.nix (args // { 
-        inherit traceLevel enablePartialTrace enableVerboseTrace traceShort;
-      });
+      log = import ./log.nix (args // { inherit traceOpts; });
+      inherit modulelib;
       strings = import ./strings.nix args;
+      syntax = import ./syntax.nix args;
       tests = import ./tests.nix args;
       typelib = import ./typelib.nix args;
       wm = import ./wm.nix args;

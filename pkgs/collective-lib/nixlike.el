@@ -218,6 +218,8 @@
 
 (defun nixlike-enable-verbose-trace (v) (if (>= v 2) "true" "false"))
 
+(defun nixlike-enable-short-trace (v) (if (>= v 2) "true" "false"))
+
 (defun nixlike-repl-run-preamble (v trace raw)
   "Run the Nixlike REPL preamble. Only needed in Tvix; Nix has 'nix repl --expr' to install this."
   (interactive)
@@ -252,11 +254,16 @@
    let \
    pkgs = import <nixpkgs> {}; \
    lib = pkgs.lib; \
-   collective-lib = import %s/pkgs/collective-lib { \
+   collective-lib = import %s/pkgs/collective-lib \
+   { \
    inherit pkgs lib; \
-   traceLevel = %d; \
-   enablePartialTrace = %s; \
-   enableVerboseTrace = %s; \
+   traceOpts = \
+   { \
+     traceLevel = %d; \
+     enablePartialTrace = %s; \
+     enableVerboseTrace = %s; \
+     enableShortTrace = %s; \
+   }; \
    }; \
    in \
    collective-lib.typed \
@@ -268,7 +275,8 @@
           collective-dir
           v
           (nixlike-enable-partial-trace v)
-          (nixlike-enable-verbose-trace v)))
+          (nixlike-enable-verbose-trace v)
+          (nixlike-enable-short-trace v)))
 
 (defun nixlike-expr-with-preamble (expr v trace raw)
   "Built the Nixlike Shell preamble for a raw expr. Allows 'with __ctx {}; <expr>'."

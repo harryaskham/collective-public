@@ -97,11 +97,15 @@ in rec {
        then setSkip tests
        else mapAttrsRecursiveCond (xs: !(isTest xs)) (_: setSkip) tests;
 
-  solo = tests:
-    let setSolo = test: test // {solo = true;};
-    in if isTest tests
-       then setSolo tests
-       else mapAttrsRecursiveCond (xs: !(isTest xs)) (_: setSolo) tests;
+  setSolo = dispatch {
+    set = test: test // {solo = true;};
+    lambda = expectFn: exhaust (test: test // {solo = true;}) expectFn;
+  };
+
+  solo = dispatch {
+    set = mapAttrsRecursiveCond (x: !(isTest x)) (_: setSolo);
+    lambda = setSolo;
+  };
 
   expect = rec {
     failure = {
@@ -318,10 +322,10 @@ in rec {
         solo = test.solo or false;
 
         # Run the test under tryEval, treating eval failure as test failure
-        run = evalOneTest (expr: builtins.tryEval (strict expr)) (test_ // { mode = "run"; });
+        run = evalOneTest (expr: builtins.tryEval expr) (test_ // { mode = "run"; });
 
         # Run the test propagating eval errors that mask real failures
-        debug = evalOneTest (expr: strict expr) (test_ // { mode = "debug"; });
+        debug = evalOneTest (expr: expr) (test_ // { mode = "debug"; });
       };
     in test_;
 

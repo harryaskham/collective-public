@@ -114,7 +114,7 @@ in rec {
       })
       collective-lib.fold
       ) // {
-        __functor = self: self.list;
+        __functor = self: p: xs: self.list p xs;
       };
 
   _tests = with collective-lib.tests; suite {

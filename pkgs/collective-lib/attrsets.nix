@@ -91,7 +91,7 @@ let
     isSolo = xs: isAttrs xs && size xs == 1;
 
     # true iff xs is a valid solo list.
-    isSolos = xs: all isSolo xs;
+    isSolos = xs: isList xs && all isSolo xs;
 
     # Throw if xs is not a valid solo list.
     # Cannot use mapSolo/filterSolo as they use this for typechecking.

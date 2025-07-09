@@ -429,7 +429,7 @@ in rec {
   ToShellValue =
     with typed;
     Class "ToShellValue" {
-      toShellValue = ClassMethod;
+      toShellValue = {};
     };
 
   # Types that can be converted to a shell value.

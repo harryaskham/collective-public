@@ -1,15 +1,17 @@
 { pkgs ? import <nixpkgs> {},
   lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; },
+  # Collate overrides into a single optional attrset, or allow per-option overrides.
+  traceOpts ? null,
   # Default trace level, 0 = all (log.trace), 1 = vtrace, 2+ = custom
   # Null to disable.
-  traceLevel ? 0,
+  traceLevel ? traceOpts.traceLevel or 0,
   # If true, trace not only on start and return, but also on accruing all intermediate values.
   # Duplicative but enables tracing of calls that never reach their return value.
-  enablePartialTrace ? false,
+  enablePartialTrace ? traceOpts.enablePartialTrace or false,
   # If true, traces via vprint instead of print.
-  enableVerboseTrace ? false,
+  enableVerboseTrace ? traceOpts.enableVerboseTrace or false,
   # If true, trace short values at levels 0+.
-  traceShort ? false,
+  enableShortTrace ? traceOpts.enableShortTrace or false,
   ...
 }:
 
@@ -26,7 +28,11 @@ let
   typelib = collective-lib.typelib;
   typed = collective-lib.typed;
   errors = collective-lib.errors;
+  syntax = collective-lib.syntax;
   log = rec {
+
+    traceOpts = if traceOpts == null then defTraceOpts else traceOpts;
+
     defPrintArgs = {
       # If true, all conversions happen under tryEval
       printSafely = false;
@@ -99,7 +105,7 @@ let
 
     printAttrs_ = args: x:
       with args;
-      if depth >= maxDepth then "..."
+      if depth >= maxDepth then "... ${toString (size x)} attrs"
       else if x == {} then "{}"
       else
         let maybePrintValue = k: v:
@@ -142,35 +148,36 @@ let
     maybeParen = x: if wordCount x <= 1 then x else "(${x})";
 
     # Convert a value of any type to a string, supporting the types module's Type values.
-    print_ = args: x_:
+    print_ = args: x:
       with args;
       let
-        safeWrapper =
+        strictWrapper = value: 
+          if printStrictly then strict value else value;
+        safeWrapper = value:
           if args.cycles.cycle != null then
-            _: "<LOOP: ${joinSep "." (map toString args.cycles.cycle.segment)}>"
+            "<LOOP: ${joinSep "." (map toString args.cycles.cycle.segment)}>"
           else if printSafely then
-          value: errors.try value (_: "<eval error>")
-          else id;
-        x = if printStrictly then strict x_ else x_;
-        block =
+            errors.try value (_: "<eval error>")
+          else value;
+        printBlock = value:
           if depth >= maxDepth then "..."
-          else if hasShow x && !ignoreShow then
-            show x
-          else if (x ? __toString) && !ignoreToString then
-            toString x
+          else if hasShow value && !ignoreShow then
+            show value
+          else if (value ? __toString) && !ignoreToString then
+            toString value
           else {
             null = "null";
-            path = toString x;
-            string = ''"${x}"'';
-            int = ''${builtins.toJSON x}'';
-            float = ''${builtins.toJSON x}'';
+            path = toString value;
+            string = ''"${value}"'';
+            int = ''${builtins.toJSON value}'';
+            float = ''${builtins.toJSON value}'';
             lambda = "<lambda>";
-            list = formatBlock (printList_ args x);
-            set = formatBlock (printAttrs_ args x);
-            bool = boolToString x;
-          }.${typeOf x};
+            list = formatBlock (printList_ args value);
+            set = formatBlock (printAttrs_ args value);
+            bool = boolToString value;
+          }.${typeOf value};
       in
-        safeWrapper block;
+        strictWrapper (printBlock (safeWrapper x));
 
     # print x using a function of the default print options
     printWith = f: x: indent.block (print_ (f defPrintArgs) x);
@@ -270,7 +277,7 @@ let
       let T = TraceAt 0 x;
       in T // {
       __depth = 3;
-      __enableTrace = self: (T.__enableTrace T) && traceShort;
+      __enableTrace = self: (T.__enableTrace T) && enableShortTrace;
       __showTrace = self:
         if enableVerboseTrace
           then "> ${with log.prints; putD self.__depth self.__x _line _raw ___}"
@@ -290,7 +297,7 @@ let
           };
 
           # Short-circuit if tracing is disabled.
-          enableTrace = traceLevel != null && (level <= traceLevel) || traceShort;
+          enableTrace = traceLevel != null && (level <= traceLevel) || enableShortTrace;
 
           # log.trace.show [ 456 { a = 2; }] 123
           # -> trace: [ 456 { a = 2; }]
@@ -360,11 +367,11 @@ let
             safe = self.opts.safe;
           } // extra;
 
-
           # Builds the initial log state for a typed function call.
           # The state includes a __functor member that consumes as many arguments as are
           # specified in the signature, checks their types, casts if necessary, and invokes the
           # function body against the checked arguments.
+          anonymousName = "<anonymous>";
           buildTypedCall = self: includeStateArg: callName: Variadic {
             initialState = {
               ArgTypeSolos = [];
@@ -392,8 +399,8 @@ let
                 ArgTypeSolos = state.ArgTypeSolos;
                 ArgTypes = mergeSolos ArgTypeSolos;
                 argNames = soloNames ArgTypeSolos;
-                # typedFnBody should have the same signature as fnBody after this wrapping.
-                typedFnBody = 
+                # (typedFnBody callName)should have the same signature as fnBody after this wrapping.
+                typedFnBody = callName:
                   (flip Variadic.mkOrderedThen) argNames (uncheckedArgs:
                     let 
                       argCastResultSolos =
@@ -430,7 +437,7 @@ let
                       signature = mkSignature.call (mergeSolos argErrorMsgSolos);
                       typecheckPassed = empty argErrorMsgSolos;
 
-                      mkLogState = 
+                      typedLogState = 
                         let st = ap.list (self.call callName) argList ___;
                         in st // {
                           call = st.call ++ [
@@ -438,6 +445,7 @@ let
                             {inherit ArgTypes;}
                             {inherit signature;}
                           ];
+                          __isAnonymousFunction = callName == anonymousName;
                         } // (optionalAttrs includeStateArg args); # Add top-level args for 'with'
                     in
                       assert assertMsg typecheckPassed (indent.block ''
@@ -445,20 +453,30 @@ let
                           ${indent.here signature}
                       '');
                       let 
-                        logState = mkLogState; 
-                        argList_ = if includeStateArg then [logState] else argList;
+                        argList_ = if includeStateArg then [typedLogState] else argList;
                       in 
-                        with logState;
-                        assert over [(short signature)];
-                        return (ap.list fnBody argList_)
+                        with typedLogState;
+                        let retVal = ap.list fnBody argList_; in
+                        assert over [(short signature)
+                                     (shortReturn typedLogState retVal)];
+                        retVal
                   );
               in
                 # Expose both functor and fn, allowing:
                 # typedCall "f" { a = "int"; } (a: a + 1)
                 # with typedCall "f"; fn { a = "int"; } (a: return (a + 1))
-                buildInitialLogStateWith
-                  { __functor = functorSelf: arg: typedFnBody arg;
-                    ${callName} = typedFnBody; }
+                let mkLogState = callName: buildInitialLogStateWith
+                  { 
+                    __functor = functorSelf: arg: functorSelf.${callName} arg;
+                    # Expose the function by name
+                    ${callName} = typedFnBody callName;
+
+                    # Add bound way to rebuild with a new name.
+                    # Lets anonymous functions be named by their attr key.
+                    inherit callName;
+                    __isAnonymousFunction = callName == anonymousName;
+                    setCallName = mkLogState;
+                  }
                   self
                   {
                     call = [
@@ -466,6 +484,7 @@ let
                       {typedCall = true;}
                     ];
                   };
+              in mkLogState callName;
           };
 
           buildCall = self: callName:
@@ -642,18 +661,23 @@ let
                     ])
                     value;
 
+                # Override syntax.lets with additional logging.
                 # Trace a group of assignments and provide access to the results.
                 # Accrues logs e.g.
                 # with (lets { x = ... }); ... <use x>
-                lets = vars:
-                  assert assertMsg (isAttrs vars) ''Non-attrset vars in 'lets': ${log.print mkVars}'';
-                  __withEventsAssertWith
-                    [{lets = safely vars;}]
-                    (logState: overPartial [
-                      (tagged "LETS:${groupType}:${groupName}" logState.events)
-                      #(short {lets = attrNames vars;})
-                    ])
-                    (logState: logState // vars);
+                # Handles the case where the RHS is an anonmymous function, in which case this
+                # is renamed.
+                lets = vars_:
+                  let
+                    vars = syntax.lets vars_;
+                  in 
+                    __withEventsAssertWith
+                      [{lets = safely vars;}]
+                      (logState: overPartial [
+                        (tagged "LETS:${groupType}:${groupName}" logState.events)
+                        #(short {lets = attrNames vars;})
+                      ])
+                      (logState: logState // vars);
 
                 # Create a one-line log for tersely tracing function calls.
                 shortReturn = logState: x:
@@ -671,10 +695,10 @@ let
                               else if typelib.isTypeSet this && this ? getName then this.getName {}
                               else if this ? __Type && (resolve this.__Type) ? getName
                               then (resolve this.__Type).getName {}
-                              else "<unnamed>";
+                              else "<no name event>";
                         in "${thisName}.${methodName}"
                       else
-                        "<unnamed>";
+                        "<no call event>";
 
                     valueStr = x:
                       if isSolo x then with log.prints; put x (_depth 2) _line ___
@@ -787,11 +811,27 @@ let
             attrs = mkEventGroup "attrs" (buildAttrs self);
             test = mkEventGroup "test" (buildTest self);
 
-            fn = mkEventGroup "typedCall" (buildTypedCall self false);
-            typedCall = fn;
+            fn_ = includeStateArg: mkEventGroup "typedCall" (buildTypedCall self includeStateArg);
+            fn = {
+              __functor = self: dispatch {
+                string = self.named;
+                set = self.anonymous;
+              };
+              named = fn_ false;
+              anonymous = fn_ false anonymousName;
 
-            # Include a first-arg of the function / functor log state itself.
-            fn_ = mkEventGroup "typedCall" (buildTypedCall self true);
+              # Include a first-arg of the function / functor log state itself.
+              _ = {
+                __functor = self: dispatch {
+                  string = self.named;
+                  set = self.anonymous;
+                };
+                named = fn_ true;
+                anonymous = fn_ true anonymousName;
+              };
+            };
+            typedCall = fn.named;
+            fns = mapAttrs (name: fn: fn.setCallName name);
 
             # Set options on the bound self and rebind such that they are
             # available on the unbound methods.
@@ -893,71 +933,90 @@ in log // {
     # <nix>log._tests.debug</nix>
     trace = {
       call = {
-        typed = {
+        typed = with typed; with log.trace; {
           # Not permitted due to inability to detect termination when we get a function.
           nullary = expect.error (log.trace.typedCall "nullary" 1);
           unary.Any = expect.eq
-            (with typed;
-             let f = log.trace.typedCall "f" { a = Any; } (a: (a + 1));
+            (let f = typedCall "f" { a = Any; } (a: (a + 1));
              in [(f 3) (f 3.5)])
             [4 4.5];
           unary.Int.Int = expect.eq
-            (with typed; with log.trace;
-             let f = typedCall "f" { a = Int; } (a: int a + 1);
+            (let f = typedCall "f" { a = Int; } (a: int a + 1);
              in f (Int 1))
              2;
           unary.Int.int = expect.eq
-            (with typed; with log.trace;
-             let f = typedCall "f" { abc = Int; } (abc: int abc + 1);
+            (let f = typedCall "f" { abc = Int; } (abc: int abc + 1);
              in f 1)
              2;
           unary.int.Int = expect.eq
-            (with typed; with log.trace;
-             let f = typedCall "f" { abc = "int"; } (abc: abc + 1);
+            (let f = typedCall "f" { abc = "int"; } (abc: abc + 1);
              in f (Int 1))
              2;
           unary.Lambda.lambda = expect.eq
-            (with typed; with log.trace;
-             let f = typedCall "f" { g = Lambda; } (g: g 3);
+            (let f = typedCall "f" { g = Lambda; } (g: g 3);
              in f (x: x + 4))
              7;
           unary.returnLambda = expect.eq
-            (with typed; with log.trace;
-             let f = typedCall "f" { abc = Any; } (abc: x: 123);
+            (let f = typedCall "f" { abc = Any; } (abc: x: 123);
              in f 1 null)
              123;
           binary.intInt.partial = expect.isLambda
-            (with typed; with log.trace;
-             let f = typedCall "f" { a = Int; } { b = Int; } (a: b: int a + int b);
+            (let f = typedCall "f" { a = Int; } { b = Int; } (a: b: int a + int b);
              in f 1);
           binary.intInt.full = expect.eq
-            (with typed; with log.trace;
-             let f = typedCall "f" { a = Int; } { b = Int; } (a: b: int a + int b);
+            (let f = typedCall "f" { a = Int; } { b = Int; } (a: b: int a + int b);
              in f 1 2)
              3;
           binary.usingWith = expect.eq
-            (with typed; with log.trace;
-             with typedCall "f" { a = Int; } { b = Int; }
+            (with typedCall "f" { a = Int; } { b = Int; }
                   (a: b: int a + int b);
              f 1 2)
              3;
           binary.fn = expect.eq
-            (with typed; with log.trace;
-             let f = fn "f" { a = Int; } { b = Int; } (a: b: int a + int b);
+            (let f = fn "f" { a = Int; } { b = Int; } (a: b: int a + int b);
              in f 1 2)
              3;
           binary.usingState = expect.eq
-            (with typed; with log.trace;
-             let f = fn "f" { a = Int; } { b = Int; }
+            (let f = fn "f" { a = Int; } { b = Int; }
                      (a: b: with f; with lets {c = int a + int b;}; return c);
              in f 1 2)
              3;
           binary.usingStateArg = expect.eq
-            (with typed; with log.trace;
-             let f = fn_ "f" { a = Int; } { b = Int; }
+            (let f = fn._ "f" { a = Int; } { b = Int; }
                      (_: with _; with lets {c = int a + int b;}; return c);
              in f 1 2)
              3;
+          anonymous.noState = expect.eq
+            (let f = fn { a = Int; } (a: int a + 1);
+             in f 1)
+             2;
+          anonymous.usingState = expect.eq
+            (let f = fn { a = Int; } (a: with f; return (int a + 1));
+             in f 1)
+             2;
+          anonymous.usingStateArg = expect.eq
+            (let f = fn._ { a = Int; } (_: with _; return (int a + 1));
+             in f 1)
+             2;
+          anonymous.usingStateArgDirectly = expect.eq
+            (let f = fn._ { a = Int; } (_: _.return (int _.a + 1));
+             in f 1)
+             2;
+          fns.withFns = expect.eq
+            (with fns {
+               f = fn { a = Int; } (a: int a + 1);
+               g = fn { b = Int; } (b: int b * 2);
+             };
+             f 3 + g 5)
+             14;
+          fns.withLets = expect.eq
+            (with lets {
+               x = 3;
+               f = fn { a = Int; } (a: int a + 1);
+               g = fn { b = Int; } (b: int b * 2);
+             };
+             f x + g x)
+             10;
         };
         combined = {
           expr =
