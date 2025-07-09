@@ -325,6 +325,41 @@ let
         in if lib.isString T then T
           else T.getBoundName {};
 
+      assertFixedUnderF = fLabel: xLabel: f: x:
+        with collective-lib.tests.Compare;
+        let
+          fx = f x;
+          x_NL = NoLambdas x;
+          fx_NL = NoLambdas fx;
+          printDepth = 10;
+          assertion = assertMsg (x_NL == fx_NL) (indent.block ''
+            ${xLabel} is not fixed under ${fLabel}:
+
+              ${xLabel} (original):
+              ${indent.here (log.vprintD printDepth x)}
+
+              ${xLabel} (under ${fLabel}):
+              ${indent.here (log.vprintD printDepth fx)}
+
+            Comparing lambda-free:
+              ${xLabel} (lambda-free, original):
+              ${indent.here (log.vprintD printDepth x_NL)}
+
+              ${xLabel} (lambda-free, under ${fLabel}):
+              ${indent.here (log.vprintD printDepth fx_NL)}
+
+            Diff:
+              ${indent.here (log.vprintD printDepth (diff x_NL fx_NL))}
+          '');
+        in assertion;
+
+      assertTypeFixedUnderNew = T: typeName: typeArgs:
+        assertFixedUnderF
+          "new"
+          "Type"
+          (T: T typeName typeArgs)
+          T;
+
       ### dispatch
 
       # Eventually exposed as collective-lib.typelib.dispatch and merged into collective-lib.dispatch.dispatch
@@ -2022,41 +2057,6 @@ let
     printUniverse = U:
       with log.prints; put U using.raw (using.maxDepth 3) ___;
 
-    assertFixedUnderF = fLabel: xLabel: f: x:
-      with collective-lib.tests.Compare;
-      let
-        fx = f x;
-        x_NL = NoLambdas x;
-        fx_NL = NoLambdas fx;
-        printDepth = 10;
-        assertion = assertMsg (x_NL == fx_NL) (indent.block ''
-          ${xLabel} is not fixed under ${fLabel}:
-
-            ${xLabel} (original):
-            ${indent.here (log.vprintD printDepth x)}
-
-            ${xLabel} (under ${fLabel}):
-            ${indent.here (log.vprintD printDepth fx)}
-
-          Comparing lambda-free:
-            ${xLabel} (lambda-free, original):
-            ${indent.here (log.vprintD printDepth x_NL)}
-
-            ${xLabel} (lambda-free, under ${fLabel}):
-            ${indent.here (log.vprintD printDepth fx_NL)}
-
-          Diff:
-            ${indent.here (log.vprintD printDepth (diff x_NL fx_NL))}
-        '');
-      in assertion;
-
-    assertTypeFixedUnderNew = T: typeName: typeArgs:
-      assertFixedUnderF
-        "new"
-        "Type"
-        (T: T typeName typeArgs)
-        T;
-
     # Lazily cascading options that disable typechecking at levels U_0 and U_1.
     # Options for the next universe can be produced via 'resolve opts.descend'.
     mkUniverseOpts = U: level: rec {
@@ -2451,6 +2451,12 @@ let
         Default = T: v: mkSafeUnboundInstanceShim "Default" {
           defaultType = _: T;
           defaultValue = _: v;
+        };
+
+        Literal = v: (mkSafeUnboundTypeShim "Literal" {}) // {
+          getBoundName = _: "Literal<${toString v}>";
+          __TypeId = _: "Literal<${toString v}>";
+          getLiteral = _: v;
         };
 
         Static = T: mkSafeUnboundInstanceShim "Static" {
@@ -3578,7 +3584,7 @@ let
           Set = expect.eq (typeBoundNameOf (Set.new {})) "Set";
           # Presence of __Type triggers isTyped
           TypedSetstring = expect.eq (typeBoundNameOf {__Type = TypeThunk "string";}) "string";
-          TypedSetThunk = expect.eq (typeBoundNameOf {__Type = TypeThunk (Literal 123);}) "Literal<123>";
+          #TypedSetThunk = expect.eq (typeBoundNameOf {__Type = TypeThunk (Default Int 123);}) "Default<Int, 123>";
         };
 
         wrapping = 
@@ -4109,6 +4115,7 @@ let
               FakeType = name: {
                 name = { value = name; };
                 new = name: args: FakeType name;
+                __functor = self: arg: self.new arg;
               };
             in {
               fixed = expect.asserts.ok (assertTypeFixedUnderNew (FakeType "FakeType") "FakeType" {});
@@ -4308,9 +4315,9 @@ let
           (testInUniverses
             { inherit (Types.Universe) U_0 U_1; }
             (U: {
-          #    peripheral = peripheralTests U;
+              peripheral = peripheralTests U;
               smoke = smokeTests U;
-          #    Typelib = TypelibTests U;
+              Typelib = TypelibTests U;
               typeFunctionality = typeFunctionalityTests U;
           #    inheritance = inheritanceTests U;
           #    instantiation = instantiationTests U;
