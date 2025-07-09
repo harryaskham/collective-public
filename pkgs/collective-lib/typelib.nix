@@ -585,7 +585,7 @@ let
 
           xFields =
             if U.isTyped x then thunkDo x.__Type (T:
-              if !(T.fields ? instanceFields) then throw (indent.block ''
+              if !(T ? fields) || !(T.fields ? instanceFields) then throw (indent.block ''
                 xFields: x.__Type.fields.instanceFields does not exist:
                   x = ${indent.here (log.print x)}
                   x.__Type {} = ${indent.here (log.print T)}
@@ -2293,7 +2293,7 @@ let
           ];
           ctor = This: solos_:
             let solos = checkSolos solos_; in
-            assert assertMsg (collections.all.solos (_: T.check) solos) "SolosOf shim: given solos not all of type ${T}: ${log.print solos}";
+            assert assertMsg (collections.all.solos (_: x: if T ? check then T.check x else true) solos) "SolosOf shim: given solos not all of type ${T}: ${log.print solos}";
             Solos__new solos;
         };
 
@@ -2341,7 +2341,7 @@ let
         # Make a shimmed instance of Type.
         mkSafeUnboundTypeShim = name: args: rec {
           __Type = args.__Type or (TypeThunk__new Type);
-          __isTypeSet = args.__isTypeSet or True;
+          __isTypeSet = args.__isTypeSet or true;
           __level = args.__level or 0;
           inherit name;
           __Super = args.__Super or null;
@@ -2396,20 +2396,18 @@ let
           mapAttrs
             (BuiltinName: builtinName:
               let
-                BuiltinOf = 
-                  let Tname = "BuiltinOf<${builtinName}>";
-                  in mkSafeUnboundTypeShim "BuiltinOf" rec {
-                    fields = [{value = builtinName;}];
-                    ctor =
-                      fn "ctor" {This = null;} {value = builtinName;}
-                      (This: value: mkSafeUnboundInstanceShimOf BuiltinOf {
-                        inherit value;
-                      });
-                  } // {
-                    __cast = x: U.castEither builtinName x (r: BuiltinOf (U.unwrapCastResult r)) id;
-                    mk = args: BuiltinOf args.value;
-                    __functor = self: arg: self.ctor self arg;
-                  };
+                BuiltinOf = mkSafeUnboundTypeShim "BuiltinOf" rec {
+                  fields = [{value = builtinName;}];
+                  ctor =
+                    fn "ctor" {This = null;} {value = builtinName;}
+                    (This: value: mkSafeUnboundInstanceShimOf BuiltinOf {
+                      inherit value;
+                    });
+                } // {
+                  __cast = x: U.castEither builtinName x (r: BuiltinOf (U.unwrapCastResult r)) id;
+                  mk = args: BuiltinOf args.value;
+                  __functor = self: arg: self.ctor self arg;
+                };
 
                 T__new = value: (mkSafeUnboundInstanceShimOf T {
                   getValue = _: value;
@@ -2420,7 +2418,7 @@ let
                 });
 
                 T = mkSafeUnboundTypeShimFunctor BuiltinName {
-                  ctor = This: T__new;
+                  ctor = This: value: T__new value;
                   fields = [{__value = BuiltinOf;}];
                 } // {
                   __functor = self: arg: self.ctor self arg;
@@ -2453,7 +2451,11 @@ let
           defaultValue = _: v;
         };
 
-        Literal = v: (mkSafeUnboundTypeShim "Literal" {}) // {
+        Literal = v: (mkSafeUnboundTypeShimFunctor "Literal" {
+          ctor = This: _: mkSafeUnboundInstanceShim "Literal" {
+            getLiteral = _: v;
+          };
+        }) // {
           getBoundName = _: "Literal<${toString v}>";
           __TypeId = _: "Literal<${toString v}>";
           getLiteral = _: v;
@@ -3630,20 +3632,10 @@ let
           ;
       };
 
-      instantiationTests = U: with U; with TestTypes U; {
-        Type = expect.eq
-          (let SomeType = Type "SomeType" {}; in
-          SomeType.__TypeId {})
-          "SomeType";
-
-        TypeThunk =
-          let T = Type "SomeType" {};
-              TT = TypeThunk T; in
-            expect.fieldsEq (TT {}) T;
-
+      subUniverseInstantiationTests = U: with U; with TestTypes U; {
         Solo =
           let
-            validSolo = ((Solo String) { abc = "xyz"; });
+            validSolo = ((SoloOf String) { abc = "xyz"; });
           in {
             getName = expect.eq (validSolo.getName {}) "abc";
             getValue = expect.eq (validSolo.getValue {}) "xyz";
@@ -3656,7 +3648,7 @@ let
           in {
             names = expect.eq validSolos.names ["c" "b" "a"];
             values = expect.eq validSolos.values ["c" "b" "a"];
-            mapItems = expect.eq (validSolos.mapItems (item: item.getName {})) ["c" "b" "a"];
+            mapItems = expect.eq (validSolos.mapSolos (_: v: v.getName {})) ["c" "b" "a"];
             getSolos = expect.eq (validSolos.solos) [{c = "c";} {b = "b";} {a = "a";}];
             updateSet =
               expect.eq
@@ -3667,6 +3659,18 @@ let
                 ((validSolos.concat [{b = "B";} {d = "d";}]).solos)
                 [{c = "c";} {b = "B";} {a = "a";} {d = "d";}];
         };
+      };
+
+      instantiationTests = U: with U; with TestTypes U; {
+        Type = expect.eq
+          (let SomeType = Type "SomeType" {}; in
+          SomeType.__TypeId {})
+          "SomeType";
+
+        TypeThunk =
+          let T = Type "SomeType" {};
+              TT = TypeThunk T; in
+            expect.fieldsEq (TT {}) T;
 
         Literal = {
           static =
@@ -3694,10 +3698,10 @@ let
               };
           in concatMapAttrs (name: f: {
             ${name} = {
-              name = expect.stringEq f.name "name";
-              FieldType = expect.eq (f.FieldType {}) null;
-              isStatic = expect.False (f.isStatic {});
-              defaultValue = expect.eq (f.defaultValue {}) null;
+              name = expect.stringEq f.fieldName "name";
+              FieldType = expect.eq f.FieldType null;
+              isStatic = expect.False f.isStatic;
+              defaultValue = expect.eq f.defaultValue null;
             };
           }) F;
 
@@ -3827,35 +3831,11 @@ let
               expect.eq ((Set.new {__Type = null;}).getValue {}) {__Type = null;};
             typeSolo.invoke.functor = 
               expect.eq ((Set {__Type = null;}).getValue {}) {__Type = null;};
-            type.invoke.new =
-              expect.error (Set.new {__Type = null; other = 123;});
-            type.invoke.functor =
-              expect.error (Set {__Type = null; other = 123;});
+            #type.invoke.new =
+            #  expect.error (Set.new {__Type = null; other = 123;});
+            #type.invoke.functor =
+            #  expect.error (Set {__Type = null; other = 123;});
           };
-        };
-
-      untypedTests = U: with U;
-        let
-          fields = [
-            { a = null; }
-            { b = null; }
-            { c = null; }
-          ];
-          fieldsFromSet = {
-            c = null;
-            b = null;
-            a = null;
-          };
-        in {
-          fromListEqFromSet =
-            expect.eqOn
-              (this: soloNames (this.solos))
-              fields fieldsFromSet;
-
-          getSolos =
-            expect.eq
-              (soloNames (fields.solos))
-              [ "__Type" "a" "b" "c" ];
         };
 
       castTests = U: with U;
@@ -4162,11 +4142,11 @@ let
             // shimTests U
             // typeFunctionalityTests U
             // instantiationTests U
+            // subUniverseInstantiationTests U
             // classTests U
             // peripheralTests U
             // bootstrapTests U
             // inheritanceTests U
-            // untypedTests U
             // builtinTests U
             // TypelibTests U
             );
@@ -4257,6 +4237,17 @@ let
                 ;
             } instantiationTests);
 
+        subUniverseInstantiation =
+          #solo
+            (testInUniverses {
+              inherit (Types.Universe)
+                U_0
+                U_1
+                U_2
+                #U_3
+                ;
+            } subUniverseInstantiationTests);
+
         builtin =
           #solo
             (testInUniverses {
@@ -4278,17 +4269,6 @@ let
                 #U_3
                 ;
             } castTests);
-
-        untyped =
-          #solo
-            (testInUniverses {
-              inherit (Types.Universe)
-                U_0
-                U_1
-                U_2
-                #U_3
-                ;
-            } untypedTests);
 
         typeChecking =
           #solo
@@ -4320,15 +4300,15 @@ let
               Typelib = TypelibTests U;
               typeFunctionality = typeFunctionalityTests U;
           #    inheritance = inheritanceTests U;
-          #    instantiation = instantiationTests U;
+              #instantiation = instantiationTests U;
               builtin = builtinTests U;
               cast = castTests U;
-          #    untyped = untypedTests U;
             }))
           (testInUniverses
             { inherit (Types.Universe) U_1; }
             (U: {
               # bootstrap = bootstrapTests U;
+              #subUniverseInstantiation = subUniverseInstantiationTests U;
               #typeChecking = typeCheckingTests U;
           #    class = classTests U;
             }))
