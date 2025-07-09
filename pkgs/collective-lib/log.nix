@@ -360,10 +360,12 @@ let
             safe = self.opts.safe;
           } // extra;
 
-          # The function that sits as a __functor on the state for typed calls.
-          # Accepts type args until a fnBody is reached, then returns a checked wrapped function
-          # of those arguments.
-          constructTypedCall = self: callName: Variadic {
+
+          # Builds the initial log state for a typed function call.
+          # The state includes a __functor member that consumes as many arguments as are
+          # specified in the signature, checks their types, casts if necessary, and invokes the
+          # function body against the checked arguments.
+          buildTypedCall = self: includeStateArg: callName: Variadic {
             initialState = {
               ArgTypeSolos = [];
             };
@@ -371,7 +373,9 @@ let
             isTerminal = _: x: lib.isFunction x;
 
             check = _: x:
-              (isSolo x && typed.isTypeLike (soloValue x))
+              (isSolo x && (typed.isTypeLike (soloValue x) 
+                            || lib.isString (soloValue x)
+                            || builtins.isNull (soloValue x)))
               || lib.isFunction x;
 
             handle = state: x:
@@ -388,18 +392,22 @@ let
                 ArgTypeSolos = state.ArgTypeSolos;
                 ArgTypes = mergeSolos ArgTypeSolos;
                 argNames = soloNames ArgTypeSolos;
-                # fn should have the same signature as fnBody after this wrapping.
-                fn = 
+                # typedFnBody should have the same signature as fnBody after this wrapping.
+                typedFnBody = 
                   (flip Variadic.mkOrderedThen) argNames (uncheckedArgs:
                     let 
                       argCastResultSolos =
                         mapSolos
                           (argName: ArgType:
                             let uncheckedArg = uncheckedArgs.${argName}; in
-                            if (!typelib.isTypeLike ArgType)
-                              then mkCastError "Invalid argument type"
-                            else
-                              typed.unwrapCastResult (typed.cast ArgType uncheckedArg)
+                            if (builtins.isNull ArgType) then uncheckedArg
+                            else if (typelib.isTypeLike ArgType)
+                              then typed.unwrapCastResult (typed.cast ArgType uncheckedArg)
+                            else if lib.isString ArgType
+                              then if (typed.typeIdOf uncheckedArg) == ArgType
+                                   then uncheckedArg
+                                   else typed.mkCastError "TypeId argument check failed: got ${typed.typeOf uncheckedArg}"
+                            else typed.mkCastError "Invalid argument type in function definition: ${ArgType}"
                           )
                           ArgTypeSolos;
                       partitionedArgSolos = partitionSolos (_: typed.isCastError) argCastResultSolos;
@@ -430,18 +438,27 @@ let
                             {inherit ArgTypes;}
                             {inherit signature;}
                           ];
-                        };
+                        } // (optionalAttrs includeStateArg args); # Add top-level args for 'with'
                     in
                       assert assertMsg typecheckPassed (indent.block ''
                         Type check failed:
                           ${indent.here signature}
                       '');
-                      with mkLogState;
-                      return (ap.list fnBody argList)
+                      let 
+                        logState = mkLogState; 
+                        argList_ = if includeStateArg then [logState] else argList;
+                      in 
+                        with logState;
+                        assert over [(short signature)];
+                        return (ap.list fnBody argList_)
                   );
               in
+                # Expose both functor and fn, allowing:
+                # typedCall "f" { a = "int"; } (a: a + 1)
+                # with typedCall "f"; fn { a = "int"; } (a: return (a + 1))
                 buildInitialLogStateWith
-                  { __functor = functorSelf: arg: fn arg; }
+                  { __functor = functorSelf: arg: typedFnBody arg;
+                    ${callName} = typedFnBody; }
                   self
                   {
                     call = [
@@ -450,13 +467,6 @@ let
                     ];
                   };
           };
-
-          # Builds the initial log state for a typed function call.
-          # The state includes a __functor member that consumes as many arguments as are
-          # specified in the signature, checks their types, casts if necessary, and invokes the
-          # function body against the checked arguments.
-          buildTypedCall = self: callName: 
-            constructTypedCall self callName; 
 
           buildCall = self: callName:
             Variadic.mkListThen (l: 
@@ -777,9 +787,11 @@ let
             attrs = mkEventGroup "attrs" (buildAttrs self);
             test = mkEventGroup "test" (buildTest self);
 
-            # Different pattern since this uses 'call' internally after constructing
-            # the typed variadic wrapper.
-            typedCall = mkEventGroup "typedCall" (buildTypedCall self);
+            fn = mkEventGroup "typedCall" (buildTypedCall self false);
+            typedCall = fn;
+
+            # Include a first-arg of the function / functor log state itself.
+            fn_ = mkEventGroup "typedCall" (buildTypedCall self true);
 
             # Set options on the bound self and rebind such that they are
             # available on the unbound methods.
@@ -906,7 +918,7 @@ in log // {
              2;
           unary.Lambda.lambda = expect.eq
             (with typed; with log.trace;
-             let f = typedCall "f" { fn = Lambda; } (fn: fn 3);
+             let f = typedCall "f" { g = Lambda; } (g: g 3);
              in f (x: x + 4))
              7;
           unary.returnLambda = expect.eq
@@ -921,6 +933,29 @@ in log // {
           binary.intInt.full = expect.eq
             (with typed; with log.trace;
              let f = typedCall "f" { a = Int; } { b = Int; } (a: b: int a + int b);
+             in f 1 2)
+             3;
+          binary.usingWith = expect.eq
+            (with typed; with log.trace;
+             with typedCall "f" { a = Int; } { b = Int; }
+                  (a: b: int a + int b);
+             f 1 2)
+             3;
+          binary.fn = expect.eq
+            (with typed; with log.trace;
+             let f = fn "f" { a = Int; } { b = Int; } (a: b: int a + int b);
+             in f 1 2)
+             3;
+          binary.usingState = expect.eq
+            (with typed; with log.trace;
+             let f = fn "f" { a = Int; } { b = Int; }
+                     (a: b: with f; with lets {c = int a + int b;}; return c);
+             in f 1 2)
+             3;
+          binary.usingStateArg = expect.eq
+            (with typed; with log.trace;
+             let f = fn_ "f" { a = Int; } { b = Int; }
+                     (_: with _; with lets {c = int a + int b;}; return c);
              in f 1 2)
              3;
         };
