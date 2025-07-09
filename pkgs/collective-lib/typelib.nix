@@ -1416,13 +1416,13 @@ let
                   let castResult = castFieldValue This uncastValue fieldName field; in
                   assert errors.checks [{
                     name = "set.${fieldName} cast succeeded";
-                    cond = U.isCastSuccess castResult;
+                    cond = !(U.isCastError castResult);
                     msg = (with indent; block ''
                     Cast failed calling set.${fieldName} on ${This}:
                       ${here castResult.castError}
                     '');
                   }];
-                  let assignment = mkSolo fieldName castResult.castSuccess; in
+                  let assignment = mkSolo fieldName (U.unwrapCastResult castResult); in
                   bindThis This (this // assignment))))
             .merge {};
 
@@ -2322,7 +2322,7 @@ let
             allFields = FieldSpecs.fmap (flip Field__new);
             instanceFields = Solos__new (mapSolos (flip Field__new) fieldSpecs);
             instanceFieldsWithType = allFields;
-            requiredFields = instanceFields;
+            requiredFields = instanceFields.filter (_: f: !f.hasDefaultValue);
             staticFields = Solos__new [];
           };
 
@@ -2901,7 +2901,7 @@ let
             staticFields = allFields.filter (_: field: !(U.isNull field) && field.isStatic);
             instanceFieldsWithType = allFields.filter (_: field: U.isNull field || !field.isStatic);
             instanceFields = instanceFieldsWithType.filter (name: _: name != "__Type");
-            requiredFields = instanceField.filter (_: field: !(field.defaultValue == null));
+            requiredFields = instanceFields.filter (_: field: !field.hasDefaultValue);
           };
         };
 
@@ -4036,10 +4036,10 @@ let
         };
 
         methodCalls = {
-          MyType_methods = {
-            expr = attrNames (U.set MyType.methods);
-            expected = [ "helloMyField" ];
-          };
+          MyType_methods =
+            expect.eq
+              (attrNames (U.set MyType.methods))
+              [ "__implements__toString" "__new" "__super" "__superCtor" "helloMyField" ];
           MyType_call = {
             expr =
               let this = MyType (String "World");
@@ -4073,7 +4073,7 @@ let
         defaults =
           let
             WithDefault = Type "WithDefault" {
-              fields = _: [
+              fields = [
                 { a = Default Int 123; }
                 { b = Default Int (Int 123); }
               ];
@@ -4084,9 +4084,9 @@ let
             field.parse.hasNoDefault = expect.False ((parseFieldSpec Int).hasDefaultValue);
             field.parse.hasDefaultValue = expect.True ((parseFieldSpec (Default Int 123)).hasDefaultValue);
             field.parse.defaultValue = expect.eq ((parseFieldSpec (Default Int 123)).defaultValue) 123;
-            field.FieldType = expect.eq ((F.FieldType {}).getName {}) "Int";
-            field.hasDefaultValue = expect.True (F.hasDefaultValue {});
-            field.defaultValue = expect.eq (F.defaultValue {}) 123;
+            field.FieldType = expect.eq (F.FieldType.getName {}) "Int";
+            field.hasDefaultValue = expect.True F.hasDefaultValue;
+            field.defaultValue = expect.eq F.defaultValue 123;
             sets.untyped = expect.eq (int (WithDefault {}).a) 123;
             sets.typed = expect.eq ((WithDefault {}).b.getValue {}) 123;
             overrides = expect.eq ((WithDefault.mk { a = Int 456; }).a.getValue {}) 456;
@@ -4299,10 +4299,7 @@ let
     in suite rec {
 
       all = 
-        let onlyU_0 = { inherit (Types.Universe) U_0; };
-            fromU_0 = { inherit (Types.Universe) U_0 U_1; };
-            fromU_1 = removeAttrs fromU_0 [ "U_0" ];
-        in mergeAttrsList [
+        mergeAttrsList [
           (testInUniverses
             { inherit (Types.Universe) U_0; }
             (U: {
@@ -4312,13 +4309,13 @@ let
             { inherit (Types.Universe) U_0 U_1; }
             (U: {
           #    peripheral = peripheralTests U;
-          #    smoke = smokeTests U;
+              smoke = smokeTests U;
           #    Typelib = TypelibTests U;
-          #    typeFunctionality = typeFunctionalityTests U;
+              typeFunctionality = typeFunctionalityTests U;
           #    inheritance = inheritanceTests U;
           #    instantiation = instantiationTests U;
               builtin = builtinTests U;
-              #cast = castTests U;
+              cast = castTests U;
           #    untyped = untypedTests U;
             }))
           (testInUniverses
