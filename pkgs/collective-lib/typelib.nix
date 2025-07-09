@@ -214,14 +214,7 @@ let
       ### type utilities
 
       # Get the Universe level of a type.
-      getLevel = x: 
-        let T = typeOf (typeOf x);
-        in
-        assert that (T ? __level) (_b_ ''
-          getLevel: Type instance has no __level field:
-            T = ${_ph_ T}
-        '');
-        int T.__level;
+      getLevel = x: (typeOf x).__level or 0;
 
       # Check if a given argument is a Type in the Type system.
       # 'isType' collides with lib.isType.
@@ -2432,6 +2425,7 @@ let
             T_ = T // (noOverride T ({
               __functor = self: arg: self.new arg;
               new = arg: T_.ctor T_ arg;
+              __toString = self: name;
             } // args));
           in
             T_;
@@ -2472,6 +2466,7 @@ let
                   __Type = TypeThunk__new BuiltinTypeShims.${BuiltinName};
                   getValue = _: value;
                   inherit value;
+                  __toString = self: _p_ self.value;
                 })
                 // (optionalAttrs (BuiltinName == "Lambda") {
                   __functor = self: arg: self.value arg;
@@ -2511,6 +2506,7 @@ let
                   name = BuiltinName;
                   getBoundName = _: BuiltinName;
                   __TypeId = _: BuiltinName;
+                  __toString = self: BuiltinName;
                   __special__isTypedAttrs = true;
                 };
               in 
@@ -2659,7 +2655,8 @@ let
               rebuild = Null__new null;
 
               new = name: arg: Type__ctor T name arg;
-              functor = self: name: self.new name;
+              __functor = self: name: self.new name;
+              __toString = self: "Type";
               __special__isTypedAttrs = true;
             };
           in bindTypeShim T;
@@ -4690,7 +4687,7 @@ let U = Types.Universe.U_0; in
 </nix>
 
 <nix>
-Types.Universe.U_1.opts.name
+Types.Universe.U_1.Any
 </nix>
 
 <nix>
