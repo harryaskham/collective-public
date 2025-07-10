@@ -35,12 +35,14 @@ in rec {
   _bs_ = indent.blocks;
   _l_ = x: _P_ x _line ___;
   _ls_ = indent.lines;
+  _h_ = indent.here;
   _p_ = indent.print;
   _ph_ = x: _h_ (_p_ x);
   _P_ = log.prints;
   _pv_ = indent.vprint;
+  _pvh_ = x: _h_ (_pv_ x);
   _pd_ = indent.vprintD;
-  _h_ = indent.here;
+  _pdh_ = d: x: _h_ (_pd_ dx);
   _throw_ = x: throw (_b_ x);
   that = cond: x: assertMsg cond (_b_ x);
 

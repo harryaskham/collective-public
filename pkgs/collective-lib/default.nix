@@ -114,6 +114,7 @@ let
       clib = import ./clib.nix args;
       collections = import ./collections.nix args;
       colors = import ./colors.nix args;
+      debuglib = import ./debuglib.nix args;
       disk = import ./disk.nix args;
       dispatchlib = import ./dispatchlib.nix args;
       display = import ./display.nix args;

@@ -8,6 +8,7 @@ with collective-lib.errors;
 with collective-lib.functions;
 with collective-lib.lists;
 with collective-lib.strings;
+with collective-lib.syntax;
 
 # Nicer interface to runtests
 let
@@ -46,10 +47,10 @@ in rec {
 
     String = this:
       if hasToString this then toString this
-      else throw (indent.block ''
+      else _throw_ ''
         Error occurred treating this as string:
-          ${indent.here (log.vprint this)}
-      '');
+          ${_pvh_ this}
+      '';
 
     # Resolve thunks in the expr and expected.
     Resolve = this: tryStrict (resolveDeep this) (e: { Compare.Resolve = "Thunk resolution evaluation error"; }) ;
@@ -148,11 +149,11 @@ in rec {
     noLambdasEq = eqOn Compare.NoLambdas;
 
     valueEq = eqOn (this: 
-      assert assertMsg (this ? getValue) (indent.block ''
-        expect.valueEq: No getValue on this
-          ${indent.here (log.vprint this)}
+      assert assertMsg (this ? value) (indent.block ''
+        expect.valueEq: No value on this
+          ${_pvh_ this}
         '');
-      this.getValue {}
+      this.value
     );
 
     lazyFieldsEq = lazyEqOn Compare.Fields;
@@ -215,7 +216,7 @@ in rec {
                   ${msg}: ${indent.here (log.print result)}
                   ${optionalString (status == Status.Failed) ''
                   Diff:
-                    ${indent.here (log.vprintDUnsafe 9 (diffShort test.expected result))}
+                    ${indent.here (log.vprintD 3 (diffShort test.expected result))}
                   ''}
                 '';
             };
@@ -228,7 +229,7 @@ in rec {
             let errorResult =
                   # TODO: Redundant check
                   assert assertMsg (isTryEvalFailure results)
-                    "Eval error handled without being a tryEval failure: ${log.vprintUnsafe results}";
+                    "Eval error handled without being a tryEval failure: ${log.vprintDUnsafe 3 results}";
                   results;
             in mkActual "ERROR" errorResult
 
@@ -322,10 +323,16 @@ in rec {
         solo = test.solo or false;
 
         # Run the test under tryEval, treating eval failure as test failure
-        run = evalOneTest (expr: builtins.tryEval expr) (test_ // { mode = "run"; });
+        # Strict needed in order to catch eval errors
+        run = evalOneTest (expr: builtins.tryEval (strict expr)) (test_ // { mode = "run"; });
 
         # Run the test propagating eval errors that mask real failures
-        debug = evalOneTest (expr: expr) (test_ // { mode = "debug"; });
+        # Strict needed in order to catch eval errors
+        debug = 
+          # Still tryEval if the test expects error, otherwise we false-positive flag
+          # these errors.
+          let maybeTry = if isTryEvalFailure rawExpected then builtins.tryEval else id;
+          in evalOneTest (expr: maybeTry (strict expr)) (test_ // { mode = "debug"; });
       };
     in test_;
 

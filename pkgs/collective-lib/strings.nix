@@ -4,6 +4,7 @@ with lib;
 with lib.strings;
 with collective-lib.lists;
 with collective-lib.functions;
+with collective-lib.syntax;
 
 # String formatting and indentation utilities.
 # Allows for multi-line indentation in indented strings where
@@ -40,6 +41,7 @@ with collective-lib.functions;
 #   }'';
 let
   log = collective-lib.log;
+  errors = collective-lib.errors;
   typed = collective-lib.typed;
 in rec {
   # Join a list of strings into a string with a separator.
@@ -436,6 +438,57 @@ in rec {
   builtinHasToShellValue = T: 
     elem T ["int" "float" "bool" "string" "path" "null" "list"];
 
+  # NOTE: This doesn't work unless we have a derivation per string;
+  # for now just adds error context.
+  # Make a named context object with arbitrary stringable payload.
+  # Note: this hooks into the derivation machinery in order to manipulate the
+  # context stored on strings, which carries lists of store paths.
+  # If a string from this Context lib is used in a derivation, it may cause
+  # issues.
+  Safe = x: errors.try (log.describe "while evaluating Safe expr"x) (_: ''<eval failed>'');
+  Context = rec {
+
+    # Create a fake derivation we can use to manipulate string context.
+    #fakeDrv = derivation {
+    #  name = "collective-lib__string__Context__fakeDrv";
+    #  builder = "mybuilder";
+    #  system = builtins.currentSystem;
+    #};
+
+    # Context.String name               s -> empty context
+    # Context.String {attr = ...;}      s -> unnamed
+    # Context.String name {attr = ...;} s -> both name and context set.
+    String = {
+      __functor = self: nameOrCtx:
+        if lib.isString nameOrCtx then
+          let name = nameOrCtx;
+          in ctxOrS:
+            if lib.isAttrs ctxOrS then
+              let ctx = ctxOrS;
+              in self.__mk name ctx
+            else
+              # If we skipped the attrs, 
+              # immediately make the context and return its application to 
+              # the given string.
+              let s = ctxOrS;
+              in self.__mk name {} s
+        else
+          let ctx = nameOrCtx;
+          in self.__mk "anonymous" ctx;
+
+      __mk = name: ctx: {
+        inherit name ctx;
+        __toString = self: log.describe _b_ ''
+          While evaluating Context.String with context:
+
+          Context.String<${self.name}>:
+            ${Safe (_pvh_ self.ctx)}
+        '';
+        __functor = self: s: lib.strings.addContextFrom self s;
+      };
+    };
+  };
+
   _tests = with collective-lib.tests; suite {
     split = {
       whitespace = {
@@ -563,5 +616,22 @@ in rec {
         };
     };
 
+    Context = {
+      Safe = expect.eq (Safe "${throw "no"}") "<eval failed>";
+      String = 
+        let
+          ctx = {attr = "value";};
+          mkContextTest = CS: {
+            eqSelf = expect.eq CS CS;
+            eqString = expect.eq CS "string";
+            eqToString = expect.eq (toString CS) "string";
+            #eqContext = expect.eq (builtins.getContext CS) "TODO";
+          };
+        in solo {
+          named.attrs = mkContextTest (Context.String "name" ctx "string");
+          named.empty = mkContextTest (Context.String "name" "string");
+          unnamed.attrs = mkContextTest (Context.String ctx "string");
+        };
+    };
   };
 }

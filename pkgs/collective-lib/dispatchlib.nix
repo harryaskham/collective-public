@@ -8,7 +8,9 @@ with collective-lib.lists;
 with collective-lib.strings;
 with collective-lib.tests;
 
-let log = collective-lib.log;
+let 
+  log = collective-lib.log;
+  typed = collective-lib.typed;
 in rec {
   dispatch = rec {
     # Default behaviour is to dispatch on the simple Nix builtin type of the argument.
@@ -167,6 +169,20 @@ in rec {
     list = map (deepConcatMap f);
     set = concatMapAttrs (k: v: f k (deepConcatMap f v));
   };
+
+  # Provides a parent argument to f holding the set or list.
+  deepConcatMapParent = f: parent:
+    dispatch.def id {
+      list = parent': map (deepConcatMapParent f parent');
+      set = parent': concatMapAttrs (k: x: f parent k (deepConcatMapParent f x)) parent';
+    } parent;
+
+  # Provides a parent argument to f holding the set or list.
+  deepMergeMapParent = f: parent:
+    dispatch.def id {
+      list = parent': map (deepMergeMapParent f parent');
+      set = parent': typed.mergeMapAttrs (k: x: f parent k (deepMergeMapParent f x)) parent';
+    } parent;
 
   # As deepConcatMap but only recurses into values that pass cond.
   # f is only applied to leaves that pass cond.

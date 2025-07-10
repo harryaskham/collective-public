@@ -22,6 +22,7 @@ with collective-lib.dispatchlib;
 with collective-lib.lists;
 with collective-lib.functions;
 with collective-lib.strings;
+with collective-lib.syntax;
 
 # Printing/logging utilities
 let
@@ -31,11 +32,14 @@ let
   syntax = collective-lib.syntax;
   log = rec {
 
+    # Shorthand for adding context for better traces when the expr fails to eval.
+    describe = msg: expr: builtins.addErrorContext msg expr;
+
     traceOpts = if traceOpts == null then defTraceOpts else traceOpts;
 
     defPrintArgs = {
       # If true, all conversions happen under tryEval
-      printSafely = false;
+      printSafely = true;
       # If true, print under deepseq
       printStrictly = false;
       # If true, do not respect __toString
@@ -151,14 +155,6 @@ let
     print_ = args: x:
       with args;
       let
-        strictWrapper = value: 
-          if printStrictly then strict value else value;
-        safeWrapper = value:
-          if args.cycles.cycle != null then
-            "<LOOP: ${joinSep "." (map toString args.cycles.cycle.segment)}>"
-          else if printSafely then
-            errors.try value (_: "<eval error>")
-          else value;
         printBlock = value:
           if depth >= maxDepth then "..."
           else if hasShow value && !ignoreShow then
@@ -176,17 +172,23 @@ let
             set = formatBlock (printAttrs_ args value);
             bool = boolToString value;
           }.${typeOf value};
+        maybeStrict = if printStrictly then strict else id;
       in
-        strictWrapper (printBlock (safeWrapper x));
+        if args.cycles.cycle != null then
+          "<LOOP: ${joinSep "." (map toString args.cycles.cycle.segment)}>"
+        else if printSafely then
+          maybeStrict (errors.try (printBlock (maybeStrict x)) (_: "<eval error>"))
+        else
+          maybeStrict (printBlock x);
 
     # print x using a function of the default print options
     printWith = f: x: indent.block (print_ (f defPrintArgs) x);
     print = printSafe;
     printSafe = printWith (args: args // prints.using.safe);
-    printUnsafe = printWith id;
+    printUnsafe = printWith (args: args // prints.using.unsafe);
     vprintD = n: printWith (args: args // prints.using.raw // prints.using.depth n // prints.using.safe);
-    vprintUnsafe = printWith (args: args // prints.using.raw);
-    vprintDUnsafe = n: printWith (args: args // prints.using.raw // prints.using.depth n);
+    vprintUnsafe = printWith (args: args // prints.using.raw // prints.using.unsafe);
+    vprintDUnsafe = n: printWith (args: args // prints.using.raw // prints.using.depth n // prints.using.unsafe);
     prints = rec {
       ___ = collective-lib.functions.___;
       put = x: Variadic.mkSetFromThen defPrintArgs (args: print_ args x);
@@ -195,6 +197,7 @@ let
       putD = n: x: put x (using.depth n);
       using = {
         safe = { printSafely = true; };
+        unsafe = { printSafely = false; };
         raw = { ignoreToString = true; ignoreShow = true; };
         strict = { printStrictly = true; };
         lazy = { printStrictly = false; };
@@ -225,6 +228,7 @@ let
             if hasShow x
               then x.__show x
               else x;
+          # Handle an unbound 'show' of (this: self: x: x)
           showXHandlingPartial =
             if isAttrs x && typelib.isFunctionNotFunctor showX
               then log.printAttrs x
@@ -380,14 +384,19 @@ let
             isTerminal = _: x: lib.isFunction x;
 
             check = _: x:
+              describe "while checking ${callName} argument of type ${typeOf x}" (
               (isSolo x && (typed.isTypeLike (soloValue x) 
                             || lib.isString (soloValue x)
                             || builtins.isNull (soloValue x)))
-              || lib.isFunction x;
+              || lib.isFunction x
+              );
 
             handle = state: x:
               if isSolo x then state // {
-                ArgTypeSolos = concatSolos state.ArgTypeSolos [x];
+                ArgTypeSolos = 
+                  describe "while adding ${callName} argument ${_p_ x}" (
+                  concatSolos state.ArgTypeSolos [x]
+                  );
               }
               else state;
 
@@ -401,11 +410,14 @@ let
                 argNames = soloNames ArgTypeSolos;
                 # (typedFnBody callName)should have the same signature as fnBody after this wrapping.
                 typedFnBody = callName:
+                  describe "while building typed function body for ${callName}" (
                   (flip Variadic.mkOrderedThen) argNames (uncheckedArgs:
                     let 
                       argCastResultSolos =
+                        describe "while casting arguments for ${callName}" (
                         mapSolos
                           (argName: ArgType:
+                            describe "while casting argument ${argName} to ${_ph_ ArgType}" (
                             let uncheckedArg = uncheckedArgs.${argName}; in
                             if (builtins.isNull ArgType) then uncheckedArg
                             else if (typelib.isTypeLike ArgType)
@@ -415,8 +427,11 @@ let
                                    then uncheckedArg
                                    else typed.mkCastError "TypeId argument check failed: got ${typed.typeOf uncheckedArg}"
                             else typed.mkCastError "Invalid argument type in function definition: ${ArgType}"
+                            )
                           )
-                          ArgTypeSolos;
+                          ArgTypeSolos
+                        );
+
                       partitionedArgSolos = partitionSolos (_: typed.isCastError) argCastResultSolos;
                       argErrorMsgSolos = mapSolos (_: e: e.castError) partitionedArgSolos.right;
                       argSolos = partitionedArgSolos.wrong;
@@ -434,10 +449,14 @@ let
                               )
                         '';
                       };
-                      signature = mkSignature.call (mergeSolos argErrorMsgSolos);
+                      signature =
+                        describe "while building signature for ${callName}" (
+                        mkSignature.call (mergeSolos argErrorMsgSolos)
+                        );
                       typecheckPassed = empty argErrorMsgSolos;
 
                       typedLogState = 
+                        describe "while building typed log state for ${callName}" (
                         let st = ap.list (self.call callName) argList ___;
                         in st // {
                           call = st.call ++ [
@@ -446,8 +465,10 @@ let
                             {inherit signature;}
                           ];
                           __isAnonymousFunction = callName == anonymousName;
-                        } // (optionalAttrs includeStateArg args); # Add top-level args for 'with'
+                        } // (optionalAttrs includeStateArg args) # Add top-level args for 'with'
+                        );
                     in
+                      describe "while typechecking ${callName} invocation" (
                       assert assertMsg typecheckPassed (indent.block ''
                         Type check failed:
                           ${indent.here signature}
@@ -455,11 +476,15 @@ let
                       let 
                         argList_ = if includeStateArg then [typedLogState] else argList;
                       in 
+                        describe "while invoking ${callName} after successful typecheck" (
                         with typedLogState;
                         let retVal = ap.list fnBody argList_; in
                         assert over [(short signature)
                                      (shortReturn typedLogState retVal)];
                         retVal
+                        )
+                      )
+                  )
                   );
               in
                 # Expose both functor and fn, allowing:
@@ -972,7 +997,8 @@ in log // {
                   (a: b: int a + int b);
              f 1 2)
              3;
-          binary.fn = expect.eq
+          binary.fn = 
+            expect.eq
             (let f = fn "f" { a = Int; } { b = Int; } (a: b: int a + int b);
              in f 1 2)
              3;

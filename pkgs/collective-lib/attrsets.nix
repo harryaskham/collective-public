@@ -11,6 +11,7 @@ with collective-lib.strings;
 let
   log = collective-lib.log;
   lists = collective-lib.lists;
+  typed = collective-lib.typed;
   attrsets = rec {
     # Convert a list of attrs single attrset using a function of the attrs to compute the key
     keyByF = f: xs: mergeAttrsList (map (x: { ${f x} = x; }) xs);
@@ -47,6 +48,12 @@ let
 
     # Swap an attrset keys and values.
     swap = concatMapAttrs (k: v: { ${v} = k; });
+
+    # Like concatMapAttrs but merges its results recursively instead of having e.g.
+    # concatMapAttrs (k: v: { a.${k} = v; }) {b = 1; c = 2;} == {a.c = 2;}
+    # mergeMapAttrs (k: v: { a.${k} = v; }) {b = 1; c = 2;} == {a.b = 1; a.c = 2;}
+    mergeMapAttrs = f: xs:
+      typed.fold recursiveUpdate {} (mapAttrsToList f xs);
 
     # Get only attribute in a solo attrset.
     # Returns {name, value}.
@@ -91,7 +98,7 @@ let
     isSolo = xs: isAttrs xs && size xs == 1;
 
     # true iff xs is a valid solo list.
-    isSolos = xs: isList xs && all isSolo xs;
+    isSolos = xs: tryBool (checkSolos xs);
 
     # Throw if xs is not a valid solo list.
     # Cannot use mapSolo/filterSolo as they use this for typechecking.
@@ -130,6 +137,7 @@ let
 
     # Convert:
     # - an attribute set to a list of solo attributes.
+    #   These are converted in the order of the attrset iteration.
     # - a list of attributes to itself, with assertions that they are solo.
     solos = dispatch {
       list = checkSolos;
@@ -332,6 +340,16 @@ let
             a-b-d-e = 456;
           };
         };
+      };
+
+      swap = {
+        flat = expect.eq (swap {a = "abc"; b = "def";}) {abc = "a"; def = "b";};
+        clash = expect.eq (swap {a = "abc"; b = "abc";}) {abc = "b";};
+      };
+
+      mergeMapAttrs = {
+        concat = expect.eq (concatMapAttrs (k: v: { a = { ${k} = v; }; }) {b = 1; c = 2;}) {a.c = 2;};
+        merge = expect.eq (mergeMapAttrs (k: v: { a = { ${k} = v; }; }) {b = 1; c = 2;}) {a.b = 1; a.c = 2;};
       };
 
       solos =
