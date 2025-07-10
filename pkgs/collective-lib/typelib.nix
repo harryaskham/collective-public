@@ -1066,7 +1066,7 @@ let
       # isSuperTypeOf Type A == true
       # isSuperTypeOf Type B == true
       isSuperTypeOf = This: That:
-        if U.isNull That.__Super then false
+        if !(That ? __Super) || U.isNull That.__Super then false
         else thunkDo That.__Super (U.typeEq This)
             || thunkDo That.__Super (ThatSuper: This.isSuperTypeOf ThatSuper);
       isSubTypeOf = This: That: That.isSuperTypeOf This;
@@ -4575,7 +4575,7 @@ let
               smoke = smokeTests U;
               Typelib = TypelibTests U;
               typeFunctionality = typeFunctionalityTests U;
-          #    inheritance = inheritanceTests U;
+              inheritance = inheritanceTests U;
               instantiation = instantiationTests U;
               builtin = builtinTests U;
               cast = castTests U;
@@ -4837,8 +4837,7 @@ builtins.getContext (try (builtins.addErrorContext "huh" (throw "no")) (e: e))
 <nix> attrsets._tests.debug </nix>
 <nix> debuglib._tests.run </nix>
 <nix> typelib._tests.run </nix>
-<nix> typelib._tests.debug </nix>
-'';
+
 
 in
   # Use as:
