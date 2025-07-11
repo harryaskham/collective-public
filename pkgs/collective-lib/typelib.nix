@@ -15,7 +15,10 @@ with collective-lib.strings;
 with collective-lib.syntax;
 
 # TODO:
+# - structuredAttrs: __functionArgs, __pretty, etc
 # builtins.functionArgs
+# - return types
+# - no callbacks
 # b:a style strings
 # typelib as a derivation: using a nix-in-nix repl builder
 # Rename to SubType

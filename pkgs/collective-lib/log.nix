@@ -408,91 +408,161 @@ let
                 ArgTypeSolos = state.ArgTypeSolos;
                 ArgTypes = mergeSolos ArgTypeSolos;
                 argNames = soloNames ArgTypeSolos;
-                # (typedFnBody callName)should have the same signature as fnBody after this wrapping.
-                typedFnBody = callName:
-                  log.while "building typed function body for ${callName}" (
-                  (flip Variadic.mkOrderedThen) argNames (uncheckedArgs:
-                    let 
-                      argCastResultSolos =
-                        log.while "casting arguments for ${callName}" (
-                        mapSolos
-                          (argName: ArgType:
-                            log.while "casting an argument for ${callName}" (
-                            let uncheckedArg = uncheckedArgs.${argName}; in
-                            if (builtins.isNull ArgType) then uncheckedArg
-                            else if (typelib.isTypeLike ArgType)
-                              then typed.unwrapCastResult (typed.cast ArgType uncheckedArg)
-                            else if lib.isString ArgType
-                              then if (typed.typeIdOf uncheckedArg) == ArgType
-                                   then uncheckedArg
-                                   else typed.mkCastError "TypeId argument check failed: got ${typed.typeOf uncheckedArg}"
-                            else typed.mkCastError "Invalid argument type in function definition: ${ArgType}"
-                            )
-                          )
-                          ArgTypeSolos
-                        );
+                mkSignature = rec {
+                  arg = name: "${name} :: ${log.print ArgTypes.${name}}";
+                  argValue = name: _l_ (args.${name});
+                  argWithMsg = msg: name:
+                    if nonEmpty msg then "${arg name} <- ${_l_ msg}"
+                    else arg name;
+                  argWithMsgOrValue = msg: name:
+                    if nonEmpty msg then argWithMsg name
+                    else "${arg name} <- ${argValue name}";
+                  call = msgs: 
+                    log.while "building signature for ${callName}" (_b_ ''
+                    ${callName} (
+                      ${_h_ (_ls_ (map (name: argWithMsg (msgs.${name} or "") name) argNames))}
+                    )
+                    '');
+                };
 
-                      partitionedArgSolos = partitionSolos (_: typed.isCastError) argCastResultSolos;
-                      argErrorMsgSolos = mapSolos (_: e: e.castError) partitionedArgSolos.right;
-                      argSolos = partitionedArgSolos.wrong;
-                      args = mergeSolos argSolos;
-                      argList = soloValues argSolos;
-                      mkSignature = rec {
-                        arg = name: "${name} :: ${log.print ArgTypes.${name}}";
-                        argValue = name: _l_ (args.${name});
-                        argWithMsg = msg: name:
-                          if nonEmpty msg then "${arg name} <- ${_l_ msg}"
-                          else arg name;
-                        argWithMsgOrValue = msg: name:
-                          if nonEmpty msg then argWithMsg name
-                          else "${arg name} <- ${argValue name}";
-                        call = msgs: _b_ ''
-                          ${callName} (
-                            ${_h_ (_ls_ (map (name: argWithMsg (msgs.${name} or "") name) argNames))}
-                          )
-                        '';
-                      };
-                      signature =
-                        log.while "building signature for ${callName}" (
-                        mkSignature.call (mergeSolos argErrorMsgSolos)
-                        );
-                      typecheckPassed = empty argErrorMsgSolos;
+                # Make a typed function call body out of a list of already cast arguments.
+                applyFnBodyToArgs = callName: signature: args: argsList:
+                  let
+                    typedLogState = 
+                      log.while "building typed log state for ${callName}" (
+                      (((ap.list (self.call callName) argsList) ___)
+                      .__withEvents [
+                        {typedCall = true;}
+                        {inherit ArgTypes;}
+                        {inherit signature;}
+                        {isAnonymousFunction = callName == anonymousName;}
+                      ]) // (optionalAttrs includeStateArg args) # Add top-level args for 'with'
+                      );
+                    argsList_ = if includeStateArg then [typedLogState] else argsList;
+                  in
+                    log.while "invoking ${callName} against args after successful typecheck" (
+                    with typedLogState;
+                    let retVal = ap.list fnBody argsList_; in
+                    assert over [(short signature)
+                                  (shortReturn typedLogState retVal)];
+                    retVal
+                    );
 
-                      typedLogState = 
-                        log.while "building typed log state for ${callName}" (
-                        let st = ap.list (self.call callName) argList ___;
-                        in st // {
-                          call = st.call ++ [
-                            {typedCall = true;}
-                            {inherit ArgTypes;}
-                            {inherit signature;}
-                          ];
-                          __isAnonymousFunction = callName == anonymousName;
-                        } // (optionalAttrs includeStateArg args) # Add top-level args for 'with'
-                        );
-                    in
-                      log.while ''
-                        typechecking invocation of typed function:
-                        ${signature}
-                      '' (
-                      assert assertMsg typecheckPassed (_b_ ''
-                        Type check failed:
-                          ${signature}
-                      '');
-                      let 
-                        argList_ = if includeStateArg then [typedLogState] else argList;
-                      in 
-                        log.while "invoking ${callName} after successful typecheck" (
-                        with typedLogState;
-                        assert over [argList_];
-                        let retVal = ap.list fnBody argList_; in
-                        assert over [(short signature)
-                                     (shortReturn typedLogState retVal)];
-                        retVal
-                        )
-                      )
-                  )
+                castOneArg = callName: ArgType: uncheckedArg:
+                  log.while "casting an argument for ${callName}" (
+                  if (builtins.isNull ArgType) then uncheckedArg
+                  else if (typelib.isTypeLike ArgType)
+                    then typed.unwrapCastResult (typed.cast ArgType uncheckedArg)
+                  else if lib.isString ArgType
+                    then if (typed.typeIdOf uncheckedArg) == ArgType
+                          then uncheckedArg
+                          else typed.mkCastError "TypeId argument check failed: got ${typed.typeOf uncheckedArg}"
+                  else typed.mkCastError "Invalid argument type in function definition: ${ArgType}"
                   );
+
+                # (typedFnBody callName) should have the same signature as fnBody after this wrapping.
+                typedFnBody = callName:
+                  Variadic {
+                    initialState = {
+                      args = {};
+                      argsList = [];
+                      signature = null;
+                      order = ArgTypeSolos;
+                    };
+                    isTerminal = state: _: empty state.order;
+                    handle = state: uncheckedArg: 
+                      let
+                        snocOrder = snoc state.order;
+                        ArgTypeSolo = snocOrder.head;
+                        argName = soloName ArgTypeSolo;
+                        ArgType = soloValue ArgTypeSolo;
+                        arg = castOneArg callName ArgType uncheckedArg;
+                        argErrorMsgs = optionalAttrs (typed.isCastError arg) {${argName} = arg.castError;};
+                        typecheckPassed = empty argErrorMsgs;
+                        signature = mkSignature.call argErrorMsgs;
+                      in 
+                        assert assertMsg typecheckPassed (_b_ ''
+                          Type check failed:
+                            ${signature}
+                        '');
+                        {
+                          args = state.args // {${argName} = arg;};
+                          argsList = state.argsList ++ [arg];
+                          inherit signature;
+                          order = snocOrder.tail;
+                        };
+                    terminate = state: _: 
+                      applyFnBodyToArgs callName state.signature state.args state.argsList;
+                  };
+
+                # (typedFnBody callName)should have the same signature as fnBody after this wrapping.
+                #typedFnBody = callName:
+                #  log.while "building typed function body for ${callName}" (
+                #  (flip Variadic.mkOrderedThen) argNames (uncheckedArgs:
+                #    let 
+                #      argCastResultSolos =
+                #        log.while "casting arguments for ${callName}" (
+                #        mapSolos
+                #          (argName: ArgType:
+                #            log.while "casting an argument for ${callName}" (
+                #            let uncheckedArg = uncheckedArgs.${argName}; in
+                #            if (builtins.isNull ArgType) then uncheckedArg
+                #            else if (typelib.isTypeLike ArgType)
+                #              then typed.unwrapCastResult (typed.cast ArgType uncheckedArg)
+                #            else if lib.isString ArgType
+                #              then if (typed.typeIdOf uncheckedArg) == ArgType
+                #                   then uncheckedArg
+                #                   else typed.mkCastError "TypeId argument check failed: got ${typed.typeOf uncheckedArg}"
+                #            else typed.mkCastError "Invalid argument type in function definition: ${ArgType}"
+                #            )
+                #          )
+                #          ArgTypeSolos
+                #        );
+
+                #      partitionedArgSolos = partitionSolos (_: typed.isCastError) argCastResultSolos;
+                #      argErrorMsgSolos = mapSolos (_: e: e.castError) partitionedArgSolos.right;
+                #      argSolos = partitionedArgSolos.wrong;
+                #      args = mergeSolos argSolos;
+                #      argList = soloValues argSolos;
+                #      signature =
+                #        log.while "building signature for ${callName}" (
+                #        mkSignature.call (mergeSolos argErrorMsgSolos)
+                #        );
+                #      typecheckPassed = empty argErrorMsgSolos;
+
+                #      typedLogState = 
+                #        log.while "building typed log state for ${callName}" (
+                #        (((ap.list (self.call callName) argList) ___)
+                #        .__withEvents [
+                #          {typedCall = true;}
+                #          {inherit ArgTypes;}
+                #          {inherit signature;}
+                #          {isAnonymousFunction = callName == anonymousName;}
+                #        ]) // (optionalAttrs includeStateArg args) # Add top-level args for 'with'
+                #        );
+                #    in
+                #      log.while ''
+                #        typechecking invocation of typed function:
+                #        ${signature}
+                #      '' (
+                #      assert assertMsg typecheckPassed (_b_ ''
+                #        Type check failed:
+                #          ${signature}
+                #      '');
+                #      let 
+                #        argList_ = if includeStateArg then [typedLogState] else argList;
+                #      in 
+                #        log.while "invoking ${callName} after successful typecheck" (
+                #        with typedLogState;
+                #        assert over [argList_];
+                #        let retVal = ap.list fnBody argList_; in
+                #        assert over [(short signature)
+                #                     (shortReturn typedLogState retVal)];
+                #        retVal
+                #        )
+                #      )
+                #  )
+                #  );
               in
                 # Expose both functor and fn, allowing:
                 # typedCall "f" { a = "int"; } (a: a + 1)
@@ -614,7 +684,7 @@ let
                   seq (__withEventsAssert events assertion) x;
 
                 # Store an arbitrary list of events and rebuild the closure.
-                __withEvents = events: __withEventsAssert events true;
+                __withEvents = events: __withEventsAssert events (const true);
 
                 # Set safe mode.
                 # i.e.
@@ -865,12 +935,6 @@ let
             typedCall = fn.named;
             fns = mapAttrs (name: fn: fn.setCallName name);
 
-            FnTestFn = 
-              with typed;
-              {f}: {a ? Int, b ? String}: callback:
-                if callback != null then callback {inherit a b;}
-                else a: b: "${toString (a.value + 1)} ${b}";
-
             # Enable typed syntax using builtin functions.
             # i.e.
             # f = {f}: {a ? Int}: a.value + 1;
@@ -1117,6 +1181,19 @@ in log // {
              };
              f x + g x)
              10;
+          Fn = 
+            let 
+              f = Fn ({f}: {a ? Int, b ? String}: cb:
+                if cb != null then cb {inherit "a" "b";}
+                else a: b: "${toString (a.value + 1)} ${b}");
+              g = Fn ({f}: {a ? Int, b ? String}: "${toString (a.value + 1)} ${b}");
+            in {
+              callF.partial.correct = expect.isLambda (f 1);
+              callF.partial.error = expect.error (f "a");
+              callF.correct = expect.eq (f 1 "b") "2 b";
+              callF.incorrect.first = expect.error (f true "b");
+              callF.incorrect.second = expect.error (f 2 1);
+            };
         };
         combined = {
           expr =

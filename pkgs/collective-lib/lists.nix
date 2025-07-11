@@ -1,5 +1,6 @@
 { pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
 
+with collective-lib.collections;
 with collective-lib.dispatchlib;
 with collective-lib.functions;
 with collective-lib.attrsets;
@@ -123,6 +124,11 @@ in rec {
 
   # Get the tail of a list or null if empty.
   maybeTail = xs: if xs == [] then null else tail xs;
+
+  # As maybeSnoc, but throws if the list is empty.
+  snoc = xs:
+    assert assertMsg (nonEmpty xs) "snoc: Empty list";
+    maybeSnoc xs;
 
   # Get the head/tail of a list as {head, tail}, { a, [] } for singleton and null;
   maybeSnoc = xs:

@@ -463,6 +463,7 @@ in rec {
       functor.full = expect.eq (ap (a: a + 1) 1) 2;
       list.partial = expect.isLambda (ap.list (a: b: c: a + 2 * b + 3 * c) [1 2]);
       list.full = expect.eq (ap.list (a: b: c: a + 2 * b + 3 * c) [1 2 3]) 14;
+      list.orderDependent.math = expect.eq (ap.list (a: b: c: a + b * c) [1 2 3]) 7;
     };
 
     compose = {
