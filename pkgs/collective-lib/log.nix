@@ -33,9 +33,9 @@ let
   log = rec {
 
     # Shorthand for adding context for better traces when the expr fails to eval.
-    describe = msg: expr: builtins.addErrorContext msg expr;
-
-    traceOpts = if traceOpts == null then defTraceOpts else traceOpts;
+    describe = msg: expr:
+      builtins.addErrorContext (Safe "|-> ${msg}") expr;
+    while = msg: expr: describe "while ${msg}" expr;
 
     defPrintArgs = {
       # If true, all conversions happen under tryEval
@@ -337,9 +337,9 @@ let
           # with log.trace; assert over {a = 123;}; expr
           overNoAssert =
             dispatch.def
-              (self.show)
+              self.show
               {
-                lambda = id;
+                lambda = f: f;
                 list = fs: composeMany (map maybeShow fs);
               };
 
@@ -384,7 +384,7 @@ let
             isTerminal = _: x: lib.isFunction x;
 
             check = _: x:
-              describe "while checking ${callName} argument" (
+              log.while "checking ${callName} argument" (
               (isSolo x && (typed.isTypeLike (soloValue x) 
                             || lib.isString (soloValue x)
                             || builtins.isNull (soloValue x)))
@@ -394,7 +394,7 @@ let
             handle = state: x:
               if isSolo x then state // {
                 ArgTypeSolos = 
-                  describe "while adding ${callName} argument" (
+                  log.while "adding ${callName} argument" (
                   concatSolos state.ArgTypeSolos [x]
                   );
               }
@@ -410,14 +410,14 @@ let
                 argNames = soloNames ArgTypeSolos;
                 # (typedFnBody callName)should have the same signature as fnBody after this wrapping.
                 typedFnBody = callName:
-                  describe "while building typed function body for ${callName}" (
+                  log.while "building typed function body for ${callName}" (
                   (flip Variadic.mkOrderedThen) argNames (uncheckedArgs:
                     let 
                       argCastResultSolos =
-                        describe "while casting arguments for ${callName}" (
+                        log.while "casting arguments for ${callName}" (
                         mapSolos
                           (argName: ArgType:
-                            describe "while casting argument ${argName}" (
+                            log.while "casting an argument for ${callName}" (
                             let uncheckedArg = uncheckedArgs.${argName}; in
                             if (builtins.isNull ArgType) then uncheckedArg
                             else if (typelib.isTypeLike ArgType)
@@ -439,24 +439,27 @@ let
                       argList = soloValues argSolos;
                       mkSignature = rec {
                         arg = name: "${name} :: ${log.print ArgTypes.${name}}";
+                        argValue = name: _l_ (args.${name});
                         argWithMsg = msg: name:
-                          if nonEmpty msg then "${arg name} <- ${msg}"
+                          if nonEmpty msg then "${arg name} <- ${_l_ msg}"
                           else arg name;
-                        call = msgs: indent.block ''
-                            ${callName} (
-                              ${indent.here (indent.lines
-                                  (map (name: argWithMsg (msgs.${name} or "") name) argNames))}
-                              )
+                        argWithMsgOrValue = msg: name:
+                          if nonEmpty msg then argWithMsg name
+                          else "${arg name} <- ${argValue name}";
+                        call = msgs: _b_ ''
+                          ${callName} (
+                            ${_h_ (_ls_ (map (name: argWithMsg (msgs.${name} or "") name) argNames))}
+                          )
                         '';
                       };
                       signature =
-                        describe "while building signature for ${callName}" (
+                        log.while "building signature for ${callName}" (
                         mkSignature.call (mergeSolos argErrorMsgSolos)
                         );
                       typecheckPassed = empty argErrorMsgSolos;
 
                       typedLogState = 
-                        describe "while building typed log state for ${callName}" (
+                        log.while "building typed log state for ${callName}" (
                         let st = ap.list (self.call callName) argList ___;
                         in st // {
                           call = st.call ++ [
@@ -468,16 +471,20 @@ let
                         } // (optionalAttrs includeStateArg args) # Add top-level args for 'with'
                         );
                     in
-                      describe "while typechecking ${callName} invocation" (
-                      assert assertMsg typecheckPassed (indent.block ''
+                      log.while ''
+                        typechecking invocation of typed function:
+                        ${signature}
+                      '' (
+                      assert assertMsg typecheckPassed (_b_ ''
                         Type check failed:
-                          ${indent.here signature}
+                          ${signature}
                       '');
                       let 
                         argList_ = if includeStateArg then [typedLogState] else argList;
                       in 
-                        describe "while invoking ${callName} after successful typecheck" (
+                        log.while "invoking ${callName} after successful typecheck" (
                         with typedLogState;
+                        assert over [argList_];
                         let retVal = ap.list fnBody argList_; in
                         assert over [(short signature)
                                      (shortReturn typedLogState retVal)];
@@ -857,6 +864,73 @@ let
             };
             typedCall = fn.named;
             fns = mapAttrs (name: fn: fn.setCallName name);
+
+            FnTestFn = 
+              with typed;
+              {f}: {a ? Int, b ? String}: callback:
+                if callback != null then callback {inherit a b;}
+                else a: b: "${toString (a.value + 1)} ${b}";
+
+            # Enable typed syntax using builtin functions.
+            # i.e.
+            # f = {f}: {a ? Int}: a.value + 1;
+            Fn = 
+              let
+                # i.e. {f}: {a ? Int}: ... -> { name = "f"; bound = ({a ? Int}: ... with f bound to "f") }
+                bindFnName = f:
+                  log.describe "while binding typed function name by solo arg" (
+                  assert isNamedLambda f;
+                  let arg = head (getArgs f);
+                  in { 
+                    name = arg.name; 
+                    ArgTypeSolos = [];
+                    f__bound = f {${arg.name} = arg.name;};
+                  });
+                # Exhaust the inner function down by applying defaults,
+                # eventually reaching a function body after binding each
+                # arg name to its default value containing its typedef.
+                bindArgs = f__attrs:
+                  log.while "getting arg types for typed function '${f__attrs.name}'" (
+                  assert isTypedLambda f__attrs.f__bound;
+                  let 
+                    # Get the arg type from default value by application of the callback.
+                    # Args are returned in the order they appear in the source file.
+                    sortedArgTypes = getArgs f__attrs.f__bound;
+                    # Pass empty args to get to the callback-to-body lambda.
+                    f__doCallback = f__attrs.f__bound {};
+                  in f__attrs // rec {
+                    # Extract the arg types from the args inside the call.
+                    ArgTypes = f__doCallback id;
+                    # Pull out the types in the order of arg definition.
+                    ArgTypeSolos =
+                      checkSolos 
+                        (map 
+                          (arg: mkSolo arg.name ArgTypes.${arg.name})
+                          sortedArgTypes);
+                    # Pass a null callback to skip past it to the function body.
+                    f__body = f__doCallback null;
+                    # Construct the final typed function
+                    f__typed = 
+                      # Equivalent to:
+                      # fn <name> <arg0> <arg1> ... <argN> <body>
+                      let argTypesToFnBodyToTypedFn = 
+                            log.while "binding typed function name from structured lambda" (
+                            fn f__attrs.name
+                            );
+                          bodyToTypedFn = 
+                            log.while "binding argument type solos from structured lambda" (
+                            assert log.trace.over [ArgTypeSolos];
+                            ap.list argTypesToFnBodyToTypedFn ArgTypeSolos
+                            );
+                          typedFn = bodyToTypedFn f__body;
+                      in typedFn;
+                  });
+              in f: 
+                log.while "constructing typed function from structured lambda" (
+                let f__nameBound = bindFnName f;
+                    f__argsBound = bindArgs f__nameBound;
+                in f__argsBound.f__typed
+                );
 
             # Set options on the bound self and rebind such that they are
             # available on the unbound methods.

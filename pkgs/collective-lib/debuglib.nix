@@ -8,6 +8,14 @@ let
       ghi = 789;
     };
   };
+  testSortData = {
+    z = "z";
+    b = "b"; a = "a";
+  };
+  testArgNames = {
+    zArg,
+    bArg, aArg
+  }: {};
 in
 
 { pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
@@ -33,6 +41,17 @@ in with typed; rec {
   isRawPos = x: 
     x ? column && x ? line && x ? file;
 
+  # Does p occur before q in the source file?
+  cmpPos = p: q:
+    assert that (p.file == q.file) ''
+      pos.cmpPos: p.file (${p.file}) != q.file (${q.file})
+    '';
+    p.line < q.line || (p.line == q.line && p.column < q.column);
+
+  # Sort a list of positions by their source file location.
+  sortPosList = sort cmpPos;
+  sortedPos = xs: sortPosList (attrValues (pos xs));
+
   # Get the internal metadata of the given name in the given attrs.
   pos = 
     let 
@@ -46,7 +65,7 @@ in with typed; rec {
 
       dispatchPos = f: dispatch.def null {
         # If given a set, get positions for all its members
-        set = attrs: unsafeMapAttrs (name: _: mkPos name (f name attrs)) attrs;
+        set = attrs: Unsafe.mapAttrs (name: _: mkPos name (f name attrs)) attrs;
         # Otherwise just the one key.
         string = name: attrs: mkPos name (f name attrs);
       };
@@ -105,6 +124,48 @@ in with typed; rec {
           file = "debuglib.nix";
           __toString = expect.anyLambda;
         };
+        expectedPosZ = {
+          name = "z";
+          column = 5;
+          line = 12;
+          file = "debuglib.nix";
+          __toString = expect.anyLambda;
+        };
+        expectedPosB = {
+          name = "b";
+          column = 5;
+          line = 13;
+          file = "debuglib.nix";
+          __toString = expect.anyLambda;
+        };
+        expectedPosA = {
+          name = "a";
+          column = 14;
+          line = 13;
+          file = "debuglib.nix";
+          __toString = expect.anyLambda;
+        };
+        expectedPosZArg = {
+          name = "zArg";
+          column = 5;
+          line = 16;
+          file = "debuglib.nix";
+          __toString = expect.anyLambda;
+        };
+        expectedPosBArg = {
+          name = "bArg";
+          column = 5;
+          line = 17;
+          file = "debuglib.nix";
+          __toString = expect.anyLambda;
+        };
+        expectedPosAArg = {
+          name = "aArg";
+          column = 11;
+          line = 17;
+          file = "debuglib.nix";
+          __toString = expect.anyLambda;
+        };
         expectedPosAll = {
           abc = expectedPosABC;
           def = expectedPosDEF;
@@ -139,6 +200,16 @@ in with typed; rec {
           let f = data: pos "abc" data;
           in expect.noLambdasEq (f testData) expectedPosABC;
         toString = expect.eq (toString (pos "abc" testData)) "abc (debuglib.nix:5:5)";
+        sortPos.nosorted = expect.noLambdasEq (attrValues (pos testSortData)) [expectedPosA expectedPosB expectedPosZ];
+        sortPos.sorted = expect.noLambdasEq (sortedPos testSortData) [expectedPosZ expectedPosB expectedPosA];
+        sortPos.argOrder.nosorted = 
+          expect.noLambdasEq
+            (attrValues (pos (builtins.functionArgs testArgNames)))
+            [expectedPosAArg expectedPosBArg expectedPosZArg];
+        sortPos.argOrder.sorted = 
+          expect.noLambdasEq
+            (sortedPos (builtins.functionArgs testArgNames))
+            [expectedPosZArg expectedPosBArg expectedPosAArg];
       };
   };
 

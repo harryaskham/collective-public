@@ -5,13 +5,6 @@
 }:
 
 let
-  defaultTraceOpts = {
-    traceLevel = 0;
-    enablePartialTrace = false;
-    enableVerboseTrace = false;
-    traceShort = false;
-  };
-
   # Functions required for building the collective-lib.
   # Can't put this inside e.g. lists/attrsets otherwise it gets merged into itself here.
   modulelib = import ./modulelib.nix { inherit lib; };
@@ -37,34 +30,32 @@ let
   # Modules and top-level attributes in modules that should not be merged.
   # These are only exposed either as collective-lib.log or e.g. collective-lib.base.typelib._tests.
   # In the case of _tests, a new suite is created at collective-lib._tests.
-  mergeBase = base:
+  mergeBase = baseModules:
     let
       unmergeableAttrNames = [ "_tests" ];
       splitModule = modulelib.partitionAttrs (k: _: lib.elem k unmergeableAttrNames);
 
-      unmergeableModuleNames = [ "log" ];
+      unmergeableModuleNames = [ "log" "tests" ];
       splitModules = modulelib.partitionAttrs (k: _: lib.elem k unmergeableModuleNames);
 
       moduleMergeable = _: module: (splitModule module).wrong;
 
-      baseSplit = splitModules base;
-      baseMergeable = lib.mapAttrs moduleMergeable baseSplit.wrong;
+      baseModulesSplit = splitModules baseModules;
+      baseModulesMergeable = lib.mapAttrs moduleMergeable baseModulesSplit.wrong;
     in
-      base // (modulelib.recursiveMergeAttrsList (lib.attrValues baseMergeable));
+      modulelib.recursiveMergeAttrsList 
+        [ baseModules 
+          (modulelib.recursiveMergeAttrsList (lib.attrValues baseModulesMergeable))];
 
-  mkCollectiveLib = base:
-    let baseMerged = mergeBase base; in
-
-    # Merge base in at the top level s.t. collective-lib.attrsets etc is available.
-    baseMerged   # e.g. Overwrites dispatch with the merged version, adds toplevel functions like Int.
-    // rec {
-
+  mkCollectiveLib = baseModules:
+    let baseMerged = mergeBase baseModules;
+    in baseMerged // rec {
       # Merge with another downstream collective-lib extension.
       # Merges deeply s.t. modules that share names are themselves merged.
-      extend = otherBase: mkCollectiveLib (lib.recursiveUpdate base otherBase);
+      extend = otherBaseModules: mkCollectiveLib (baseModules // otherBaseModules);
 
       # Keep a reference to the original base so that we can still access it unmerged.
-      inherit base;
+      base = baseModules;
 
       # Keep a reference to the merged base so that we can inspect only the merged state.
       inherit baseMerged;
@@ -97,13 +88,13 @@ let
       # lib.types is not affected; the type system is implemented as lib.typelib.
       # However functions like isType, isNull are overridden by typelib.lib and exposed
       # at the top level. If needed, the originals can be accessed via builtins.isNull, lib.isType, etc
-      typed = lib.recursiveUpdate untyped base.typelib.library;
+      typed = lib.recursiveUpdate untyped baseModules.typelib.library;
 
       # Merged tests from all modules.
-      _tests = base.tests.mergeSuites base;
+      _tests = baseModules.tests.mergeSuites baseModules;
 
       # Merged tests from all modules, excluding typelib.
-      _testsUntyped = base.tests.mergeSuites (removeAttrs base [ "typelib" ]);
+      _testsUntyped = baseModules.tests.mergeSuites (removeAttrs baseModules [ "typelib" ]);
     };
 
   baseModules = 
@@ -125,6 +116,7 @@ let
       lists = import ./lists.nix args;
       log = import ./log.nix (args // { inherit traceOpts; });
       inherit modulelib;
+      rebinds = import ./rebinds.nix args;
       strings = import ./strings.nix args;
       syntax = import ./syntax.nix args;
       tests = import ./tests.nix args;

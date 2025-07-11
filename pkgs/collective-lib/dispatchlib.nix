@@ -7,6 +7,7 @@ with collective-lib.functions;
 with collective-lib.lists;
 with collective-lib.strings;
 with collective-lib.tests;
+with collective-lib.rebinds;
 
 let 
   log = collective-lib.log;
@@ -52,8 +53,9 @@ in rec {
     #      { unknown = { name = "c"; value = 3; } } ]
     def = {
       __functor = self: self.on lib.typeOf;
-      on = getType: defaultF: dict: x:
-        let f = dict.${getType x} or defaultF; in f x;
+      on = getTypeF: defaultF: dict: x:
+        let f = dict.${getTypeF x} or defaultF;
+        in f x;
     };
 
     # Make a polymorphic function from the given type-to-value attrs
@@ -73,7 +75,7 @@ in rec {
     on = getType: dict: x:
       let defaultF = throw ''
         Unsupported type ${getType x} in polymorphic dispatch.
-        Expected: ${joinSep ", " (attrNames dict)}
+        Expected: ${joinSep ", " (Unsafe.attrNames dict)}
         Got ${getType x} of value: ${log.print x}
       '';
       in dispatch.def.on getType defaultF dict x;

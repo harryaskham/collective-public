@@ -172,34 +172,36 @@ let
       # left/right is a dangerous distinction, depends on nix's set iteration order.
       attrs = {
         __functor = self: self.left;
-        left = attrsets.fold.solos.left // { __mkList = solos; };
-        right = attrsets.fold.solos.right // { __mkList = solos; };
+        left = typed.fold.solos.left // { __mkList = solos; };
+        right = typed.fold.solos.right // { __mkList = solos; };
       };
 
       solos = {
         __functor = self: self.left;
-        left = lists.mkFoldSpec {
+        left = typed.fold.list.left // {
           __mkF = f: acc: x: f acc (soloName x) (soloValue x);
-          __mkList = checkSolos;
-          __functor = self: f: init: xs: lists.fold.left (self.__mkF f) init (self.__mkList xs);
+          __assertion = xs:
+            assertMsg (isSolos xs) "fold.solos.left: not solos";
         };
-        right = lists.mkFoldSpec {
+        right = typed.fold.list.right // {
           __mkF = f: x: acc: f (soloName x) (soloValue x) acc;
-          __mkList = checkSolos;
-          __functor = self: f: init: xs: lists.fold.right (self.__mkF f) init (self.__mkList xs);
+          __assertion = xs:
+            assertMsg (isSolos xs) "fold.solos.right: not solos";
         };
       };
 
       _1 = {
         solos = {
           __functor = self: self.left;
-          left = lists.mkFoldSpec {
-            inherit (attrsets.fold.solos.left) __mkF __mkList;
-            __functor = self: f: xs: lists.fold._1.left (self.__mkF f) (self.__mkList xs);
+          left = typed.fold._1.list.left // {
+            inherit (typed.fold.solos.left) __mkF;
+            __assertion = xs:
+              assertMsg (isSolos xs) "fold.solos._1.left: not solos";
           };
-          right = lists.mkFoldSpec {
-            inherit (attrsets.fold.solos.right) __mkF __mkList;
-            __functor = self: f: xs: lists.fold._1.right (self.__mkF f) (self.__mkList xs);
+          right = typed.fold._1.list.right // {
+            inherit (typed.fold.solos.right) __mkF;
+            __assertion = xs:
+              assertMsg (isSolos xs) "fold.solos._1.right: not solos";
           };
         };
       };

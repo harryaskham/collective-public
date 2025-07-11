@@ -1,14 +1,15 @@
 { pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
 
-with lib;
 with collective-lib.attrsets;
 with collective-lib.collections;
 with collective-lib.dispatchlib;
 with collective-lib.errors;
 with collective-lib.functions;
 with collective-lib.lists;
+with collective-lib.log;
 with collective-lib.strings;
 with collective-lib.syntax;
+with lib;
 
 # Nicer interface to runtests
 let
@@ -242,7 +243,7 @@ in rec {
         else
           mkActual "PASS" null;
 
-    msg = {
+    msg = assign "msg" {
       ${Status.Skipped} = "SKIP: ${test.name}";
       ${Status.Passed} = "PASS: ${test.name}";
       ${Status.Failed} = joinLines [
@@ -268,9 +269,11 @@ in rec {
 
   # Run the given test as a singleton test suite, formatting its results.
   evalOneTest = evalFn: test:
+    log.describe "while evaluating a test" (
     let tests = { ${test.name} = test; };
         result = evalFn (runTests tests);
-    in runOneTest test result;
+    in runOneTest test result
+    );
 
   # Evaluating tests at their callsite makes for better errors.
   # Instead of e.g.

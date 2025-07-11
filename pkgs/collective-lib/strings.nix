@@ -5,6 +5,7 @@ with lib.strings;
 with collective-lib.lists;
 with collective-lib.functions;
 with collective-lib.syntax;
+with collective-lib.rebinds;
 
 # String formatting and indentation utilities.
 # Allows for multi-line indentation in indented strings where
@@ -113,11 +114,18 @@ in rec {
   # Map a function over the lines in a string and concat the result
   concatMapLines = f: s: joinLines (mapLines f s);
 
-  # Left-fold a function over the lines in a string.
-  foldlLines = f: initial: s: foldl f initial (splitLines s);
+  # Fold a function over the lines in a string.
+  fold = {
+    lines = {
+      left = typed.fold.list.left // {
+        __mkList = splitLines;
+      };
 
-  # Right-fold a function over the lines in a string.
-  foldrLines = f: initial: s: foldr f initial (splitLines s);
+      right = typed.fold.list.right // {
+        __mkList = splitLines;
+      };
+    };
+  };
 
   # Get the first regex match or a default value
   firstMatchOr = def: regex: s:
@@ -144,11 +152,14 @@ in rec {
 
   # Indent a string by n spaces, or dedent if n is negative
   indentBy = n:
-    let prefix = spaces n;
-    in concatMapLines (
-      if (n < 0) then removePrefix (spaces (-1 * n))
-      else if (n > 0) then addPrefix (spaces n)
-      else id);
+    let 
+      prefix = spaces n;
+      indentLine = line:
+        if (n < 0) then removePrefix (spaces (-1 * n)) line
+        else if (n > 0) then addPrefix (spaces n) line
+        else line;
+    in 
+      concatMapLines indentLine;
 
   # Indent or dedent a multi-line string s.t. its leftmost line aligns with char n
   setIndent = n: s: indentBy (n - getIndent s) s;
@@ -253,10 +264,9 @@ in rec {
   # }'';
   indent = rec {
     # Interface to indent that throws its result
-    throws = mapAttrs (k: f: Variadic.compose (x: throw x) f) indent;
+    throws = Unsafe.mapAttrs (k: f: Variadic.compose (x: throw x) f) indent;
     # Shorthand for printing in blocks
     print = log.print;
-    print' = log.print';
     print_ = log.print_;
     vprint = log.vprint;
     markers = {
@@ -317,7 +327,7 @@ in rec {
                 # Otherwise just indent the line according to current marker
                 acc // { lines = acc.lines ++ [(indentFn line)]; });
 
-        in joinLines (trimNewlinesList (foldlLines handleLine init s).lines);
+        in joinLines (trimNewlinesList (typed.fold.lines.left handleLine init s).lines);
     };
     here = s: "${markers.start}${indent.set 0 s}${markers.end}";
 

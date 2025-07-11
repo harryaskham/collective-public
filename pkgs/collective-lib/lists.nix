@@ -3,23 +3,28 @@
 with collective-lib.dispatchlib;
 with collective-lib.functions;
 with collective-lib.attrsets;
+with collective-lib.rebinds;
+with {
+  inherit (lib)
+  length
+  head tail
+  take drop
+  concatLists
+  mergeAttrsList
+  min max
+  assertMsg
+  isFunction
+  isList
+  ;
+  inherit (lib.trivial)
+  id
+  ;
+};
 
 # List utils and aliases.
 let 
   log = collective-lib.log;
-  inherit 
-    (lib)
-    length
-    head tail
-    take drop
-    foldl' foldr
-    concatLists
-    mergeAttrsList
-    min max
-    assertMsg
-    isFunction
-    isList
-    ;
+  typed = collective-lib.typed;
 in rec {
   # Append element to end of list
   append = x: xs: xs ++ [x];
@@ -41,71 +46,77 @@ in rec {
   # Merges with other modules that define fold functions.
   # A fold variant spec must have __mkF to produce a binary foldl or foldr f function
   # and a __mkList to produce a list to fold over.
-  mkFoldSpec = xs: xs // {
-    __isFoldSpec = true;
-  };
+  # Defaults to a regular left list fold.
+  mkFoldSpec = xs: 
+    {
+      __isFoldSpec = true;
+      __1 = false;
+      __assertion = xs: true;
+      __mkF = id;
+      __mkList = id;
+      __mkInit = f: init: xs: init;
+      __foldFn = lib.foldl';
+      __functor = self:
+        if self.__1 then 
+          f: xs:
+            assert self.__assertion xs;
+            self.__foldFn (self.__mkF f) (self.__mkInit f null xs) (self.__mkList xs)
+        else 
+          f: init: xs:
+            assert self.__assertion xs;
+            self.__foldFn (self.__mkF f) (self.__mkInit f init xs) (self.__mkList xs);
+    } // xs;
 
   isFoldSpec = xs: xs.__isFoldSpec or false;
 
   fold = rec {
-    __functor = self: self.left;
-    inherit (list) left right;
-
     list = {
       __functor = self: self.left;
 
-      left = mkFoldSpec rec {
-        __mkF = id;
-        __mkList = id;
-        __functor = self: foldl';
-      };
+      left = mkFoldSpec {};
 
-      right = mkFoldSpec rec {
-        __mkF = id;
-        __mkList = id;
-        __functor = self: foldr;
+      right = mkFoldSpec {
+        __foldFn = lib.foldr;
       };
     };
 
     _1 = rec {
-      __functor = self: self.left;
-      inherit (list) left right;
-
       list = {
         __functor = self: self.left;
 
         # Left-fold f over x with initial value (head xs).
         # Throws if the list is empty.
         left = mkFoldSpec rec {
-          __mkF = id;
-          __mkList = id;
-          __functor = self: f: xs:
-            if (length xs == 0) then throw "fold._1.left: empty list"
-            else fold.left f (head xs) (tail xs);
+          __assertion = xs:
+            assertMsg (typed.nonEmpty xs) "fold._1.left: empty list";
+          __1 = true;
+          __mkInit = f: _: xs: head xs;
+          __mkList = tail;
         };
 
         # Right-fold f over x with initial value (head xs).
         # Throws if the list is empty.
         right = mkFoldSpec rec {
-          __mkF = id;
-          __mkList = id;
-          __functor = self: f: xs:
-            if (length xs == 0) then throw "fold._1.right: empty list"
-            else fold.right f (head xs) (tail xs);
+          __assertion = xs:
+            assertMsg (typed.nonEmpty xs) "fold._1.right: empty list";
+          __1 = true;
+          __mkInit = f: _: xs: head xs;
+          __mkList = tail;
+          __foldFn = lib.foldr;
         };
       };
     };
   };
 
   # Legacy aliases.
-  foldl1 = fold._1.left;
-  foldr1 = fold._1.right;
+  foldl1 = typed.fold._1.left;
+  foldr1 = typed.fold._1.right;
 
   # Get the minimum of a list of numbers.
-  minimum = fold._1.right min;
+  minimum = typed.fold._1.right min;
 
   # Get the maximum of a list of numbers.
-  maximum = fold._1.right max;
+  maximum = typed.fold._1.right max;
 
   # Get the tail of a list or null if empty.
   maybeHead = xs: if xs == [] then null else head xs;
@@ -150,26 +161,26 @@ in rec {
   NamedLazyList = name: LazyList_ (NamedThunk name);
 
   _tests = with collective-lib.tests; suite {
-    fold.default = {
-      sum = expect.eq 10 (fold (a: b: a + b) 4 [1 2 3]);
-      reverse = expect.eq [3 2 1] (fold (xs: x: [x] ++ xs) [] [1 2 3]);
+    fold.list.default = {
+      sum = expect.eq 10 (fold.list (a: b: a + b) 4 [1 2 3]);
+      reverse = expect.eq [3 2 1] (fold.list (xs: x: [x] ++ xs) [] [1 2 3]);
     };
-    fold.left = {
-      sum = expect.eq 10 (fold.left (a: b: a + b) 4 [1 2 3]);
-      reverse = expect.eq [3 2 1] (fold.left (xs: x: [x] ++ xs) [] [1 2 3]);
+    fold.list.left = {
+      sum = expect.eq 10 (fold.list.left (a: b: a + b) 4 [1 2 3]);
+      reverse = expect.eq [3 2 1] (fold.list.left (xs: x: [x] ++ xs) [] [1 2 3]);
     };
-    fold.right = {
-      sum = expect.eq 10 (fold.right (a: b: a + b) 4 [1 2 3]);
-      reverse = expect.eq [3 2 1] (fold.right (x: xs: xs ++ [x]) [] [1 2 3]);
+    fold.list.right = {
+      sum = expect.eq 10 (fold.list.right (a: b: a + b) 4 [1 2 3]);
+      reverse = expect.eq [3 2 1] (fold.list.right (x: xs: xs ++ [x]) [] [1 2 3]);
     };
-    fold._1.default = {
-      sum = expect.eq 6 (fold._1 (a: b: a + b) [1 2 3]);
+    fold._1.list.default = {
+      sum = expect.eq 6 (fold._1.list (a: b: a + b) [1 2 3]);
     };
-    fold._1.left = {
-      sum = expect.eq 6 (fold._1.left (a: b: a + b) [1 2 3]);
+    fold._1.list.left = {
+      sum = expect.eq 6 (fold._1.list.left (a: b: a + b) [1 2 3]);
     };
-    fold._1.right = {
-      sum = expect.eq 6 (fold._1.right (a: b: a + b) [1 2 3]);
+    fold._1.list.right = {
+      sum = expect.eq 6 (fold._1.list.right (a: b: a + b) [1 2 3]);
     };
     append = {
       expr = append 5 [1 2 3];

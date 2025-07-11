@@ -120,7 +120,8 @@ let
     };
 
     mkTestUtils = SU: U: rec {
-      testInU = U.fn "testInU" {UToTest = "lambda";} (UToTest: UToTest U);
+      #testInU = U.fn "testInU" {UToTest = "lambda";} (UToTest: UToTest U);
+      testInU = UToTest: UToTest U;
     };
 
     # Nix library overrides to take Types into account.
@@ -136,28 +137,6 @@ let
       methodCall = v: This: mkLoggingWrapper ((log.v v).methodCall This);
       callSafe = v: mkLoggingWrapper (log.safe.v v).call;
       methodCallSafe = v: This: mkLoggingWrapper ((log.safe.v v).methodCall This);
-
-      ### warning wrappers
-      warnTyped = fname: x:
-        if isTyped x 
-        then _throw_ ''
-          UNSAFE: ${fname} over typed value:
-            ${_vph_ x}
-          
-          (use unsafe* method variant instead if this is intentional)
-        ''
-        else x;
-      warnTyped1 = fname: f: a: f (warnTyped fname a);
-      warnTyped2 = fname: f: a: b: f a (warnTyped fname b);
-
-      mapAttrs = warnTyped2 "mapAttrs" lib.mapAttrs;
-      unsafeMapAttrs = lib.mapAttrs;
-
-      concatMapAttrs = warnTyped2 "concatMapAttrs" lib.concatMapAttrs;
-      unsafeConcatMapAttrs = lib.concatMapAttrs;
-
-      mapAttrsToList = warnTyped2 "mapAttrsToList" lib.mapAttrsToList;
-      unsafeMapAttrsToList = lib.mapAttrsToList;
 
       ### naming workarounds
 
@@ -275,10 +254,9 @@ let
         ];
         return true;
 
-      # Check if a given argument is a custom Type using the checks of checkTyped.
-      # True iff it is.
-      # Does not actually tryBool to avoid strictly forcing x.
-      isTyped = x: x ? __Type;
+      # True iff a given argument has a custom Type
+      # Holds for every value that is part of the typelib system.
+      isTyped = x: isTypedAttrs x;
 
       # Check two types for equality, supporting both Types and builtin type-name strings.
       typeEq = A: B:
@@ -1447,8 +1425,10 @@ let
 
       # Make all field assignments on the instance
       mkFieldAssignmentSolos =
-        fn._ "mkFieldAssignmentSolos" {This = SU.Type;} {prefixedArgs = "set";} 
-        (_: with _;
+        #fn._ "mkFieldAssignmentSolos" {This = SU.Type;} {prefixedArgs = "set";} 
+        #(_: with _;
+        This: prefixedArgs:
+          with U.call 2 "mkFieldAssignmentSolos" This prefixedArgs ___; (
           with lets rec {
             # We can remove the __field prefix here since we destructure to args of "__Type" and Type.
             fieldCastSolos = 
@@ -2963,7 +2943,7 @@ let
         NullOr = T: Union [Null T];
 
         # A type indicating a default field type and value.
-        Default = Type.template "Default" [{T = Type;} {v = Any;}] (_: {
+        Default = Type.template "Default" [{T = Type;} {V = Any;}] (_: {
           ctor = U.Ctors.None;
           # TODO: Static fields instead.
           staticMethods = {
@@ -3098,7 +3078,7 @@ let
 
         # Type-family-esque runtime extraction of field type from Spec type
         FieldSpec = Type.template "FieldSpec" [{T = Type;}] (_: {
-          ctor = This: _: U.parseFieldSpec _.T;
+          ctor = This: unused: U.parseFieldSpec _.T;
           fields = [
             {FieldType = Type;}
             {isStatic = Bool;}
@@ -3441,9 +3421,10 @@ let
 
     let
       testInUniverses =
-        Types.fn "testInUniverses" {Us = "set";} {UToTest = "lambda";} (
-          Us: UToTest: mapAttrs (U_name: U: U.testInU UToTest) Us
-        );
+        #Types.fn "testInUniverses" {Us = "set";} {UToTest = "lambda";} (
+        #  Us: UToTest: mapAttrs (U_name: U: U.testInU UToTest) Us
+        #);
+        Us: UToTest: mapAttrs (U_name: U: U.testInU UToTest) Us;
 
       TestTypes = U: with U; {
         MyType =
@@ -4606,10 +4587,12 @@ let
         # - The typesystem of this module at the top level
         # - .Types (just the Types, with the library-only functions available as .Typelib)
         # - .Typelib (isolated type library, replacing e.g. isNull)
-        # - .lib (All the above merged deeply into lib)
+        #
+        # Does not expose 'lib' any longer as the 'lib' overrides are done at the 
+        # collective-lib level.
         #
         # Not named as 'lib' so that 'with typelib;' does not make a global 'lib' unavailable.
-        library = lib.recursiveUpdate lib module;
+        library = module;
 
         # Embed the whole of _tests
         inherit _tests;
@@ -4831,6 +4814,42 @@ in
 
 builtins.getContext (try (builtins.addErrorContext "huh" (throw "no")) (e: e))
 </nix>
+<nix>
+let
+mkF = f:
+  let args = solos (builtins.functionArgs f);
+  in assert size args == 1;
+  let nameSolo = head args;
+  in assert !(soloValue nameSolo);
+  let fname = soloName nameSolo;
+      fInner = f {${fname} = fname;};
+      fInnerArgs = solos (builtins.functionArgs fInner);
+
+somefn = {f}: {a ? Int}: a.name;
+in f {}
+</nix>
+<nix>
+let argname = "a"; in
+{${argname} ? 123}: a
+</nix>
+
+<nix>
+fold
+</nix>
+
+<nix>
+with log.trace;
+let f = Fn FnTestFn;
+in
+f 123 "ok"
+</nix>
+
+<nix>
+let cs = Context.String "name" "ok";
+in
+
+builtins.getContext (try (builtins.addErrorContext "huh" (throw "no")) (e: e))
+</nix>
 
 <nix>
 let U = Types.Universe.U_1; in
@@ -4838,7 +4857,7 @@ U.Type
 </nix>
 <nix> log._tests.debug </nix>
 <nix> strings._tests.debug </nix>
-<nix> attrsets._tests.debug </nix>
+<nix> functions._tests.debug </nix>
 <nix> debuglib._tests.run </nix>
 <nix> typelib._tests.run </nix>
 <nix> typelib._tests.debug </nix>

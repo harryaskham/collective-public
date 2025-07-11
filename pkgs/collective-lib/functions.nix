@@ -1,8 +1,10 @@
 { pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
 
 with lib;
+with collective-lib.attrsets;
 with collective-lib.collections;
 with collective-lib.dispatchlib;
+with collective-lib.debuglib;
 with collective-lib.errors;
 with collective-lib.lists;
 with collective-lib.strings;
@@ -13,16 +15,17 @@ let
   log = collective-lib.log;
   errors = collective-lib.errors;
   typelib = collective-lib.typelib;
+  typed = collective-lib.typed;
 in rec {
 
   # Compose two functions left-to-right
   compose = g: f: a: g (f a);
-  composeMany = foldl' compose id;
+  composeMany = typed.foldl' compose id;
 
   # Apply a function to a value
   ap = {
     __functor = self: f: a: f a;
-    list = f: xs: fold ap f xs;
+    list = f: xs: typed.fold.list.left (f: x: f x) f xs;
   };
 
   # Apply a function to a value with the arguments flipped.
@@ -46,7 +49,7 @@ in rec {
   # pipe x doA doB ___;
   pipe = x:
     Variadic.mkListThen
-      (fs: let f = foldl1 compose (reverseList fs); in f x);
+      (fs: let f = typed.foldl1 compose (reverseList fs); in f x);
 
   # Make a thunk out of a value
   thunk = x: _: x;
@@ -338,7 +341,7 @@ in rec {
       in mkList_ includeFinal isTerminal;
 
     # Accrue a list of function arguments then compose them
-    mkListCompose_ = isTerminal: mkListThen_ (foldl' compose id) isTerminal;
+    mkListCompose_ = isTerminal: mkListThen_ (typed.foldl' compose id) isTerminal;
     mkListCompose = mkListCompose_ (_: x: x == ___);
 
     # Compose a variadic function f with a function g.
@@ -387,6 +390,71 @@ in rec {
       (index: value: { inherit index value; })
       (map toString (range 0 (length xs - 1)))
       xs;
+
+  ### Solo lambdas
+
+  # Convert function args to list of of 
+  # i.e. {f} -> [{name = "f"; hasDefault = false;}]
+  #      {a ? Int} -> [{name = "a"; hasDefault = true;}]
+  #      {a ? Int, b ? String} -> [{name = "a"; hasDefault = true;} {name = "b"; hasDefault = true;}]
+  # Does not yet enforce solo-currying.
+  getArgs = f: 
+    let args_ = builtins.functionArgs f;                                                                                            
+        sortedArgs = sortedPos args_;
+        args =
+          map 
+            (pos: 
+              assert assertMsg (pos != null) "getArgs: got null arg position (arg must be defined literally in-file)";
+              rec {
+                name = pos.name;
+                hasDefault = args_.${name};
+                inherit pos;
+              }) 
+            sortedArgs;
+    in args;
+
+  getPartitionedArgs = f:
+    let args = partition (arg: arg.hasDefault) (getArgs f);
+    in {
+      optional = args.right;
+      required = args.wrong;
+    };
+
+  # i.e. {f}: ... -> true
+  #      {a ? Int} -> false
+  #      (x: ...) -> false
+  isNamedLambda = f:
+    let args = getPartitionedArgs f;
+    in size args.optional == 0 && size args.required == 1;
+
+  # i.e. {f}: ... -> false
+  #      {a ? Int} -> true
+  #      (x: ...) -> false
+  isTypedLambda = f:
+    let args = getPartitionedArgs f;
+    in size args.optional >= 1 && size args.required == 0;
+
+  # i.e. {f}: ... -> false
+  #      {a ? Int}: ... -> false
+  #      (x: x + 1) -> true
+  isRegularLambda = f:
+    let args = getPartitionedArgs f;
+    in size args.optional == 0 && size args.required == 0;
+
+  #injectDefaultValueCallback = f:
+  #  let arg = getSoloArg f;
+  #  in x
+
+  # Get default args from a solo lambda with a callback argument
+  getOptionalArgDefaultValues = f:
+    log.describe "while getting optional arg default values from solo lambda" (
+    let args = getPartitionedArgs f;
+        requiredArgValues = mergeAttrsList (map (arg: { ${arg.name} = null; }) args.required);
+        optionalArgs = keyByName args.optional;
+        callbackToRetval = f requiredArgValues;
+        allArgValues = callbackToRetval id;
+        defaultArgValues = intersectAttrs optionalArgs allArgValues;
+    in defaultArgValues);
 
   # nix eval --impure --expr '(import collective-public/pkgs/collective-utils/functions.nix {})._tests.run'
   _tests = with collective-lib.tests; suite {
@@ -554,7 +622,7 @@ in rec {
         variadicWithVariadic = {
           expr =
             let f = Variadic.mkOrdered ["a" "b"];
-                g = Variadic { isTerminal = state: _: size state > 2; };
+                g = Variadic { isTerminal = state: _: 3 <= size state; };
                 gf = Variadic.compose g f;
             in gf 1 2 {c = 123;};
 

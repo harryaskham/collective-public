@@ -2,7 +2,6 @@
 
 # TODO: Move other polymorphic collection functions here e.g. size.
 
-with lib;
 with collective-lib.attrsets;
 with collective-lib.dispatchlib;
 with collective-lib.errors;
@@ -10,8 +9,11 @@ with collective-lib.functions;
 with collective-lib.lists;
 with collective-lib.strings;
 with collective-lib.tests;
+with lib;
 
-let log = collective-lib.log;
+let 
+  log = collective-lib.log;
+  typed = collective-lib.typed;
 in rec {
   # Identify values that have elements.
   # Paths are collections, treated as normalised lists of components.
@@ -95,6 +97,30 @@ in rec {
     };
   };
 
+  # Centraliser for 'fold' that dispatches dynamically on the final arg.
+  fold = {
+    __functor = self: self.left;
+    left = f: init: dispatch {
+      set = typed.fold.attrs.left f init;
+      list = typed.fold.list.left f init;
+    };
+    right = f: init: dispatch {
+      set = typed.fold.attrs.right f init;
+      list = typed.fold.list.right f init;
+    };
+    _1 = {
+      __functor = self: self.left;
+      left = f: dispatch {
+        set = typed.fold._1.attrs.left f;
+        list = typed.fold._1.list.left f;
+      };
+      right = f: dispatch {
+        set = typed.fold._1.attrs.right f;
+        list = typed.fold._1.list.right f;
+      };
+    };
+  };
+
   # Centraliser for 'all'
   # Exposes lib.lists.all by default, otherwise uses fold.*._1 structure.
   # Uses structure of global merged fold._1.left
@@ -112,7 +138,7 @@ in rec {
             true
             xs;
       })
-      collective-lib.fold
+      typed.fold  # On the centralised fold
       ) // {
         __functor = self: p: xs: self.list p xs;
       };
