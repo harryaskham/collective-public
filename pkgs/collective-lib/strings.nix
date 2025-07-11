@@ -445,7 +445,7 @@ in rec {
   # context stored on strings, which carries lists of store paths.
   # If a string from this Context lib is used in a derivation, it may cause
   # issues.
-  Safe = x: errors.try (log.describe "while evaluating Safe expr"x) (_: ''<eval failed>'');
+  Safe = x: errors.try (log.describe "while evaluating Safe expr" x) (_: ''<eval failed>'');
   Context = rec {
 
     # Create a fake derivation we can use to manipulate string context.
@@ -465,7 +465,7 @@ in rec {
           in ctxOrS:
             if lib.isAttrs ctxOrS then
               let ctx = ctxOrS;
-              in self.__mk name ctx
+              in s: self.__mk name ctx s
             else
               # If we skipped the attrs, 
               # immediately make the context and return its application to 
@@ -474,17 +474,18 @@ in rec {
               in self.__mk name {} s
         else
           let ctx = nameOrCtx;
-          in self.__mk "anonymous" ctx;
+          in s: self.__mk "anonymous" ctx s;
 
-      __mk = name: ctx: {
-        inherit name ctx;
-        __toString = self: log.describe _b_ ''
-          While evaluating Context.String with context:
+      __mk = name: ctx: s: {
+        inherit name ctx s;
+        __toString = self: 
+          log.describe (_b_ ''
+            While evaluating Context.String with context:
 
-          Context.String<${self.name}>:
-            ${Safe (_pvh_ self.ctx)}
-        '';
-        __functor = self: s: lib.strings.addContextFrom self s;
+            Context.String<${self.name}>:
+              ${Safe (_pvh_ self.ctx)}
+          '')
+          s;
       };
     };
   };
@@ -627,7 +628,7 @@ in rec {
             eqToString = expect.eq (toString CS) "string";
             #eqContext = expect.eq (builtins.getContext CS) "TODO";
           };
-        in solo {
+        in {
           named.attrs = mkContextTest (Context.String "name" ctx "string");
           named.empty = mkContextTest (Context.String "name" "string");
           unnamed.attrs = mkContextTest (Context.String ctx "string");

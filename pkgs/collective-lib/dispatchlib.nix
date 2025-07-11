@@ -162,6 +162,13 @@ in rec {
     set = mapAttrs (_: (deepMap f));
   };
 
+  deepMapParent = f: xs:
+    let go = k: parent: dispatch.def (f parent k) {
+      list = xs: imap0 (i: go i xs) xs;
+      set = xs: mapAttrs (k: go k xs) xs;
+    };
+    in go null null xs;
+
   # recursiveMapAttrs that also allows for mapping over lists.
   # As with concatMapAttrs, f must return a set.
   # f is applied to all leaves, and recursively to all containers after application at the leaves.
@@ -291,6 +298,14 @@ in rec {
               g = { h = "g.h at 2"; };
             };
           };
+          deepMapParent =
+            expect.eq
+              (deepMapParent
+                (parent: k: v: 
+                  let n = if parent == null then 0 else size parent;
+                  in "${toString k} ${toString (v + n)}")
+                { a = 1; b = [2 3]; c = { d = 4; }; })
+              { a = "a 4"; b = ["0 4" "1 5"]; c = { d = "d 5"; }; };
         };
 
         deepConcatMap.sets = {

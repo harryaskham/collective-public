@@ -179,7 +179,7 @@ in rec {
 
   runOneTest = test: results_:
     with (log.v 1).test test.name results_ ___;
-    return rec {
+    rec {
       inherit test;
       evalStatus =
         if test.skip then EvalStatus.Skipped

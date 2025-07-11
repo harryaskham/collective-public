@@ -384,7 +384,7 @@ let
             isTerminal = _: x: lib.isFunction x;
 
             check = _: x:
-              describe "while checking ${callName} argument of type ${typeOf x}" (
+              describe "while checking ${callName} argument" (
               (isSolo x && (typed.isTypeLike (soloValue x) 
                             || lib.isString (soloValue x)
                             || builtins.isNull (soloValue x)))
@@ -394,7 +394,7 @@ let
             handle = state: x:
               if isSolo x then state // {
                 ArgTypeSolos = 
-                  describe "while adding ${callName} argument ${_p_ x}" (
+                  describe "while adding ${callName} argument" (
                   concatSolos state.ArgTypeSolos [x]
                   );
               }
@@ -417,7 +417,7 @@ let
                         describe "while casting arguments for ${callName}" (
                         mapSolos
                           (argName: ArgType:
-                            describe "while casting argument ${argName} to ${_ph_ ArgType}" (
+                            describe "while casting argument ${argName}" (
                             let uncheckedArg = uncheckedArgs.${argName}; in
                             if (builtins.isNull ArgType) then uncheckedArg
                             else if (typelib.isTypeLike ArgType)

@@ -67,14 +67,10 @@ in with typed; rec {
         in dispatchPos (name: attrs: elidePos (pos.path name attrs));
 
       deep = 
-        deepMergeMapParent 
-          (parent: name: v:
-            let 
-              maybeP =
-                optionalAttrs 
-                  (isAttrs parent)
-                  { __meta.${name} = pos name parent; };
-            in { ${name} = v; } // maybeP);
+        deepMapParent
+          (parent: k: v:
+            if isAttrs parent then pos k parent
+            else v);
     };
 
   # <nix>debuglib._tests.run</nix>
@@ -115,18 +111,10 @@ in with typed; rec {
           deeper = expectedPosDeeper;
         };
         expectedPosDeep = {
-          __meta = {
-            abc = expectedPosABC;
-            def = expectedPosDEF;
-            deeper = expectedPosDeeper;
-          };
-          abc = 123;
-          def = 456;
+          abc = expectedPosABC;
+          def = expectedPosDEF;
           deeper = {
-            __meta = {
-              ghi = expectedPosGHI;
-            };
-            ghi = 789;
+            ghi = expectedPosGHI;
           };
         };
       in {

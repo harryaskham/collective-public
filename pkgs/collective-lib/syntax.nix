@@ -33,7 +33,7 @@ in rec {
   # Shorthand print syntax.
   _b_ = indent.block;
   _bs_ = indent.blocks;
-  _l_ = x: _P_ x _line ___;
+  _l_ = x: with _P_; put x _line ___;
   _ls_ = indent.lines;
   _h_ = indent.here;
   _p_ = indent.print;
