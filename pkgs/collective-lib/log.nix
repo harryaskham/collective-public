@@ -495,74 +495,6 @@ let
                       applyFnBodyToArgs callName state.signature state.args state.argsList;
                   };
 
-                # (typedFnBody callName)should have the same signature as fnBody after this wrapping.
-                #typedFnBody = callName:
-                #  log.while "building typed function body for ${callName}" (
-                #  (flip Variadic.mkOrderedThen) argNames (uncheckedArgs:
-                #    let 
-                #      argCastResultSolos =
-                #        log.while "casting arguments for ${callName}" (
-                #        mapSolos
-                #          (argName: ArgType:
-                #            log.while "casting an argument for ${callName}" (
-                #            let uncheckedArg = uncheckedArgs.${argName}; in
-                #            if (builtins.isNull ArgType) then uncheckedArg
-                #            else if (typelib.isTypeLike ArgType)
-                #              then typed.unwrapCastResult (typed.cast ArgType uncheckedArg)
-                #            else if lib.isString ArgType
-                #              then if (typed.typeIdOf uncheckedArg) == ArgType
-                #                   then uncheckedArg
-                #                   else typed.mkCastError "TypeId argument check failed: got ${typed.typeOf uncheckedArg}"
-                #            else typed.mkCastError "Invalid argument type in function definition: ${ArgType}"
-                #            )
-                #          )
-                #          ArgTypeSolos
-                #        );
-
-                #      partitionedArgSolos = partitionSolos (_: typed.isCastError) argCastResultSolos;
-                #      argErrorMsgSolos = mapSolos (_: e: e.castError) partitionedArgSolos.right;
-                #      argSolos = partitionedArgSolos.wrong;
-                #      args = mergeSolos argSolos;
-                #      argList = soloValues argSolos;
-                #      signature =
-                #        log.while "building signature for ${callName}" (
-                #        mkSignature.call (mergeSolos argErrorMsgSolos)
-                #        );
-                #      typecheckPassed = empty argErrorMsgSolos;
-
-                #      typedLogState = 
-                #        log.while "building typed log state for ${callName}" (
-                #        (((ap.list (self.call callName) argList) ___)
-                #        .__withEvents [
-                #          {typedCall = true;}
-                #          {inherit ArgTypes;}
-                #          {inherit signature;}
-                #          {isAnonymousFunction = callName == anonymousName;}
-                #        ]) // (optionalAttrs includeStateArg args) # Add top-level args for 'with'
-                #        );
-                #    in
-                #      log.while ''
-                #        typechecking invocation of typed function:
-                #        ${signature}
-                #      '' (
-                #      assert assertMsg typecheckPassed (_b_ ''
-                #        Type check failed:
-                #          ${signature}
-                #      '');
-                #      let 
-                #        argList_ = if includeStateArg then [typedLogState] else argList;
-                #      in 
-                #        log.while "invoking ${callName} after successful typecheck" (
-                #        with typedLogState;
-                #        assert over [argList_];
-                #        let retVal = ap.list fnBody argList_; in
-                #        assert over [(short signature)
-                #                     (shortReturn typedLogState retVal)];
-                #        retVal
-                #        )
-                #      )
-                #  )
-                #  );
               in
                 # Expose both functor and fn, allowing:
                 # typedCall "f" { a = "int"; } (a: a + 1)
@@ -937,7 +869,7 @@ let
 
             # Enable typed syntax using builtin functions.
             # i.e.
-            # f = {f}: {a ? Int}: a.value + 1;
+            # f = Fn ({f}: {a ? Int}: cb: if cb == null then a.value + 1 else cb {inherit a;});
             Fn = 
               let
                 # i.e. {f}: {a ? Int}: ... -> { name = "f"; bound = ({a ? Int}: ... with f bound to "f") }
@@ -959,7 +891,7 @@ let
                   let 
                     # Get the arg type from default value by application of the callback.
                     # Args are returned in the order they appear in the source file.
-                    sortedArgTypes = getArgs f__attrs.f__bound;
+                    sortedArgs = getArgs f__attrs.f__bound;
                     # Pass empty args to get to the callback-to-body lambda.
                     f__doCallback = f__attrs.f__bound {};
                   in f__attrs // rec {
@@ -970,7 +902,7 @@ let
                       checkSolos 
                         (map 
                           (arg: mkSolo arg.name ArgTypes.${arg.name})
-                          sortedArgTypes);
+                          sortedArgs);
                     # Pass a null callback to skip past it to the function body.
                     f__body = f__doCallback null;
                     # Construct the final typed function
@@ -995,6 +927,55 @@ let
                     f__argsBound = bindArgs f__nameBound;
                 in f__argsBound.f__typed
                 );
+
+            # Enable typed syntax using builtin functions.
+            # i.e.
+            # f = defun ({f}: {a ? Int}: where f [a] (a.value + 1));
+            __signal = {
+              body = {
+                name = "__signal.body";
+              };
+              defaults = {
+                name = "__signal.defaults";
+              };
+            };
+            where = signal: args: body:
+              if signal == __signal.body then body
+              else if signal == __signal.defaults then args
+              else throw "Invalid signal: ${_ph_ signal}";
+            defun = f: 
+              log.describe "while binding typed function" (
+              assert isNamedLambda f;
+              let 
+                nameArg = head (getArgs f);
+                name = nameArg.name; 
+                f__body = 
+                  let body = f {${name} = __signal.body;};
+                  in assert isTypedLambda body; body;
+                f__defaults = 
+                  let defaults = f {${name} = __signal.defaults;};
+                  in assert isTypedLambda defaults; defaults;
+                sortedArgs = getArgs f__defaults;
+                argNames = map (arg: arg.name) sortedArgs;
+                ArgTypesList = f__defaults {};
+                ArgTypeSolos = 
+                  checkSolos 
+                    (zipListsWith 
+                      (arg: ArgType: mkSolo arg.name ArgType) 
+                      sortedArgs ArgTypesList);
+                argTypesToFnBodyToTypedFn = 
+                  log.while "binding typed function name from structured lambda" (
+                  fn name);
+                bodyToTypedFn = 
+                  log.while "binding argument type solos from structured lambda" (
+                  ap.list argTypesToFnBodyToTypedFn ArgTypeSolos);
+                # Need to batch up args to pass to the body.
+                # This does mean typechecking occurs only after all args are provided.
+                variadicBody = Variadic.mkOrderedThen f__body argNames;
+                typedFn = bodyToTypedFn variadicBody;
+              in 
+                typedFn
+              );
 
             # Set options on the bound self and rebind such that they are
             # available on the unbound methods.
@@ -1186,7 +1167,19 @@ in log // {
               f = Fn ({f}: {a ? Int, b ? String}: cb:
                 if cb != null then cb {inherit "a" "b";}
                 else a: b: "${toString (a.value + 1)} ${b}");
-              g = Fn ({f}: {a ? Int, b ? String}: "${toString (a.value + 1)} ${b}");
+            in {
+              callF.partial.correct = expect.isLambda (f 1);
+              callF.partial.error = expect.error (f "a");
+              callF.correct = expect.eq (f 1 "b") "2 b";
+              callF.incorrect.first = expect.error (f true "b");
+              callF.incorrect.second = expect.error (f 2 1);
+            };
+          defun = 
+            let 
+              f = 
+                defun ({f}: {a ? Int, b ? String}: where f [a b] (
+                  "${toString (a.value + 1)} ${b}"
+                ));
             in {
               callF.partial.correct = expect.isLambda (f 1);
               callF.partial.error = expect.error (f "a");

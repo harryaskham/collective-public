@@ -1,5 +1,17 @@
 { pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
 
+# Predictable location for test data.
+let 
+  testData = {
+    f = {
+      opt = {b, a ? 1}: a + b;
+      req = {b ? 2, a ? 1}: a + b;
+      cb = {b ? 2, a ? 1}: callback:
+        if callback != null then callback { inherit a b; } else a + b;
+    };
+  };
+in
+
 with lib;
 with collective-lib.attrsets;
 with collective-lib.collections;
@@ -441,10 +453,6 @@ in rec {
     let args = getPartitionedArgs f;
     in size args.optional == 0 && size args.required == 0;
 
-  #injectDefaultValueCallback = f:
-  #  let arg = getSoloArg f;
-  #  in x
-
   # Get default args from a solo lambda with a callback argument
   getOptionalArgDefaultValues = f:
     log.describe "while getting optional arg default values from solo lambda" (
@@ -458,6 +466,25 @@ in rec {
 
   # nix eval --impure --expr '(import collective-public/pkgs/collective-utils/functions.nix {})._tests.run'
   _tests = with collective-lib.tests; suite {
+    functionArgs = {
+      getArgs.opt = expect.noLambdasEq (getArgs testData.f.opt) [
+        {name = "b"; hasDefault = false; pos = {name = "b"; file = "functions.nix"; line = 7; column = 14; __toString = expect.anyLambda;};}
+        {name = "a"; hasDefault = true; pos = {name = "a"; file = "functions.nix"; line = 7; column = 17; __toString = expect.anyLambda;};}
+        ];
+      getArgs.req = expect.noLambdasEq (getArgs testData.f.req) [
+        {name = "b"; hasDefault = true; pos = {name = "b"; file = "functions.nix"; line = 8; column = 14; __toString = expect.anyLambda;};}
+        {name = "a"; hasDefault = true; pos = {name = "a"; file = "functions.nix"; line = 8; column = 21; __toString = expect.anyLambda;};}
+        ];
+      getArgs.cb = expect.noLambdasEq (getArgs testData.f.cb) [
+        {name = "b"; hasDefault = true; pos = {name = "b"; file = "functions.nix"; line = 9; column = 13; __toString = expect.anyLambda;};}
+        {name = "a"; hasDefault = true; pos = {name = "a"; file = "functions.nix"; line = 9; column = 20; __toString = expect.anyLambda;};}
+        ];
+      getOptionalArgDefaultValues =
+        expect.eq
+          (getOptionalArgDefaultValues testData.f.cb)
+          {a = 1; b = 2;};
+    };
+
     ap = {
       functor.partial = expect.isLambda (ap (a: b: a + b) 1);
       functor.full = expect.eq (ap (a: a + 1) 1) 2;

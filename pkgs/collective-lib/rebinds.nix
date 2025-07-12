@@ -6,15 +6,15 @@
 # 'with lib' is at the top of the file.
 let
   abortTyped = fname: x:
-    builtins.addErrorContext "|-> while aborting about use of unsafe function '${fname}'" (
     if x ? __special__isTypedAttrs
-    then abort ''
-      UNSAFE: ${fname} over typed value.
-      
-      (use unsafe* method variant instead if this is intentional)
-    ''
-    else x
-    );
+    then 
+      builtins.addErrorContext "|-> while aborting about use of unsafe function '${fname}'" (
+      abort ''
+        UNSAFE: ${fname} over typed value.
+        
+        (use unsafe* method variant instead if this is intentional)
+      '')
+    else x;
 
   abortTyped1 = fname: f: a: f (abortTyped fname a);
   abortTyped2 = fname: f: a: b: f a (abortTyped fname b);

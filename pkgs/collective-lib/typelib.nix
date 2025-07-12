@@ -18,15 +18,18 @@ with collective-lib.syntax;
 # - structuredAttrs: __functionArgs, __pretty, etc
 # builtins.functionArgs
 # - return types
-# - no callbacks
 # b:a style strings
+
 # typelib as a derivation: using a nix-in-nix repl builder
-# Rename to SubType
+
 # - nix-in-nix via eval:
 #   - enables program transformation / quasiquoting(can get the argument names of functions)
 #   - can layer typechecking on in a zero-cost or one-cost way
+
 # - disallow null fields again
+
 # - do notation using variadic
+
 # - error/either monad
 # - methods chain by being functors
 # - Have the act of binding a field containing a typevar infer that typevar's value
@@ -107,6 +110,9 @@ let
   dispatchlib = collective-lib.dispatchlib;
 
   # Function calling wrappers.
+  defun = Types.defun;
+  where = Types.where;
+  fn = Types.fn;
   Types =
     with lib;  # lib == untyped default pkgs.lib throughout Types
     rec {
@@ -115,6 +121,8 @@ let
     # log.*fn directly.
     __defaultFnLogLevel = 1;
     fn = (log.v __defaultFnLogLevel).fn;
+    defun = (log.v __defaultFnLogLevel).defun;
+    where = (log.v __defaultFnLogLevel).where;
 
     mkConstants = BuiltinTypes: with BuiltinTypes; {
       True = Bool true;
@@ -1550,7 +1558,7 @@ let
           return bindings;
 
       mkAccessorBindings = This: this_:
-        with U.call 3 "mkAccessorBindings" This "unsafe:this_" ___;
+        with U.callSafe 3 "mkAccessorBindings" This "unsafe:this_" ___;
         let
           bindings =
             mapAttrs
@@ -2092,6 +2100,7 @@ let
     # TODO: Update TS to best current working universe
     # U_4 is perfect but the constant rebuilds are slow.
     # U_1 is functional but contains shims in the inner workings.
+    # U_0 breaks string due to no class
     TSUniverse = Universe.U_0;
     TS = removeAttrs TSUniverse [
       "opts"
@@ -2275,15 +2284,13 @@ let
         # Bind the given methods and staticMethods to the shim.
         # Does not override any existing shim attributes, allowing
         # shims to set up shim methods.
-        bindShim = label: shim: methods_: staticMethods_:
+        bindShim = label: shim: bindAccessors: methods_: staticMethods_:
           let methods = noOverride shim methods_;
               staticMethods = noOverride shim staticMethods_;
               shim_ = U.removeImplementsPrefixAttrs (mergeAttrsList [
                 shim
-                #(optionalAttrs
-                #  ((shim.name or null) != "Type")
-                #  (U.mkAccessorBindings (shim.__Type {}) shim_))
-                (U.mkAccessorBindings (shim.__Type {}) shim_)
+                (optionalAttrs bindAccessors
+                  (U.mkAccessorBindings (shim.__Type {}) shim_))
                 (U.mkStaticMethodBindings
                   "bindShim.staticMethods ${label}"
                   (_p_ shim)
@@ -2302,21 +2309,21 @@ let
         # would cause recursive access to Type, so we manually use
         #   Type.methods == typeMethodsFor SU U // {} (no extra methods on Type)
         #   This.staticMethods == typeStaticMethodsFor SU U + {any extra staticMethods defined on This}
-        bindTypeShim = This:
+        bindTypeShim = This: bindAccessors:
           let methods = typeMethodsFor SU U;
               staticMethods = typeStaticMethodsFor SU U // (U.set This.staticMethods);
-          in bindShim "bindTypeShim" This methods staticMethods;
+          in bindShim "bindTypeShim" This bindAccessors methods staticMethods;
 
         # An instance this of type This has bindings for This.methods.
         # If This == Type, then this is a Type, and has bindings for this.staticMethods
         # (any new static methods it defines for itself)
         # We can inspect __Type here without infinite recursion, since this is only
         # called inside new/ctor and not during Type definition itself.
-        bindInstanceShim = this:
+        bindInstanceShim = this: bindAccessors:
           let This = this.__Type {};
               methods = U.set This.methods;
               staticMethods = U.set (this.staticMethods or {});
-          in bindShim "bindInstanceShim" this methods staticMethods;
+          in bindShim "bindInstanceShim" this bindAccessors methods staticMethods;
 
         TypeThunk__new = T: mkSafeUnboundInstanceShim "TypeThunk" {
           __Type = _: TypeThunk;
@@ -2327,6 +2334,10 @@ let
         TypeThunk = mkSafeUnboundTypeShimFunctor "TypeThunk" {
           __Type = _: Type;
           ctor = This: TypeThunk__new;
+          __cast = x:
+            if U.isTypeLikeOrNull x
+            then TypeThunk x
+            else U.mkCastError "TypeThunk: not a Type";
         };
 
         # Make a shim instance appearing as an instance of T.
@@ -2355,7 +2366,7 @@ let
           };
 
         mkSafeInstanceShimOf = T: args:
-          let I = bindInstanceShim (mkSafeUnboundInstanceShimOf T args);
+          let I = bindInstanceShim (mkSafeUnboundInstanceShimOf T args) true;
           in I // { __special__shim = "mkSafeInstanceShimOf"; };
 
         # Make an instance of an adhoc type with the given name.
@@ -2497,7 +2508,7 @@ let
                 getName = _: name;
                 getBoundName = _: name;
               };
-        in bindTypeShim T_;
+        in bindTypeShim T_ true;
 
         Ctor__new = ctorFn: mkSafeUnboundInstanceShimOf Ctor {
           inherit ctorFn;
@@ -2545,7 +2556,8 @@ let
           mapAttrs
             (BuiltinName: builtinName:
               let
-                T = mkSafeTypeShim BuiltinName rec {
+                #T = mkSafeTypeShim BuiltinName rec {
+                T = mkSafeUnboundTypeShimFunctor BuiltinName rec {
                   fields = [{value = builtinName;}];
                   ctor = This: BuiltinTypeShims__new."${BuiltinName}__new";
                   mk = args: ctor T args.value;
@@ -2750,7 +2762,7 @@ let
               __special__level = 0;
             };
           # Don't use U.set to unwrap methods here to avoid typechecks against builtin types.
-          T_ = bindTypeShim T;
+          T_ = bindTypeShim T false;
           in T_;
 
         Type = constructType {};
@@ -2793,9 +2805,9 @@ let
     # These are ordered such that we have minimal need to reach back up to SU to resolve circularity.
     mkSubUniverse = SU:
       with SU.call 4 "mkSubUniverse" "unsafe:SU" ___;
-      with msg "Constructing ${opts.name} universe";
       let opts = SU.opts.descend U {};
-          U = withCommonUniverse SU (rec {
+          U = with msg "Constructing ${opts.name} universe";
+              withCommonUniverse SU (rec {
         ### Universe
 
         inherit opts;
@@ -2839,7 +2851,7 @@ let
               # toString (Int 6) returns e.g. "6"
               __implements__toString = this: self:
                 with U.methodCall 2 this "__toString" self ___;
-                return (Builtin__toString.${BuiltinName} self);
+                return (U.Builtin__toString.${BuiltinName} self);
             } 
             // (optionalAttrs (builtinHasToShellValue builtinName) {
               __implements__toShellValue = this: self:
@@ -2877,7 +2889,7 @@ let
               staticMethods = {
                 __implements__cast = This: 
                   dispatchlib.dispatch.def 
-                    (mkCastError "${BuiltinName}: not castable (${typeOf x})")
+                    (U.mkCastError "${BuiltinName}: not castable (${U.typeOf x})")
                     {
                       ${builtinName} = This;
                       ${BuiltinName} = id;
@@ -3423,11 +3435,15 @@ let
     with lib;  # lib == untyped default pkgs.lib throughout __tests
 
     let
-      testInUniverses =
+      testInUniverses = defun (
+        {testInUniverses}: {Us ? "set", UToTest ? "lambda"}:
+        where testInUniverses [Us UToTest] (
+          mapAttrs (U_name: U: U.testInU UToTest) Us
+        ));
         #Types.fn "testInUniverses" {Us = "set";} {UToTest = "lambda";} (
         #  Us: UToTest: mapAttrs (U_name: U: U.testInU UToTest) Us
         #);
-        Us: UToTest: mapAttrs (U_name: U: U.testInU UToTest) Us;
+        #Us: UToTest: mapAttrs (U_name: U: U.testInU UToTest) Us;
 
       TestTypes = U: with U; {
         MyType =

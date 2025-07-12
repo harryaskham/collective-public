@@ -124,24 +124,12 @@ in rec {
   # Centraliser for 'all'
   # Exposes lib.lists.all by default, otherwise uses fold.*._1 structure.
   # Uses structure of global merged fold._1.left
-  all = 
-    (concatMapAttrs 
-      (k: foldType: 
-      if elem k ["__functor" "_1" "left" "right"] then {}
-      else { 
-        ${k} = p: xs: 
-          foldType.left
-            (acc: x: 
-              let px = p x;
-              in if isBool px then acc && px
-              else y: let pxy = px y; in acc && pxy)
-            true
-            xs;
-      })
-      typed.fold  # On the centralised fold
-      ) // {
-        __functor = self: p: xs: self.list p xs;
-      };
+  all = {
+    __functor = self: self.list;
+    list = p: xs: fold.left (acc: x: acc && p x) true xs;
+    solos = p: xs: all.list (x: p (soloName x) (soloValue x)) xs;
+    attrs = p: xs: all.solos p (solos xs);
+  };
 
   _tests = with collective-lib.tests; suite {
     collection = {
