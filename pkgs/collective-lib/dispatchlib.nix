@@ -176,14 +176,14 @@ in rec {
   # f is applied to all leaves, and recursively to all containers after application at the leaves.
   deepConcatMap = f: dispatch.def id {
     list = map (deepConcatMap f);
-    set = concatMapAttrs (k: v: f k (deepConcatMap f v));
+    set = Unsafe.concatMapAttrs (k: v: f k (deepConcatMap f v));
   };
 
   # Provides a parent argument to f holding the set or list.
   deepConcatMapParent = f: parent:
     dispatch.def id {
       list = parent': map (deepConcatMapParent f parent');
-      set = parent': concatMapAttrs (k: x: f parent k (deepConcatMapParent f x)) parent';
+      set = parent': Unsafe.concatMapAttrs (k: x: f parent k (deepConcatMapParent f x)) parent';
     } parent;
 
   # Provides a parent argument to f holding the set or list.
@@ -198,7 +198,7 @@ in rec {
   deepConcatMapCond = cond: f:
     dispatch.def id {
       list = map (deepConcatMapCond cond f);
-      set = concatMapAttrs (k: v: if cond k v then { ${k} = deepConcatMapCond cond f v; } else f k v);
+      set = Unsafe.concatMapAttrs (k: v: if cond k v then { ${k} = deepConcatMapCond cond f v; } else f k v);
     };
 
   # As deepConcatMap but only recurses into values that pass cond.
@@ -206,7 +206,7 @@ in rec {
   deepConcatMapCondAll = cond: f:
     dispatch.def id {
       list = imap0 (i: v: if cond i v then f i (deepConcatMapCondAll cond f v) else f i v);
-      set = concatMapAttrs (k: v: if cond k v then f k (deepConcatMapCondAll cond f v) else f k v);
+      set = Unsafe.concatMapAttrs (k: v: if cond k v then f k (deepConcatMapCondAll cond f v) else f k v);
     };
 
   deepMapNames = f: dispatch.def id {
@@ -216,7 +216,7 @@ in rec {
 
   deepMapNamesCond = cond: f: dispatch.def id {
     list = map (deepMapNamesCond cond f);
-    set = concatMapAttrs (k: v:
+    set = Unsafe.concatMapAttrs (k: v:
       if cond k 
       then { ${f k} = deepMapNamesCond cond f v; } 
       else { ${k} = v;});

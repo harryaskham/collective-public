@@ -3928,7 +3928,7 @@ let
           let F = {
                 ofNull = { field = Field null "nullField"; 
                            expectedName = "nullField";
-                           expectedType = "null";
+                           expectedType = "";  # null string
                            expectedHasDefaultValue = false;
                            expectedIsStatic = false;
                            expectedDefaultValue = null; };
@@ -3970,9 +3970,9 @@ let
                                   expectedDefaultValue = Int 123; };
               };
           in concatMapAttrs (name: case: {
-            ${name} = solo {
+            ${name} = {
               name = expect.stringEq case.field.fieldName case.expectedName;
-              FieldType = expect.eq (typeNameOf case.field.FieldType) case.expectedType;
+              FieldType = expect.stringEq (case.field.FieldType.name or case.field.FieldType) case.expectedType;
               isStatic = expect.eq case.field.isStatic case.expectedIsStatic;
               hasDefaultValue = expect.eq case.field.hasDefaultValue case.expectedHasDefaultValue;
               defaultValue = expect.eqOn U.int case.field.defaultValue case.expectedDefaultValue;
@@ -4568,8 +4568,8 @@ let
               shim = shimTests U;
             }))
           (testInUniverses
-            { inherit (Universe) U_0 U_1; }
-            #{ inherit (Universe) U_0; }
+            #{ inherit (Universe) U_0 U_1; }
+            { inherit (Universe) U_0; }
             (U: {
               peripheral = peripheralTests U;
               smoke = smokeTests U;
