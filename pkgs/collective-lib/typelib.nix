@@ -2598,6 +2598,15 @@ let
           False 
           Nil;
 
+        Constraint = mkSafeTypeShim "Constraint" {
+          fields = [{ constraintType = null; }];
+          ctor = This: constraintType: mkSafeUnboundInstanceShim "Constraint" rec {
+            inherit constraintType;
+            checkConstraint = that: !(U.isCastError (castConstraint that));
+            castConstraint = that: U.unwrapCastResult (U.cast constraintType that);
+          };
+        };
+
         Any = mkSafeTypeShim "Any" {} // {
           __cast = x: x;
         };
@@ -3151,17 +3160,18 @@ let
         ### Typeclasses
 
         # A constraint on a type variable, class or instance.
+
         Constraint = Type "Constraint" {
           fields = [{ constraintType = Type; }];
           methods = {
             # Cast the given type variable according to the constraint.
             # Only do so if it doesn't already satisfy i.e. don't try to cast Void, Union, All, etc.
             checkConstraint = this: that:
-              U.isCastSuccess (this.castConstraint that);
+              !(U.isCastError (this.castConstraint that));
 
             # Cast the given type variable according to the constraint.
             castConstraint = this: that:
-              U.cast this.constraintType that;
+              U.unwrapCastError (U.cast this.constraintType that);
           };
         };
 
