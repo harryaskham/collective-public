@@ -84,10 +84,11 @@ let
     soloValues = map soloValue;
 
     # Look up a solo value by name in a solo list.
-    lookupSolos = name: xs: (mergeSolos xs).${name};
+    lookupSolos = {
+      __functor = self: name: xs: (mergeSolos xs).${name};
+      def = defaultV: name: xs: (mergeSolos xs).${name} or defaultV;
+    };
 
-    # Look up a solo value by name in a solo list.
-    lookupSolosDef = name: def: xs: (mergeSolos xs).${name} or def;
 
     # Check if an attribute is solo.
     checkSolo = x:

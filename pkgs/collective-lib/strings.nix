@@ -444,15 +444,15 @@ in rec {
   #    toShellValue = {};
   #  };
   # Temporary U_0 shim
-  ToShellValue = {
-    try = arg: 
-      if arg ? __toShellValue then {
-        toShellValue = arg.__toShellValue arg;
-      } 
-      else {};
-    checkImplements = T: (typed.set T.methods) ? __implements__toShellValue;
-  };
-  Implements = _: { check = _: true; };
+  #ToShellValue = {
+  #  try = arg: 
+  #    if arg ? __toShellValue then {
+  #      toShellValue = arg.__toShellValue arg;
+  #    } 
+  #    else {};
+  #  checkImplements = T: (typed.set T.methods) ? __implements__toShellValue;
+  #};
+  #Implements = _: { check = _: true; };
 
   # Types that can be converted to a shell value.
   builtinHasToShellValue = T: 

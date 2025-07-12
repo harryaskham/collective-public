@@ -741,7 +741,7 @@ let
                       else if lib.isAttrs x then "set(${toString (TerseAttrs x)})"
                       else with log.prints; "${typelib.typeOf x}(${put x (_depth 2) _line ___})";
 
-                    args = lookupSolosDef "args" ["<no event.call or event.method>"] (event.call or event.method or []);
+                    args = lookupSolos.def ["<no event.call or event.method>"] "args" (event.call or event.method or []);
                     argsLines = map (arg: ellipsis 100 (valueStr arg)) args;
 
                     xStr = valueStr x;

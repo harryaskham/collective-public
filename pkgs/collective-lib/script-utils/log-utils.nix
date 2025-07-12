@@ -103,12 +103,8 @@ in rec {
       # Convert a value to a string for output to the shell.
       # Calls getValue to handle either e.g. Int 123, 123, String "a string", "a string", etc.
       ShellValue = Type.template "ShellValue" [{ T = Type; }] (_: {
-        fields = [
-          { rawValue = _.T; }
-        ];
-        methods = {
-          __implements__toString = this: self: toShellValue this.rawValue;
-        };
+        fields = [{ value = _.T; }];
+        methods.__implements__toString = this: self: toShellValue this.value;
       });
 
       # TODO: Generic way of doing typevar inference like this.
@@ -389,7 +385,7 @@ in rec {
         ShellValue = 
           let 
             mkT = logExpr: expected: expect.eq (toString logExpr) expected;
-          in {
+          in solo {
             int = expect.stringEq (shellValue 123) "123";
             word = expect.stringEq (shellValue "word") "word";
             string = expect.stringEq (shellValue "a string") ''"a string"'';
