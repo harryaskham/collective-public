@@ -1,0 +1,478 @@
+{ lib, collective-lib, ansi-utils, ... }:
+
+with collective-lib.typed;  # Replace 'lib' entirely
+with lists;
+with functions;
+with ansi-utils;
+with ansi;
+
+let typed = collective-lib.typed;
+in rec {
+  # Expose an extended log containing log.shell.*
+  log = collective-lib.log // {
+    shell = rec {
+      levels = {
+        debug = {
+          name = "debug";
+          style = {
+            tag = [bold fg.brightcyan];
+            lineText = [];
+          };
+        };
+        info = {
+          name = "info";
+          style = {
+            tag = [bold fg.green];
+            lineText = [];
+          };
+        };
+        warn = {
+          name = "warn";
+          style = {
+            tag = [bold fg.magenta];
+            lineText = [];
+          };
+        };
+        error = {
+          name = "error";
+          style = {
+            tag = [bold fg.red];
+            lineText = [];
+          };
+        };
+        fatal = {
+          name = "fatal";
+          style = {
+            tag = [bold bg.red fg.brightwhite];
+            lineText = [bold];
+          };
+        };
+        success = {
+          name = "success";
+          style = {
+            tag = [bold fg.green];
+            lineText = [];
+          };
+        };
+      };
+
+      DEBUG = levels.debug;
+      INFO = levels.info;
+      WARN = levels.warn;
+      ERROR = levels.error;
+      FATAL = levels.fatal;
+      SUCCESS = levels.success;
+
+      # Construct a prefix with the binary name and the level tag
+      prefix =
+        let mkTag = _: level:
+            ''${style [fg.grey] "$(basename $0)"} ${style level.style.tag "[${level.name}]"}'';
+        in mapAttrs mkTag levels;
+
+      # Construct a set of log line builder functions where each of line.level
+      # are functions that take a string and return a string.
+      # e.g. line.info true "Hello world" is "appname [info] Hello world" (with styles)
+      #      line.info false "Hello world" is "Hello world" (with styles)
+      line =
+        let mkLineBuilder = levelName: level:
+              withPrefix: text:
+                ''${optionalString withPrefix "${prefix.${levelName}} "}${style level.style.lineText text}'';
+        in mapAttrs mkLineBuilder levels;
+
+      # A set from level to a builder for a formatted line without prefix.
+      text = mapAttrs (_: lineFn: lineFn false) line;
+
+      # Get the indent level to line a newline up with the logtag RHS
+      indent = level:
+        let getIndent = levelName: level: prefix.${levelName};
+        in 1 + mapAttrs getIndent levels;
+
+      # An attrset from level to an echo-command builder that takes text and returns an echo command string.
+      # Not usually used directly, but rather via e.g. log.shell.info which calls shell
+      # defined log() generated via this echo.${level} function.
+      # e.g. echo.info true "Hello world" is "echo -e \"appname [info] Hello world\"" (with styles)
+      # All levels log to stderr only.
+      echoLine = withPrefix:
+        let mkEchoCommand = levelName: level:
+              text: ''${ansi.echo (line.${levelName} withPrefix text)} >&2'';
+        in mapAttrs mkEchoCommand levels;
+
+      # Echo a line text in the style of the level without the prefix.
+      echoLineText = echoLine false;
+
+      # Convert a value to a string for output to the shell.
+      # Calls getValue to handle either e.g. Int 123, 123, String "a string", "a string", etc.
+      ShellValue = Type.template "ShellValue" [{ T = Type; }] (_: {
+        fields = [
+          { rawValue = _.T; }
+        ];
+        methods = {
+          __implements__toString = this: self: toShellValue this.rawValue;
+        };
+      });
+
+      # TODO: Generic way of doing typevar inference like this.
+      shellValue = x:
+        let T = typed.typeOf (wrap x); in
+        (ShellValue T) (wrap x);
+
+      # A shell value plus a code.
+      ShellReturnValue = Type.template "ShellReturnValue" [{ T = Type; }] (_: {
+        fields = [
+          { code = ShellValue Int; }
+          { returnValue = ShellValue _.T; }
+        ];
+        methods = {
+          # Generate e.g.
+          # "1 \"retval\"" if log-return with a value of "retval"
+          # "1 \"\" if log-return without a value (ShellReturnValue 0 Null goes to "0 \"\"")
+          __implements__toString = this: self: "${this.code} ${this.returnValue}";
+        };
+      });
+
+      # TODO: Generic way of doing typevar inference like this.
+      shellReturnValue = code: x:
+        let T = typed.typeOf (wrap x); in
+        (ShellReturnValue T) (ShellValue Int (Int code)) (ShellValue T (wrap x));
+
+      # Store the exit/return action, code and optional value for the return/exit log functions.
+      LogReturnAction = Type.template "LogReturnAction" [{ T = Type; }] (_: {
+        fields = [
+          # The log-* suffix to determine which log function to call.
+          { suffix = String; }
+
+          # The optional value to pass to toShellValue for conversion to a string for
+          # logging in functions that return a value.
+          # Only applicable if returnCode is set for logging in a function; in this
+          # case, equivalent to:
+          # echo "${toShellValue returnValue}"
+          # return "${toShellValue returnCode}"
+          # If instead exitCode is set, the 'return' value is considered to be
+          # the log text, which is output in place of any custom return.
+          { returnValue = ShellReturnValue _.T; }
+
+          # print usage message after logging
+          { withUsage = Bool; }
+        ];
+
+        methods = {
+          # Generate e.g. -with-usage, -return-with-usage, etc.
+          getSuffix = this: _:
+            let withUsageSuffix = if bool this.withUsage then "-with-usage" else "";
+            in "${this.suffix}${withUsageSuffix}";
+
+          # Generate e.g. log-exit-with-usage
+          getLogFn = this: _: "log${this.getSuffix {}} ${this.returnValue}";
+
+          __implements__toString = this: self: self.getLogFn {};
+        };
+      });
+
+      logReturnAction = withUsage: suffix: v: code:
+        let T = typed.typeOf (wrap v);
+        in (LogReturnAction T) suffix (shellReturnValue code v) withUsage;
+
+      LogReturnValueCode = value: code: logReturnAction false "-return" value code;
+      LogReturnCode = code: LogReturnValueCode null code;
+      LogExitCode = code: logReturnAction false "-exit" null code;
+      LogExitCodeWithUsage = code: logReturnAction true "-exit" null code;
+
+      # Makes a log message attribute set.
+      # LogMessage INFO "text"
+      # LogMessage.WithUsage FATAL "error"
+      # LogMessage.WithUsage FATAL (LogReturnAction.Exit 1)
+      # LogMessage SUCCESS (LogReturnAction.ReturnValue 0 123)
+      # Ultimately exposed via e.g. log.shell.info <args> "text"
+      LogMessage = Type.template "LogMessage" [{ T = Type; }] (_: {
+
+        fields = [
+          # The log level to use.
+          # TODO: Move to a log level type
+          { level = Set; }
+          # The action to take if any.
+          { action = NullOr (LogReturnAction _.T); }
+          # The text to log if any.
+          { text = NullOr (ShellValue String); }
+        ];
+
+        methods = {
+          getLogText = this: _:
+            if typed.isNull this.text then ''""'' else
+            toString this.text;
+
+          getLevelName = this: _:
+            ((set this.level).name);
+
+          getLogFn = this: _:
+            if typed.isNull this.action then "log" else
+            toString this.action;
+
+          # Generate the bash 'log level "msg"' function call for invoking the log helpers to print
+          # this message.
+          getLogCall = this: _: 
+            "${this.getLogFn {}} ${this.getLevelName {}} ${this.getLogText {}}";
+
+          # Finally override s.t. toString allows interpolation like:
+          # ${log.shell.info "test"}
+          __implements__toString = this: self: string (self.getLogCall {});
+        };
+      });
+
+      # TODO: Have the act of binding a field containing a typevar infer that typevar's value
+      logMessage = level: action: text:
+        let T = if typed.isNull action then Null else (typed.typeOf action).tvarBindings.value.T;
+        in (LogMessage T) level action (shellValue text);
+
+      # Intended actual logging interface, using log() function defined in logBlock.
+      # Avoids directly inlining the debug checks and escape codes on each line.
+      # log.shell.{debug,info,warn,error} output to STDERR
+      # log.shell.{fatal,fatalCode,fatalWithUsage} output to STDERR and exit with code
+      # log.shell.return.* output an optional value to STDOUT and return with code
+      # log.shell.exit.* output an optional value to STDOUT and return with code
+      debug = logMessage DEBUG Nil;
+      info = logMessage INFO Nil;
+      warn = logMessage WARN Nil;
+      error = logMessage ERROR Nil;
+      exit = {
+        success = logMessage SUCCESS (LogExitCode 0);
+        fatalCode = exitCode: logMessage FATAL (LogExitCode exitCode);
+        fatal = exit.fatalCode 1;
+        fatalWithUsage = logMessage FATAL (LogExitCodeWithUsage 1);
+      };
+      return = {
+        success = logMessage SUCCESS (LogReturnCode 0);
+        value = v: logMessage SUCCESS (LogReturnValueCode v 0);
+        errorCode = returnCode: logMessage ERROR (LogReturnCode returnCode);
+        error = return.errorCode 1;
+      };
+
+      # Shorthand log.shell.fatal* for log.shell.exit.fatal*, since fatal always exits
+      inherit (exit) fatal fatalCode fatalWithUsage;
+    };
+  };
+
+  logBlock = codeBlockHeader "### Logging utilities" ''
+    function __collective_log_debug_check() {
+      if [[ "$__COLLECTIVE_DEBUG" == true ]]; then
+        echo true
+        return 0
+      fi
+
+      if [[ "$__COLLECTIVE_DEBUG_CHECKED" == true ]]; then
+        if [[ "$__COLLECTIVE_DEBUG_ENABLED_BY_KV" == true ]]; then
+          echo true
+          return 0
+        else
+          echo false
+          return 1
+        fi
+      fi
+
+      # No re-entry
+      export __COLLECTIVE_DEBUG_CHECKED=true
+
+      THIS=$(basename $0)
+      if [[ "$THIS" == cltv-kv-check || "$THIS" == cltv-gv-get ]]; then
+        echo false
+        return 1
+      fi
+
+      if [[ cltv-kv-check && "$(cltv-kv-get --key __COLLECTIVE_DEBUG)" == true ]]; then
+        export __COLLECTIVE_DEBUG_ENABLED_BY_KV=true
+        echo true
+        return 0
+      fi
+
+      echo false
+      return 1
+    }
+
+    function print-log-text() {
+      LEVEL="$1"
+      shift
+      MSG="$@"
+      DO_PRINT_LOG=true
+      case "$LEVEL" in
+        debug)
+          if [[ "$(__collective_log_debug_check)" != true ]]; then
+            return 1
+          fi
+          PREFIX=${toShellValue log.shell.prefix.debug}
+          LOGINE=${toShellValue (log.shell.text.debug "$MSG")}
+        ;;
+        info)
+          PREFIX=${toShellValue log.shell.prefix.info}
+          LOGINE=${toShellValue (log.shell.text.info "$MSG")}
+        ;;
+        warn)
+          PREFIX=${toShellValue log.shell.prefix.warn}
+          LOGINE=${toShellValue (log.shell.text.warn "$MSG")}
+        ;;
+        error)
+          PREFIX=${toShellValue log.shell.prefix.error}
+          LOGINE=${toShellValue (log.shell.text.error "$MSG")}
+        ;;
+        fatal)
+          PREFIX=${toShellValue log.shell.prefix.fatal}
+          LOGINE=${toShellValue (log.shell.text.fatal "$MSG")}
+        ;;
+        success)
+          PREFIX=${toShellValue log.shell.prefix.success}
+          LOGINE=${toShellValue (log.shell.text.success "$MSG")}
+        ;;
+        *)
+          print-log-text fatal "Unknown log level: $LEVEL (message: $MSG)"
+          exit 1
+        ;;
+      esac
+
+      INDENT_PAST_PREFIX=$((1+''${#PREFIX}))
+      SPACES=$(for i in $(seq 1 $INDENT_PAST_PREFIX); do echo -n " "; done)
+      ${echo-n "$PREFIX "}
+      ${echo "$LOGINE"} | head -n1
+      for l in $(echo $LOGLINE | tail -n+2); do
+        ${echo "$SPACES$l"}
+      done
+    }
+
+    function log() {
+      print-log-text "$@" >&2
+    }
+
+    function log-with-usage() {
+      if (log "$@"); then
+        echo "" >&2
+        usage
+      fi
+    }
+
+    function __log-return() {
+      CODE="$1"
+      VALUE="$2"
+      shift 2
+      if (log "$@"); then
+        if [[ -n "$VALUE" ]]; then
+          echo "$VALUE"
+        fi
+      fi
+    }
+
+    function log-return() {
+      __log-return "$@"
+    }
+
+    function log-return-with-usage() {
+      if (__log-return "$@"); then
+        echo "" >&2
+        usage
+      fi
+    }
+
+    function log-exit() {
+      CODE="$1"
+      log-return "$@"
+      exit "$CODE"
+    }
+
+    function log-exit-with-usage() {
+      CODE="$1"
+      log-return-with-usage "$@"
+      exit "$CODE"
+    }
+
+  '';
+
+  _tests =
+    with tests; 
+    suite {
+      log.shell = with log.shell; {
+        ShellValue = 
+          let 
+            mkT = logExpr: expected: expect.eq (toString logExpr) expected;
+          in {
+            int = expect.stringEq (shellValue 123) "123";
+            word = expect.stringEq (shellValue "word") "word";
+            string = expect.stringEq (shellValue "a string") ''"a string"'';
+            Word = expect.stringEq (shellValue (String "word")) "word";
+            String = expect.stringEq (shellValue (String "a string")) ''"a string"'';
+            list = expect.stringEq (shellValue ["a" 123]) ''(a 123)'';
+            List = expect.stringEq (shellValue (List ["a" 123])) ''(a 123)'';
+          };
+
+        LogReturnAction = 
+          let 
+            mkT = lra: expectedT: expectedToString: {
+              typeId = expect.eqWith typeEq (lra.__Type {}) expectedT;
+              toString = expect.eq (toString lra) expectedToString;
+            };
+          in {
+            LogReturnCode =
+              mkT (LogReturnCode 0)
+              (LogReturnAction Null) ''log-return 0 ""'';
+            LogReturnCodeValue.String =
+              mkT (LogReturnValueCode "a string" 0)
+              (LogReturnAction String) ''log-return 0 "a string"'';
+            LogReturnCodeValue.Int =
+              mkT (LogReturnValueCode 123 0)
+              (LogReturnAction Int) ''log-return 0 123'';
+            LogExitCode =
+              mkT (LogExitCode 0)
+              (LogReturnAction Null) ''log-exit 0 ""'';
+            LogExitCodeWithUsage =
+              mkT (LogExitCodeWithUsage 0)
+              (LogReturnAction Null) ''log-exit-with-usage 0 ""'';
+          };
+
+        LogMessage = {
+          info = 
+            let m = logMessage INFO Nil "a msg";
+            in {
+              getLogText = expect.eq (m.getLogText {}) ''"a msg"'';
+              getLogFn = expect.eq (m.getLogFn {}) "log";
+              getLogCall = expect.eq (m.getLogCall {}) ''log info "a msg"'';
+              toString = expect.eq (toString m) ''log info "a msg"'';
+            };
+          fatal = 
+            let m = logMessage FATAL (LogExitCodeWithUsage 1) "its bad";
+            in {
+              getLogText = expect.eq (m.getLogText {}) ''"its bad"'';
+              getLogFn = expect.eq (m.getLogFn {}) ''log-exit-with-usage 1 ""'';
+              getLogCall = expect.eq (m.getLogCall {}) ''log-exit-with-usage 1 "" fatal "its bad"'';
+              toString = expect.eq (toString m) ''log-exit-with-usage 1 "" fatal "its bad"'';
+            };
+        };
+
+        levels = {
+          info.text = expect.eq (info "its ok") ''log info "its ok"'';
+          debug.text = expect.eq (debug "its ok") ''log debug "its ok"'';
+          warn.text = expect.eq (warn "its bad") ''log warn "its bad"'';
+          error.text = expect.eq (error "its bad") ''log error "its bad"'';
+          fatal = {
+            text = expect.eq (fatal "its bad") ''log-exit fatal "its bad"'';
+            withUsage = expect.eq (fatalWithUsage "its bad") ''log-exit-with-usage fatal "its bad"'';
+          };
+        };
+
+        return = {
+          success = expect.eq (return.success "its ok") ''log-return 0 "" success "its ok"'';
+          value.int = expect.eq (return.value 123) ''log-return 0 123 "" success ""'';
+          value.string = expect.eq (return.value "a string") ''log-return 0 "a string" "" success ""'';
+          error = expect.eq (return.error "its bad") ''log-return 1 "" error "its bad"'';
+          errorCode = expect.eq (return.errorCode 2 "its bad") ''log-return 2 "its bad" error ""'';
+        };
+
+        exit = {
+          success = expect.eq (exit.success "its ok") ''log-exit 0 "its ok"'';
+          fatal = expect.eq (exit.fatal "its bad") ''log-exit 1 "its bad"'';
+          fatalCode = expect.eq (exit.fatalCode 2 "its bad") ''log-exit 2 "its bad"'';
+          fatalWithUsage = expect.eq (exit.fatalWithUsage "its bad") ''log-exit-with-usage 1 "its bad"'';
+        };
+
+        aliases = {
+          fatal = expect.eq (fatal "its bad") ''log-exit 1 "its bad"'';
+          fatalCode = expect.eq (fatalCode 2 "its bad") ''log-exit 2 "its bad"'';
+          fatalWithUsage = expect.eq (fatalWithUsage "its bad") ''log-exit-with-usage 1 "its bad"'';
+        };
+      };
+    };
+}

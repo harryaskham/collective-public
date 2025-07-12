@@ -1,5 +1,9 @@
 { pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
 
+# Use the rebinds throughout s.t. this module by default does not check for
+# type errors.
+with collective-lib.rebinds.Unsafe;
+
 with lib;
 with collective-lib.collections;
 with collective-lib.errors;
@@ -7,7 +11,6 @@ with collective-lib.functions;
 with collective-lib.lists;
 with collective-lib.strings;
 with collective-lib.tests;
-with collective-lib.rebinds;
 
 let 
   log = collective-lib.log;
@@ -75,7 +78,7 @@ in rec {
     on = getType: dict: x:
       let defaultF = throw ''
         Unsupported type ${getType x} in polymorphic dispatch.
-        Expected: ${joinSep ", " (Unsafe.attrNames dict)}
+        Expected: ${joinSep ", " (attrNames dict)}
         Got ${getType x} of value: ${log.print x}
       '';
       in dispatch.def.on getType defaultF dict x;
@@ -176,14 +179,14 @@ in rec {
   # f is applied to all leaves, and recursively to all containers after application at the leaves.
   deepConcatMap = f: dispatch.def id {
     list = map (deepConcatMap f);
-    set = Unsafe.concatMapAttrs (k: v: f k (deepConcatMap f v));
+    set = concatMapAttrs (k: v: f k (deepConcatMap f v));
   };
 
   # Provides a parent argument to f holding the set or list.
   deepConcatMapParent = f: parent:
     dispatch.def id {
       list = parent': map (deepConcatMapParent f parent');
-      set = parent': Unsafe.concatMapAttrs (k: x: f parent k (deepConcatMapParent f x)) parent';
+      set = parent': concatMapAttrs (k: x: f parent k (deepConcatMapParent f x)) parent';
     } parent;
 
   # Provides a parent argument to f holding the set or list.
@@ -198,7 +201,7 @@ in rec {
   deepConcatMapCond = cond: f:
     dispatch.def id {
       list = map (deepConcatMapCond cond f);
-      set = Unsafe.concatMapAttrs (k: v: if cond k v then { ${k} = deepConcatMapCond cond f v; } else f k v);
+      set = concatMapAttrs (k: v: if cond k v then { ${k} = deepConcatMapCond cond f v; } else f k v);
     };
 
   # As deepConcatMap but only recurses into values that pass cond.
@@ -206,7 +209,7 @@ in rec {
   deepConcatMapCondAll = cond: f:
     dispatch.def id {
       list = imap0 (i: v: if cond i v then f i (deepConcatMapCondAll cond f v) else f i v);
-      set = Unsafe.concatMapAttrs (k: v: if cond k v then f k (deepConcatMapCondAll cond f v) else f k v);
+      set = concatMapAttrs (k: v: if cond k v then f k (deepConcatMapCondAll cond f v) else f k v);
     };
 
   deepMapNames = f: dispatch.def id {
@@ -216,7 +219,7 @@ in rec {
 
   deepMapNamesCond = cond: f: dispatch.def id {
     list = map (deepMapNamesCond cond f);
-    set = Unsafe.concatMapAttrs (k: v:
+    set = concatMapAttrs (k: v:
       if cond k 
       then { ${f k} = deepMapNamesCond cond f v; } 
       else { ${k} = v;});

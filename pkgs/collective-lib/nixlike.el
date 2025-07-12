@@ -258,8 +258,7 @@
    let \
    pkgs = import <nixpkgs> {}; \
    lib = pkgs.lib; \
-   collective-lib = import %s/pkgs/collective-lib \
-   { \
+   collective-lib = import %s/pkgs/collective-lib {\
    inherit pkgs lib; \
    traceOpts = \
    { \
@@ -278,7 +277,8 @@
           v
           (nixlike-enable-partial-trace v)
           (nixlike-enable-verbose-trace v)
-          (nixlike-enable-short-trace v)))
+          (nixlike-enable-short-trace v)
+          ))
 
 (defun nixlike-expr-with-preamble (expr v raw)
   "Built the Nixlike Shell preamble for a raw expr. Allows 'with __ctx {}; <expr>'."

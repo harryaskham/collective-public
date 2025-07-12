@@ -4880,6 +4880,12 @@ in
 builtins.getContext (try (builtins.addErrorContext "huh" (throw "no")) (e: e))
 </nix>
 
+<nix> script-utils.log-utils._tests.run </nix>
+<nix>
+with script-utils.log-utils;
+_tests.run
+</nix>
+
 <nix>
 let U = Types.Universe.U_1; in
 U.Type
@@ -4891,6 +4897,7 @@ U.Type
 <nix> typelib._tests.run </nix>
 <nix> typelib._tests.debug </nix>
 <nix> typelib._tests.debug </nix>
+<nix> collective-lib._tests.run </nix>
 '';
 
 in

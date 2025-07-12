@@ -52,7 +52,9 @@ let
     in baseMerged // rec {
       # Merge with another downstream collective-lib extension.
       # Merges deeply s.t. modules that share names are themselves merged.
-      extend = otherBaseModules: mkCollectiveLib (baseModules // otherBaseModules);
+      # i.e. merge log.* with log.shell.*
+      extend = otherBaseModules: mkCollectiveLib (
+        lib.recursiveUpdate baseModules otherBaseModules);
 
       # Keep a reference to the original base so that we can still access it unmerged.
       base = baseModules;
@@ -98,7 +100,7 @@ let
     };
 
   baseModules = 
-    let args = { inherit lib collective-lib; }; in
+    let args = { inherit pkgs lib collective-lib; }; in
     {
       attrsets = import ./attrsets.nix args;
       binding = import ./binding.nix args;
@@ -117,6 +119,7 @@ let
       log = import ./log.nix (args // { inherit traceOpts; });
       inherit modulelib;
       rebinds = import ./rebinds.nix args;
+      script-utils = import ./script-utils args;
       strings = import ./strings.nix args;
       syntax = import ./syntax.nix args;
       tests = import ./tests.nix args;
