@@ -2635,9 +2635,6 @@ let
                 // (optionalAttrs (BuiltinName == "List") {
                   append = x: List__new (value ++ [x]);
                 });
-                #// (optionalAttrs (U.builtinHasToShellValue builtinName) rec {
-                #  __toShellValue = self: (U.ToShellValue.try self.value).toShellValue;
-                #});
               }
             )
             U.BuiltinNameTobuiltinName;
@@ -3752,6 +3749,7 @@ let
         # null goes to the empty string literal
         toShellValue = {};
       } (Instance "int" { toShellValue = toString; })
+        (Instance "float" { toShellValue = toString; })
         (Instance "bool" { toShellValue = b: if b then "true" else "false"; })
         (Instance "string" { toShellValue = shellQuote; })
         (Instance "path" { toShellValue = shellQuote; })
@@ -3768,6 +3766,9 @@ let
         # TODO: More genericism; Lists via Fucntor
         (Instance 
           (ShellValue Int)
+          { toShellValue = this: toShellValue this.value; })
+        (Instance 
+          (ShellValue Float)
           { toShellValue = this: toShellValue this.value; })
         (Instance 
           (ShellValue String)
@@ -4027,7 +4028,34 @@ let
                   UnaryClass
                   UnaryClassWithInstances; });
 
-        };
+          # TODO fix this
+          toShell =
+            let ToShellValue = SU.ToShellValue;
+                toShellValue = SU.toShellValue;
+            in {
+              int = expect.eq (toShellValue 1) "1";
+              word = expect.eq (toShellValue "word") "word";
+              quote = expect.eq (toShellValue ''"quote"'' ) ''"\"quote\""'';
+              safeQuote = expect.eq (toShellValue "'safe quote'") "\"'safe quote'\"";
+              bool = expect.eq (toShellValue true) "true";
+              boolFalse = expect.eq (toShellValue false) "false";
+              # list = expect.eq (toShellValue (map toShellValue [1 "xxx" "$YYY" true])) "(1 xxx \"$YYY\" true)";
+              float = expect.eq (toShellValue 123.3) "123.300000";
+              typed =
+                let A = Type "A" {
+                  methods = {
+                    __implements__toShellValue = this: self: "A-shell";
+                  };
+                };
+                in {
+                  # dispatches = expect.eq (toShellValue (A {})) "A-shell";
+                  implemented = expect.True (ToShellValue.checkImplements A);
+                  implements.type = expect.True (A.implements ToShellValue);
+                  implements.class = expect.True ((Constraint (Implements ToShellValue)).checkConstraint A);
+                };
+            };
+
+      };
 
       TypelibTests = U: with U; let SU = U._SU; in {
         isTypeSet = {

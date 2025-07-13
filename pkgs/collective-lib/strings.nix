@@ -555,30 +555,6 @@ in rec {
       };
     };
 
-    toShellValue = {
-      int = expect.eq (toShellValue 1) "1";
-      word = expect.eq (toShellValue "word") "word";
-      quote = expect.eq (toShellValue ''"quote"'' ) ''"\"quote\""'';
-      safeQuote = expect.eq (toShellValue "'safe quote'") "\"'safe quote'\"";
-      bool = expect.eq (toShellValue true) "true";
-      boolFalse = expect.eq (toShellValue false) "false";
-      list = expect.eq (toShellValue [1 "xxx" "$YYY" true]) "(1 xxx \"$YYY\" true)";
-      float = expect.eq (toShellValue 123.3) "123.300000";
-      typed =
-        with typed;
-        let A = Type "A" {
-          methods = {
-            __implements__toShellValue = this: self: "A-shell";
-          };
-        };
-        in {
-          dispatches = expect.eq (toShellValue (A {})) "A-shell";
-          implemented = expect.True (ToShellValue.checkImplements A);
-          implements.type = expect.True (A.implements ToShellValue);
-          implements.class = expect.True ((Implements ToShellValue).check A);
-        };
-    };
-
     Context = {
       Safe = expect.eq (Safe "${throw "no"}") "<eval failed>";
       String = 
