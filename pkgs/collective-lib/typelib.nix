@@ -2662,9 +2662,6 @@ let
                   ctor = This: BuiltinTypeShims__new."${BuiltinName}__new";
                   mk = args: ctor T args.value;
                   staticMethods.__implements__cast = This: __cast;
-                  methods = optionalAttrs (U.builtinHasToShellValue builtinName) rec {
-                    __implements__toShellValue = this: _: U.toShellValue this.value;  # bound by Class
-                  };
                   __cast = 
                     dispatchlib.switch.def 
                       (x: U.castEither builtinName x (r: T (U.unwrapCastResult r)) id)
@@ -2913,13 +2910,13 @@ let
                 if !(U.isNull typeInstance) then typeInstance.bindInstance x
                 else if !(U.isNull valueInstance) then valueInstance.bindInstance x
                 else {};
-            mustCall = x:
+            mustCall = x: strict (
               let boundInstance = try x; in
               assert assertMsg (!(U.isNull boundInstance)) (indent.block ''
                 Value of type ${typeOf x} does not implement Class ${name}:
                   value = ${indent.here (log.print x)}
               '');
-              boundInstance;
+              boundInstance);
           };
         };
 
@@ -3146,10 +3143,7 @@ let
               __implements__toString = this: self:
                 with U.methodCall 2 this "__toString" self ___;
                 return (U.Builtin__toString.${BuiltinName} self);
-            } 
-            // (optionalAttrs (builtinHasToShellValue builtinName) {
-              __implements__toShellValue = this: _: U.toShellValue this.value;
-            });
+            };
 
             hasSize = { String = true; Path = true; List = true; Set = true; }.${BuiltinName} or false;
             withSize = methods:
@@ -3660,13 +3654,13 @@ let
                 else if !(U.isNull valueInstance) then valueInstance.bindInstance x
                 else {};
 
-            mustCall = this: x:
+            mustCall = this: x: strict (
               let boundInstance = this.try x; in
-              assert assertMsg (!(U.isNull boundInstance)) (indent.block ''
+              assert assertMsg (nonEmpty boundInstance) (indent.block ''
                 Value of type ${typeOf x} does not implement Class ${this.name}:
                   value = ${indent.here (log.print x)}
               '');
-              boundInstance;
+              boundInstance);
           };
         };
 
@@ -3730,7 +3724,9 @@ let
         Class "ToString" { toString = log.print; }
         (Instance "string" { toString = id; });
 
-      ToShellValue = Class "ToShellValue" { 
+      ToShellValue = 
+        with collective-lib.script-utils.log-utils.log.shell;
+        Class "ToShellValue" { 
         # Convert a value to a shell value.
         # Has default implementation for each type, but can be overridden by adding a (__toShellValue = self: ...) method.
         #
@@ -3761,26 +3757,69 @@ let
         (Instance "path" { toShellValue = shellQuote; })
         (Instance "null" { toShellValue = _: ''""''; })
         (Instance "list" { toShellValue = xs: ''(${joinSep " " (map toShellValue xs)})''; })
-        (Instance Any_Builtin { toShellValue = this: toShellValue this.value; })
+
+        (Instance Int { toShellValue = this: toShellValue this.value; })
+        (Instance Bool { toShellValue = this: toShellValue this.value; })
+        (Instance String { toShellValue = this: toShellValue this.value; })
+        (Instance Path { toShellValue = this: toShellValue this.value; })
+        (Instance Null { toShellValue = this: toShellValue this.value; })
+        (Instance List { toShellValue = this: toShellValue this.value; })
+
+        # TODO: More genericism
         (Instance 
-          collective-lib.script-utils.log-utils.log.shell.ShellValue 
+          (ShellValue Int)
           { toShellValue = this: toShellValue this.value; })
         (Instance 
-          collective-lib.script-utils.log-utils.log.shell.ShellReturnValue 
+          (ShellValue String)
+          { toShellValue = this: toShellValue this.value; })
+        (Instance 
+          (ShellValue Null)
+          { toShellValue = this: toShellValue this.value; })
+        (Instance 
+          (ShellReturnValue Int)
           # Generate e.g.
           # "1 \"retval\"" if log-return with a value of "retval"
           # "1 \"\" if log-return without a value (ShellReturnValue 0 Null goes to "0 \"\"")
           { toShellValue = this: 
             "${toShellValue this.code} ${toShellValue this.returnValue}";})
         (Instance 
-          collective-lib.script-utils.log-utils.log.shell.LogReturnAction 
+          (ShellReturnValue String)
+          # Generate e.g.
+          # "1 \"retval\"" if log-return with a value of "retval"
+          # "1 \"\" if log-return without a value (ShellReturnValue 0 Null goes to "0 \"\"")
+          { toShellValue = this: 
+            "${toShellValue this.code} ${toShellValue this.returnValue}";})
+        (Instance 
+          (ShellReturnValue Null)
+          # Generate e.g.
+          # "1 \"retval\"" if log-return with a value of "retval"
+          # "1 \"\" if log-return without a value (ShellReturnValue 0 Null goes to "0 \"\"")
+          { toShellValue = this: 
+            "${toShellValue this.code} ${toShellValue this.returnValue}";})
+        (Instance 
+          (LogReturnAction (ShellReturnValue Int))
           { toShellValue = this: this.getLogFn {}; })
         (Instance 
-          collective-lib.script-utils.log-utils.log.shell.LogMessage 
+          (LogReturnAction (ShellReturnValue String))
+          { toShellValue = this: this.getLogFn {}; })
+        (Instance 
+          (LogReturnAction (ShellReturnValue Null))
+          { toShellValue = this: this.getLogFn {}; })
+        (Instance 
+          (LogMessage (LogReturnAction (ShellReturnValue Int)))
+          { toShellValue = this: this.getLogCall {}; })
+        (Instance 
+          (LogMessage (LogReturnAction (ShellReturnValue String)))
+          { toShellValue = this: this.getLogCall {}; })
+        (Instance 
+          (LogMessage (LogReturnAction (ShellReturnValue Null)))
+          { toShellValue = this: this.getLogCall {}; })
+        (Instance 
+          (LogMessage Null)
           { toShellValue = this: this.getLogCall {}; });
 
       # TODO: Self-binding interface on Class itself
-      toShellValue = x: (ToShellValue x).toShellValue;
+      toShellValue = x: (ToShellValue.mustCall x).toShellValue;
     };
 
   };

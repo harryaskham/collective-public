@@ -102,20 +102,23 @@ in rec {
 
       # Convert a value to a string for output to the shell.
       # Calls getValue to handle either e.g. Int 123, 123, String "a string", "a string", etc.
-      ShellValue = Type.template "ShellValue" [{ T = Implements ToShellValue; }] (_: {
+      ShellValue = Type.template "ShellValue" [{ T = Type; }] (_: {
         fields = [{ value = _.T; }];
       });
 
       # A shell value plus a code.
-      ShellReturnValue = Type.template "ShellReturnValue" [{ T = Implements ToShellValue; }] (_: {
+      ShellReturnValue = Type.template "ShellReturnValue" [{ T = Type; }] (_: {
         fields = [
           { returnValue = _.T; }
-          { code = ShellValue Int; }
+          { code = ShellValue.bind { T = Int; }; }
         ];
+
+        # ToShellValue implemented on the Class.
+        methods.__implements__toString = this: self: toShellValue this;
       });
 
       # Store the exit/return action, code and optional value for the return/exit log functions.
-      LogReturnAction = Type.template "LogReturnAction" [{ T = Implements ToShellValue; }] (_: {
+      LogReturnAction = Type.template "LogReturnAction" [{ T = Type; }] (_: {
         fields = [
           # The optional value to pass to toShellValue for conversion to a string for
           # logging in functions that return a value.
@@ -142,13 +145,16 @@ in rec {
 
           # Generate e.g. log-exit-with-usage
           getLogFn = this: _: "log${this.getSuffix {}} ${toShellValue this.returnValue}";
+
+          # ToShellValue implemented on the Class.
+          __implements__toString = this: self: toShellValue this;
         };
       });
 
-      LogReturnValueCode = value: code: LogReturnAction (ShellReturnValue code value) "-return" false;
-      LogReturnCode = code: LogReturnAction (ShellReturnValue code null) "-return" false;
-      LogExitCode = code: LogReturnAction (ShellReturnValue code null) "-exit" false;
-      LogExitCodeWithUsage = code: LogReturnAction (ShellReturnValue code null) "-exit" true;
+      LogReturnValueCode = value: code: LogReturnAction (ShellReturnValue value code) "-return" false;
+      LogReturnCode = code: LogReturnAction (ShellReturnValue null code) "-return" false;
+      LogExitCode = code: LogReturnAction (ShellReturnValue null code) "-exit" false;
+      LogExitCodeWithUsage = code: LogReturnAction (ShellReturnValue null code) "-exit" true;
 
       # Makes a log message attribute set.
       # LogMessage INFO "text"
@@ -156,7 +162,7 @@ in rec {
       # LogMessage.WithUsage FATAL (LogReturnAction.Exit 1)
       # LogMessage SUCCESS (LogReturnAction.ReturnValue 0 123)
       # Ultimately exposed via e.g. log.shell.info <args> "text"
-      LogMessage = Type.template "LogMessage" [{ T = Implements ToShellValue; }] (_: {
+      LogMessage = Type.template "LogMessage" [{ T = Type; }] (_: {
 
         fields = [
           # The action to take if any.
@@ -165,7 +171,7 @@ in rec {
           # TODO: Move to a log level type
           { level = Set; }
           # The text to log if any.
-          { text = NullOr (ShellValue String); }
+          { text = NullOr (ShellValue.bind { T = String; }); }
         ];
 
         methods = {
@@ -187,6 +193,7 @@ in rec {
 
           # Finally override s.t. toString allows interpolation like:
           # ${log.shell.info "test"}
+          # ToShellValue implemented on the Class.
           __implements__toString = this: self: toShellValue this;
         };
       });
