@@ -1857,7 +1857,6 @@ let
         # Default constructor for regular non-NewType/Builtin/Alias types.
         # Accepts required field values in order of Fields definition
         RequiredFields = This: arg:
-          assert log.trace.over [This arg];
           let requiredFieldNames = This.fields.requiredFields.names;
           in if empty requiredFieldNames then {}
              else (Variadic.mkOrdered requiredFieldNames) arg;
