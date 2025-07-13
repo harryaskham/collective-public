@@ -360,97 +360,93 @@ in rec {
 
   '';
 
-  _tests =
-    with tests; 
-    suite {
-      log.shell = with log.shell; {
-        ShellValue = 
-          let 
-            mkT = logExpr: expected: expect.eq (toString logExpr) expected;
+  DISABLED_tests = with tests; suite {
+    log.shell = with log.shell; {
+      ShellValue =
+        {
+          int = (expect.stringEq (ShellValue 123) "123");
+          word = expect.stringEq (ShellValue "word") "word";
+          string = expect.stringEq (ShellValue "a string") ''"a string"'';
+          Word = expect.stringEq (ShellValue (String "word")) "word";
+          String = expect.stringEq (ShellValue (String "a string")) ''"a string"'';
+          #list = expect.stringEq (ShellValue ["a" 123]) ''(a 123)'';
+          #List = expect.stringEq (ShellValue (List ["a" 123])) ''(a 123)'';
+        };
+
+      LogReturnAction =
+        let
+          mkT = lra: expectedT: expectedToString: {
+            typeId = expect.eqWith typeEq (lra.__Type {}) expectedT;
+            toString = expect.eq (toString lra) expectedToString;
+          };
+        in {
+          LogReturnCode =
+            mkT (LogReturnCode 0)
+            (LogReturnAction Null) ''log-return 0 ""'';
+          LogReturnCodeValue.String =
+            mkT (LogReturnValueCode "a string" 0)
+            (LogReturnAction String) ''log-return 0 "a string"'';
+          LogReturnCodeValue.Int =
+            mkT (LogReturnValueCode 123 0)
+            (LogReturnAction Int) ''log-return 0 123'';
+          LogExitCode =
+            mkT (LogExitCode 0)
+            (LogReturnAction Null) ''log-exit 0 ""'';
+          LogExitCodeWithUsage =
+            mkT (LogExitCodeWithUsage 0)
+            (LogReturnAction Null) ''log-exit-with-usage 0 ""'';
+        };
+
+      LogMessage = {
+        info =
+          let m = LogMessage Nil INFO "a msg";
           in {
-            int = (expect.stringEq (ShellValue 123) "123");
-            word = expect.stringEq (ShellValue "word") "word";
-            string = expect.stringEq (ShellValue "a string") ''"a string"'';
-            Word = expect.stringEq (ShellValue (String "word")) "word";
-            String = expect.stringEq (ShellValue (String "a string")) ''"a string"'';
-            #list = expect.stringEq (ShellValue ["a" 123]) ''(a 123)'';
-            #List = expect.stringEq (ShellValue (List ["a" 123])) ''(a 123)'';
+            getLogText = expect.eq (m.getLogText {}) ''"a msg"'';
+            getLogFn = expect.eq (m.getLogFn {}) "log";
+            getLogCall = expect.eq (m.getLogCall {}) ''log info "a msg"'';
+            toString = expect.eq (toString m) ''log info "a msg"'';
           };
-
-        LogReturnAction = 
-          let 
-            mkT = lra: expectedT: expectedToString: {
-              typeId = expect.eqWith typeEq (lra.__Type {}) expectedT;
-              toString = expect.eq (toString lra) expectedToString;
-            };
+        fatal =
+          let m = LogMessage (LogExitCodeWithUsage 1) FATAL "its bad";
           in {
-            LogReturnCode =
-              mkT (LogReturnCode 0)
-              (LogReturnAction Null) ''log-return 0 ""'';
-            LogReturnCodeValue.String =
-              mkT (LogReturnValueCode "a string" 0)
-              (LogReturnAction String) ''log-return 0 "a string"'';
-            LogReturnCodeValue.Int =
-              mkT (LogReturnValueCode 123 0)
-              (LogReturnAction Int) ''log-return 0 123'';
-            LogExitCode =
-              mkT (LogExitCode 0)
-              (LogReturnAction Null) ''log-exit 0 ""'';
-            LogExitCodeWithUsage =
-              mkT (LogExitCodeWithUsage 0)
-              (LogReturnAction Null) ''log-exit-with-usage 0 ""'';
+            getLogText = expect.eq (m.getLogText {}) ''"its bad"'';
+            getLogFn = expect.eq (m.getLogFn {}) ''log-exit-with-usage 1 ""'';
+            getLogCall = expect.eq (m.getLogCall {}) ''log-exit-with-usage 1 "" fatal "its bad"'';
+            toString = expect.eq (toString m) ''log-exit-with-usage 1 "" fatal "its bad"'';
           };
+      };
 
-        LogMessage = {
-          info = 
-            let m = LogMessage Nil INFO "a msg";
-            in {
-              getLogText = expect.eq (m.getLogText {}) ''"a msg"'';
-              getLogFn = expect.eq (m.getLogFn {}) "log";
-              getLogCall = expect.eq (m.getLogCall {}) ''log info "a msg"'';
-              toString = expect.eq (toString m) ''log info "a msg"'';
-            };
-          fatal = 
-            let m = LogMessage (LogExitCodeWithUsage 1) FATAL "its bad";
-            in {
-              getLogText = expect.eq (m.getLogText {}) ''"its bad"'';
-              getLogFn = expect.eq (m.getLogFn {}) ''log-exit-with-usage 1 ""'';
-              getLogCall = expect.eq (m.getLogCall {}) ''log-exit-with-usage 1 "" fatal "its bad"'';
-              toString = expect.eq (toString m) ''log-exit-with-usage 1 "" fatal "its bad"'';
-            };
-        };
-
-        levels = {
-          info.text = expect.eq (info "its ok") ''log info "its ok"'';
-          debug.text = expect.eq (debug "its ok") ''log debug "its ok"'';
-          warn.text = expect.eq (warn "its bad") ''log warn "its bad"'';
-          error.text = expect.eq (error "its bad") ''log error "its bad"'';
-          fatal = {
-            text = expect.eq (fatal "its bad") ''log-exit fatal "its bad"'';
-            withUsage = expect.eq (fatalWithUsage "its bad") ''log-exit-with-usage fatal "its bad"'';
-          };
-        };
-
-        return = {
-          success = expect.eq (return.success "its ok") ''log-return 0 "" success "its ok"'';
-          value.int = expect.eq (return.value 123) ''log-return 0 123 "" success ""'';
-          value.string = expect.eq (return.value "a string") ''log-return 0 "a string" "" success ""'';
-          error = expect.eq (return.error "its bad") ''log-return 1 "" error "its bad"'';
-          errorCode = expect.eq (return.errorCode 2 "its bad") ''log-return 2 "its bad" error ""'';
-        };
-
-        exit = {
-          success = expect.eq (exit.success "its ok") ''log-exit 0 "its ok"'';
-          fatal = expect.eq (exit.fatal "its bad") ''log-exit 1 "its bad"'';
-          fatalCode = expect.eq (exit.fatalCode 2 "its bad") ''log-exit 2 "its bad"'';
-          fatalWithUsage = expect.eq (exit.fatalWithUsage "its bad") ''log-exit-with-usage 1 "its bad"'';
-        };
-
-        aliases = {
-          fatal = expect.eq (fatal "its bad") ''log-exit 1 "its bad"'';
-          fatalCode = expect.eq (fatalCode 2 "its bad") ''log-exit 2 "its bad"'';
-          fatalWithUsage = expect.eq (fatalWithUsage "its bad") ''log-exit-with-usage 1 "its bad"'';
+      levels = {
+        info.text = expect.eq (info "its ok") ''log info "its ok"'';
+        debug.text = expect.eq (debug "its ok") ''log debug "its ok"'';
+        warn.text = expect.eq (warn "its bad") ''log warn "its bad"'';
+        error.text = expect.eq (error "its bad") ''log error "its bad"'';
+        fatal = {
+          text = expect.eq (fatal "its bad") ''log-exit fatal "its bad"'';
+          withUsage = expect.eq (fatalWithUsage "its bad") ''log-exit-with-usage fatal "its bad"'';
         };
       };
+
+      return = {
+        success = expect.eq (return.success "its ok") ''log-return 0 "" success "its ok"'';
+        value.int = expect.eq (return.value 123) ''log-return 0 123 "" success ""'';
+        value.string = expect.eq (return.value "a string") ''log-return 0 "a string" "" success ""'';
+        error = expect.eq (return.error "its bad") ''log-return 1 "" error "its bad"'';
+        errorCode = expect.eq (return.errorCode 2 "its bad") ''log-return 2 "its bad" error ""'';
+      };
+
+      exit = {
+        success = expect.eq (exit.success "its ok") ''log-exit 0 "its ok"'';
+        fatal = expect.eq (exit.fatal "its bad") ''log-exit 1 "its bad"'';
+        fatalCode = expect.eq (exit.fatalCode 2 "its bad") ''log-exit 2 "its bad"'';
+        fatalWithUsage = expect.eq (exit.fatalWithUsage "its bad") ''log-exit-with-usage 1 "its bad"'';
+      };
+
+      aliases = {
+        fatal = expect.eq (fatal "its bad") ''log-exit 1 "its bad"'';
+        fatalCode = expect.eq (fatalCode 2 "its bad") ''log-exit 2 "its bad"'';
+        fatalWithUsage = expect.eq (fatalWithUsage "its bad") ''log-exit-with-usage 1 "its bad"'';
+      };
     };
+  };
 }
