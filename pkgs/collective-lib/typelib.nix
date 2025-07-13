@@ -3765,7 +3765,7 @@ let
         (Instance Null { toShellValue = this: toShellValue this.value; })
         (Instance List { toShellValue = this: toShellValue this.value; })
 
-        # TODO: More genericism
+        # TODO: More genericism; Lists via Fucntor
         (Instance 
           (ShellValue Int)
           { toShellValue = this: toShellValue this.value; })

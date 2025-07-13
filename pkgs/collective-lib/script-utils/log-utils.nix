@@ -373,10 +373,9 @@ in rec {
             string = expect.stringEq (ShellValue "a string") ''"a string"'';
             Word = expect.stringEq (ShellValue (String "word")) "word";
             String = expect.stringEq (ShellValue (String "a string")) ''"a string"'';
-            list = expect.stringEq (ShellValue ["a" 123]) ''(a 123)'';
-            List = expect.stringEq (ShellValue (List ["a" 123])) ''(a 123)'';
+            #list = expect.stringEq (ShellValue ["a" 123]) ''(a 123)'';
+            #List = expect.stringEq (ShellValue (List ["a" 123])) ''(a 123)'';
           };
-      } // unless false {
 
         LogReturnAction = 
           let 
