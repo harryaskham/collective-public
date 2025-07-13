@@ -1,6 +1,6 @@
 { pkgs ? import <nixpkgs> {},
   lib ? pkgs.lib,
-  withTests ? false,
+  withTests ? true,
   traceOpts ? null,
   ... 
 }:
@@ -128,8 +128,6 @@ let
       wm = import ./wm.nix args;
     };
 
-  collective-lib = mkCollectiveLib withTests baseModules;
-
   __libCollisions =
     (# <nix>
     with collective-lib;
@@ -149,4 +147,19 @@ let
     )# </nix>
     ;
 
-  in collective-lib
+  collective-lib = mkCollectiveLib withTests baseModules;
+
+  collective-lib-drv = builtins.derivation {
+      name    = "collective-lib";
+      system  = builtins.currentSystem;
+      builder = "/bin/sh";
+      args    = [ "-c" "echo ${collective-lib.typed.toShellValue collective-lib._tests.run} > $out" ];
+      outputs = [ "out" ];
+  };
+
+  #collective-lib-from-drv = import "${collective-lib-drv}" { inherit pkgs lib; };
+
+in
+
+  #collective-lib-from-drv
+  collective-lib

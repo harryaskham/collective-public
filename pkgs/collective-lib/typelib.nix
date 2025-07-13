@@ -2825,11 +2825,11 @@ let
 
         # Shim out Class enabling limited typeclass-like behaviour in U_0.
         Class = mkSafeTypeShim "Class" rec {
-          fields = [{ 
-            name = null; 
-            classMethods = null;
-            instances = null;
-          }];
+          fields = [
+            {name = null;}
+            {classMethods = null;}
+            {instances = null;}
+          ];
           ctor = This: name: classMethods:
             newWithInstances (String name) (Set classMethods) (ListOf Instance []);
           newWithInstances = name: classMethods: instances: mkSafeUnboundInstanceShim "Class" rec {

@@ -179,10 +179,7 @@ rec {
   pythonScript = {
     id = "pythonScript";
     builder = args:
-      let libraries =
-            if args ? deps
-            then args.deps pkgs.python3Packages
-            else [];
+      let libraries = args.deps or [];
       in {
         ${args.name} =
           pkgs.writers.writePython3Bin
