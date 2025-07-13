@@ -104,6 +104,9 @@ in rec {
       # Calls getValue to handle either e.g. Int 123, 123, String "a string", "a string", etc.
       ShellValue = Type.template "ShellValue" [{ T = Type; }] (_: {
         fields = [{ value = _.T; }];
+
+        # ToShellValue implemented on the Class.
+        methods.__implements__toString = this: self: toShellValue this;
       });
 
       # A shell value plus a code.
@@ -144,7 +147,7 @@ in rec {
             in "${this.suffix}${withUsageSuffix}";
 
           # Generate e.g. log-exit-with-usage
-          getLogFn = this: _: "log${this.getSuffix {}} ${toShellValue this.returnValue}";
+          getLogFn = this: _: "log${this.getSuffix {}} ${this.returnValue}";
 
           # ToShellValue implemented on the Class.
           __implements__toString = this: self: toShellValue this;
@@ -365,7 +368,7 @@ in rec {
           let 
             mkT = logExpr: expected: expect.eq (toString logExpr) expected;
           in {
-            int = expect.stringEq (ShellValue 123) "123";
+            int = (expect.stringEq (ShellValue 123) "123");
             word = expect.stringEq (ShellValue "word") "word";
             string = expect.stringEq (ShellValue "a string") ''"a string"'';
             Word = expect.stringEq (ShellValue (String "word")) "word";
@@ -373,6 +376,7 @@ in rec {
             list = expect.stringEq (ShellValue ["a" 123]) ''(a 123)'';
             List = expect.stringEq (ShellValue (List ["a" 123])) ''(a 123)'';
           };
+      } // unless false {
 
         LogReturnAction = 
           let 
