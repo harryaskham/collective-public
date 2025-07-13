@@ -400,64 +400,6 @@ in rec {
       then ''"${replaceStrings [ ''"'' ] [ ''\"'' ] string}"''
       else string;
 
-  # Convert a value to a shell value.
-  # Has default implementation for each type, but can be overridden by adding a (__toShellValue = self: ...) method.
-  #
-  # strings without special chars are left unchanged:
-  # toShellValue "some_safe-string" == "some_safe-$string"
-  # toShellValue "some_$VAR" == ''\"some_$VAR\""
-  #
-  # strings are quoted with double quotes if they contain special characters:
-  # toShellValue ''"quote"'' == ''"\"quote\""''
-  # toShellValue "'safe quote'" == "'safe quote'"
-  #
-  # bool goes to string literal, not 0/1:
-  # toShellValue true == "true"
-  # toShellValue false == "false"
-  #
-  # lists go to array literals:
-  # toShellValue [1 "xxx" "$YYY" true] == "(1 xxx \"$YYY\" true)"
-  #
-  # Numbers use toString:
-  # toShellValue 1 == "1"
-  # toShellValue 123.3 == "123.300000"
-  #
-  # null goes to the empty string literal
-  toShellValue = arg:
-    (ToShellValue.try arg).toShellValue or (
-      let convert = {
-        int = toString;
-        bool = b: if b then "true" else "false";
-        string = shellQuote;
-        path = shellQuote;
-        null = _: ''""'';
-        set = _: throw "Cannot convert set to shell value";
-        list = xs: ''(${joinSep " " (map toShellValue xs)})'';
-        lambda = _: throw "Cannot convert lambda to shell value";
-        float = toString;
-      };
-      in convert.${typeOf arg} arg);
-
-  #ToShellValue =
-  #  with typed;
-  #  Class "ToShellValue" {
-  #    toShellValue = {};
-  #  };
-  # Temporary U_0 shim
-  #ToShellValue = {
-  #  try = arg: 
-  #    if arg ? __toShellValue then {
-  #      toShellValue = arg.__toShellValue arg;
-  #    } 
-  #    else {};
-  #  checkImplements = T: (typed.set T.methods) ? __implements__toShellValue;
-  #};
-  #Implements = _: { check = _: true; };
-
-  # Types that can be converted to a shell value.
-  builtinHasToShellValue = T: 
-    elem T ["int" "float" "bool" "string" "path" "null" "list"];
-
   # NOTE: This doesn't work unless we have a derivation per string;
   # for now just adds error context.
   # Make a named context object with arbitrary stringable payload.

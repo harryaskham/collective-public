@@ -102,41 +102,21 @@ in rec {
 
       # Convert a value to a string for output to the shell.
       # Calls getValue to handle either e.g. Int 123, 123, String "a string", "a string", etc.
-      ShellValue = Type.template "ShellValue" [{ T = Type; }] (_: {
+      ShellValue = Type.template "ShellValue" [{ T = Implements ToShellValue; }] (_: {
         fields = [{ value = _.T; }];
-        methods.__implements__toString = this: self: toShellValue this.value;
       });
-
-      # TODO: Generic way of doing typevar inference like this.
-      shellValue = x:
-        let T = typed.typeOf (wrap x); in
-        (ShellValue T) (wrap x);
 
       # A shell value plus a code.
-      ShellReturnValue = Type.template "ShellReturnValue" [{ T = Type; }] (_: {
+      ShellReturnValue = Type.template "ShellReturnValue" [{ T = Implements ToShellValue; }] (_: {
         fields = [
+          { returnValue = _.T; }
           { code = ShellValue Int; }
-          { returnValue = ShellValue _.T; }
         ];
-        methods = {
-          # Generate e.g.
-          # "1 \"retval\"" if log-return with a value of "retval"
-          # "1 \"\" if log-return without a value (ShellReturnValue 0 Null goes to "0 \"\"")
-          __implements__toString = this: self: "${this.code} ${this.returnValue}";
-        };
       });
 
-      # TODO: Generic way of doing typevar inference like this.
-      shellReturnValue = code: x:
-        let T = typed.typeOf (wrap x); in
-        (ShellReturnValue T) (ShellValue Int (Int code)) (ShellValue T (wrap x));
-
       # Store the exit/return action, code and optional value for the return/exit log functions.
-      LogReturnAction = Type.template "LogReturnAction" [{ T = Type; }] (_: {
+      LogReturnAction = Type.template "LogReturnAction" [{ T = Implements ToShellValue; }] (_: {
         fields = [
-          # The log-* suffix to determine which log function to call.
-          { suffix = String; }
-
           # The optional value to pass to toShellValue for conversion to a string for
           # logging in functions that return a value.
           # Only applicable if returnCode is set for logging in a function; in this
@@ -145,7 +125,10 @@ in rec {
           # return "${toShellValue returnCode}"
           # If instead exitCode is set, the 'return' value is considered to be
           # the log text, which is output in place of any custom return.
-          { returnValue = ShellReturnValue _.T; }
+          { returnValue = _.T; }
+
+          # The log-* suffix to determine which log function to call.
+          { suffix = String; }
 
           # print usage message after logging
           { withUsage = Bool; }
@@ -158,20 +141,14 @@ in rec {
             in "${this.suffix}${withUsageSuffix}";
 
           # Generate e.g. log-exit-with-usage
-          getLogFn = this: _: "log${this.getSuffix {}} ${this.returnValue}";
-
-          __implements__toString = this: self: self.getLogFn {};
+          getLogFn = this: _: "log${this.getSuffix {}} ${toShellValue this.returnValue}";
         };
       });
 
-      logReturnAction = withUsage: suffix: v: code:
-        let T = typed.typeOf (wrap v);
-        in (LogReturnAction T) suffix (shellReturnValue code v) withUsage;
-
-      LogReturnValueCode = value: code: logReturnAction false "-return" value code;
-      LogReturnCode = code: LogReturnValueCode null code;
-      LogExitCode = code: logReturnAction false "-exit" null code;
-      LogExitCodeWithUsage = code: logReturnAction true "-exit" null code;
+      LogReturnValueCode = value: code: LogReturnAction (ShellReturnValue code value) "-return" false;
+      LogReturnCode = code: LogReturnAction (ShellReturnValue code null) "-return" false;
+      LogExitCode = code: LogReturnAction (ShellReturnValue code null) "-exit" false;
+      LogExitCodeWithUsage = code: LogReturnAction (ShellReturnValue code null) "-exit" true;
 
       # Makes a log message attribute set.
       # LogMessage INFO "text"
@@ -179,14 +156,14 @@ in rec {
       # LogMessage.WithUsage FATAL (LogReturnAction.Exit 1)
       # LogMessage SUCCESS (LogReturnAction.ReturnValue 0 123)
       # Ultimately exposed via e.g. log.shell.info <args> "text"
-      LogMessage = Type.template "LogMessage" [{ T = Type; }] (_: {
+      LogMessage = Type.template "LogMessage" [{ T = Implements ToShellValue; }] (_: {
 
         fields = [
+          # The action to take if any.
+          { action = NullOr _.T; }
           # The log level to use.
           # TODO: Move to a log level type
           { level = Set; }
-          # The action to take if any.
-          { action = NullOr (LogReturnAction _.T); }
           # The text to log if any.
           { text = NullOr (ShellValue String); }
         ];
@@ -210,14 +187,9 @@ in rec {
 
           # Finally override s.t. toString allows interpolation like:
           # ${log.shell.info "test"}
-          __implements__toString = this: self: string (self.getLogCall {});
+          __implements__toString = this: self: toShellValue this;
         };
       });
-
-      # TODO: Have the act of binding a field containing a typevar infer that typevar's value
-      logMessage = level: action: text:
-        let T = if typed.isNull action then Null else (typed.typeOf action).tvarBindings.value.T;
-        in (LogMessage T) level action (shellValue text);
 
       # Intended actual logging interface, using log() function defined in logBlock.
       # Avoids directly inlining the debug checks and escape codes on each line.
@@ -225,20 +197,20 @@ in rec {
       # log.shell.{fatal,fatalCode,fatalWithUsage} output to STDERR and exit with code
       # log.shell.return.* output an optional value to STDOUT and return with code
       # log.shell.exit.* output an optional value to STDOUT and return with code
-      debug = logMessage DEBUG Nil;
-      info = logMessage INFO Nil;
-      warn = logMessage WARN Nil;
-      error = logMessage ERROR Nil;
+      debug = LogMessage Nil DEBUG;
+      info = LogMessage Nil INFO;
+      warn = LogMessage Nil WARN;
+      error = LogMessage Nil ERROR;
       exit = {
-        success = logMessage SUCCESS (LogExitCode 0);
-        fatalCode = exitCode: logMessage FATAL (LogExitCode exitCode);
+        success = LogMessage (LogExitCode 0) SUCCESS;
+        fatalCode = exitCode: LogMessage (LogExitCode exitCode) FATAL;
         fatal = exit.fatalCode 1;
-        fatalWithUsage = logMessage FATAL (LogExitCodeWithUsage 1);
+        fatalWithUsage = LogMessage (LogExitCodeWithUsage 1) FATAL;
       };
       return = {
-        success = logMessage SUCCESS (LogReturnCode 0);
-        value = v: logMessage SUCCESS (LogReturnValueCode v 0);
-        errorCode = returnCode: logMessage ERROR (LogReturnCode returnCode);
+        success = LogMessage (LogReturnCode 0) SUCCESS;
+        value = v: LogMessage (LogReturnValueCode v 0) SUCCESS;
+        errorCode = returnCode: LogMessage (LogReturnCode returnCode) ERROR;
         error = return.errorCode 1;
       };
 
@@ -385,14 +357,14 @@ in rec {
         ShellValue = 
           let 
             mkT = logExpr: expected: expect.eq (toString logExpr) expected;
-          in solo {
-            int = expect.stringEq (shellValue 123) "123";
-            word = expect.stringEq (shellValue "word") "word";
-            string = expect.stringEq (shellValue "a string") ''"a string"'';
-            Word = expect.stringEq (shellValue (String "word")) "word";
-            String = expect.stringEq (shellValue (String "a string")) ''"a string"'';
-            list = expect.stringEq (shellValue ["a" 123]) ''(a 123)'';
-            List = expect.stringEq (shellValue (List ["a" 123])) ''(a 123)'';
+          in {
+            int = expect.stringEq (ShellValue 123) "123";
+            word = expect.stringEq (ShellValue "word") "word";
+            string = expect.stringEq (ShellValue "a string") ''"a string"'';
+            Word = expect.stringEq (ShellValue (String "word")) "word";
+            String = expect.stringEq (ShellValue (String "a string")) ''"a string"'';
+            list = expect.stringEq (ShellValue ["a" 123]) ''(a 123)'';
+            List = expect.stringEq (ShellValue (List ["a" 123])) ''(a 123)'';
           };
 
         LogReturnAction = 
@@ -421,7 +393,7 @@ in rec {
 
         LogMessage = {
           info = 
-            let m = logMessage INFO Nil "a msg";
+            let m = LogMessage Nil INFO "a msg";
             in {
               getLogText = expect.eq (m.getLogText {}) ''"a msg"'';
               getLogFn = expect.eq (m.getLogFn {}) "log";
@@ -429,7 +401,7 @@ in rec {
               toString = expect.eq (toString m) ''log info "a msg"'';
             };
           fatal = 
-            let m = logMessage FATAL (LogExitCodeWithUsage 1) "its bad";
+            let m = LogMessage (LogExitCodeWithUsage 1) FATAL "its bad";
             in {
               getLogText = expect.eq (m.getLogText {}) ''"its bad"'';
               getLogFn = expect.eq (m.getLogFn {}) ''log-exit-with-usage 1 ""'';

@@ -191,7 +191,7 @@ let
             })
             BuiltinNameTobuiltinName
 
-        # Real cast-based type-inspecting unwrappers.
+        ## Real cast-based type-inspecting unwrappers.
         else 
           mapAttrs
             (BuiltinName: builtinName: { 
@@ -202,8 +202,8 @@ let
                     ${_pvh_ x}
                   ''
                 else
-                  if typeOf x == builtinName then x
-                  else if U.isTypeOrSubtype U.${BuiltinName} x then x.value
+                  if lib.typeOf x == builtinName && !(isTypedAttrs x) then x
+                  else if SU.isTypeOrSubtype SU.${BuiltinName} x then x.value
                   else unwrapByCast;
             })
           BuiltinNameTobuiltinName;
@@ -219,19 +219,17 @@ let
         else dispatch.type.name.def id BuiltinNameToUnwrapper x;
 
       # or e.g. cast String x
-      wrap = x: 
-        if isTyped x then x
-        else dispatch.type.name.def id {
-          null = U.Null;
-          int = U.Int;
-          float = U.Float;
-          string = U.String;
-          path = U.Path;
-          bool = U.Bool;
-          list = U.List;
-          set = U.Set;
-          lambda = U.Lambda;
-        } x;
+      wrap = collective-lib.typed.dispatch.def id {
+        null = U.Null;
+        int = U.Int;
+        float = U.Float;
+        string = U.String;
+        path = U.Path;
+        bool = U.Bool;
+        list = U.List;
+        set = x: if isTypedAttrs x then x else U.Set x;
+        lambda = U.Lambda;
+      };
 
       ### type utilities
 
@@ -356,39 +354,46 @@ let
       # typeIdOf true == "bool"
       # typeIdOf (Bool true) == "Bool"
       typeIdOf = x:
-        let T = typeOf x;
-        in if lib.isString T then T
-          else if !(T ? __TypeId) then throw (indent.block ''
-            typeIdOf: Type instance has no __TypeId field:
-              typeOf x = ${lib.typeOf x}
-              x.name = ${x.name or "<no .name>"}
-              T = ${indent.here (log.vprintD 5 T)}
-          '')
-          else T.__TypeId {};
+        if !(isTypedAttrs x) then lib.typeOf x
+        else
+          let T = typeOf x;
+          in if lib.isString T then T
+            else if !(T ? __TypeId) then throw (indent.block ''
+              typeIdOf: Type instance has no __TypeId field:
+                typeOf x = ${lib.typeOf x}
+                x.name = ${x.name or "<no .name>"}
+                T = ${indent.here (log.vprintD 5 T)}
+            '')
+            else T.__TypeId {};
 
       # Get the type name as a string ID. For builtins, operates as typeOf, and for others returns
       # a raw string.
       typeNameOf = x:
-        let T = typeOf x;
-        in if lib.isString T then T
-          else if !(T ? name) then throw (indent.block ''
-            typeNameOf: Type instance has no name field:
-              typeOf x = ${lib.typeOf x}
-              T = ${indent.here (log.vprintD 5 T)}
-          '')
-          else string T.name;
+        if !(isTypedAttrs x) then lib.typeOf x
+        else
+          let T = typeOf x;
+          in 
+            if lib.isString T then T
+            else if !(T ? name) then throw (indent.block ''
+              typeNameOf: Type instance has no name field:
+                typeOf x = ${lib.typeOf x}
+                T = ${indent.here (log.vprintD 5 T)}
+            '')
+            else string T.name;
 
       # Get the type name as a string ID. For builtins, operates as typeOf, and for others returns
       # a raw string.
       typeBoundNameOf = x:
-        let T = typeOf x;
-        in if lib.isString T then T
-          else if !(T ? getBoundName) then throw (indent.block ''
-            typeBoundNameOf: Type instance has no getBoundName field:
-              typeOf x = ${lib.typeOf x}
-              T = ${indent.here (log.vprintD 5 T)}
-          '')
-          else T.getBoundName {};
+        if !(isTypedAttrs x) then lib.typeOf x
+        else
+          let T = typeOf x;
+          in if lib.isString T then T
+            else if !(T ? getBoundName) then throw (indent.block ''
+              typeBoundNameOf: Type instance has no getBoundName field:
+                typeOf x = ${lib.typeOf x}
+                T = ${indent.here (log.vprintD 5 T)}
+            '')
+            else T.getBoundName {};
 
       assertFixedUnderF = fLabel: xLabel: f: x:
         with collective-lib.tests.Compare;
@@ -493,6 +498,10 @@ let
         List = self: log.vprintD 2 (self.value);
         Null = self: "";
       };
+
+      # Types that can be converted to a shell value.
+      builtinHasToShellValue = T: 
+        elem T ["int" "float" "bool" "string" "path" "null" "list"];
 
       ### getValue
 
@@ -876,41 +885,42 @@ let
               '';
             }
 
-            # Sidecasting types via a nested cast over ordered fields.
-            # e.g. String -> Int via "string" -> "int"
-            #      let T = Type "T" { fields = [{a = String;} {b = "int"}]; };
-            #          U = Type "U" { fields = [{c = "string";} {b = Int}]; };
-            #      ...
-            #      cast T (U "c" (Int 123)) == T (String "c") 123
-            #      cast U (T (String "a" 123)) == U "c" (Int 123)
-            (mkSidecast "Sidecast by field name"
-              # Fields must have equivalent names, but order doesn't matter
-              ((sort xFieldNames) == (sort TFieldNames))
-              "Source and target types do not have equivalent field names"
-              # Cast x's fields one by one in the order of TFieldNames
-              (map
-                (TFieldName:
-                  mkSolo
-                    TFieldName
-                    (cast
-                      ((T.fields.allFields.lookup TFieldName).FieldType)
-                      x.${TFieldName}))
-                TFieldNames))
+            # TODO: Re-enable and rationalise sidecasting / coercing
+            # # Sidecasting types via a nested cast over ordered fields.
+            # # e.g. String -> Int via "string" -> "int"
+            # #      let T = Type "T" { fields = [{a = String;} {b = "int"}]; };
+            # #          U = Type "U" { fields = [{c = "string";} {b = Int}]; };
+            # #      ...
+            # #      cast T (U "c" (Int 123)) == T (String "c") 123
+            # #      cast U (T (String "a" 123)) == U "c" (Int 123)
+            # (mkSidecast "Sidecast by field name"
+            #   # Fields must have equivalent names, but order doesn't matter
+            #   ((sort xFieldNames) == (sort TFieldNames))
+            #   "Source and target types do not have equivalent field names"
+            #   # Cast x's fields one by one in the order of TFieldNames
+            #   (map
+            #     (TFieldName:
+            #       mkSolo
+            #         TFieldName
+            #         (cast
+            #           ((T.fields.allFields.lookup TFieldName).FieldType)
+            #           x.${TFieldName}))
+            #     TFieldNames))
 
-            (mkSidecast "Sidecast by field order"
-              # Fields must have equivalent orders, but names don't matter.
-              (length xFieldNames == length TFieldNames)
-              "Source and target types do not have the same number of fields"
-              # Cast each field in T from the field in x at the equivalent position.
-              (zipListsWith
-                (xFieldName: TFieldName:
-                  mkSolo
-                    TFieldName
-                    (cast
-                      ((T.fields.allFields.lookup TFieldName).FieldType)
-                      x.${xFieldName}))
-                xFieldNames
-                TFieldNames))
+            # (mkSidecast "Sidecast by field order"
+            #   # Fields must have equivalent orders, but names don't matter.
+            #   (length xFieldNames == length TFieldNames)
+            #   "Source and target types do not have the same number of fields"
+            #   # Cast each field in T from the field in x at the equivalent position.
+            #   (zipListsWith
+            #     (xFieldName: TFieldName:
+            #       mkSolo
+            #         TFieldName
+            #         (cast
+            #           ((T.fields.allFields.lookup TFieldName).FieldType)
+            #           x.${xFieldName}))
+            #     xFieldNames
+            #     TFieldNames))
           ];
 
           getOrMsg = castResult:
@@ -1118,7 +1128,7 @@ let
     # C = Constraint (e.g. ListOf { T = Type; } -> C == Type)
     # T = binding type (e.g. ListOf.bind { T = Int; } -> T == Int)
     castBinding = This: tvarName: T:
-      log.describe "while casting a type variable binding" (
+      log.describe "while casting a type variable binding for ${This.name or "unnamed"}.${tvarName}" (
       let 
         tvars = mergeSolos This.tvars.solos;
         tvarBindings = This.tvarBindings.value;
@@ -1171,7 +1181,7 @@ let
       # TODO: TypeVar object plus bootstraps
       # e.g. ListOf.bind { T = Int; } == ListOf<Int>
       bind = This: bindings:
-        log.while "binding type variables on a Type" (
+        log.while "binding type variables on type '${This.name or "unnamed"}'" (
         # Set the new bindings
         let 
           castBindings = mapAttrs This.castBinding bindings;
@@ -1183,7 +1193,7 @@ let
 
       # Like bind, but fails with null.
       tryBind = This: bindings:
-        log.while "trying to bind type variables on a Type" (
+        log.while "trying to bind type variables on type '${This.name or "unnamed"}'" (
           errors.tryStrict (This.bind bindings) (_: null)
         );
 
@@ -1302,7 +1312,7 @@ let
       # NullOr 123 -> NullOr<Int>(Int(123))
       __implements__functor = This: self: arg:
         # Nothing to bind; construct the instance as usual
-        log.while "applying Type.new to value argument in Type.__functor" (
+        log.while "applying Type.new to value argument in Type.__functor of '${This.name or "unnamed"}'" (
         if This.isFullyBound {} then This.new arg
 
         else
@@ -1313,7 +1323,7 @@ let
               tvarT = soloValue tvarSolo;
               ReboundThis = This.tryBind { ${tvarName} = arg; };
           in
-            log.while "falling back to binding a type variable to an argument to Type.__functor" (
+            log.while "falling back to binding a type variable to an argument to Type.__functor of '${This.name or "unnamed"}'" (
             # Binding succeeded (the arg satisfied the constraint)
             if !(U.isNull ReboundThis) then ReboundThis
 
@@ -1322,7 +1332,7 @@ let
             # Builtins are wrapped at this stage so that we can bind e.g. a constraint
             # of 'Type' to Int and not "int"
             else
-              log.while "falling back to binding a type variable by inferring it from the type of a value argument to Type.__functor" (
+              log.while "falling back to binding a type variable by inferring it from the type of a value argument to Type.__functor of '${This.name or "unnamed"}'" (
               let argT = U.typeOf (U.wrap arg);
                   InferredReboundThis = This.tryBind { ${tvarName} = argT; };
               in
@@ -1338,7 +1348,7 @@ let
               # Binding failed - finally try to infer the type as though the argument
               # was a value of that type.
               else 
-                log.while "failing to bind an argument to Type.__functor either by value, type literal, or inferred type" (
+                log.while "failing to bind an argument to Type.__functor either by value, type literal, or inferred type in '${This.name or "unnamed"}'" (
                 _throw_ ''
                 Errors occurred handling argument to ${_p_ This}:
                   arg = ${_ph_ arg}
@@ -2219,6 +2229,7 @@ let
             (SU: U: mkUniverseReferences opts SU U)
             (SU: U: mkTemplating SU U)
             (SU: U: mkTestUtils SU U)
+            (SU: U: mkTypeclasses SU U)
           ];
       in
         U;
@@ -2444,7 +2455,7 @@ let
           );
 
         mkSafeInstanceShimOf = T: args:
-          log.while "constructing bound instance shim of type ${_p_ T}" (
+          log.while "constructing bound instance shim of type ${T.name or "unnamed"}" (
           let I = bindInstanceShim (mkSafeUnboundInstanceShimOf T args) true;
           in I // { __special__shim = "mkSafeInstanceShimOf"; }
           );
@@ -2487,8 +2498,8 @@ let
                   ${_ph_ x}
               '')
               else SolosOf__new T x;
-          getBoundName = _: "SolosOf<${_p_ T}>";
-          __TypeId = _: "SolosOf<${_p_ T}>";
+          getBoundName = _: "SolosOf<${T.getBoundName {}}>";
+          __TypeId = _: "SolosOf<${T.getBoundName {}}>";
         };
 
         # Simulate taking the type arg in the first ctor arg.
@@ -2623,10 +2634,10 @@ let
                 })
                 // (optionalAttrs (BuiltinName == "List") {
                   append = x: List__new (value ++ [x]);
-                })
-                // (optionalAttrs (builtinHasToShellValue builtinName) rec {
-                  __toShellValue = self: toShellValue (self.value);
                 });
+                #// (optionalAttrs (U.builtinHasToShellValue builtinName) rec {
+                #  __toShellValue = self: (U.ToShellValue.try self.value).toShellValue;
+                #});
               }
             )
             U.BuiltinNameTobuiltinName;
@@ -2651,8 +2662,8 @@ let
                   ctor = This: BuiltinTypeShims__new."${BuiltinName}__new";
                   mk = args: ctor T args.value;
                   staticMethods.__implements__cast = This: __cast;
-                  methods = optionalAttrs (builtinHasToShellValue builtinName) rec {
-                    __implements__toShellValue = this: toShellValue this.value;  # bound by Class
+                  methods = optionalAttrs (U.builtinHasToShellValue builtinName) rec {
+                    __implements__toShellValue = this: _: U.toShellValue this.value;  # bound by Class
                   };
                   __cast = 
                     dispatchlib.switch.def 
@@ -2719,8 +2730,8 @@ let
         Union = Ts: mkSafeTypeShim "Union" rec {
           staticMethods.__implements__cast = This: __cast;
           __cast = x: U.unwrapCastResult (U.castFirst Ts x);
-          getBoundName = _: "Union<${joinSep ", " (map _p_ Ts)}>";
-          __TypeId = _: "Union<${joinSep ", " (map _p_ Ts)}>";
+          getBoundName = _: "Union<${joinSep ", " (map (T: T.getBoundName {}) Ts)}>";
+          __TypeId = _: "Union<${joinSep ", " (map (T: T.getBoundName {}) Ts)}>";
         };
 
         NullOr = T: Union [Null T];
@@ -2744,8 +2755,8 @@ let
             );
           staticMethods.__implements__cast = This: __cast;
           __cast = x: SetOf T x;
-          getBoundName = _: "SetOf<${_p_ T}>";
-          __TypeId = _: "SetOf<${_p_ T}>";
+          getBoundName = _: "SetOf<${T.getBoundName {}}>";
+          __TypeId = _: "SetOf<${T.getBoundName {}}>";
         };
 
         ListOf = T: mkSafeUnboundTypeShim "ListOf" rec {
@@ -2767,8 +2778,8 @@ let
             );
           staticMethods.__implements__cast = This: __cast;
           __cast = x: ListOf T x;
-          getBoundName = _: "ListOf<${_p_ T}>";
-          __TypeId = _: "ListOf<${_p_ T}>";
+          getBoundName = _: "ListOf<${T.getBoundName {}}>";
+          __TypeId = _: "ListOf<${T.getBoundName {}}>";
         };
 
         # Shim out Constraints enabling real templates to be built using U_0 components.
@@ -2886,7 +2897,7 @@ let
             getInstance = T:
               assert assertMsg (U.isTypeLike T) "Class.getInstance: expected TypeLike, got ${log.print T}";
               maybeHead (getMatchingInstances T);
-            getValueInstance = x: getInstance (typeOf x);
+            getValueInstance = x: getInstance (U.typeOf x);
             checkImplements = T: !(U.isNull (getInstance T));
             checkValueImplements = x: !(U.isNull (getValueInstance x));
             __functor = self: x:
@@ -2912,30 +2923,13 @@ let
           };
         };
 
-        # Shim typeclasses
-        Cast = Class "Cast" { cast = {}; };
-
-        ToString =
-          Class "ToString" { toString = log.print; }
-          (Instance "string" { toString = id; });
-
-        ToShellValue =
-          Class "ToShellValue" { toShellValue = {}; }
-          (Instance "int" { toShellValue = toString; })
-          (Instance "bool" { toShellValue = b: if b then "true" else "false"; })
-          (Instance "string" { toShellValue = shellQuote; })
-          (Instance "path" { toShellValue = shellQuote; })
-          (Instance "null" { toShellValue = _: ''""''; })
-          (Instance "list" { toShellValue = xs: ''(${joinSep " " (map toShellValue xs)})''; })
-          (Instance "float" { toShellValue = toString; });
-
         Implements = C: mkSafeTypeShim "Implements" rec {
           getBoundName = _: "Implements<${C.name}>";
           __TypeId = _: "Implements<${C.name}>";
           staticMethods.__implements__cast = This: __cast;
           __cast = That:
-            if C.implementedBy That then That
-            else mkCastError (indent.block ''
+            if C.checkImplements That then That
+            else U.mkCastError (indent.block ''
               Implements: Type ${That} does not implement ${C.name}:
                 ${log.print That}
             '');
@@ -2944,7 +2938,7 @@ let
         HasField = F: mkSafeTypeShim "HasField" rec {
           staticMethods.__implements__cast = This: __cast;
           __cast = That:
-            if (That.fields.instanceFieldsWithType.lookup (U.string F)) != null
+            if (That ? fields) && That.fields.instanceFieldsWithType.lookup (U.string F) != null
               then That
               else U.mkCastError "HasField ${F}: ${That} does not have field ${U.string F}";
         };
@@ -3041,7 +3035,9 @@ let
               ctor = Ctor__new Type__ctor;
               fields = Fields__new Type__nullFields;
               methods = Set__new (typeStaticMethodsFor SU U);
-              staticMethods = Set__new (typeStaticMethodsFor SU U);
+              staticMethods = Set__new (typeStaticMethodsFor SU U // {
+                __implements__cast = This: T.__cast;
+              });
               tvars = SolosOf__new Type [];
               tvarBindings = Set__new [];
               rebuild = Null__new null;
@@ -3051,6 +3047,13 @@ let
               __toString = self: "Type";
               __special__isTypedAttrs = true;
               __special__level = 0;
+
+              __cast = That:
+                  if U.isTypeLike That then That
+                  else U.mkCastError (_b_ ''
+                    Cast: Type ${_p_ That} is not a TypeSet:
+                      ${_ph_ That}
+                  '');
             };
           # Don't use U.set to unwrap methods here to avoid typechecks against builtin types.
           T_ = bindTypeShim T false;
@@ -3145,8 +3148,7 @@ let
                 return (U.Builtin__toString.${BuiltinName} self);
             } 
             // (optionalAttrs (builtinHasToShellValue builtinName) {
-              __implements__toShellValue = this: self:
-                toShellValue (self.value);
+              __implements__toShellValue = this: _: U.toShellValue this.value;
             });
 
             hasSize = { String = true; Path = true; List = true; Set = true; }.${BuiltinName} or false;
@@ -3625,7 +3627,7 @@ let
 
             # Gets the first matching instance for the given value.
             # e.g. getValueInstance (Int 123) == Instance Int ...
-            getValueInstance = this: x: this.getInstance (typeOf x);
+            getValueInstance = this: x: this.getInstance (U.typeOf x);
 
             # True iff T is an instance of this class.
             # Is an instance either if any instance of T has all of the class methods,
@@ -3650,10 +3652,11 @@ let
             # Exposes for e.g. (ToString.try 123).toString == "123"
             # or (ToString.try (_: 123)).toString or (throw ''no instance for lambda'')
             try = this: x:
-              let typeInstance = this.getInstance x;
-                  valueInstance = this.getValueInstance x;
+              let 
+                typeInstance = if U.isTypeSet x then this.getInstance x else null;
+                valueInstance = this.getValueInstance x;
               in
-                if U.isTypeSet x && !(U.isNull typeInstance) then typeInstance.bindInstance x
+                if !(U.isNull typeInstance) then typeInstance.bindInstance x
                 else if !(U.isNull valueInstance) then valueInstance.bindInstance x
                 else {};
 
@@ -3669,7 +3672,7 @@ let
 
         Implements = Type.template "Implements" [{ C = Class; }] (_: {
           staticMethods.__implements__cast = This: That:
-            if _.C.implementedBy That then That
+            if _.C.checkImplements That then That
             else mkCastError (indent.block ''
               Implements: Type ${That} does not implement ${_.C.name}:
                 ${log.print That}
@@ -3679,21 +3682,10 @@ let
         HasField = Type.template "HasField" { F = String; } (_: {
           ctor = U.Ctors.None;
           staticMethods.__implements__cast = This: That:
-            if (That.fields.instanceFieldsWithType.lookup (U.string _.F)) != null
+            if (That ? fields) && That.fields.instanceFieldsWithType.lookup (U.string _.F) != null
               then That
               else mkCastError "${This}: ${That} does not have field ${U.string _.F}";
         });
-
-        ### Typeclasses
-
-        Cast = Class "Cast" { cast = {}; };
-
-        ToString =
-          Class "ToString" { toString = log.print; }
-          (Instance "string" { toString = id; });
-
-        ToShellValue =
-          Class "ToShellValue" { toShellValue = toShellValue; };
 
         ### Independent (Only ever accessed as e.g. SU.Constraint) 
 
@@ -3725,6 +3717,72 @@ let
       });
 
       in U;
+
+    # Make the typeclasses for a given universe.
+    # Uses Class from SU. 
+    mkTypeclasses = SU: _: with SU; {
+      # Implemented by classes that can be cast into.
+      Cast = Class "Cast" { 
+        cast = {};
+      };
+
+      ToString =
+        Class "ToString" { toString = log.print; }
+        (Instance "string" { toString = id; });
+
+      ToShellValue = Class "ToShellValue" { 
+        # Convert a value to a shell value.
+        # Has default implementation for each type, but can be overridden by adding a (__toShellValue = self: ...) method.
+        #
+        # strings without special chars are left unchanged:
+        # toShellValue "some_safe-string" == "some_safe-$string"
+        # toShellValue "some_$VAR" == ''\"some_$VAR\""
+        #
+        # strings are quoted with double quotes if they contain special characters:
+        # toShellValue ''"quote"'' == ''"\"quote\""''
+        # toShellValue "'safe quote'" == "'safe quote'"
+        #
+        # bool goes to string literal, not 0/1:
+        # toShellValue true == "true"
+        # toShellValue false == "false"
+        #
+        # lists go to array literals:
+        # toShellValue [1 "xxx" "$YYY" true] == "(1 xxx \"$YYY\" true)"
+        #
+        # Numbers use toString:
+        # toShellValue 1 == "1"
+        # toShellValue 123.3 == "123.300000"
+        #
+        # null goes to the empty string literal
+        toShellValue = {};
+      } (Instance "int" { toShellValue = toString; })
+        (Instance "bool" { toShellValue = b: if b then "true" else "false"; })
+        (Instance "string" { toShellValue = shellQuote; })
+        (Instance "path" { toShellValue = shellQuote; })
+        (Instance "null" { toShellValue = _: ''""''; })
+        (Instance "list" { toShellValue = xs: ''(${joinSep " " (map toShellValue xs)})''; })
+        (Instance Any_Builtin { toShellValue = this: toShellValue this.value; })
+        (Instance 
+          collective-lib.script-utils.log-utils.log.shell.ShellValue 
+          { toShellValue = this: toShellValue this.value; })
+        (Instance 
+          collective-lib.script-utils.log-utils.log.shell.ShellReturnValue 
+          # Generate e.g.
+          # "1 \"retval\"" if log-return with a value of "retval"
+          # "1 \"\" if log-return without a value (ShellReturnValue 0 Null goes to "0 \"\"")
+          { toShellValue = this: 
+            "${toShellValue this.code} ${toShellValue this.returnValue}";})
+        (Instance 
+          collective-lib.script-utils.log-utils.log.shell.LogReturnAction 
+          { toShellValue = this: this.getLogFn {}; })
+        (Instance 
+          collective-lib.script-utils.log-utils.log.shell.LogMessage 
+          { toShellValue = this: this.getLogCall {}; });
+
+      # TODO: Self-binding interface on Class itself
+      toShellValue = x: (ToShellValue x).toShellValue;
+    };
+
   };
 
   _tests =
@@ -3781,57 +3839,43 @@ let
         let 
           SU = U._SU;
 
-          withInstances = class:
-            class
-              (Instance class "int" {
+          withInstances = C:
+            C
+              (Instance "int" {
                 unaryMethod = this: x: this + x;
               })
-              (Instance class "Int" {
+              (Instance Int {
                 unaryMethod = this: x: (int this) - x;
               })
-              (Instance class String {
+              (Instance String {
                 unaryMethod = this: x: "String: ${this} ${toString x}";
               })
-              (Instance class "string" {
+              (Instance "string" {
                 unaryMethod = this: x: "string: ${this} ${toString x}";
               })
-              (T: Instance (HasField "abc" T) class T {
+              (Instance (InstanceConstraint (Constraint (HasField "abc"))) classTestTypes.TypeWith.ABC {
                 unaryMethod = this: x: "HasField abc: abc = ${toString this.abc}, x = ${toString x}";
               })
-              (T: Instance (HasField "def" T) class T {
+              (Instance (InstanceConstraint (Constraint (HasField "def"))) classTestTypes.TypeWith.DEF {
                 unaryMethod = this: x: "HasField def: def = ${toString this.def}, x = ${toString x}";
               });
+              
 
           classTestClasses = rec {
             UnaryClass =
               Class "UnaryClass" {
-                classMethods = {
-                  unaryMethod = {};
-                };
+                unaryMethod = {};
               };
 
-            UnaryClassWithInstances =
-              withInstances
-                (Class "UnaryClass" {
-                  classMethods = {
-                    unaryMethod = {};
-                  };
-                });
+            UnaryClassWithInstances = withInstances UnaryClass;
 
             UnaryClassWithDefaultImpl =
               Class "UnaryClassWithDefaultImpl" {
-                classMethods = {
-                  unaryMethod = this: x: "default: ${log.print this} | ${toString x}";
-                };
+                unaryMethod = this: x: "default: ${log.print this} | ${toString x}";
               };
 
             UnaryClassWithDefaultImplAndInstances =
-              withInstances
-                (Class "UnaryClassWithDefaultImplAndInstances" {
-                  classMethods = {
-                    unaryMethod = this: x: "default: ${log.print this} | ${toString x}";
-                  };
-                });
+              withInstances UnaryClassWithDefaultImpl;
           };
 
           classTestTypes = {
@@ -3883,62 +3927,66 @@ let
 
         in {
           implements.byExplicitImpl =
-            mapAttrs (_: C:
-              mapAttrs (_: T:
+            (mapAttrs (_: C:
+              mapAttrs (_: T: 
                 expect.True (implements C T))
                 {
                   inherit (classTestTypes.withUnaryMethod) 
-                    TypeWithUnaryMethod
-                    TypeWithUnderscoredUnaryMethod
                     TypeWithPrefixedUnaryMethod;
                 })
                 # All classes satisfied by those with methods explicitly implemented
-                classTestClasses;
+                classTestClasses);
 
           implements.byInstance =
-            mapAttrs (_: C:
+            (mapAttrs (_: C:
               mapAttrs (_: T: 
                 expect.True (implements C T))
                 { inherit (classTestTypes.withUnaryMethod) 
                     int Int string String;
-                  inherit (classTestTypes)
-                    TypeWithABC
-                    TypeWithDEF; })
+                  inherit (classTestTypes.TypeWith)
+                    ABC
+                    DEF; })
               # Only those classes with default implementations or that include
               # these types in their instances
               { inherit (classTestClasses)
                   UnaryClassWithInstances
-                  UnaryClassWithDefaultImplAndInstances; };
+                  UnaryClassWithDefaultImplAndInstances; });
 
           implements.byDefaultImpl =
-            mapAttrs (_: C:
+            (mapAttrs (_: C:
               mapAttrs (_: T: 
                 expect.True (implements C T))
                 # All types should be covered
                 (classTestTypes.withoutUnaryMethod // classTestTypes.TypeWith))
               { inherit (classTestClasses)
                   UnaryClassWithDefaultImpl
-                  UnaryClassWithDefaultImplAndInstances; };
+                  UnaryClassWithDefaultImplAndInstances; });
 
           implements.not.byExplicitImpl =
-            mapAttrs (_: C:
+            (mapAttrs (_: C:
               mapAttrs (_: T: 
                 expect.False (implements C T))
                 { inherit (classTestTypes.withUnaryMethod) 
-                  int Int string String; } // classTestTypes.TypeWith)
-              { inherit (classTestClasses) UnaryClass; };
+                  TypeWithUnaryMethod
+                  TypeWithUnderscoredUnaryMethod
+                  int Int string String;
+                  inherit (classTestTypes.TypeWith)
+                    ABC
+                    DEF
+                    XYZ; })
+              { inherit (classTestClasses) UnaryClass; });
 
           implements.not.byExplicitImplOrInstance =
-            mapAttrs (_: C:
+            (mapAttrs (_: C:
               mapAttrs (_: T: 
                 expect.False (implements C T))
-                classTestTypes.withoutUnaryMethod // {
+                (classTestTypes.withoutUnaryMethod // {
                   # XYZ does not match the contstraint.
-                  inherit (classTestTypes.TypeWith) TypeWithXYZ;
-                })
+                  inherit (classTestTypes.TypeWith) XYZ;
+                }))
               { inherit (classTestClasses)
                   UnaryClass
-                  UnaryClassWithInstances; };
+                  UnaryClassWithInstances; });
 
         };
 
@@ -4064,8 +4112,8 @@ let
           set = expect.eqWith typeEq (typeOf {}) "set";
           Set = expect.eqWith typeEq (typeOf (Set.new {})) Set;
           # Presence of __Type triggers isTyped
-          TypedSetstring = expect.eqWith typeEq (typeOf {__Type = TypeThunk "string";}) "string";
-          TypedSetThunk = expect.eqWith typeEq (typeOf {__Type = TypeThunk Int;}) Int;
+          TypedSetstring = expect.eqWith typeEq (typeOf {__Type = TypeThunk "string"; __special__isTypedAttrs = true;}) "string";
+          TypedSetThunk = expect.eqWith typeEq (typeOf {__Type = TypeThunk (Literal 123); __special__isTypedAttrs = true;}) (Literal 123);
         };
 
         typeIdOf = {
@@ -4083,8 +4131,8 @@ let
           set = expect.eq (typeIdOf {}) "set";
           Set = expect.eq (typeIdOf (Set.new {})) "Set";
           # Presence of __Type triggers isTyped
-          TypedSetstring = expect.eq (typeIdOf {__Type = TypeThunk "string";}) "string";
-          TypedSetThunk = expect.eq (typeIdOf {__Type = TypeThunk (Literal 123);}) "Literal<123>";
+          TypedSetstring = expect.eq (typeIdOf {__Type = TypeThunk "string"; __special__isTypedAttrs = true;}) "string";
+          TypedSetThunk = expect.eq (typeIdOf {__Type = TypeThunk (Literal 123); __special__isTypedAttrs = true;}) "Literal<123>";
         };
 
         typeNameOf = {
@@ -4102,8 +4150,8 @@ let
           set = expect.eq (typeNameOf {}) "set";
           Set = expect.eq (typeNameOf (Set.new {})) "Set";
           # Presence of __Type triggers isTyped
-          TypedSetstring = expect.eq (typeNameOf {__Type = TypeThunk "string";}) "string";
-          TypedSetThunk = expect.eq (typeNameOf {__Type = TypeThunk (Literal 123);}) "Literal";
+          TypedSetstring = expect.eq (typeNameOf {__Type = TypeThunk "string"; __special__isTypedAttrs = true;}) "string";
+          TypedSetThunk = expect.eq (typeNameOf {__Type = TypeThunk (Literal 123); __special__isTypedAttrs = true;}) "Literal";
         };
 
         typeBoundNameOf = {
@@ -4121,8 +4169,8 @@ let
           set = expect.eq (typeBoundNameOf {}) "set";
           Set = expect.eq (typeBoundNameOf (Set.new {})) "Set";
           # Presence of __Type triggers isTyped
-          TypedSetstring = expect.eq (typeBoundNameOf {__Type = TypeThunk "string";}) "string";
-          #TypedSetThunk = expect.eq (typeBoundNameOf {__Type = TypeThunk (Default Int 123);}) "Default<Int, 123>";
+          TypedSetstring = expect.eq (typeBoundNameOf {__Type = TypeThunk "string"; __special__isTypedAttrs = true;}) "string";
+          TypedSetThunk = expect.eq (typeBoundNameOf {__Type = TypeThunk (Literal 123); __special__isTypedAttrs = true;}) "Literal<123>";
         };
 
         wrapping = 
@@ -4882,6 +4930,7 @@ let
               instantiation = instantiationTests U;
               builtin = builtinTests U;
               cast = castTests U;
+              class = classTests U;
             }))
           #(testInUniverses
           #  { inherit (Universe) U_1; }
@@ -5179,6 +5228,41 @@ let log = script-utils.log-utils; in
 log
 </nix>
 
+<nix>
+let U = Types.Universe.U_1; in
+U.Type
+</nix>
+<nix> log._tests.debug </nix>
+<nix> strings._tests.debug </nix>
+<nix> functions._tests.debug </nix>
+<nix> debuglib._tests.run </nix>
+<nix> typelib._tests.run </nix>
+<nix> typelib._tests.debug </nix>
+<nix> typelib._tests.debug </nix>
+<nix> collective-lib._tests.run </nix>
+<nix> collective-lib._tests.debug </nix>
+<nix> script-utils.log-utils._tests.run </nix>
+<nix>
+with script-utils.log-utils.log.shell;
+</nix>
+
+<nix>
+ToString.getMatchingInstances "int"
+</nix>
+
+<nix>
+
+(Cast.getInstance Any)
+</nix>
+<nix>
+Int 123
+</nix>
+<nix>
+(ToShellValue.try ''"ok"'').toShellValue
+</nix>
+<nix>
+cast (HasField "svalue") Int
+</nix>
 <nix>
 let U = Types.Universe.U_1; in
 U.Type
