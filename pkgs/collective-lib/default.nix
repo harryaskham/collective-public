@@ -1,5 +1,6 @@
 { pkgs ? import <nixpkgs> {},
   lib ? pkgs.lib,
+  withTests ? false,
   traceOpts ? null,
   ... 
 }:
@@ -47,13 +48,13 @@ let
         [ baseModules 
           (modulelib.recursiveMergeAttrsList (lib.attrValues baseModulesMergeable))];
 
-  mkCollectiveLib = baseModules:
+  mkCollectiveLib = withTests: baseModules:
     let baseMerged = mergeBase baseModules;
     in baseMerged // rec {
       # Merge with another downstream collective-lib extension.
       # Merges deeply s.t. modules that share names are themselves merged.
       # i.e. merge log.* with log.shell.*
-      extend = otherBaseModules: mkCollectiveLib (
+      extend = otherBaseModules: mkCollectiveLib withTests (
         lib.recursiveUpdate baseModules otherBaseModules);
 
       # Keep a reference to the original base so that we can still access it unmerged.
@@ -91,7 +92,7 @@ let
       # However functions like isType, isNull are overridden by typelib.lib and exposed
       # at the top level. If needed, the originals can be accessed via builtins.isNull, lib.isType, etc
       typed = lib.recursiveUpdate untyped baseModules.typelib.library;
-
+    } // lib.optionalAttrs withTests {
       # Merged tests from all modules.
       _tests = baseModules.tests.mergeSuites baseModules;
 
@@ -127,7 +128,7 @@ let
       wm = import ./wm.nix args;
     };
 
-  collective-lib = mkCollectiveLib baseModules;
+  collective-lib = mkCollectiveLib withTests baseModules;
 
   __libCollisions =
     (# <nix>

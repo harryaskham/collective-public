@@ -260,6 +260,7 @@
    lib = pkgs.lib; \
    collective-lib = import %s/pkgs/collective-lib {\
    inherit pkgs lib; \
+   withTests = true; \
    traceOpts = \
    { \
      traceLevel = %d; \
