@@ -15,7 +15,8 @@ with collective-lib.strings;
 with collective-lib.syntax;
 
 # TODO:
-# - unwrappers with subutpes ie listof
+# - caching via eval / parse and AST - caching typesystem requires caching lamdas
+# - or just make it very fast...
 # - structuredAttrs: __functionArgs, __pretty, etc
 # builtins.functionArgs
 # - return types
