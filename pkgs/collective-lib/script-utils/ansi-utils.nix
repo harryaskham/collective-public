@@ -5,7 +5,9 @@ with lib.strings;
 with collective-lib.strings;
 with collective-lib.functions;
 
-rec {
+let
+  typed = collective-lib.typed;
+in rec {
   # Utilities for echoing styled text
   ansi = rec {
     fg = rec {
@@ -66,7 +68,7 @@ rec {
           styles = arg.styles or [];
           __text = arg.text or "";
           text = if quoteText
-            then toShellValue __text
+            then typed.toShellValue __text
             else __text;
           nesting = arg.nesting or 0;
           eof = if nesting > 0 then "EOF${toString nesting}" else "EOF";

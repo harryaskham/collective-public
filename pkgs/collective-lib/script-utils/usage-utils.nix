@@ -8,6 +8,7 @@ with log-utils;
 
 let
   atom = ansi.atom;
+  typed = collective-lib.typed;
 in rec {
   # Print an option description
   optUsageString = optName: opt:
@@ -54,7 +55,7 @@ USAGE_COMMAND=$(${
   with ansi;
   echo-n (joinWords [
     (atom.h1 "Usage")
-    (toShellValue args.name)
+    (typed.toShellValue args.name)
     (atom.requiredOpt (joinWords (mapAttrsToList getOptCommandUsage requiredOpts)))
     (atom.optionalOpt (joinWords (mapAttrsToList getOptCommandUsage optionalOpts)))
   ])
