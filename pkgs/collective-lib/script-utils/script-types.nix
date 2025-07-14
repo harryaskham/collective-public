@@ -26,22 +26,24 @@ rec {
   # For collections or command trees, can be used as a default package.
   mkDefaultScriptPackage = script:
     (mkScriptPackage script).${script.name};
+
   mkDefaultScriptPackageNamed = name: script:
-    (mkScriptPackage script).${script.name};
+    (mkScriptPackageNamed name script).${script.name};
 
   # A flat collection of scripts as { scriptName = script; ... }
   # Exposes the combined package as well as individual scripts merged by name.
   collection = {
     id = "collection";
     builder = args:
-      let
-        scriptPkgs = mapAttrs mkDefaultScriptPackageNamed args.scripts;
-        combinedPkgs = pkgs.symlinkJoin rec {
+      let scriptPkgs = mapAttrs mkDefaultScriptPackageNamed args.scripts;
+      in scriptPkgs  // rec {
+        default = pkgs.symlinkJoin rec {
           name = args.name;
           paths = attrValues scriptPkgs;
           outputs = [ "out" ] ++ lib.attrNames scriptPkgs;
         };
-      in combinedPkgs;
+        ${args.name} = default;
+      };
   };
 
   # Create a Bash script with given name, opts, help text, and body.
