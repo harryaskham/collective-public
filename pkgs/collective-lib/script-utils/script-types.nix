@@ -26,6 +26,8 @@ rec {
   # For collections or command trees, can be used as a default package.
   mkDefaultScriptPackage = script:
     (mkScriptPackage script).${script.name};
+  mkDefaultScriptPackageNamed = name: script:
+    (mkScriptPackage script).${script.name};
 
   # A flat collection of scripts as { scriptName = script; ... }
   # Exposes the combined package as well as individual scripts merged by name.
@@ -33,10 +35,10 @@ rec {
     id = "collection";
     builder = args:
       let
-        scriptPkgs = mapAttrs mkScriptPackageNamed args.scripts;
+        scriptPkgs = mapAttrs mkDefaultScriptPackageNamed args.scripts;
         combinedPkgs = pkgs.symlinkJoin rec {
           name = args.name;
-          paths = mapAttrsToList (_: s: s.outPath) scriptPkgs;
+          paths = attrValues scriptPkgs;
           outputs = [ "out" ] ++ lib.attrNames scriptPkgs;
         };
       in combinedPkgs;
