@@ -28,7 +28,7 @@ rec {
     (mkScriptPackage script).${script.name};
 
   mkDefaultScriptPackageNamed = name: script:
-    (mkScriptPackageNamed name script).${script.name};
+    mkDefaultScriptPackage (script // { inherit name; });
 
   # A flat collection of scripts as { scriptName = script; ... }
   # Exposes the combined package as well as individual scripts merged by name.
