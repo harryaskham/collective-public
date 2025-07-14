@@ -208,19 +208,21 @@ rec {
   # };
   fireScript = {
     id = "fireScript";
-    builder = args: mkScriptPackage {
-      inherit (args) name;
-      type = pythonScript;
-      deps = ps: [ps.fire] ++ (optionals (args ? deps) (args.deps ps));
-      body = ''
-        import fire
+    builder = args: 
+      # Delegate to pythonScript builder.
+      mkScriptPackage {
+        inherit (args) name;
+        type = pythonScript;
+        deps = ps: [ps.fire] ++ (optionals (args ? deps) (args.deps ps));
+        body = ''
+          import fire
 
 
-        ${args.body}
+          ${args.body}
 
-        if __name__ == "__main__":
-            fire.Fire(${args.name})
-      '';
-    };
+          if __name__ == "__main__":
+              fire.Fire(${args.name})
+        '';
+      };
   };
 }
