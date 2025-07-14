@@ -15,8 +15,13 @@ with collective-lib.strings;
 with collective-lib.syntax;
 
 # TODO:
+# - typedDerivation
+# - eval via import from derivation
+# - the bound functions are killing caching - switch to on the fly binding / data-only export and reimport
+# - builder that transpiles to more efficient nix using types
 # - caching via eval / parse and AST - caching typesystem requires caching lamdas
 # - or just make it very fast...
+#
 # - structuredAttrs: __functionArgs, __pretty, etc
 # builtins.functionArgs
 # - return types

@@ -17,7 +17,10 @@ rec {
   # Build a script attrset into the set of derivations it produces.
   # Sets the script name given its key in an attrset.
   mkScriptPackageNamed = name: script:
-    mkScriptPackage (script // { inherit name; });
+    mkScriptPackage (script // {
+      inherit name;
+      outputs = (script.outputs or [ "out" ]) ++ [ name ];
+    });
 
   # Build a script attrset into the set of derivations it produces.
   # Returns the script named at the root.
@@ -28,15 +31,18 @@ rec {
   # A flat collection of scripts as { scriptName = script; ... }
   collection = {
     id = "collection";
-    builder = args: {
-      ${args.name} = pkgs.symlinkJoin {
-        inherit (args) name;
-        paths =
-          attrValues
-            (concatMapAttrs (name: script: mkScriptPackageNamed name script)
-             args.scripts);
-      };
-    };
+    builder = args:
+      let
+        scriptDrvs =
+          mapAttrs (name: script: mkScriptPackageNamed name script) args.scripts;
+        scriptNames = attrNames scriptDrvs;
+        allScripts = pkgs.symlinkJoin rec {
+          name = args.name;
+          paths = attrValues scriptDrvs;
+          outputs = ["out"] ++ attrNames (args.scripts);
+          meta.outputsToInstall = outputs;
+        };
+      in allScripts;
   };
 
   # Create a Bash script with given name, opts, help text, and body.
@@ -179,7 +185,7 @@ rec {
   pythonScript = {
     id = "pythonScript";
     builder = args:
-      let libraries = args.deps or [];
+      let libraries = (args.deps or (const [])) pkgs.python3Packages;
       in {
         ${args.name} =
           pkgs.writers.writePython3Bin
