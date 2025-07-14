@@ -19,7 +19,6 @@ rec {
   mkScriptPackageNamed = name: script:
     mkScriptPackage (script // {
       inherit name;
-      outputs = (script.outputs or [ "out" ]) ++ [ name ];
     });
 
   # Build a script attrset into the set of derivations it produces.
@@ -34,8 +33,7 @@ rec {
     id = "collection";
     builder = args:
       let
-        scriptPkgs =
-          mapAttrs (name: script: mkScriptPackageNamed name script) args.scripts;
+        scriptPkgs = mapAttrs mkScriptPackageNamed args.scripts;
         combinedPkgs = pkgs.symlinkJoin rec {
           name = args.name;
           paths = attrValues scriptPkgs;
