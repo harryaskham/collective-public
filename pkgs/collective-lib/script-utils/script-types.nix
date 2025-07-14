@@ -36,7 +36,7 @@ rec {
         scriptPkgs = mapAttrs mkScriptPackageNamed args.scripts;
         combinedPkgs = pkgs.symlinkJoin rec {
           name = args.name;
-          paths = attrValues scriptPkgs;
+          paths = mapAttrsToList (_: s: s.outPath) scriptPkgs;
           outputs = [ "out" ] ++ lib.attrNames scriptPkgs;
         };
       in combinedPkgs;
