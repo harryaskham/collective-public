@@ -5307,7 +5307,7 @@ U.Type
 <nix> log._tests.debug </nix>
 <nix> strings._tests.debug </nix>
 <nix> functions._tests.debug </nix>
-<nix> debuglib._tests.run </nix>
+<nix> debuglib._tests.run {}</nix>
 <nix> typelib._tests.run </nix>
 <nix> typelib._tests.debug </nix>
 <nix> typelib._tests.debug </nix>
@@ -5316,6 +5316,9 @@ U.Type
 <nix> script-utils.log-utils._tests.run </nix>
 <nix>
 with script-utils.log-utils.log.shell;
+</nix>
+<nix>
+collective-scripts
 </nix>
 
 <nix>

@@ -35,14 +35,14 @@ rec {
   collection = {
     id = "collection";
     builder = args:
-      let scriptPkgs = mapAttrs mkDefaultScriptPackageNamed args.scripts;
-      in scriptPkgs  // rec {
-        default = pkgs.symlinkJoin rec {
+      let scriptPkgs = args.scriptPkgs or {};
+          scripts = args.scripts or {};
+          allScriptPkgs = scriptPkgs // mapAttrs mkDefaultScriptPackageNamed scripts;
+      in {
+        ${args.name} = pkgs.symlinkJoin {
           name = args.name;
-          paths = attrValues scriptPkgs;
-          outputs = [ "out" ] ++ lib.attrNames scriptPkgs;
+          paths = attrValues allScriptPkgs;
         };
-        ${args.name} = default;
       };
   };
 

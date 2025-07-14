@@ -269,16 +269,21 @@
      enableShortTrace = %s; \
    }; \
    }; \
+   const = { ui = { gap = 30; radius = 10; border = 2; barHeight = 30; }; };
+   collective-scripts = import %s/pkgs/collective-scripts { \
+     inherit pkgs lib const collective-lib; \
+   }; \
    in \
    collective-lib.typed \
    // { \
-   inherit collective-lib; \
+   inherit collective-lib collective-scripts; \
    }"
           collective-dir
           v
           (nixlike-enable-partial-trace v)
           (nixlike-enable-verbose-trace v)
           (nixlike-enable-short-trace v)
+          collective-dir
           ))
 
 (defun nixlike-expr-with-preamble (expr v raw)

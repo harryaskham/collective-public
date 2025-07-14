@@ -379,13 +379,19 @@ in rec {
       in if soloTests == {}
          then flatTests
          else soloTests;
-    overOne = f: mapAttrs (testName: test: f { ${testName} = test; }) tests;
+    # Run a thunk'd total f over one test.
+    overOne = f: 
+      mapAttrs
+        (testName: test: 
+          {}: f { ${testName} = test; })
+        tests;
     runOne = overOne (run_ false (test: test.run));
     debugOne = overOne (run_ true (test: test.debug));
     run = run_ false (test: test.run) tests;
     runThenDebug = run_ true (test: test.run) tests;
     debug = run_ false (test: test.debug) tests;
     run_ = debugOnFailure: runner: tests:
+      {}:  # Thunk the tests to avoid strict execution.
       let
         results = mapAttrsToList (_: runner) tests;
         byStatus =
