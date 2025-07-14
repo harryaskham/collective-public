@@ -37,8 +37,9 @@ rec {
         combinedPkgs = pkgs.symlinkJoin rec {
           name = args.name;
           paths = attrValues scriptPkgs;
+          outputs = [ "out" ] ++ lib.attrNames scriptPkgs;
         };
-      in combinedPkgs // scriptPkgs;
+      in combinedPkgs;
   };
 
   # Create a Bash script with given name, opts, help text, and body.
