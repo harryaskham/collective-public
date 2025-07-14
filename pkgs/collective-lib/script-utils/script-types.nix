@@ -29,20 +29,18 @@ rec {
     (mkScriptPackage script).${script.name};
 
   # A flat collection of scripts as { scriptName = script; ... }
+  # Exposes the combined package as well as individual scripts merged by name.
   collection = {
     id = "collection";
     builder = args:
       let
-        scriptDrvs =
+        scriptPkgs =
           mapAttrs (name: script: mkScriptPackageNamed name script) args.scripts;
-        scriptNames = attrNames scriptDrvs;
-        allScripts = pkgs.symlinkJoin rec {
+        combinedPkgs = pkgs.symlinkJoin rec {
           name = args.name;
-          paths = attrValues scriptDrvs;
-          outputs = ["out"] ++ attrNames (args.scripts);
-          meta.outputsToInstall = outputs;
+          paths = attrValues scriptPkgs;
         };
-      in allScripts;
+      in combinedPkgs // scriptPkgs;
   };
 
   # Create a Bash script with given name, opts, help text, and body.
