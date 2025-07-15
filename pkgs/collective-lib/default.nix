@@ -2,6 +2,18 @@
   lib ? pkgs.lib,
   withTests ? true,
   traceOpts ? null,
+  nix-parsec ? (
+    let
+      version = "v0.1.0";
+      sha256 = "sha256-HOsko3wE4wt6+TdfPdaQj3A3UJ8AB9vHmHuDfyBlosY=";
+    in
+      import (pkgs.fetchFromGitHub {
+        owner = "nprindle";
+        repo = "nix-parsec";
+        rev = version;
+        sha256 = "sha256-JVgNZSj3ViroWymo0ydkIEVnlRJdXRV+D0ig0OiuZ7o=";
+      })
+  ),
   ... 
 }:
 
@@ -36,7 +48,7 @@ let
       unmergeableAttrNames = [ "_tests" ];
       splitModule = modulelib.partitionAttrs (k: _: lib.elem k unmergeableAttrNames);
 
-      unmergeableModuleNames = [ "log" "tests" ];
+      unmergeableModuleNames = [ "eval" "log" "tests" "parser" ];
       splitModules = modulelib.partitionAttrs (k: _: lib.elem k unmergeableModuleNames);
 
       moduleMergeable = _: module: (splitModule module).wrong;
@@ -113,12 +125,14 @@ let
       dispatchlib = import ./dispatchlib.nix args;
       display = import ./display.nix args;
       errors = import ./errors.nix args;
+      eval = import ./eval args;
       fan = import ./fan.nix args;
       font = import ./font.nix args;
       functions = import ./functions.nix args;
       lists = import ./lists.nix args;
       log = import ./log.nix (args // { inherit traceOpts; });
       inherit modulelib;
+      parser = import ./parser (args // { inherit nix-parsec; });
       rebinds = import ./rebinds.nix args;
       script-utils = import ./script-utils args;
       strings = import ./strings.nix args;

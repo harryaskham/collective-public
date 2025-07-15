@@ -5311,15 +5311,14 @@ U.Type
 <nix> typelib._tests.run </nix>
 <nix> typelib._tests.debug </nix>
 <nix> typelib._tests.debug </nix>
+<nix> eval._tests.run {} </nix>
 <nix> collective-lib._tests.run </nix>
 <nix> collective-lib._tests.debug </nix>
 <nix> script-utils.log-utils._tests.run </nix>
 <nix>
 with script-utils.log-utils.log.shell;
 </nix>
-<nix>
-collective-scripts
-</nix>
+<nix
 
 <nix>
 ToString.getMatchingInstances "int"

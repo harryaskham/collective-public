@@ -52,6 +52,16 @@ in with typed; rec {
   sortPosList = sort cmpPos;
   sortedPos = xs: sortPosList (attrValues (pos xs));
 
+  # Get the position of the given attrPath in the given expr.
+  pathPos = attrPath: expr:
+    if length attrPath == 0 then null
+    else 
+      let 
+        go = attrPath: parent:
+          if length attrPath == 1 then pos (head attrPath) parent
+          else go (tail attrPath) (parent.${head attrPath});
+      in go attrPath expr;
+
   # Get the internal metadata of the given name in the given attrs.
   pos = 
     let 
@@ -92,7 +102,7 @@ in with typed; rec {
             else v);
     };
 
-  # <nix>debuglib._tests.run</nix>
+  # <nix>debuglib._tests.run {}</nix>
   _tests = with collective-lib.tests; suite {
     pos = 
       let 
@@ -210,6 +220,7 @@ in with typed; rec {
           expect.noLambdasEq
             (sortedPos (builtins.functionArgs testArgNames))
             [expectedPosZArg expectedPosBArg expectedPosAArg];
+        pathPos = expect.noLambdasEq (pathPos ["deeper" "ghi"] testData) expectedPosGHI;
       };
   };
 

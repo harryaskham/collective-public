@@ -217,7 +217,7 @@ in rec {
                   ${msg}: ${indent.here (log.print result)}
                   ${optionalString (status == Status.Failed) ''
                   Diff:
-                    ${indent.here (log.vprintD 3 (diffShort test.expected result))}
+                    ${indent.here (log.vprintD 5 (diffShort test.expected result))}
                   ''}
                 '';
             };
