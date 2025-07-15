@@ -154,12 +154,11 @@ rec {
     };
   };
 
+  #services.mako.settings.*
   forMako = scheme: {
-    services.mako.settings = {
-      background-color = ihex scheme 6;
-      text-color = ihex scheme 1;
-      border-color = ihex scheme 9;
-    };
+    background-color = ihex scheme 6;
+    text-color = ihex scheme 1;
+    border-color = ihex scheme 9;
   };
 
   forNixOnDroid = scheme: {
