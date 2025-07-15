@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, stdenv ? pkgs.stdenv, ... }:
+{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
 
 # TODO:
 # - Dynamic derivations should let eval-in-eval occur without requiring nested nix build:
@@ -11,6 +11,7 @@ let
   tests = collective-lib.tests;
   typed = collective-lib.typed;
 in
+  with typed;
 rec {
   evalDrvName = exprStr: "eval-${builtins.hashString "sha256" exprStr}";
 
@@ -70,7 +71,21 @@ rec {
     eval = {
       const = expect.eq (eval "1") 1;
       add = expect.eq (eval "1 + 1") 2;
+      eval = expect.eq (eval ''
+        { evalPath }:
+        let eval = import evalPath {};
+        in eval "1 + 1"
+      '' { evalPath = ./.; }) 2;
+      nest =
+        let nestEval = n: exprStr:
+              if n == 0 then exprStr
+              else nestEval (n - 1) (_b_ ''
+                let eval = import ${./.} {}; in
+                eval "(${replaceStrings [''"'' ''\''] [''\"'' ''\\''] exprStr}) + 1"
+              '');
+        in expect.eq (eval (nestEval 5 "0")) 5;
     };
+
     txtfn =
       let fTxt = "a: b: 3 * a + b";
           f = txtfn fTxt;
