@@ -2,6 +2,9 @@
   lib ? pkgs.lib,
   withTests ? true,
   traceOpts ? null,
+  # Performance options for type system
+  # Set performanceMode = true for maximum speed, false for debugging
+  performanceMode ? true,
   nix-parsec ? (
     let
       version = "v0.1.0";
@@ -153,7 +156,7 @@ let
       strings = import ./strings.nix args;
       syntax = import ./syntax.nix args;
       tests = import ./tests.nix args;
-      typelib = import ./typelib.nix args;
+      typelib = import ./typelib.nix (args // { inherit performanceMode; });
       wm = import ./wm.nix args;
     };
 
