@@ -1,6 +1,7 @@
 { pkgs ? import <nixpkgs> {},
   collective-lib ? import ./. { inherit lib; },
   lib ? pkgs.lib,
+  performanceMode ? true,
   ... }:
 
 with lib.strings;
@@ -126,7 +127,8 @@ let
 
     # Expose at top-level. Modules should use this (typed.fn) usually instead of
     # log.*fn directly.
-    __defaultFnLogLevel = 1;
+    # Set to 0 for maximum performance, 1 for debugging
+    __defaultFnLogLevel = 0;
     fn = (log.v __defaultFnLogLevel).fn;
     defun = (log.v __defaultFnLogLevel).defun;
     where = (log.v __defaultFnLogLevel).where;
@@ -151,10 +153,19 @@ let
 
       ### logging wrappers
       mkLoggingWrapper = f: name: f name {inherit (U.opts) level;};
-      call = v: mkLoggingWrapper (log.v v).call;
-      methodCall = v: This: mkLoggingWrapper ((log.v v).methodCall This);
-      callSafe = v: mkLoggingWrapper (log.safe.v v).call;
-      methodCallSafe = v: This: mkLoggingWrapper ((log.safe.v v).methodCall This);
+      
+      # Performance-optimized versions that bypass logging overhead
+      # Use these when performance is critical and debugging is not needed
+      callFast = v: name: body: body;
+      methodCallFast = v: This: name: body: body;
+      callSafeFast = v: name: body: body;
+      methodCallSafeFast = v: This: name: body: body;
+      
+      # Conditional compilation - use fast versions when level = 0
+      call = v: if U.opts.level == 0 then callFast v else mkLoggingWrapper (log.v v).call;
+      methodCall = v: This: if U.opts.level == 0 then methodCallFast v This else mkLoggingWrapper ((log.v v).methodCall This);
+      callSafe = v: if U.opts.level == 0 then callSafeFast v else mkLoggingWrapper (log.safe.v v).call;
+      methodCallSafe = v: This: if U.opts.level == 0 then methodCallSafeFast v This else mkLoggingWrapper ((log.safe.v v).methodCall This);
 
       ### naming workarounds
 
@@ -261,20 +272,26 @@ let
       # Check if a given argument is a custom Type.
       # Throws if not, otherwise true.
       checkTyped = x:
-        with U.call 4 "checkTyped" x ___;
-        assert checks [
-          {
-            name = "isAttrs x";
-            cond = isAttrs x;
-            msg = "checkTyped: x is not an attrset";
-          }
-          {
-            name = "x ? __Type";
-            cond = x ? __Type;
-            msg = "checkTyped: x has no __Type field";
-          }
-        ];
-        return true;
+        if U.opts.enableValidationChecks then (
+          with U.call 4 "checkTyped" x ___;
+          assert checks [
+            {
+              name = "isAttrs x";
+              cond = isAttrs x;
+              msg = "checkTyped: x is not an attrset";
+            }
+            {
+              name = "x ? __Type";
+              cond = x ? __Type;
+              msg = "checkTyped: x has no __Type field";
+            }
+          ];
+          return true
+        ) else (
+          # Fast path - just basic checks
+          assert isAttrs x && x ? __Type;
+          true
+        );
 
       # True iff a given argument has a custom Type
       # Holds for every value that is part of the typelib system.
@@ -659,7 +676,15 @@ let
             result = go [] (map (T: a: castEither T a id id) (U.list Ts));
         in unwrapCastResultOr result handleError;
 
-      cast = T: x: unwrapCastResult (castEither T x id id);
+      # Fast cast for performance mode - minimal validation
+      castFast = T: x: 
+        if T == null then throw "Cannot cast to null"
+        else if !(U.isTypeLikeOrNull T) then throw "Invalid target type"
+        else if U.isTyped x && (U.typeBoundNameOf x) == (log.print T) then x  # Already correct type
+        else if U.isTypeSet T && T ? __cast then T.__cast x  # Use type's cast method
+        else x;  # Pass through for simple cases
+      
+      cast = T: x: if U.opts.enableValidationChecks then unwrapCastResult (castEither T x id id) else castFast T x;
       castEither = T: x: handleSuccess: handleError:
         if T == null then
           mkCastError (_b_ ''
@@ -1488,30 +1513,28 @@ let
       #     xs.set.value [10 20 -30] -> Type error via SortedListOf.checkValue
       #     valid = xs.set.value [10 20 30] -> ok
       castFieldValue = This: uncastValue: fieldName: field:
-        with U.call 3 "castFieldValue" This uncastValue fieldName field ___;
-        #assert check
-        #  "Field valid before casting"
-        #  (U.typeNameOf field == "Field")
-        #  (with indent; block ''
-        #    Invalid field encountered in setFields:
-
-        #      This = ${here (print This)}
-
-        #      field = ${here (print field)}
-        #  '');
-        with lets { 
-          allowUntyped = U.opts.allowUntypedFields field; 
-          fieldHasType = field ? FieldType && !(U.isNull field.FieldType);
-        };
-        return (
-          if fieldHasType then U.cast field.FieldType uncastValue
+        if U.opts.enableValidationChecks then (
+          with U.call 3 "castFieldValue" This uncastValue fieldName field ___;
+          with lets { 
+            allowUntyped = U.opts.allowUntypedFields field; 
+            fieldHasType = field ? FieldType && !(U.isNull field.FieldType);
+          };
+          return (
+            if fieldHasType then U.cast field.FieldType uncastValue
+            else 
+              if allowUntyped
+                then U.mkCastSuccess uncastValue "Untyped field ${fieldName}: no cast"
+                else throw (indent.block ''
+                  Got disallowed null field:
+                    ${This.name}.${fieldName} = ${log.print field}
+                ''))
+        ) else (
+          # Fast path - minimal validation
+          if field ? FieldType && !(U.isNull field.FieldType) then 
+            U.cast field.FieldType uncastValue
           else 
-            if allowUntyped
-              then U.mkCastSuccess uncastValue "Untyped field ${fieldName}: no cast"
-              else throw (indent.block ''
-                Got disallowed null field:
-                  ${This.name}.${fieldName} = ${log.print field}
-              ''));
+            U.mkCastSuccess uncastValue "Fast untyped field"
+        );
 
       castFieldArgValue = This: args: fieldName: field:
         let
@@ -2276,6 +2299,9 @@ let
       # If type checking is disabled in this level, the Static/Default structure is retained
       # but the type is nulled out e.g. Static (Default null 123)
       retainTypeFieldSpec = level >= 0;
+      # Performance optimizations - disable expensive checks when not debugging
+      enableAssertions = !performanceMode;  # Only enable when not in performance mode
+      enableValidationChecks = !performanceMode;  # Disable runtime validation for performance
       # We only expect Type to be fixed under Type "Type" when it contains and produces
       # no shim elements of the Quasiverse.
       # U_0 is entirely shim elements and a Type made of shims.
@@ -2316,31 +2342,48 @@ let
         # This is valid besides each application of (.__Type {}) ascending one universe level.
         # We fix this in the next stage by grounding.
         Type__bootstrapped =
-          assert checks [{ name = "Type__SU has new";
-                        cond = Type__SU ? new;
-                        msg = indent.block ''
-                          Type__SU must have a new function:
-                            ${indent.here (log.print Type__SU)}
-                          '';
-                      }];
-          assign "Type__bootstrapped" (
-            Type__SU.new U.opts.typeName Type__argsGrounded
+          if opts.enableAssertions then (
+            assert checks [{ name = "Type__SU has new";
+                          cond = Type__SU ? new;
+                          msg = indent.block ''
+                            Type__SU must have a new function:
+                              ${indent.here (log.print Type__SU)}
+                            '';
+                        }];
+            assign "Type__bootstrapped" (
+              Type__SU.new U.opts.typeName Type__argsGrounded
+            )
+          ) else (
+            # Fast path - minimal assertion
+            assert Type__SU ? new;
+            assign "Type__bootstrapped" (
+              Type__SU.new U.opts.typeName Type__argsGrounded
+            )
           );
 
         # Finally, ground this Type by setting Type.__Type to return itself, eliding any information
         # about the super-universe in the .__Type field.
         Type__grounded =
-          assert checks [{ name = "Type__bootstrapped has new";
-                        cond = Type__bootstrapped ? new;
-                        msg = "Type__bootstrapped must have a new function";
-                      }];
-          assign "Type__grounded" (
-            # In U_3 and beyond, this should now have reached a fixed point in terms
-            # of further bootstrapping by Type.new, modulo lambda equality on created Type instances.
-            # If enabled in the opts, an assertion checks that Type is fixed under further bootstrapping.
-            if opts.checkTypeFixedUnderNew
-              then groundTypeAndAssertFixed SU U opts Type__args Type__bootstrapped
-              else groundType SU U Type__bootstrapped
+          if opts.enableAssertions then (
+            assert checks [{ name = "Type__bootstrapped has new";
+                          cond = Type__bootstrapped ? new;
+                          msg = "Type__bootstrapped must have a new function";
+                        }];
+            assign "Type__grounded" (
+              # In U_3 and beyond, this should now have reached a fixed point in terms
+              # of further bootstrapping by Type.new, modulo lambda equality on created Type instances.
+              # If enabled in the opts, an assertion checks that Type is fixed under further bootstrapping.
+              if opts.checkTypeFixedUnderNew
+                then groundTypeAndAssertFixed SU U opts Type__args Type__bootstrapped
+                else groundType SU U Type__bootstrapped
+            )
+          ) else (
+            # Fast path - minimal assertion
+            assert Type__bootstrapped ? new;
+            assign "Type__grounded" (
+              # Skip expensive fixed-point checking in performance mode
+              groundType SU U Type__bootstrapped
+            )
           );
 
         # Expose the final version as Type.
