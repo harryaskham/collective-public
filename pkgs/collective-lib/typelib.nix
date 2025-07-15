@@ -1787,8 +1787,8 @@ let
           this = mkthis This argsMeta (U.addFieldPrefixAttrs args);
         };
         
-        # Performance optimization: skip expensive validation at low performance levels
-        if U.opts.level <= 1 then this
+                # Performance optimization: skip expensive validation if disabled
+        if !U.opts.enableInstanceValidityCheck then this
         else (
           assert checks [{ name = "This is validity-checkable";
               cond = This ? fields
@@ -2295,6 +2295,10 @@ let
       # Type in U3+ should be fixed under .new, made entirely of final typed elements and producing
       # types themselves made of final typed elements.
       checkTypeFixedUnderNew = level >= 5;
+      # Whether to enable expensive instance validity checking in mkInstance.
+      # For performance, lower universe levels can skip validation.
+      # Can be overridden by users for debugging even at low levels.
+      enableInstanceValidityCheck = level >= 2;
       # A thunk returning the options for the next-lower subuniverse.
       descend = SubU: NamedThunk "${name}.descend" (mkUniverseOpts SubU (level + 1));
     };
