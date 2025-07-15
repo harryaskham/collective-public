@@ -360,7 +360,7 @@ in rec {
 
   '';
 
-  DISABLED_tests = with tests; suite {
+  _tests = with tests; suite {
     log.shell = with log.shell; {
       ShellValue =
         {
