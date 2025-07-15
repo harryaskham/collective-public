@@ -1,0 +1,15 @@
+<nix>
+collective-lib._tests.run {}
+</nix>
+
+<nix>
+typelib._tests.run {}
+</nix>
+
+<nix>
+functions._tests.run {}
+</nix>
+
+<nix>
+log._tests.run {}
+</nix>

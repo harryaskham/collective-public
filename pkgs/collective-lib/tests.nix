@@ -178,9 +178,26 @@ in rec {
     lazyFalse = expr: lazyEq expr false;
   };
 
+  traceTestSummary = testResult:
+    with log.trace;
+    with collective-lib.script-utils.ansi-utils;
+    let test = testResult.test;
+        # TODO: unicode syms
+        status = with Status; switch testResult.status {
+          ${Skipped} = "SKIP";
+          ${Passed} = "PASS";
+          ${Failed} = "FAIL";
+        };
+    in
+    assert over (with ansi; _b_ ''
+      ${status} | ${test.name}
+    '');
+    testResult;
+
+
   runOneTest = test: results_:
     with (log.v 1).test test.name results_ ___;
-    rec {
+    let testResult = rec {
       inherit test;
       evalStatus =
         if test.skip then EvalStatus.Skipped
@@ -266,6 +283,8 @@ in rec {
       ];
     }.${status};
   };
+  in 
+    traceTestSummary testResult;
 
   # Run the given test as a singleton test suite, formatting its results.
   evalOneTest = evalFn: test:
