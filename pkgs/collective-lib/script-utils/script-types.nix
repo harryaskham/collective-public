@@ -130,29 +130,52 @@ rec {
   # Check equality of script types by comparing their IDs.
   scriptTypeEquals = a: b: a.id == b.id;
 
-  # Builder for a Bash script.
-  bashScript = {
-    id = "bashScript";
-    builder = args: {
-      ${args.name} = pkgs.writeShellScriptBin args.name (mkBashScriptBody args);
+    writeShellScriptBin =
+    name: text:
+    writeTextFile {
+      inherit name;
+      executable = true;
+      destination = "/bin/${name}";
+      text = ''
+        #!${runtimeShell}
+        ${text}
+      '';
+      checkPhase = ''
+        ${stdenv.shellDryRun} "$target"
+      '';
+      meta.mainProgram = name;
     };
-  };
 
-  # Builder-factory for a raw script file wrapping the given shell name
-  rawScript = shellName: {
-    id = "rawScript-${shellName}";
+  # Builder for a Bash script.
+  bashScript = mkScriptBuilder pkgs.bash;
+
+  # Like writeShellScriptBin but allows for a custom shell package.
+  # The runtimeShell package writeBashScriptBin uses is broken / segfaults due to LD.
+  mkScriptBuilder = shellPkg: args:
+    mkScriptBuilder_ shellPkg.name "#!${shellPkg}/bin/${shellPkg.meta.mainProgram}" true args;
+
+  mkScriptBuilder_ = builderId: shebang: doCheck: args: {
+    id = builderId;
     builder = args: {
-      ${args.name} = pkgs.writeTextFile {
+      ${args.name} = pkgs.writeTextFile ({
         name = args.name;
         text = joinLines [
-          "#!/usr/bin/env ${shellName}"
+          "#!${shellPkg}/bin/${shellBinName}"
           (mkBashScriptBody args)
         ];
         executable = true;
         destination = "/bin/${args.name}";
-      };
+        meta.mainProgram = args.name;
+      } // (optionalAttrs doCheck {
+        checkPhase = ''
+          ${stdenv.shellDryRun} "$target"
+        '';
+      }));
     };
   };
+
+  # Builder-factory for a raw script file wrapping the given shell name
+  rawScript = shellName: mkScriptBuilder_ "rawScript-${shellName}" "#!/usr/bin/env ${shellName}" false;
 
   # Builder for a Zsh script.
   # Compatible with bashScript, but interprets args.body as Zsh and runs nested.
@@ -160,12 +183,15 @@ rec {
     id = "zshScript";
     builder = args:
       let
+        # Create a nested raw ZSH script to trigger from Bash.
         zshArgs = {
           type = rawScript "zsh";
           name = "zshwrapper-" + args.name;
         };
         zshScript = mkScriptPackage zshArgs;
-      in mkScriptPackage {
+      in 
+        #  Create a raw inner Bash script with no structure
+        mkScriptPackage {
           inherit (args) name;
           type = rawScript "bash";
           body = ''zsh "${zshScript}/bin/${zshArgs.name}" "$@"'';
