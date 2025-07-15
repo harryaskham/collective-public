@@ -154,7 +154,7 @@ rec {
     };
   };
 
-  forMako = scheme:
+  forMako = scheme: {
     services.mako.settings = {
       background-color = ihex scheme 6;
       text-color = ihex scheme 1;
