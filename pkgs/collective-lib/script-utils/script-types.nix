@@ -147,20 +147,15 @@ rec {
     };
 
   # Builder for a Bash script.
-  bashScript = mkScriptBuilder pkgs.bash;
+  bashScript = mkScriptBuilder "bash" "#!${pkgs.bash}/bin/bash" true;
 
-  # Like writeShellScriptBin but allows for a custom shell package.
-  # The runtimeShell package writeBashScriptBin uses is broken / segfaults due to LD.
-  mkScriptBuilder = shellPkg: args:
-    mkScriptBuilder_ shellPkg.name "#!${shellPkg}/bin/${shellPkg.meta.mainProgram}" true args;
-
-  mkScriptBuilder_ = builderId: shebang: doCheck: args: {
+  mkScriptBuilder = builderId: shebang: doCheck: args: {
     id = builderId;
     builder = args: {
       ${args.name} = pkgs.writeTextFile ({
         name = args.name;
         text = joinLines [
-          "#!${shellPkg}/bin/${shellBinName}"
+          shebang
           (mkBashScriptBody args)
         ];
         executable = true;
@@ -175,7 +170,7 @@ rec {
   };
 
   # Builder-factory for a raw script file wrapping the given shell name
-  rawScript = shellName: mkScriptBuilder_ "rawScript-${shellName}" "#!/usr/bin/env ${shellName}" false;
+  rawScript = shellName: mkScriptBuilder "rawScript-${shellName}" "#!/usr/bin/env ${shellName}" false;
 
   # Builder for a Zsh script.
   # Compatible with bashScript, but interprets args.body as Zsh and runs nested.
