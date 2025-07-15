@@ -26,7 +26,7 @@
           packages = import ./pkgs { inherit nix-parsec pkgs; };
           devShells = { default = pkgs.mkShell {}; };
         }) // rec {
-          overlays = import ./overlays { inherit inputs; inherit (nixpkgs) lib; };
+          overlays = import ./overlays { inherit inputs; inherit (nixpkgs) lib; inherit nix-parsec; };
           nixosModules = import ./modules/nixos;
         };
 }

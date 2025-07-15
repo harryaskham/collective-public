@@ -1,4 +1,4 @@
-{inputs, lib, ...}:
+{inputs, lib, nix-parsec, ...}:
 
 let
   imageGoNordOverlay = self: super: {
@@ -19,7 +19,7 @@ let
       };
       python3Packages = prev.python3Packages // final.python3.pkgs;
     };
-    packagesOverlay = final: prev: import ../pkgs { pkgs = prev; };
+    packagesOverlay = final: prev: import ../pkgs { pkgs = prev; inherit nix-parsec; };
   };
 in
 overlays
