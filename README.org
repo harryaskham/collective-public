@@ -1,6 +1,17 @@
 * NixOS configs
 
-Public subset of personal NixOS configs/modules/utils
+Public subset of personal NixOS config.
 
-- Extra ~services.handheld-daemon~ options for enabling TDP controls
-- Fixes for packages (e.g. ~image-go-nord~) as overlays
+Exposes the ~collective-lib~ library containing config-wide utilities and libraries, including:
+
+- ~typelib~: Bootstraps a type system separate from that used by Nix's modules.
+  - Bootstrap system constructed manually at level ~0~ such that ~typeOf Type_0 == Type_0~.
+  - Each subsequent level ~l~ is then constructed in terms of levels ~l~ (where no circularity is required) or ~l - 1~ (where using ~l~ would introduce circularity).
+  - At ~l == 4~, no ~U_0~ shim types remain, and creating a new ~Type~ type using level ~4~ constructs just produces an exact match for ~Type_4~ (e.g. Type_4 "Type" { ... } == Type_4).
+  - Since ~Type_4 == Type_5 == ...~, exposes the type system at level ~4~ as ~collective-lib.typed~, which overrides e.g. ~lib.typeOf~ and related machinery to handle these types alongside language builtins and the module system.
+- ~eval~: Evaluate Nix expressions from strings (~eval "1 + 1" == 2~).
+  - Implements serialisable lambdas, e.g. ~(let f = typefn "a: b: a + b"; in f 1 2) == 3~.
+- ~parser~: A ~nix-parsec~-based Nix parser written in Nix, which can reflect on obEvaluate Nix expressions from strings (~eval "1 + 1" == 2~).
+- ...quite a lot more, documentation pending.
+
+Tests can be run via ~./test.sh~
