@@ -155,9 +155,9 @@ rec {
   };
 
   forMako = scheme: {
-    backgroundColor = ihex scheme 6;
-    textColor = ihex scheme 1;
-    borderColor = ihex scheme 9;
+    background-color = ihex scheme 6;
+    text-color = ihex scheme 1;
+    border-color = ihex scheme 9;
   };
 
   forNixOnDroid = scheme: {
