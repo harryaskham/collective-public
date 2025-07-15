@@ -1,6 +1,3 @@
-<!--
-(load-file "nixlike.el")
--->
 <nix>
 collective-lib._tests.run {}
 </nix>

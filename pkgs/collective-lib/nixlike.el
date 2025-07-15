@@ -269,7 +269,7 @@
      enableShortTrace = %s; \
    }; \
    }; \
-   const = { ui = { gap = 30; radius = 10; border = 2; barHeight = 30; }; };
+   const = { ui = { gap = 30; radius = 10; border = 2; barHeight = 30; }; }; \
    collective-scripts = import %s/pkgs/collective-scripts { \
      inherit pkgs lib const collective-lib; \
    }; \
