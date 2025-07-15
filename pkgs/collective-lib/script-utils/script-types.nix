@@ -130,26 +130,10 @@ rec {
   # Check equality of script types by comparing their IDs.
   scriptTypeEquals = a: b: a.id == b.id;
 
-    writeShellScriptBin =
-    name: text:
-    writeTextFile {
-      inherit name;
-      executable = true;
-      destination = "/bin/${name}";
-      text = ''
-        #!${runtimeShell}
-        ${text}
-      '';
-      checkPhase = ''
-        ${stdenv.shellDryRun} "$target"
-      '';
-      meta.mainProgram = name;
-    };
-
   # Builder for a Bash script.
   bashScript = mkScriptBuilder "bash" "#!${pkgs.bash}/bin/bash" true;
 
-  mkScriptBuilder = builderId: shebang: doCheck: args: {
+  mkScriptBuilder = builderId: shebang: doCheck: {
     id = builderId;
     builder = args: {
       ${args.name} = pkgs.writeTextFile ({
