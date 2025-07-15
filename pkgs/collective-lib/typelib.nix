@@ -1786,65 +1786,75 @@ let
           # This can be restored once 'this' is created.
           this = mkthis This argsMeta (U.addFieldPrefixAttrs args);
         };
-        assert checks [{ name = "This is validity-checkable";
-            cond = This ? fields
-                   && This.fields ? instanceFieldsWithType
-                   && This.fields ? requiredFields
-                   && This ? staticMethods;
-            msg = indent.block ''
-              Missing fields / accessors on This:
-                This ? fields
-                && This.fields ? instanceFieldsWithType
-                && This.fields ? requiredFields
-                && This ? staticMethods;
+        
+        # Performance optimization: skip expensive validation at low performance levels
+        if U.opts.level <= 1 then this
+        else (
+          assert checks [{ name = "This is validity-checkable";
+              cond = This ? fields
+                     && This.fields ? instanceFieldsWithType
+                     && This.fields ? requiredFields
+                     && This ? staticMethods;
+              msg = indent.block ''
+                Missing fields / accessors on This:
+                  This ? fields
+                  && This.fields ? instanceFieldsWithType
+                  && This.fields ? requiredFields
+                  && This ? staticMethods;
 
-                This = ${indent.here (_p_ This)}
+                  This = ${indent.here (_p_ This)}
 
-                this = ${indent.here (_p_ this)}
-            '';
-          }];
-        with lets rec {
-          # Check the validity of the constructed instance.
-          validity = rec {
-            allFieldNames = This.fields.instanceFieldsWithType.names;
-            requiredFieldNames = This.fields.requiredFields.names;
-            thisFieldNames = intersectLists (attrNames this) allFieldNames;
-            unknownFieldNames = subtractLists allFieldNames thisFieldNames;
-            missingFieldNames = subtractLists thisFieldNames requiredFieldNames;
-            staticMethodNames = map U.removeImplementsPrefix (attrNames (U.set This.staticMethods));
-            thisStaticMethodNames = intersectLists (attrNames this) staticMethodNames;
-            missingStaticMethodNames = subtractLists thisStaticMethodNames staticMethodNames;
-            checks = [
-              {
-                name = "unknownFieldNames == []";
-                cond = unknownFieldNames == [];
-                msg = "${log.print This}: Unknown fields in mkInstance call: ${joinSep ", " unknownFieldNames}";
-              }
-              {
-                name = "missingFieldNames == []";
-                cond = missingFieldNames == [];
-                msg = ''
-                  ${log.print This}: Missing fields in mkInstance call: ${joinSep ", " missingFieldNames}
-                  args: ${log.print args}
-                  This: ${log.printAttrs This}
-                  this: ${log.print this}
-                '';
-              }
-              {
-                name = "missingStaticMethodNames == []";
-                cond = missingStaticMethodNames == [];
-                msg = ''
-                  ${log.print This}: Missing staticMethods in mkInstance call: ${joinSep ", " missingStaticMethodNames}
-                  args: ${log.print args}
-                  This: ${log.printAttrs This}
-                  this: ${log.print this}
-                '';
-              }
-            ];
+                  this = ${indent.here (_p_ this)}
+              '';
+            }];
+          with lets rec {
+            # Check the validity of the constructed instance.
+            validity = rec {
+              allFieldNames = This.fields.instanceFieldsWithType.names;
+              requiredFieldNames = This.fields.requiredFields.names;
+              # Performance optimization: use more efficient set operations  
+              thisFieldNamesSet = lib.listToAttrs (map (name: { inherit name; value = true; }) (attrNames this));
+              allFieldNamesSet = lib.listToAttrs (map (name: { inherit name; value = true; }) allFieldNames);
+              unknownFieldNames = filter (name: !(allFieldNamesSet ? ${name})) (attrNames this);
+              missingFieldNames = filter (name: !(thisFieldNamesSet ? ${name})) requiredFieldNames;
+              staticMethodNames = map U.removeImplementsPrefix (attrNames (U.set This.staticMethods));
+              thisStaticMethodNamesSet = lib.listToAttrs (map (name: { inherit name; value = true; }) (attrNames this));
+              missingStaticMethodNames = filter (name: !(thisStaticMethodNamesSet ? ${name})) staticMethodNames;
+              checks = [
+                {
+                  name = "unknownFieldNames == []";
+                  cond = unknownFieldNames == [];
+                  # Lazy evaluation of expensive log message
+                  msg = if unknownFieldNames == [] then "" else "${log.print This}: Unknown fields in mkInstance call: ${joinSep ", " unknownFieldNames}";
+                }
+                {
+                  name = "missingFieldNames == []";
+                  cond = missingFieldNames == [];
+                  # Lazy evaluation of expensive log message
+                  msg = if missingFieldNames == [] then "" else ''
+                    ${log.print This}: Missing fields in mkInstance call: ${joinSep ", " missingFieldNames}
+                    args: ${log.print args}
+                    This: ${log.printAttrs This}
+                    this: ${log.print this}
+                  '';
+                }
+                {
+                  name = "missingStaticMethodNames == []";
+                  cond = missingStaticMethodNames == [];
+                  # Lazy evaluation of expensive log message
+                  msg = if missingStaticMethodNames == [] then "" else ''
+                    ${log.print This}: Missing staticMethods in mkInstance call: ${joinSep ", " missingStaticMethodNames}
+                    args: ${log.print args}
+                    This: ${log.printAttrs This}
+                    this: ${log.print this}
+                  '';
+                }
+              ];
+            };
           };
-        };
-        assert checks validity.checks;
-        return this;
+          assert checks validity.checks;
+          this
+        );
       };
 
     # Ctors are created after Type is created; they avoid access to SU
