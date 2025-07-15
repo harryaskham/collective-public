@@ -282,19 +282,9 @@ let
 
       # Check two types for equality, supporting both Types and builtin type-name strings.
       typeEq = A: B:
-        #assert assertMsg (isTypeLike A) (indent.block ''
-        #  typeEq: Invalid A provided:
-
-        #    A = ${indent.here (log.print A)}
-        #      = ${indent.here (log.vprintD 5 A)}
-        #  '');
-        #assert assertMsg (isTypeLike B) (indent.block ''
-        #  typeEq: Invalid B provided:
-
-        #    B = ${indent.here (log.print B)}
-        #      = ${indent.here (log.vprintD 5 B)}
-        #  '');
-        bool (
+        # Fast path: pointer equality
+        if A == B then true
+        else bool (
           (lib.isString A && lib.isString B && A == B)
           || (isTypeSet A && isTypeSet B
               && A ? __TypeId && B ? __TypeId
@@ -332,10 +322,20 @@ let
       # isSuperTypeOf Type A == true
       # isSuperTypeOf Type B == true
       isSuperTypeOf = Super: This:
-        if !(This ? __Super) || isNull This.__Super then false
+        # Fast path: direct equality (a type is not its own supertype)
+        if Super == This then false
+        else if !(This ? __Super) || isNull This.__Super then false
         else 
-          thunkDo This.__Super (ThisSuper: 
-            typeEq Super ThisSuper || isSuperTypeOf Super ThisSuper);
+          # Add depth limit to prevent infinite recursion
+          let
+            isSuperTypeOfWithDepth = depth: Super: This:
+              if depth <= 0 then false  # Prevent infinite recursion
+              else if Super == This then false
+              else if !(This ? __Super) || isNull This.__Super then false
+              else 
+                thunkDo This.__Super (ThisSuper: 
+                  typeEq Super ThisSuper || isSuperTypeOfWithDepth (depth - 1) Super ThisSuper);
+          in isSuperTypeOfWithDepth 50 Super This;
       isSubTypeOf = flip isSuperTypeOf;
 
       # i.e. isTypeOrSubType (ListOf Int) (ListOf Int [1 2 3]) == true
@@ -1825,29 +1825,19 @@ let
                   name = "unknownFieldNames == []";
                   cond = unknownFieldNames == [];
                   # Lazy evaluation of expensive log message
-                  msg = if unknownFieldNames == [] then "" else "${log.print This}: Unknown fields in mkInstance call: ${joinSep ", " unknownFieldNames}";
+                  msg = if unknownFieldNames == [] then "" else "Unknown fields in mkInstance call";
                 }
                 {
                   name = "missingFieldNames == []";
                   cond = missingFieldNames == [];
                   # Lazy evaluation of expensive log message
-                  msg = if missingFieldNames == [] then "" else ''
-                    ${log.print This}: Missing fields in mkInstance call: ${joinSep ", " missingFieldNames}
-                    args: ${log.print args}
-                    This: ${log.printAttrs This}
-                    this: ${log.print this}
-                  '';
+                  msg = if missingFieldNames == [] then "" else "Missing fields in mkInstance call";
                 }
                 {
                   name = "missingStaticMethodNames == []";
                   cond = missingStaticMethodNames == [];
                   # Lazy evaluation of expensive log message
-                  msg = if missingStaticMethodNames == [] then "" else ''
-                    ${log.print This}: Missing staticMethods in mkInstance call: ${joinSep ", " missingStaticMethodNames}
-                    args: ${log.print args}
-                    This: ${log.printAttrs This}
-                    this: ${log.print this}
-                  '';
+                  msg = if missingStaticMethodNames == [] then "" else "Missing staticMethods in mkInstance call";
                 }
               ];
             };
