@@ -147,7 +147,7 @@ rec {
         meta.mainProgram = args.name;
       } // (optionalAttrs doCheck {
         checkPhase = ''
-          ${stdenv.shellDryRun} "$target"
+          ${pkgs.stdenv.shellDryRun} "$target"
         '';
       }));
     };
