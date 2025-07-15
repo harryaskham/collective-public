@@ -1,5 +1,9 @@
 { pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, stdenv ? pkgs.stdenv, ... }:
 
+# TODO:
+# - Dynamic derivations should let eval-in-eval occur without requiring nested nix build:
+#   https://fzakaria.com/2025/03/11/nix-dynamic-derivations-a-practical-application
+
 # Evaluate a Nix expression contained within a string.
 # Writes the string out to a file in the store by a derivation, and then
 # imports that file.

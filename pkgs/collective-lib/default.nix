@@ -48,13 +48,28 @@ let
       unmergeableAttrNames = [ "_tests" ];
       splitModule = modulelib.partitionAttrs (k: _: lib.elem k unmergeableAttrNames);
 
-      unmergeableModuleNames = [ "eval" "log" "tests" "parser" ];
-      splitModules = modulelib.partitionAttrs (k: _: lib.elem k unmergeableModuleNames);
+      # Modules intended to be merged together deeply.
+      mergeableModuleNames = [
+        "attrsets"
+        "clib"
+        "collections"
+        "debuglib"
+        "dispatchlib"
+        "functions"
+        "lists"
+        "modulelib"
+        "rebinds"
+        "strings"
+        "syntax"
+        "typelib"
+      ];
+
+      splitModules = modulelib.partitionAttrs (k: _: lib.elem k mergeableModuleNames);
 
       moduleMergeable = _: module: (splitModule module).wrong;
 
       baseModulesSplit = splitModules baseModules;
-      baseModulesMergeable = lib.mapAttrs moduleMergeable baseModulesSplit.wrong;
+      baseModulesMergeable = lib.mapAttrs moduleMergeable baseModulesSplit.right;
     in
       modulelib.recursiveMergeAttrsList 
         [ baseModules 
