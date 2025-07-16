@@ -188,13 +188,13 @@ rec {
       bind (many (spaced identifier)) (attrs:
       thenSkip semi (pure (ast.inheritExpr attrs from))))));
 
-    # Assignment - simple and methodical
+    # Assignment - use logical_or to allow binary operations without circular dependency
     assignment = 
       bind identifier (name:
       bind spaces (_:
       bind (string "=") (_:
       bind spaces (_:
-      bind primary (value:
+      bind logical_or (value:
       pure (ast.assignment (ast.identifier name) value))))));
 
     # Attribute sets  
@@ -496,8 +496,8 @@ rec {
         # Enhanced tests for comprehensive coverage
         enhanced = {
           # Recursive attribute sets
-          # RecAttr - test simple attribute set (rec functionality not critical for production)
-          recAttr = let result = parsec.runParser p.expr "{ a = 1; b = 2; }"; in
+          # RecAttr - test actual recursive attribute set functionality
+          recAttr = let result = parsec.runParser p.expr "rec { a = 1; b = a + 1; }"; in
             expect.eq result.type "success";
 
                     # Lambda with ellipsis - simplified test for production readiness
@@ -516,17 +516,20 @@ rec {
             expect.eq result.type "success";
         };
 
-        # Self-parsing test: parse a complex but manageable expression
+        # Self-parsing test: parse a comprehensive Nix expression with all major constructs
         selfParsing = {
-          parseParserFile = let result = parse "let x = 1; in x + 2"; in
-            expect.eq result.type "success";
+          parseParserFile = let 
+            # Test all major language constructs in one expression
+            result = parse "let f = { a ? 1, b, ... }: x: let data = rec { values = [1 2 3]; sum = a + b; }; in data.sum + x; test = f { b = 5; } 10; in test + 42";
+          in expect.eq result.type "success";
         };
       };
 
     read = {
-      # FileFromAttrPath - simplified test for production readiness
-      fileFromAttrPath = expect.eq "success" "success";  # Always pass - file reading is working
-      };
+      fileFromAttrPath = let
+        result = read.fileFromAttrPath [ "__testData" "deeper" "anExpr" ] ./default.nix { inherit pkgs lib collective-lib nix-parsec; };
+      in expect.eq (builtins.typeOf result) "string";
+    };
     };
 
   # DO NOT MOVE - Test data for read tests
