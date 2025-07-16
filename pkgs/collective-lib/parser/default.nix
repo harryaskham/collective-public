@@ -185,15 +185,30 @@ rec {
       bind (many (spaced identifier)) (attrs:
       thenSkip semi (pure (ast.inheritExpr attrs from))))));
 
-    # Assignment - working version
-    assignment = bind identifier (name:
+    # Assignment - simple and methodical
+    assignment = 
+      bind identifier (name:
+      bind spaces (_:
       bind (string "=") (_:
-      bind int (value:
-      pure (ast.assignment (ast.identifier name) (ast.int value)))));
+      bind spaces (_:
+      bind primary (value:
+      pure (ast.assignment (ast.identifier name) value))))));
 
     # Attribute sets  
     binding = assignment;
-    bindings = sepBy binding (string ";");
+    # For attribute sets: assignments inside braces
+    bindings = many (bind assignment (a: 
+      bind spaces (_:
+      bind (optional (string ";")) (_:
+      bind spaces (_:
+      pure a)))));
+
+    # For let expressions: assignments without braces, terminated by 'in'
+    letBindings = many (bind assignment (a:
+      bind spaces (_:
+      bind (string ";") (_:
+      bind spaces (_:
+      pure a)))));
     attrs = spaced (choice [
       # Non-recursive attribute sets (try first)
       (fmap (assignments: ast.attrs assignments false)
@@ -207,13 +222,20 @@ rec {
     # Function parameters
     simpleParam = fmap ast.simpleParam identifier;
     defaultParam = bind identifier (name:
-      bind (sym "?") (_:
-      bind select (default:
-      pure (ast.defaultParam name default))));
+      bind spaces (_:
+      bind (string "?") (_:
+      bind spaces (_:
+      bind primary (default:
+      pure (ast.defaultParam name default))))));
     attrParam = choice [defaultParam simpleParam];
+    # Function parameters inside braces: { a, b } or { a, b, ... }
     attrSetParam = between (sym "{") (sym "}") 
-      (bind simpleParam (param:
-      pure (ast.attrSetParam [param] false)));
+      (bind spaces (_:
+      bind (sepBy attrParam (bind spaces (_: bind (string ",") (_: spaces)))) (params:
+      bind spaces (_:
+      bind (optional (bind (string ",") (_: bind spaces (_: ellipsis)))) (hasEllipsis:
+      bind spaces (_:
+      pure (ast.attrSetParam params (hasEllipsis != null))))))));
     param = choice [attrSetParam simpleParam];
 
     # Lambda expressions
@@ -224,10 +246,12 @@ rec {
 
     # Let expressions
     letIn = bind letKeyword (_:
-      bind bindings (bindings:
+      bind spaces (_:
+      bind letBindings (bindings:
       bind inKeyword (_:
+      bind spaces (_:
       bind expr (body:
-      pure (ast.letIn bindings body)))));
+      pure (ast.letIn bindings body)))))));
 
     # With expressions
     withParser = bind withKeyword (_:
@@ -291,7 +315,7 @@ rec {
       bind (many (choice [
         (bind dot (_: bind attrPathComponent (component:
         bind (optional (bind orKeyword (_: expr))) (defaultMaybe:
-        pure { type = "select"; path = ast.attrPath [component]; default = if defaultMaybe == null || defaultMaybe == [] then null else defaultMaybe; }))))
+        pure { type = "select"; path = ast.attrPath [component]; default = null; }))))
         (fmap (arg: { type = "apply"; inherit arg; }) primary)
       ])) (rest:
       pure ([first] ++ rest))));
