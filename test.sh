@@ -9,7 +9,7 @@ EXPR=$(cat << EOF
 let
   collective-lib = import ./pkgs/collective-lib {
     traceOpts = {
-      traceLevel = 1;
+      traceLevel = 0;
       enablePartialTrace = false;
       enableVerboseTrace = false;
       enableShortTrace = false;
@@ -22,4 +22,4 @@ EOF
 
 echo "Running:\n$EXPR"
 
-nix eval --impure --expr "$EXPR"
+nix-instantiate --raw --eval --expr "$EXPR"
