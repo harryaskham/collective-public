@@ -22,4 +22,4 @@ EOF
 
 echo "Running:\n$EXPR"
 
-nix-instantiate --raw --eval --expr "$EXPR"
+sudo `which nix-instantiate` --raw --eval --expr "$EXPR"
