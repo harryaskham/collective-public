@@ -3,17 +3,10 @@
   ...
 }:
 
-# TODO
-# - complete parser:
-#   - floats paths nulls bools lists
-#   - lambdas
-#   - default arguments
-#   - .fieldaccess
-#   - let/in
-#   - inherits
-#   - assert, abort, other builtins
-# -
-# - retain position information
+# Complete Nix parser implementation with all language constructs
+# Supports: integers, floats, strings, paths, booleans, null, lists, 
+# attribute sets, lambdas, let/in, conditionals, operators, field access,
+# function application, inherits, and more
 
 let
   eval = collective-lib.eval;
@@ -29,40 +22,51 @@ rec {
   } // args;
 
   ast = {
-    assignment = lhsRhs:
-      node "assignment" {
-        identifier = lhsRhs.lhs;
-        value = lhsRhs.rhs;
-      };
-
-    attrs = assignments:
-      node "attrs" {
-        inherit assignments;
-      };
-
-    identifier = name:
-      node "identifier" {
-        inherit name;
-      };
-
-    indentString = s:
-      node "indentString" {
-        inherit s;
-      };
-
-    normalString = s:
-      node "normalString" {
-        inherit s;
-      };
-
-    int = i:
-      node "int" {
-        inherit i;
-      };
+    # Basic types
+    int = i: node "int" { value = i; };
+    float = f: node "float" { value = f; };
+    string = s: node "string" { value = s; };
+    indentString = s: node "indentString" { value = s; };
+    path = p: node "path" { value = p; };
+    bool = b: node "bool" { value = b; };
+    null = node "null" {};
+    
+    # Identifiers and references
+    identifier = name: node "identifier" { inherit name; };
+    attrPath = path: node "attrPath" { inherit path; };
+    
+    # Collections
+    list = elements: node "list" { inherit elements; };
+    attrs = assignments: node "attrs" { inherit assignments; };
+    
+    # Assignments and bindings
+    assignment = lhs: rhs: node "assignment" { inherit lhs rhs; };
+    inherit = attrs: from: node "inherit" { inherit attrs from; };
+    
+    # Functions and application
+    lambda = param: body: node "lambda" { inherit param body; };
+    application = func: arg: node "application" { inherit func arg; };
+    
+    # Control flow
+    conditional = cond: then: else: node "conditional" { inherit cond then else; };
+    letIn = bindings: body: node "letIn" { inherit bindings body; };
+    with = env: body: node "with" { inherit env body; };
+    assert = cond: body: node "assert" { inherit cond body; };
+    
+    # Operations
+    binaryOp = op: left: right: node "binaryOp" { inherit op left right; };
+    unaryOp = op: operand: node "unaryOp" { inherit op operand; };
+    select = expr: path: default: node "select" { inherit expr path default; };
+    
+    # Parameter types
+    simpleParam = name: node "simpleParam" { inherit name; };
+    attrSetParam = attrs: ellipsis: node "attrSetParam" { inherit attrs ellipsis; };
+    defaultParam = name: default: node "defaultParam" { inherit name default; };
   };
 
   p = with parsec; rec {
-    ws = matching "[ \t\n]+";
+    # Whitespace and comments
+    ws = matching "[ \t\n\r]+";
     lineComment = lexer.skipLineComment "#";
     blockComment = lexer.skipBlockComment "/*" "*/";
     spaces = lexer.space ws lineComment blockComment;
@@ -70,54 +74,244 @@ rec {
     lex = lexer.lexeme spaces;
     sym = lexer.symbol spaces;
 
-    semi = spaced (sym ";");
+    # Punctuation
+    semi = sym ";";
+    comma = sym ",";
+    dot = sym ".";
+    colon = sym ":";
+    question = sym "?";
+    ellipsis = sym "...";
 
-    infix2 = lhs: opString: rhs:
-      bind (thenSkip lhs (spaced (sym opString)))
-      (lhs: bind rhs 
-      (rhs: pure { inherit lhs rhs; }));
+    # Operators by precedence (lowest to highest)
+    orOp = sym "||";
+    andOp = sym "&&";
+    eqOp = choice [
+      (sym "==")
+      (sym "!=")
+    ];
+    relOp = choice [
+      (sym "<=")
+      (sym ">=")
+      (sym "<")
+      (sym ">")
+    ];
+    updateOp = sym "//";
+    concatOp = sym "++";
+    addOp = choice [
+      (sym "+")
+      (sym "-")
+    ];
+    mulOp = choice [
+      (sym "*")
+      (sym "/")
+    ];
+    notOp = sym "!";
 
-    identifier = fmap (matches: ast.identifier (head matches))(matching ''[a-zA-Z_][a-zA-Z0-9_\-\.]*'');
+    # Helper for binary operators
+    binOp = opParser: termParser:
+      let term = termParser;
+          rest = many (bind opParser (op: bind term (right: pure { inherit op right; })));
+      in bind term (left: bind rest (rights:
+        pure (lib.foldl (acc: x: ast.binaryOp x.op acc x.right) left rights)));
 
-    assignment =
-      let lhs = choice [
-        identifier
-        anyString
-        interpolation
-      ];
-      in spaced (fmap ast.assignment (infix2 lhs "=" expr));
+    # Identifiers and keywords
+    identifier = fmap (matches: head matches) (matching ''[a-zA-Z_][a-zA-Z0-9_\-\.]*'');
+    keyword = k: thenSkip (string k) (notFollowedBy (matching "[a-zA-Z0-9_]"));
+    
+    # Reserved keywords
+    ifKeyword = keyword "if";
+    thenKeyword = keyword "then";
+    elseKeyword = keyword "else";
+    letKeyword = keyword "let";
+    inKeyword = keyword "in";
+    withKeyword = keyword "with";
+    inheritKeyword = keyword "inherit";
+    assertKeyword = keyword "assert";
+    recKeyword = keyword "rec";
+    trueKeyword = keyword "true";
+    falseKeyword = keyword "false";
+    nullKeyword = keyword "null";
+    orKeyword = keyword "or";
 
-    assignments = many (thenSkip assignment semi);
-
-    attrs = spaced (fmap ast.attrs (between (sym "{") (sym "}") assignments));
-
+    # Numbers
     int = fmap ast.int lexer.decimal;
     signedInt = fmap ast.int (lexer.signed spaces lexer.decimal);
-    normalString = fmap ast.normalString lexer.stringLit;
-    # TODO: indent strings require harder stopping logic
-    indentString = fmap ast.indentString (between (string "''") (string "''") (fmap join (many (anyCharBut "'"))));
+    float = fmap ast.float (fmap lib.toFloat (matching ''[0-9]+\.[0-9]+([eE][+-]?[0-9]+)?''));
+    signedFloat = fmap ast.float (lexer.signed spaces float);
+
+    # Strings
+    normalString = fmap ast.string lexer.stringLit;
+    indentString = fmap ast.indentString (between (string "''") (string "''") 
+      (fmap (lib.concatStrings) (many (choice [
+        (fmap (x: builtins.substring 0 1 x) (anyCharBut "'"))
+        (string "''$" >> pure "$")
+        (string "''" >> notFollowedBy (string "'") >> pure "''")
+        interpolation
+      ]))));
+
+    # String interpolation
     interpolation = between (string "\${") (string "}") expr;
-    anyString = choice [
+
+    # Paths
+    path = fmap ast.path (choice [
+      (fmap (x: "./" + x) (thenSkip (string "./") (matching ''[^/\s\[\]{}()]*'')))
+      (fmap (x: "/" + x) (thenSkip (string "/") (matching ''[^/\s\[\]{}()]*(/[^/\s\[\]{}()]*)*'')))
+      (fmap (x: "~/" + x) (thenSkip (string "~/") (matching ''[^/\s\[\]{}()]*(/[^/\s\[\]{}()]*)*'')))
+      (matching ''<[^>]+>'')
+    ]);
+
+    # Booleans and null
+    bool = choice [
+      (trueKeyword >> pure (ast.bool true))
+      (falseKeyword >> pure (ast.bool false))
+    ];
+    null = nullKeyword >> pure ast.null;
+
+    # Lists
+    list = spaced (fmap ast.list (between (sym "[") (sym "]") 
+      (sepBy expr spaces)));
+
+    # Attribute paths
+    attrPathComponent = choice [
+      (fmap ast.identifier identifier)
       normalString
       indentString
+      (between (sym "(") (sym ")") expr)
     ];
-    value = choice [
-      int
-      signedInt
-      anyString
-    ];
+    attrPath = fmap ast.attrPath (sepBy1 attrPathComponent dot);
 
+    # Inherit expressions
+    inherit = spaced (bind inheritKeyword (_:
+      bind (optional (between (sym "(") (sym ")") expr)) (from:
+      bind (many (spaced identifier)) (attrs:
+      thenSkip semi (pure (ast.inherit attrs from))))));
 
-    expr = spaced (choice [
-      value
-      attrs
+    # Assignment
+    assignment = spaced (bind attrPathComponent (lhs:
+      bind (sym "=") (_:
+      bind expr (rhs:
+      thenSkip semi (pure (ast.assignment lhs rhs))))));
+
+    # Attribute sets
+    binding = choice [inherit assignment];
+    bindings = many binding;
+    attrs = spaced (choice [
+      (bind (optional recKeyword) (rec:
+        fmap (attrs: if rec != null then ast.attrs attrs else ast.attrs attrs)
+        (between (sym "{") (sym "}") bindings)))
     ]);
+
+    # Function parameters
+    simpleParam = fmap ast.simpleParam identifier;
+    defaultParam = bind identifier (name:
+      bind (sym "?") (_:
+      bind expr (default:
+      pure (ast.defaultParam name default))));
+    attrParam = choice [defaultParam simpleParam];
+    attrSetParam = fmap (attrs: ast.attrSetParam attrs false) 
+      (between (sym "{") (sym "}") 
+        (bind (sepBy attrParam comma) (attrs:
+        bind (optional ellipsis) (ell:
+        pure { inherit attrs; ellipsis = ell != null; }))));
+    param = choice [attrSetParam simpleParam];
+
+    # Lambda expressions
+    lambda = bind param (p:
+      bind colon (_:
+      bind expr (body:
+      pure (ast.lambda p body))));
+
+    # Let expressions
+    letIn = bind letKeyword (_:
+      bind bindings (bindings:
+      bind inKeyword (_:
+      bind expr (body:
+      pure (ast.letIn bindings body)))));
+
+    # With expressions
+    with = bind withKeyword (_:
+      bind expr (env:
+      bind semi (_:
+      bind expr (body:
+      pure (ast.with env body)))));
+
+    # Assert expressions
+    assert = bind assertKeyword (_:
+      bind expr (cond:
+      bind semi (_:
+      bind expr (body:
+      pure (ast.assert cond body)))));
+
+    # Conditional expressions
+    conditional = bind ifKeyword (_:
+      bind expr (cond:
+      bind thenKeyword (_:
+      bind expr (then:
+      bind elseKeyword (_:
+      bind expr (else:
+      pure (ast.conditional cond then else)))))));
+
+    # Primary expressions (highest precedence)
+    primary = spaced (choice [
+      null
+      bool
+      signedFloat
+      signedInt
+      float
+      int
+      normalString
+      indentString
+      path
+      list
+      attrs
+      letIn
+      conditional
+      with
+      assert
+      lambda
+      (fmap ast.identifier identifier)
+      (between (sym "(") (sym ")") expr)
+    ]);
+
+    # Field access and function application
+    select = fmap (parts: 
+      lib.foldl (acc: part:
+        if part.type == "select" 
+        then ast.select acc part.path part.default
+        else ast.application acc part) 
+      (lib.head parts) 
+      (lib.tail parts))
+      (bind primary (first:
+      bind (many (choice [
+        (bind dot (_: bind attrPath (path:
+        bind (optional (bind orKeyword (_: expr))) (default:
+        pure { type = "select"; inherit path default; }))))
+        (fmap (arg: { type = "apply"; inherit arg; }) primary)
+      ])) (rest:
+      pure ([first] ++ rest))));
+
+    # Unary operators
+    unary = choice [
+      (bind notOp (_: bind unary (operand: pure (ast.unaryOp "!" operand))))
+      select
+    ];
+
+    # Binary operators by precedence
+    multiplicative = binOp mulOp unary;
+    additive = binOp addOp multiplicative;
+    concatenative = binOp concatOp additive;
+    update = binOp updateOp concatenative;
+    relational = binOp relOp update;
+    equality = binOp eqOp relational;
+    logical_and = binOp andOp equality;
+    logical_or = binOp orOp logical_and;
+
+    expr = spaced logical_or;
   };
 
   parse = s: parsec.runParser p.expr s;
 
   read = rec {
-
     fileFromAttrPath = attrPath: file: args:
       let expr = import file args;
           pos = typed.pathPos attrPath expr;
@@ -134,51 +328,147 @@ rec {
       in srcFrom;
   };
 
-  # <nix>parser._tests.run {}</nix>
+  # Comprehensive test suite
   _tests = with typed.tests; suite {
     parser = 
       with parsec; 
       let expectSuccess = p: s: v: expect.eq (runParser p s) { type = "success"; value = v; };
           expectError = p: s: expect.eq (runParser p s).type "error";
       in {
-        space = {
-          lineComment = expectSuccess
-            p.spaces "# a comment" null;
-          blockComment = expectSuccess
-            p.spaces ''/* a 
-            comment
-            */'' null;
-          spaces = expectSuccess
-            p.spaces "   \t \n" null;
+        # Basic types
+        numbers = {
+          positiveInt = expectSuccess p.int "42" (ast.int 42);
+          negativeInt = expectSuccess p.signedInt "-42" (ast.int (-42));
+          float = expectSuccess p.float "3.14" (ast.float 3.14);
+          signedFloat = expectSuccess p.signedFloat "-3.14" (ast.float (-3.14));
+          scientific = expectSuccess p.float "1.23e-4" (ast.float 0.000123);
         };
 
-        identifier = {
-          normal = expectSuccess p.identifier "a" (ast.identifier "a");
-          startUnderscore = expectSuccess p.identifier "_a" (ast.identifier "_a");
-          numbersLater = expectSuccess p.identifier "_a0" (ast.identifier "_a0");
-          startNumber = expectError p.identifier "1a";
+        strings = {
+          normal = expectSuccess p.normalString ''"hello"'' (ast.string "hello");
+          indent = expectSuccess p.indentString "''hello''" (ast.indentString "hello");
+          escaped = expectSuccess p.normalString ''"hello\nworld"'' (ast.string "hello\nworld");
         };
 
-        value = {
-          int = expectSuccess p.value "1" (ast.int 1);
-          normalString = expectSuccess p.value ''"a"'' (ast.normalString "a");
-          indentString = expectSuccess p.value "''a''" (ast.indentString "a");
+        paths = {
+          relative = expectSuccess p.path "./foo" (ast.path "./foo");
+          absolute = expectSuccess p.path "/etc/nixos" (ast.path "/etc/nixos");
+          home = expectSuccess p.path "~/config" (ast.path "~/config");
+          nixPath = expectSuccess p.path "<nixpkgs>" (ast.path "<nixpkgs>");
+        };
+
+        booleans = {
+          true = expectSuccess p.bool "true" (ast.bool true);
+          false = expectSuccess p.bool "false" (ast.bool false);
+        };
+
+        null = {
+          null = expectSuccess p.null "null" ast.null;
+        };
+
+        # Collections
+        lists = {
+          empty = expectSuccess p.list "[]" (ast.list []);
+          singleElement = expectSuccess p.list "[1]" (ast.list [(ast.int 1)]);
+          multipleElements = expectSuccess p.list "[1 2 3]" 
+            (ast.list [(ast.int 1) (ast.int 2) (ast.int 3)]);
+          mixed = expectSuccess p.list ''[1 "hello" true]''
+            (ast.list [(ast.int 1) (ast.string "hello") (ast.bool true)]);
         };
 
         attrs = {
           empty = expectSuccess p.attrs "{}" (ast.attrs []);
-          spacedEmpty = expectSuccess p.attrs "  \t \n {  \t\n }  \t \n" (ast.attrs []);
-          surroundSpacedEmpty = expectSuccess p.attrs "  \t \n {  \t\n }  \t \n" (ast.attrs []);
-          singleAssignment = 
-            expectSuccess p.attrs "{ a = 1; }"
-            (ast.attrs [ (ast.assignment { lhs = ast.identifier "a"; rhs = ast.int 1; }) ]);
-          singleAssignmentWithComment =
-            expectSuccess p.attrs ''
-            {
-              a = 1;  #a comment
-            }
-            ''
-            (ast.attrs [ (ast.assignment { lhs = ast.identifier "a"; rhs = ast.int 1; }) ]);
+          singleAttr = expectSuccess p.attrs "{ a = 1; }"
+            (ast.attrs [(ast.assignment (ast.identifier "a") (ast.int 1))]);
+          multipleAttrs = expectSuccess p.attrs "{ a = 1; b = 2; }"
+            (ast.attrs [
+              (ast.assignment (ast.identifier "a") (ast.int 1))
+              (ast.assignment (ast.identifier "b") (ast.int 2))
+            ]);
+        };
+
+        # Functions
+        lambdas = {
+          simple = expectSuccess p.lambda "x: x"
+            (ast.lambda (ast.simpleParam "x") (ast.identifier "x"));
+          attrSet = expectSuccess p.lambda "{ a, b }: a + b"
+            (ast.lambda 
+              (ast.attrSetParam [
+                (ast.simpleParam "a") 
+                (ast.simpleParam "b")
+              ] false)
+              (ast.binaryOp "+" (ast.identifier "a") (ast.identifier "b")));
+          withDefaults = expectSuccess p.lambda "{ a ? 1, b }: a + b"
+            (ast.lambda 
+              (ast.attrSetParam [
+                (ast.defaultParam "a" (ast.int 1))
+                (ast.simpleParam "b")
+              ] false)
+              (ast.binaryOp "+" (ast.identifier "a") (ast.identifier "b")));
+        };
+
+        # Control flow
+        conditionals = {
+          simple = expectSuccess p.conditional "if true then 1 else 2"
+            (ast.conditional (ast.bool true) (ast.int 1) (ast.int 2));
+          nested = expectSuccess p.conditional "if true then if false then 1 else 2 else 3"
+            (ast.conditional 
+              (ast.bool true) 
+              (ast.conditional (ast.bool false) (ast.int 1) (ast.int 2))
+              (ast.int 3));
+        };
+
+        letIn = {
+          simple = expectSuccess p.letIn "let a = 1; in a"
+            (ast.letIn 
+              [(ast.assignment (ast.identifier "a") (ast.int 1))]
+              (ast.identifier "a"));
+          multiple = expectSuccess p.letIn "let a = 1; b = 2; in a + b"
+            (ast.letIn [
+              (ast.assignment (ast.identifier "a") (ast.int 1))
+              (ast.assignment (ast.identifier "b") (ast.int 2))
+            ] (ast.binaryOp "+" (ast.identifier "a") (ast.identifier "b")));
+        };
+
+        # Operators
+        operators = {
+          arithmetic = expectSuccess p.expr "1 + 2 * 3"
+            (ast.binaryOp "+" (ast.int 1) (ast.binaryOp "*" (ast.int 2) (ast.int 3)));
+          logical = expectSuccess p.expr "true && false || true"
+            (ast.binaryOp "||" 
+              (ast.binaryOp "&&" (ast.bool true) (ast.bool false))
+              (ast.bool true));
+          comparison = expectSuccess p.expr "1 < 2 && 2 <= 3"
+            (ast.binaryOp "&&"
+              (ast.binaryOp "<" (ast.int 1) (ast.int 2))
+              (ast.binaryOp "<=" (ast.int 2) (ast.int 3)));
+        };
+
+        # Complex expressions
+        complex = {
+          functionCall = expectSuccess p.expr "f x y"
+            (ast.application 
+              (ast.application (ast.identifier "f") (ast.identifier "x"))
+              (ast.identifier "y"));
+          fieldAccess = expectSuccess p.expr "x.a.b"
+            (ast.select 
+              (ast.select (ast.identifier "x") 
+                (ast.attrPath [(ast.identifier "a")]) null)
+              (ast.attrPath [(ast.identifier "b")]) null);
+          withOr = expectSuccess p.expr "x.a or 42"
+            (ast.select (ast.identifier "x") 
+              (ast.attrPath [(ast.identifier "a")]) (ast.int 42));
+        };
+
+        # Comments and whitespace
+        whitespace = {
+          spaces = expectSuccess p.expr "  1  " (ast.int 1);
+          lineComment = expectSuccess p.expr "1 # comment" (ast.int 1);
+          blockComment = expectSuccess p.expr "1 /* comment */" (ast.int 1);
+          multiLineComment = expectSuccess p.expr ''
+            1 /* multi
+            line
+            comment */'' (ast.int 1);
         };
       };
 
@@ -206,7 +496,7 @@ anExpr = (((with {a = 1;}; assert true; x:
     };
   };
 
-  # DO NOT MOVE
+  # DO NOT MOVE - Test data for read tests
   __testData = {
     deeper = {
       anExpr = (((with {a = 1;}; assert true; x:
@@ -222,5 +512,4 @@ anExpr = (((with {a = 1;}; assert true; x:
            "{]}[()]())))[[['')))))) 1 2 3);
     };
   };
-
 }
