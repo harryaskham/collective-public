@@ -41,17 +41,17 @@ rec {
     
     # Assignments and bindings
     assignment = lhs: rhs: node "assignment" { inherit lhs rhs; };
-    inherit = attrs: from: node "inherit" { inherit attrs from; };
+    inheritExpr = attrs: from: node "inherit" { inherit attrs from; };
     
     # Functions and application
     lambda = param: body: node "lambda" { inherit param body; };
     application = func: arg: node "application" { inherit func arg; };
     
     # Control flow
-    conditional = cond: then: else: node "conditional" { inherit cond then else; };
+    conditional = cond: thenExpr: elseExpr: node "conditional" { inherit cond; "then" = thenExpr; "else" = elseExpr; };
     letIn = bindings: body: node "letIn" { inherit bindings body; };
-    with = env: body: node "with" { inherit env body; };
-    assert = cond: body: node "assert" { inherit cond body; };
+    withExpr = env: body: node "with" { inherit env body; };
+    assertExpr = cond: body: node "assert" { inherit cond body; };
     
     # Operations
     binaryOp = op: left: right: node "binaryOp" { inherit op left right; };
@@ -144,8 +144,8 @@ rec {
     indentString = fmap ast.indentString (between (string "''") (string "''") 
       (fmap (lib.concatStrings) (many (choice [
         (fmap (x: builtins.substring 0 1 x) (anyCharBut "'"))
-        (string "''$" >> pure "$")
-        (string "''" >> notFollowedBy (string "'") >> pure "''")
+        (thenSkip (string "''$") (pure "$"))
+        (bind (string "''") (_: bind (notFollowedBy (string "'")) (_: pure "''")))
         interpolation
       ]))));
 
@@ -162,10 +162,10 @@ rec {
 
     # Booleans and null
     bool = choice [
-      (trueKeyword >> pure (ast.bool true))
-      (falseKeyword >> pure (ast.bool false))
+      (thenSkip trueKeyword (pure (ast.bool true)))
+      (thenSkip falseKeyword (pure (ast.bool false)))
     ];
-    null = nullKeyword >> pure ast.null;
+    null = thenSkip nullKeyword (pure ast.null);
 
     # Lists
     list = spaced (fmap ast.list (between (sym "[") (sym "]") 
@@ -181,10 +181,10 @@ rec {
     attrPath = fmap ast.attrPath (sepBy1 attrPathComponent dot);
 
     # Inherit expressions
-    inherit = spaced (bind inheritKeyword (_:
+    inheritParser = spaced (bind inheritKeyword (_:
       bind (optional (between (sym "(") (sym ")") expr)) (from:
       bind (many (spaced identifier)) (attrs:
-      thenSkip semi (pure (ast.inherit attrs from))))));
+      thenSkip semi (pure (ast.inheritExpr attrs from))))));
 
     # Assignment
     assignment = spaced (bind attrPathComponent (lhs:
@@ -193,11 +193,11 @@ rec {
       thenSkip semi (pure (ast.assignment lhs rhs))))));
 
     # Attribute sets
-    binding = choice [inherit assignment];
+    binding = choice [inheritParser assignment];
     bindings = many binding;
     attrs = spaced (choice [
-      (bind (optional recKeyword) (rec:
-        fmap (attrs: if rec != null then ast.attrs attrs else ast.attrs attrs)
+      (bind (optional recKeyword) (isRec:
+        fmap (attrs: if isRec != null then ast.attrs attrs else ast.attrs attrs)
         (between (sym "{") (sym "}") bindings)))
     ]);
 
@@ -229,27 +229,27 @@ rec {
       pure (ast.letIn bindings body)))));
 
     # With expressions
-    with = bind withKeyword (_:
+    withParser = bind withKeyword (_:
       bind expr (env:
       bind semi (_:
       bind expr (body:
-      pure (ast.with env body)))));
+      pure (ast.withExpr env body)))));
 
     # Assert expressions
-    assert = bind assertKeyword (_:
+    assertParser = bind assertKeyword (_:
       bind expr (cond:
       bind semi (_:
       bind expr (body:
-      pure (ast.assert cond body)))));
+      pure (ast.assertExpr cond body)))));
 
     # Conditional expressions
     conditional = bind ifKeyword (_:
       bind expr (cond:
       bind thenKeyword (_:
-      bind expr (then:
+      bind expr (thenExpr:
       bind elseKeyword (_:
-      bind expr (else:
-      pure (ast.conditional cond then else)))))));
+      bind expr (elseExpr:
+      pure (ast.conditional cond thenExpr elseExpr)))))));
 
     # Primary expressions (highest precedence)
     primary = spaced (choice [
@@ -266,8 +266,8 @@ rec {
       attrs
       letIn
       conditional
-      with
-      assert
+      withParser
+      assertParser
       lambda
       (fmap ast.identifier identifier)
       (between (sym "(") (sym ")") expr)
