@@ -3826,6 +3826,20 @@ let
 
       # TODO: Self-binding interface on Class itself
       toShellValue = x: (ToShellValue.mustCall x).toShellValue;
+
+      # Faster untyped version of toShellValue
+      toShellValueUnsafe = x:
+        if SU.isTypedAttrs x then _throw_ ''toShellValueUnsafe: Got typed attrs: ${_p_ h}''
+        else {
+          "int" = toString x;
+          "float" = toString x;
+          "bool" = if x then "true" else "false";
+          "string" = shellQuote x;
+          "path" = shellQuote x;
+          "null" = ''""'';
+          "list" = ''(${joinSep " " (map toShellValue x)})'';
+        }.${lib.typeOf x} or (
+          throw "toShellValueUnsafe: ${lib.typeOf x} not supported");
     };
 
   };

@@ -1,4 +1,13 @@
-{ lib, collective-lib, ... }:
+{ lib, collective-lib,
+  overrideToShellValue ? null,
+  ... }:
+
+let
+  toShellValue =
+    if overrideToShellValue != null
+    then overrideToShellValue
+    else collective-lib.typelib.toShellValueUnsafe;
+in
 
 with lib;
 with lib.strings;
@@ -68,7 +77,7 @@ in rec {
           styles = arg.styles or [];
           __text = arg.text or "";
           text = if quoteText
-            then typed.toShellValue __text
+            then toShellValue __text
             else __text;
           nesting = arg.nesting or 0;
           eof = if nesting > 0 then "EOF${toString nesting}" else "EOF";

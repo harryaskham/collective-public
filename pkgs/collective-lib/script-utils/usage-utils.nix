@@ -1,4 +1,13 @@
-{ lib, collective-lib, ansi-utils, log-utils, ... }:
+{ lib, collective-lib, ansi-utils, log-utils,
+  overrideToShellValue ? null,
+  ... }:
+
+let
+  toShellValue =
+    if overrideToShellValue != null
+    then overrideToShellValue
+    else collective-lib.typelib.toShellValueUnsafe;
+in
 
 with lib;
 with lib.strings;
@@ -55,7 +64,7 @@ USAGE_COMMAND=$(${
   with ansi;
   echo-n (joinWords [
     (atom.h1 "Usage")
-    (typed.toShellValue args.name)
+    (toShellValue args.name)
     (atom.requiredOpt (joinWords (mapAttrsToList getOptCommandUsage requiredOpts)))
     (atom.optionalOpt (joinWords (mapAttrsToList getOptCommandUsage optionalOpts)))
   ])
