@@ -6,7 +6,10 @@ fi
 
 EXPR=$(cat << EOF
 let
+  pkgs = import <nixpkgs> {};
+  lib = pkgs.lib;
   collective-lib = import ./pkgs/collective-lib {
+    inherit pkgs lib;
     traceOpts = {
       traceLevel = 0;
       enablePartialTrace = false;
@@ -14,8 +17,9 @@ let
       enableShortTrace = false;
     };
   };
-in 
-  $RAW_EXPR
+in
+  with collective-lib;
+  lib.traceSeq ($RAW_EXPR) {}
 EOF
 )
 
