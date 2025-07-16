@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 RAW_EXPR="$@"
 if [[ -z "$RAW_EXPR" ]]; then
   RAW_EXPR="collective-lib._tests.run {}"
@@ -20,6 +19,24 @@ in
 EOF
 )
 
-echo "Running:\n$EXPR"
+NIX_DAEMON=$(which nix-daemon)
+NIX=$(which nix)
 
-sudo `which nix-instantiate` --raw --eval --expr "$EXPR"
+source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+if ! pgrep nix-daemon; then
+  sudo $NIX_DAEMON &
+fi
+
+echo "Running:\n$EXPR"
+LOAD_REPL_EXP=$(cat << EOF                                                                                                    
+spawn nix repl --show-trace
+expect "nix-repl> "
+send ":lf .\r" 
+expect "nix-repl> "
+send "${EXPR}\r" 
+expect "nix-repl> "
+send ""
+interact
+EOF
+)                                                                                                                             
+expect -c "$LOAD_REPL_EXP" 
