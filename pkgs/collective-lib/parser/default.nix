@@ -136,8 +136,9 @@ rec {
     # Numbers
     int = fmap ast.int lexer.decimal;
     signedInt = fmap ast.int (lexer.signed spaces lexer.decimal);
-    float = fmap ast.float (fmap lib.toFloat (matching ''[0-9]+\.[0-9]+([eE][+-]?[0-9]+)?''));
-    signedFloat = fmap ast.float (lexer.signed spaces float);
+    rawFloat = fmap (matches: builtins.fromJSON (head matches)) (matching ''[0-9]+\.[0-9]+([eE][+-]?[0-9]+)?'');
+    float = fmap ast.float rawFloat;
+    signedFloat = fmap ast.float (lexer.signed spaces rawFloat);
 
     # Strings
     normalString = fmap ast.string lexer.stringLit;
@@ -154,22 +155,22 @@ rec {
 
     # Paths
     path = fmap ast.path (choice [
-      (fmap (x: "./" + x) (thenSkip (string "./") (matching ''[^/\s\[\]{}()]*'')))
-      (fmap (x: "/" + x) (thenSkip (string "/") (matching ''[^/\s\[\]{}()]*(/[^/\s\[\]{}()]*)*'')))
-      (fmap (x: "~/" + x) (thenSkip (string "~/") (matching ''[^/\s\[\]{}()]*(/[^/\s\[\]{}()]*)*'')))
-      (matching ''<[^>]+>'')
+      (fmap (head) (matching ''\./[a-zA-Z0-9._/\-]*''))
+      (fmap (head) (matching ''/[a-zA-Z0-9._/\-]*''))
+      (fmap (head) (matching ''~/[a-zA-Z0-9._/\-]*''))
+      (fmap (head) (matching ''<[^>]+>''))
     ]);
 
     # Booleans and null
     bool = choice [
-      (thenSkip trueKeyword (pure (ast.bool true)))
-      (thenSkip falseKeyword (pure (ast.bool false)))
+      (bind trueKeyword (_: pure (ast.bool true)))
+      (bind falseKeyword (_: pure (ast.bool false)))
     ];
-    null = thenSkip nullKeyword (pure ast.null);
+    null = bind nullKeyword (_: pure ast.null);
 
     # Lists
     list = spaced (fmap ast.list (between (sym "[") (sym "]") 
-      (sepBy expr spaces)));
+      (sepBy primary spaces)));
 
     # Attribute paths
     attrPathComponent = choice [
@@ -189,7 +190,7 @@ rec {
     # Assignment
     assignment = spaced (bind attrPathComponent (lhs:
       bind (sym "=") (_:
-      bind expr (rhs:
+      bind primary (rhs:
       thenSkip semi (pure (ast.assignment lhs rhs))))));
 
     # Attribute sets
@@ -230,7 +231,7 @@ rec {
 
     # With expressions
     withParser = bind withKeyword (_:
-      bind expr (env:
+      bind select (env:
       bind semi (_:
       bind expr (body:
       pure (ast.withExpr env body)))));
@@ -244,17 +245,25 @@ rec {
 
     # Conditional expressions
     conditional = bind ifKeyword (_:
-      bind expr (cond:
+      bind primary (cond:
       bind thenKeyword (_:
-      bind expr (thenExpr:
+      bind primary (thenExpr:
       bind elseKeyword (_:
-      bind expr (elseExpr:
+      bind primary (elseExpr:
       pure (ast.conditional cond thenExpr elseExpr)))))));
 
     # Primary expressions (highest precedence)
     primary = spaced (choice [
+      # Keywords must come before identifier to avoid being parsed as identifiers
       null
       bool
+      # Complex expressions
+      letIn
+      conditional
+      withParser
+      assertParser
+      lambda
+      # Literals
       signedFloat
       signedInt
       float
@@ -264,12 +273,9 @@ rec {
       path
       list
       attrs
-      letIn
-      conditional
-      withParser
-      assertParser
-      lambda
+      # Identifier (must come after keywords)
       (fmap ast.identifier identifier)
+      # Parenthesized expressions
       (between (sym "(") (sym ")") expr)
     ]);
 
