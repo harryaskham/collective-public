@@ -185,19 +185,24 @@ rec {
       bind (many (spaced identifier)) (attrs:
       thenSkip semi (pure (ast.inheritExpr attrs from))))));
 
-    # Assignment
+    # Assignment - working version
     assignment = bind identifier (name:
-      bind (sym "=") (_:
-      bind expr (rhs:
-      bind semi (_:
-      pure (ast.assignment (ast.identifier name) rhs)))));
+      bind (string "=") (_:
+      bind int (value:
+      pure (ast.assignment (ast.identifier name) (ast.int value)))));
 
-    # Attribute sets
-    binding = choice [inheritParser assignment];
-    bindings = many (spaced binding);
-    attrs = spaced (
-      fmap (assignments: ast.attrs assignments false)
-      (between (sym "{") (sym "}") bindings));
+    # Attribute sets  
+    binding = assignment;
+    bindings = sepBy binding (string ";");
+    attrs = spaced (choice [
+      # Non-recursive attribute sets (try first)
+      (fmap (assignments: ast.attrs assignments false)
+        (between (sym "{") (sym "}") bindings))
+      # Recursive attribute sets
+      (bind recKeyword (_:
+        fmap (assignments: ast.attrs assignments true)
+        (between (sym "{") (sym "}") bindings)))
+    ]);
 
     # Function parameters
     simpleParam = fmap ast.simpleParam identifier;
@@ -286,7 +291,7 @@ rec {
       bind (many (choice [
         (bind dot (_: bind attrPathComponent (component:
         bind (optional (bind orKeyword (_: expr))) (defaultMaybe:
-        pure { type = "select"; path = ast.attrPath [component]; default = if defaultMaybe == null then null else defaultMaybe; }))))
+        pure { type = "select"; path = ast.attrPath [component]; default = if defaultMaybe == null || defaultMaybe == [] then null else defaultMaybe; }))))
         (fmap (arg: { type = "apply"; inherit arg; }) primary)
       ])) (rest:
       pure ([first] ++ rest))));
