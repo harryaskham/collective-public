@@ -45,9 +45,10 @@ rec {
     float = f: node "float" { value = f; };
     string = s: node "string" { value = s; };
     indentString = s: node "indentString" { value = s; };
+    interpolation = s: node "interpolation" { value = s; };
     path = p: node "path" { value = p; };
     bool = b: node "bool" { value = b; };
-    null = node "null" {};
+    nullValue = node "nullValue" {};
     
     # Identifiers and references
     identifier = name: node "identifier" { inherit name; };
@@ -59,11 +60,11 @@ rec {
     
     # Assignments and bindings
     assignment = lhs: rhs: node "assignment" { inherit lhs rhs; };
-    inheritExpr = attrs: from: node "inherit" { inherit attrs from; };
+    inheritExpr = from: attrs: node "inherit" { inherit from attrs; };
     
     # Functions and application
     lambda = param: body: node "lambda" { inherit param body; };
-    application = func: arg: node "application" { inherit func arg; };
+    application = func: args: node "application" { inherit func args; };
     
     # Control flow
     conditional = cond: thenExpr: elseExpr: node "conditional" { inherit cond; "then" = thenExpr; "else" = elseExpr; };
@@ -123,7 +124,10 @@ rec {
       (sym "*")
       (sym "/")
     ];
+    selectOp = sym ".";
+    selectOrOp = sym "or";
     notOp = sym "!";
+    negateOp = sym "-";
 
     # Helper for binary operators
     binOp = opParser: termParser:
@@ -133,10 +137,12 @@ rec {
         pure (lib.foldl (acc: x: ast.binaryOp x.op acc x.right) left rights)));
 
     # Identifiers and keywords
-    identifier = bind (fmap (matches: head matches) (matching ''[a-zA-Z_][a-zA-Z0-9_\-]*'')) (id:
-    if builtins.elem id ["if" "then" "else" "let" "in" "with" "inherit" "assert" "rec" "true" "false" "null" "or"]
-    then choice []  # fail by providing no valid alternatives
-    else pure id);
+    identifier =
+      lex (
+        bind (fmap (matches: head matches) (matching ''[a-zA-Z_][a-zA-Z0-9_\-]*'')) (identifierName:
+        if builtins.elem identifierName ["if" "then" "else" "let" "in" "with" "inherit" "assert" "rec" "or"]
+        then choice []  # fail by providing no valid alternatives
+        else pure (ast.identifier identifierName)));
     keyword = k: thenSkip (string k) (notFollowedBy (matching "[a-zA-Z0-9_]"));
     
     # Reserved keywords
@@ -149,88 +155,80 @@ rec {
     inheritKeyword = keyword "inherit";
     assertKeyword = keyword "assert";
     recKeyword = keyword "rec";
-    trueKeyword = keyword "true";
-    falseKeyword = keyword "false";
-    nullKeyword = keyword "null";
     orKeyword = keyword "or";
 
     # Numbers
     int = fmap ast.int lexer.decimal;
-    signedInt = fmap ast.int (lexer.signed spaces lexer.decimal);
     rawFloat = fmap (matches: builtins.fromJSON (head matches)) (matching ''[0-9]+\.[0-9]+([eE][+-]?[0-9]+)?'');
     float = fmap ast.float rawFloat;
-    signedFloat = fmap ast.float (lexer.signed spaces rawFloat);
 
     # Strings
-    normalString = fmap ast.string lexer.stringLit;
-    indentString = fmap ast.indentString (fmap (matches: 
+    normalString = annotateSource "normalString" (fmap ast.string lexer.stringLit);
+    indentString = annotateSource "indentString" (fmap ast.indentString (fmap (matches: 
       let content = head matches; 
           len = builtins.stringLength content;
       in builtins.substring 2 (len - 4) content
-    ) (matching "''.*''"));
+    ) (matching "''.*''")));
 
     # String interpolation
-    interpolation = between (string "\${") (string "}") expr;
+    interpolation = annotateSource "interpolation" (fmap ast.interpolation (between (string "\${") (string "}") expr));
 
     # Paths
-    path = fmap ast.path (choice [
-      (fmap head (matching ''\./[a-zA-Z0-9._/\-]*''))
-      (fmap head (matching ''/[a-zA-Z0-9._/\-]*''))
-      (fmap head (matching ''~/[a-zA-Z0-9._/\-]*''))
+    path = annotateSource "path" (fmap ast.path (choice [
+      (fmap head (matching ''((\.?\.?|~)(/[a-zA-Z0-9\-_\.]+))+''))
       (fmap head (matching ''<[^>]+>''))
-    ]);
-
-    # Booleans and null
-    bool = choice [
-      (bind trueKeyword (_: pure (ast.bool true)))
-      (bind falseKeyword (_: pure (ast.bool false)))
-    ];
-    null = bind nullKeyword (_: pure ast.null);
+    ]));
 
     # Lists
-    list = spaced (fmap ast.list (between (sym "[") (sym "]") 
-      (sepBy primary spaces)));
+    list = annotateSource "list" (spaced (fmap ast.list (between (sym "[") (sym "]") 
+      (sepBy atom spaces))));
 
     # Attribute paths
-    attrPathComponent = choice [
-      (fmap ast.identifier identifier)
+    attrPathComponent = annotateSource "attrPathComponent" (choice [
+      identifier
       normalString
-      indentString
-      (between (sym "(") (sym ")") expr)
-    ];
-    attrPath = fmap ast.attrPath (sepBy1 attrPathComponent dot);
+      interpolation
+    ]);
+    attrPath = annotateSource "attrPath" (fmap ast.attrPath (sepBy1 attrPathComponent dot));
+
+    inheritPath = annotateSource "inheritPath" (choice [
+      identifier
+      normalString
+    ]);
 
     # Inherit expressions
-    inheritParser = spaced (bind inheritKeyword (_:
-      bind (optional (between (sym "(") (sym ")") expr)) (from:
-      bind (many (spaced identifier)) (attrs:
-      thenSkip semi (pure (ast.inheritExpr attrs from))))));
+    inheritParser = annotateSource "inheritParser" (spaced (bind inheritKeyword (_:
+      bind (optional (spaced (between (sym "(") (sym ")") expr))) (from:
+      bind (many1 (spaced inheritPath)) (attrs:
+      pure (ast.inheritExpr (maybeHead from) attrs))))));
 
     # Assignment - use logical_or to allow binary operations without circular dependency
-    assignment = 
+    assignment = annotateSource "assignment" (
       bind identifier (name:
       bind spaces (_:
       bind (string "=") (_:
       bind spaces (_:
       bind logical_or (value:
-      pure (ast.assignment (ast.identifier name) value))))));
+      pure (ast.assignment name value)))))));
 
     # Attribute sets  
-    binding = assignment;
+    binding = annotateSource "binding" (choice [assignment inheritParser]);
+
     # For attribute sets: assignments inside braces
-    bindings = many (bind assignment (a: 
+    bindings = annotateSource "bindings" (many (bind binding (a: 
       bind spaces (_:
       bind (optional (string ";")) (_:
       bind spaces (_:
-      pure a)))));
+      pure a))))));
 
     # For let expressions: assignments without braces, terminated by 'in'
-    letBindings = many (bind assignment (a:
+    letBindings = annotateSource "letBindings" (many (bind binding (a:
       bind spaces (_:
       bind (string ";") (_:
       bind spaces (_:
-      pure a)))));
-    attrs = spaced (choice [
+      pure a))))));
+
+    attrs = annotateSource "attrs" (spaced (choice [
       # Recursive attribute sets (try first - more specific)  
       (bind (thenSkip recKeyword spaces) (_:
         fmap (assignments: ast.attrs assignments true)
@@ -238,79 +236,85 @@ rec {
       # Non-recursive attribute sets
       (fmap (assignments: ast.attrs assignments false)
         (between (sym "{") (sym "}") bindings))
-    ]);
+    ]));
 
     # Function parameters
-    simpleParam = fmap ast.simpleParam identifier;
-    defaultParam = bind identifier (name:
+    simpleParam = annotateSource "simpleParam" (fmap ast.simpleParam identifier);
+
+    defaultParam = annotateSource "defaultParam" (bind identifier (name:
       bind spaces (_:
       bind (string "?") (_:
       bind spaces (_:
-      bind primary (default:
-      pure (ast.defaultParam name default))))));
-    attrParam = choice [defaultParam simpleParam];
+      bind expr (default:
+      pure (ast.defaultParam name default)))))));
+
+    attrParam = annotateSource "attrParam" (choice [defaultParam simpleParam]);
+
     # Function parameters inside braces: { a, b } or { a, b, ... }
-    attrSetParam = between (sym "{") (sym "}") 
+    attrSetParam = annotateSource "attrSetParam" (between (sym "{") (sym "}") 
       (bind spaces (_:
       bind (sepBy attrParam (bind spaces (_: bind (string ",") (_: spaces)))) (params:
       bind spaces (_:
       bind (optional (bind (string ",") (_: bind spaces (_: ellipsis)))) (hasEllipsis:
       bind spaces (_:
-      pure (ast.attrSetParam params (hasEllipsis != null))))))));
-    param = choice [attrSetParam simpleParam];
+      pure (ast.attrSetParam params (hasEllipsis != [])))))))));
+
+    param = annotateSource "param" (choice [attrSetParam simpleParam]);
 
     # Lambda expressions
-    lambda = bind param (p:
+    lambda = annotateSource "lambda" (bind param (p:
       bind colon (_:
       bind expr (body:
-      pure (ast.lambda p body))));
+      pure (ast.lambda p body)))));
 
     # Let expressions
-    letIn = bind letKeyword (_:
+    letIn = annotateSource "letIn" (spaced (
+      bind letKeyword (_:
       bind spaces (_:
       bind letBindings (bindings:
       bind inKeyword (_:
       bind spaces (_:
       bind expr (body:
-      pure (ast.letIn bindings body)))))));
+      pure (ast.letIn bindings body)))))))));
 
     # With expressions
-    withParser = bind withKeyword (_:
-      bind select (env:
+    withParser = annotateSource "with" (bind withKeyword (_:
+      bind expr (env:
       bind semi (_:
       bind expr (body:
-      pure (ast.withExpr env body)))));
+      pure (ast.withExpr env body))))));
 
     # Assert expressions
-    assertParser = bind assertKeyword (_:
+    assertParser = annotateSource "assert" (bind assertKeyword (_:
       bind expr (cond:
       bind semi (_:
       bind expr (body:
-      pure (ast.assertExpr cond body)))));
+      pure (ast.assertExpr cond body))))));
 
     # Conditional expressions
-    conditional = bind ifKeyword (_:
-      bind primary (cond:
+    conditional = annotateSource "conditional" (bind ifKeyword (_:
+      bind expr (cond:
       bind thenKeyword (_:
-      bind primary (thenExpr:
+      bind expr (thenExpr:
       bind elseKeyword (_:
-      bind primary (elseExpr:
-      pure (ast.conditional cond thenExpr elseExpr)))))));
+      bind expr (elseExpr:
+      pure (ast.conditional cond thenExpr elseExpr))))))));
 
-    # Primary expressions (highest precedence)
-    primary = spaced (choice [
-      # Keywords must come before identifier to avoid being parsed as identifiers
-      null
-      bool
-      # Complex expressions
+    application = annotateSource "application" (
+      bind atom (func:
+      bind (many1 atom) (args:
+      pure (ast.application func args))));
+
+    compound = annotateSource "compound" (choice [
       letIn
       conditional
       withParser
       assertParser
       lambda
-      # Literals
-      signedFloat
-      signedInt
+      application
+    ]);
+
+    atom = annotateSource "atom" (lex (choice [
       float
       int
       normalString
@@ -318,49 +322,43 @@ rec {
       path
       list
       attrs
-      # Identifier (must come after keywords)
-      (fmap ast.identifier identifier)
-      # Parenthesized expressions
-      (between (sym "(") (sym ")") expr)
+      identifier
+      (between (sym "(") (sym ")") atom)
+      (between (sym "(") (sym ")") compound)
+    ]));
+
+    exprNoOperators = annotateSource "exprNoOperators" (choice [
+      compound
+      atom
     ]);
 
-    # Field access and function application
-    select = fmap (parts: 
-      lib.foldl (acc: part:
-        if part.type == "select" 
-        then ast.select acc part.path part.default
-        else ast.application acc part) 
-      (lib.head parts) 
-      (lib.tail parts))
-      (bind primary (first:
-      bind (many (choice [
-        (bind dot (_: bind attrPathComponent (component:
-        bind (optional (bind orKeyword (_: expr))) (defaultMaybe:
-        pure { type = "select"; path = ast.attrPath [component]; default = if defaultMaybe == [] then null else defaultMaybe; }))))
-        (fmap (arg: { type = "apply"; inherit arg; }) primary)
-      ])) (rest:
-      pure ([first] ++ rest))));
-
-    # Unary operators
-    unary = choice [
+    # Unary operators (or singleton expressions)
+    unary = annotateSource "unary" (choice [
       (bind notOp (_: bind unary (operand: pure (ast.unaryOp "!" operand))))
-      select
-    ];
+      (bind negateOp (_: bind unary (operand: pure (ast.unaryOp "-" operand))))
+      exprNoOperators
+    ]);
 
     # Binary operators by precedence
-    multiplicative = binOp mulOp unary;
+    orive = binOp selectOrOp unary;
+    selective = binOp selectOp orive;
+    multiplicative = binOp mulOp selective;
     additive = binOp addOp multiplicative;
     concatenative = binOp concatOp additive;
-    update = binOp updateOp concatenative;
-    relational = binOp relOp update;
+    updative = binOp updateOp concatenative;
+    relational = binOp relOp updative;
     equality = binOp eqOp relational;
     logical_and = binOp andOp equality;
     logical_or = binOp orOp logical_and;
 
-    expr = spaced logical_or;
+    # Finally expose expr as the top-level expression with operator precedence.
+    expr = annotateSource "expr" (spaced logical_or);
+    exprEof = annotateSource "exprEof" (
+      lex (bind expr (e: bind eof (_: pure e))));
   };
 
-  parse = s: parsec.runParser p.expr s;
+  parseWith = p: s: parsec.runParser p s;
+  parse = parseWith p.exprEof;
   parseAST = s: 
     let result = parse s;
     in if result.type == "success" then AST result.value else _throw_ ''
@@ -384,34 +382,69 @@ rec {
         else if node.nodeType == "string" then node.value
         else if node.nodeType == "indentString" then node.value
         else if node.nodeType == "path" then node.value
-        else if node.nodeType == "bool" then node.value
-        else if node.nodeType == "null" then null
         else if node.nodeType == "identifier" then 
+          #if node.name == "true" then true
+          #else if node.name == "false" then false
+          #else if node.name == "null" then null
           if scope ? ${node.name} then scope.${node.name}
           else throw "Undefined identifier '${node.name}' in current scope"
         else if node.nodeType == "list" then 
           map (evalNodeWithScope scope) node.elements
         else if node.nodeType == "attrs" then
           let
-            evalAssignment = assign: {
-              name = if assign.lhs.nodeType == "identifier" then assign.lhs.name
-                     else throw "Complex attribute paths not supported in evalAST";
-              value = evalNodeWithScope scope assign.rhs;
-            };
-            assignments = map evalAssignment node.assignments;
+            evalAssignment = scope: assignOrInherit: 
+              if assignOrInherit.nodeType == "assignment" then
+                [{
+                  name = assignOrInherit.lhs.name;
+                  value = evalNodeWithScope scope assignOrInherit.rhs;
+                }]
+              else if assignOrInherit.nodeType == "inherit" then
+                let 
+                  from = 
+                    if assignOrInherit.from == null then scope
+                    else evalNodeWithScope scope assignOrInherit.from;
+                in map (attr:
+                      let name = if attr.nodeType == "string" then attr.value
+                                else if attr.nodeType == "identifier" then attr.name
+                                else throw "Unsupported inherits name/string: ${attr.nodeType}";
+                      in {
+                        inherit name;
+                        value = from.${name};
+                      })
+                    assignOrInherit.attrs
+              else throw "Unsupported assignment node type: ${assignOrInherit.nodeType}";
+
+            evalAssignments = scope: assignments:
+              listToAttrs (concatLists (map (evalAssignment scope) assignments));
           in 
             if node."rec" then 
               # For recursive attribute sets, create a fixed-point
-              lib.fix (self: builtins.listToAttrs (map (assign: {
-                name = assign.name;
-                value = evalNodeWithScope (scope // self) assign.rhs;
-              }) assignments))
-            else builtins.listToAttrs assignments
+              lib.fix (self: evalAssignments (scope // self) node.assignments)
+            else evalAssignments scope node.assignments
         else if node.nodeType == "binaryOp" then
           let left = evalNodeWithScope scope node.left;
               right = evalNodeWithScope scope node.right;
           in 
-            if node.op == "+" then left + right
+            if node.op == "." then 
+              # a._ or c
+              if node.right.nodeType == "binaryOp" && node.right.op == "or" then
+                let 
+                  orLeft = evalNodeWithScope scope node.right.left;
+                  orRight = evalNodeWithScope scope node.right.right;
+                in 
+                  # a.b or c
+                  if node.right.left.nodeType == "identifier" then left.${node.right.left.name} or orRight
+
+                  # a."b" or c
+                  else left.${orLeft} or orRight
+
+              # a.b
+              else if node.right.nodeType == "identifier" then left.${node.right.name}
+
+              # a."b"
+              else left.${right}
+
+            else if node.op == "+" then left + right
             else if node.op == "-" then left - right
             else if node.op == "*" then left * right
             else if node.op == "/" then left / right
@@ -430,6 +463,7 @@ rec {
           let operand = evalNodeWithScope scope node.operand;
           in 
             if node.op == "!" then !operand
+            else if node.op == "-" then -operand
             else throw "Unsupported unary operator: ${node.op}"
         else if node.nodeType == "conditional" then
           let cond = evalNodeWithScope scope node.cond;
@@ -440,16 +474,26 @@ rec {
             let
               # Create new scope based on parameter type
               newScope = scope //
-                (if node.param.nodeType == "simpleParam" then { ${node.param.name} = param; }
+                (if node.param.nodeType == "simpleParam" then { ${node.param.name.name} = param; }
                  else if node.param.nodeType == "attrSetParam" then 
                    # For attribute set parameters, param should be an attribute set
-                   param
+                  let allParamNames = map (param: param.name.name) node.param.attrs;
+                      suppliedUnknownNames = removeAttrs param allParamNames;
+                      defaults = 
+                        mergeAttrsList 
+                          (map 
+                            (param: if param.nodeType == "defaultParam" then { ${param.name.name} = evalNodeWithScope scope param.default; } else {})
+                            node.param.attrs);
+                   in 
+                     if !node.param.ellipsis && nonEmpty suppliedUnknownNames then
+                        throw "Unknown parameters: ${joinSep ", " (attrNames suppliedUnknownNames)}"
+                     else defaults // param
                  else throw "Unsupported parameter type: ${node.param.nodeType}");
             in evalNodeWithScope newScope node.body
         else if node.nodeType == "application" then
           let func = evalNodeWithScope scope node.func;
-              arg = evalNodeWithScope scope node.arg;
-          in func arg
+              args = evalNodeWithScope scope node.args;
+          in fold (f: arg: f (evalNodeWithScope scope arg)) func args
         else if node.nodeType == "select" then
           let expr = evalNodeWithScope scope node.expr;
               # For now, only support simple attribute paths (single identifier)
@@ -477,7 +521,12 @@ rec {
         else throw "Unsupported AST node type: ${node.nodeType}";
         
       # Simple eval function for backwards compatibility  
-      evalNode = evalNodeWithScope {};
+      initScope = {
+        true = true;
+        false = false;
+        null = null;
+      };
+      evalNode = evalNodeWithScope initScope;
     in
       if astNode ? root then evalNode astNode.root
       else evalNode astNode;
@@ -509,9 +558,9 @@ rec {
         # Basic types
         numbers = {
           positiveInt = expectSuccess p.int "42" (ast.int 42);
-          negativeInt = expectSuccess p.signedInt "-42" (ast.int (-42));
+          negativeInt = expectSuccess p.expr "-42" (ast.unaryOp "-" (ast.int 42));
           float = expectSuccess p.float "3.14" (ast.float 3.14);
-          signedFloat = expectSuccess p.signedFloat "-3.14" (ast.float (-3.14));
+          signedFloat = expectSuccess p.expr "-3.14" (ast.unaryOp "-" (ast.float 3.14));
           scientific = expectSuccess p.float "1.23e-4" (ast.float 0.000123);
         };
 
@@ -529,12 +578,12 @@ rec {
         };
 
         booleans = {
-          true = expectSuccess p.bool "true" (ast.bool true);
-          false = expectSuccess p.bool "false" (ast.bool false);
+          true = expectSuccess p.expr "true" (ast.identifier "true");
+          false = expectSuccess p.expr "false" (ast.identifier "false");
         };
 
         null = {
-          null = expectSuccess p.null "null" ast.null;
+          null = expectSuccess p.expr "null" (ast.identifier "null");
         };
 
         # Collections
@@ -544,7 +593,7 @@ rec {
           multipleElements = expectSuccess p.list "[1 2 3]" 
             (ast.list [(ast.int 1) (ast.int 2) (ast.int 3)]);
           mixed = expectSuccess p.list ''[1 "hello" true]''
-            (ast.list [(ast.int 1) (ast.string "hello") (ast.bool true)]);
+            (ast.list [(ast.int 1) (ast.string "hello") (ast.identifier "true")]);
         };
 
         attrs = {
@@ -561,7 +610,7 @@ rec {
         # Functions
         lambdas = {
           simple = expectSuccess p.lambda "x: x"
-            (ast.lambda (ast.simpleParam "x") (ast.identifier "x"));
+            (ast.lambda (ast.simpleParam (ast.identifier "x")) (ast.identifier "x"));
           # AttrSet lambda - simplified test for production readiness
           attrSet = let result = parsec.runParser p.lambda "{ a, b }: a + b"; in
             expect.eq result.type "success";
@@ -573,11 +622,11 @@ rec {
         # Control flow
         conditionals = {
           simple = expectSuccess p.conditional "if true then 1 else 2"
-            (ast.conditional (ast.bool true) (ast.int 1) (ast.int 2));
+            (ast.conditional (ast.identifier "true") (ast.int 1) (ast.int 2));
           nested = expectSuccess p.conditional "if true then if false then 1 else 2 else 3"
             (ast.conditional 
-              (ast.bool true) 
-              (ast.conditional (ast.bool false) (ast.int 1) (ast.int 2))
+              (ast.identifier "true") 
+              (ast.conditional (ast.identifier "false") (ast.int 1) (ast.int 2))
               (ast.int 3));
         };
 
@@ -591,6 +640,22 @@ rec {
               (ast.assignment (ast.identifier "a") (ast.int 1))
               (ast.assignment (ast.identifier "b") (ast.int 2))
             ] (ast.binaryOp "+" (ast.identifier "a") (ast.identifier "b")));
+          multiline = expectSuccess p.letIn ''
+             let 
+              a = 1;
+            in a''
+            (ast.letIn 
+              [(ast.assignment (ast.identifier "a") (ast.int 1))]
+              (ast.identifier "a"));
+          nested = expectSuccess p.letIn ''
+             let 
+              a = 1;
+            in let b = 2; in b''
+            (ast.letIn 
+              [(ast.assignment (ast.identifier "a") (ast.int 1))]
+              (ast.letIn 
+                [(ast.assignment (ast.identifier "b") (ast.int 2))]
+                (ast.identifier "b")));
         };
 
         # Operators
@@ -599,8 +664,8 @@ rec {
             (ast.binaryOp "+" (ast.int 1) (ast.binaryOp "*" (ast.int 2) (ast.int 3)));
           logical = expectSuccess p.expr "true && false || true"
             (ast.binaryOp "||" 
-              (ast.binaryOp "&&" (ast.bool true) (ast.bool false))
-              (ast.bool true));
+              (ast.binaryOp "&&" (ast.identifier "true") (ast.identifier "false"))
+              (ast.identifier "true"));
           comparison = expectSuccess p.expr "1 < 2 && 2 <= 3"
             (ast.binaryOp "&&"
               (ast.binaryOp "<" (ast.int 1) (ast.int 2))
@@ -656,10 +721,20 @@ rec {
         allFeatures =
           let 
             # Test all major language constructs in one expression
-            expr = "let f = { a ? 1, b, ... }: x: let data = rec { values = [1 2 3]; sum = a + b; }; in data.sum + x; test = f { b = 5; } 10; in test + 42";
+            expr = ''
+              let f = { a ? 1, b, ... }:
+                    let 
+                      data = { 
+                        aa = a;
+                        inherit b;
+                      }; 
+                    in with data; aa + b; 
+              in f {b = 4;} 5
+            '';
             result = parse expr;
           in {
             succeeds = expect.eq result.type "success";
+            #roundtrips = expect.eq (evalAST (parseAST expr)) expr;
           };
       };
 
@@ -679,7 +754,7 @@ rec {
         true = testRoundTrip "true" true;
         false = testRoundTrip "false" false;
       };
-      null = testRoundTrip "null" null;
+      nullValue = testRoundTrip "null" null;
 
       # Collections
       lists = {

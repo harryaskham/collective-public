@@ -32,6 +32,25 @@ typelib._tests.run {}
 parser._tests.run {}
 </nix>
 
+
+<nix>
+let b = "1".a;
+in 123
+</nix>
+
+<nix>
+with parser; evalAST (parseAST "let f = {x ? 1, a ? 2, ...}: y: [x y]; in f {x = 3; abc = 1;}") 2
+</nix>
+<nix>
+({a ? let x = 1; in x}: a) {}
+</nix>
+
+<nix>
+let xs = {a = 1;};
+    x = "a";
+in { inherit (xs) "a"; }
+</nix>
+
 <nix>
 log._tests.run {}
 </nix>
