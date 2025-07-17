@@ -734,7 +734,7 @@ rec {
             result = parse expr;
           in {
             succeeds = expect.eq result.type "success";
-            #roundtrips = expect.eq (evalAST (parseAST expr)) expr;
+            roundtrips = expect.eq (evalAST (parseAST expr)) 5;
           };
       };
 
@@ -772,9 +772,9 @@ rec {
       # Binary operations
       arithmetic = {
         addition = testRoundTrip "1 + 2" 3;
-        # multiplication = testRoundTrip "3 * 4" 12;
-        # subtraction = testRoundTrip "10 - 3" 7;
-        # division = testRoundTrip "8 / 2" 4;
+        multiplication = testRoundTrip "3 * 4" 12;
+        subtraction = testRoundTrip "10 - 3" 7;
+        division = testRoundTrip "8 / 2" 4;
       };
 
       logical = {
@@ -808,10 +808,10 @@ rec {
       };
 
       # Functions (simplified tests since function equality is complex)  
-      # functions = {
-      #   identity = testRoundTrip "let f = x: x; in f 42" 42;
-      #   const = testRoundTrip "let f = x: y: x; in f 1 2" 1;
-      # };
+      functions = {
+        identity = testRoundTrip "let f = x: x; in f 42" 42;
+        const = testRoundTrip "let f = x: y: x; in f 1 2" 1;
+      };
 
       # Attribute access
       attrAccess = {
@@ -844,15 +844,14 @@ rec {
         parsed = expect.eq parsedResult 42;
         equivalent = expect.eq directResult parsedResult;
       };
-    };
 
-        # TODO: Fix failures
-        # selfParsing = {
-        #   parseParserFile = let 
-        #     result = parse (builtins.readFile ./default.nix);
-        #   in expect.eq result "success";
-        # };
+      # TODO: Fix failures
+      selfParsing = {
+        parseParserFile = let 
+          result = parse (builtins.readFile ./default.nix);
+        in expect.eq result.type "success";
       };
+    };
 
     readTests = {
       fileFromAttrPath = let
@@ -860,6 +859,7 @@ rec {
       in expect.eq (builtins.typeOf result) "string";
   };
 
+    };
   # DO NOT MOVE - Test data for read tests
   __testData = {
     deeper = {
