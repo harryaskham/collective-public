@@ -2,16 +2,111 @@
 
 Public subset of personal NixOS config.
 
-Exposes the ~collective-lib~ library containing config-wide utilities and libraries, including:
+Heavily experimental; strongly suggest not depending directly on the flake.
+My actual usage of these libraries is in a separate private repo with my machine configurations.
+Exposes the ~pkgs/collective-lib~ library containing config-wide utilities and libraries, including:
 
-- ~typelib~: Bootstraps a type system separate from that used by Nix's modules.
-  - Bootstrap system constructed manually at level ~0~ such that ~typeOf Type_0 == Type_0~.
-  - Each subsequent level ~l~ is then constructed in terms of levels ~l~ (where no circularity is required) or ~l - 1~ (where using ~l~ would introduce circularity).
-  - At ~l == 4~, no ~U_0~ shim types remain, and creating a new ~Type~ type using level ~4~ constructs just produces an exact match for ~Type_4~ (e.g. Type_4 "Type" { ... } == Type_4).
-  - Since ~Type_4 == Type_5 == ...~, exposes the type system at level ~4~ as ~collective-lib.typed~, which overrides e.g. ~lib.typeOf~ and related machinery to handle these types alongside language builtins and the module system.
-- ~eval~: Evaluate Nix expressions from strings (~eval "1 + 1" == 2~).
-  - Implements serialisable lambdas, e.g. ~(let f = typefn "a: b: a + b"; in f 1 2) == 3~.
-- ~parser~: A ~nix-parsec~-based Nix parser written in Nix, which can reflect on obEvaluate Nix expressions from strings (~eval "1 + 1" == 2~).
-- ...quite a lot more, documentation pending.
+** ~typelib.nix~
+Bootstraps a type system separate from that used by Nix's modules.
+- Bootstrap system constructed manually at level ~0~ such that ~typeOf Type_0 == Type_0~.
+- Each subsequent level ~l~ is then constructed in terms of levels ~l~ (where no circularity is required) or ~l - 1~ (where using ~l~ would introduce circularity).
+- At ~l == 4~, no ~U_0~ shim types remain, and creating a new ~Type~ type using level ~4~ constructs just produces an exact match for ~Type_4~ (e.g. Type_4 "Type" { ... } == Type_4).
+- Since ~Type_4 == Type_5 == ...~, exposes the type system at level ~4~ as ~collective-lib.typed~, which overrides e.g. ~lib.typeOf~ and related machinery to handle these types alongside language builtins and the module system.
 
-Tests can be run via ~./test.sh~
+Enables a fun syntax for defining typed functions:
+
+#+BEGIN_SRC nix
+let f = defun ({f}: {a ? Int, b ? Literal 7}: where f [a b] (a.value + b.getLiteral{}));
+in { _0 = f 1 7;
+     _1 = f 2.2 7;
+     _2 = f 1 8; }
+   == { _0 = 8; _1 = <type error on Float/Int>; _2 = <type error on Literal>}
+#+END_SRC
+
+** ~script-utils/~
+Richer code-gen than standard Nix builders provide for building up CLI command trees.
+Lets you keep personal scripts / utilities clean and organised.
+
+** ~eval/~
+- Evaluate Nix expressions from strings (~eval "1 + 1" == 2~).
+- Implemented two ways:
+  - First way uses import-from-derivation and caches the lambda in the Nix store.
+  - Second way uses ~parser/~ to do everything in the evaluator without derivations.
+- Implements serialisable lambdas, e.g. ~(let f = typefn "a: b: a + b"; in f 1 2) == 3~.
+
+** ~parser/~
+A ~nix-parsec~-based Nix parser written in Nix, which can reflect on module source, perform code transformations, etc.
+
+#+BEGIN_SRC nix
+(parser.parseAST ''let x = 1; in a: b: x + a + b'')
+==
+{
+  root = {
+    bindings = [
+      {
+        lhs = {
+          name = "x";
+          nodeType = "identifier";
+        };
+        nodeType = "assignment";
+        rhs = {
+          nodeType = "int";
+          value = 1;
+        };
+      }
+    ];
+    body = {
+      body = {
+        body = {
+          left = {
+            left = {
+              name = "x";
+              nodeType = "identifier";
+            };
+            nodeType = "binaryOp";
+            op = "+";
+            right = {
+              name = "a";
+              nodeType = "identifier";
+            };
+          };
+          nodeType = "binaryOp";
+          op = "+";
+          right = {
+            name = "b";
+            nodeType = "identifier";
+          };
+        };
+        nodeType = "lambda";
+        param = {
+          name = {
+            name = "b";
+            nodeType = "identifier";
+          };
+          nodeType = "simpleParam";
+        };
+      };
+      nodeType = "lambda";
+      param = {
+        name = {
+          name = "a";
+          nodeType = "identifier";
+        };
+        nodeType = "simpleParam";
+      };
+    };
+    nodeType = "letIn";
+  }
+}
+#+END_SRC
+
+** ~functions.nix~
+- Lots of missing standard functional stuff
+- A convenience library for building and working with ~Variadic~ functions
+
+** Misc
+
+- ~tests.nix~: Simple unit testing framework I wrote for these configs.
+- ~log.nix~: Logging framework based around ~Variadic~ with support for the type system.
+- ~nixlike.el~: Emacs library for agnostically running Nix expressions on the fly in either Nix REPL or Tvix REPL.
+- Tests can be run via ~./test.sh~
