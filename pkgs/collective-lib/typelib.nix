@@ -5057,27 +5057,6 @@ let
 
   # Placeholder to store multiline string for fast expr execution using nixlike.el
   __nixlikeExprs = ''
-# Import shortcut
-(load-file "nixlike.el")
-
-# Quick toggles
-
-(setq debug-on-error t)
-(setq debug-on-error nil)
-
-(setq nixlike-nix-variant 'nix)
-(setq nixlike-nix-variant 'tvix)
-
-(setq nixlike-kill-repl-before-eval nil)
-(setq nixlike-kill-repl-before-eval t)
-
-(setq nixlike-mode 'shell)
-(setq nixlike-mode 'repl)
-
-(setq nixlike-nix-eval-strategy 'eval)
-(setq nixlike-nix-eval-strategy 'instantiate)
-
-(nixlike-eval-command 'nix "123" 0 t nil)
 
 <nix>
 enumerate [1 2 3]

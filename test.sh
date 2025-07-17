@@ -26,12 +26,14 @@ EOF
 NIX_DAEMON=$(which nix-daemon)
 NIX=$(which nix)
 
-source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
 if ! pgrep nix-daemon; then
+  source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
   sudo $NIX_DAEMON &
 fi
 
-echo "Running:\n$EXPR"
+echo "Running:"
+echo "$EXPR"
+
 LOAD_REPL_EXP=$(cat << EOF                                                                                                    
 spawn nix repl --show-trace
 expect "nix-repl> "

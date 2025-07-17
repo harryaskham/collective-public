@@ -3,11 +3,6 @@
   ...
 }:
 
-# Complete Nix parser implementation with all language constructs
-# Supports: integers, floats, strings, paths, booleans, null, lists, 
-# attribute sets, lambdas, let/in, conditionals, operators, field access,
-# function application, inherits, and more
-
 let
   eval = collective-lib.eval;
   typed = collective-lib.typed;
@@ -16,6 +11,29 @@ let
 in 
   with typed;
 rec {
+
+  isNode = node: node ? nodeType;
+  printNode = dispatch.def id {
+    list = map printNode;
+    set = node:
+      if !(isNode node) then mapAttrs (_: printNode) node
+      else 
+        let headerParams = [ "nodeType" "name" "param" "op" ];
+            nodeHeader = joinWords (nonEmpties (map (p: typed.log.show (node.${p} or "")) headerParams));
+            nodeSet = removeAttrs node headerParams;
+            nodePartitioned = typed.partitionAttrs (_: v: isAttrs v || isList v) nodeSet;
+            nodeProperties = nodePartitioned.wrong;
+            children = nodePartitioned.right;
+        in 
+          [nodeHeader] ++ 
+            (optionals (nonEmpty nodeProperties) (mapAttrsToList (k: v: [k v]) nodeProperties))
+            ++ (optionals (nonEmpty children) (mapAttrsToList (k: v: [k (printNode v)]) children));
+  };
+
+  AST = root: {
+    inherit root;
+    __toString = self: _p_ (printNode self.root);
+  };
 
   node = nodeType: args: {
     nodeType = nodeType;
@@ -343,6 +361,17 @@ rec {
   };
 
   parse = s: parsec.runParser p.expr s;
+  parseAST = s: 
+    let result = parse s;
+    in if result.type == "success" then AST result.value else _throw_ ''
+      Failed to parse AST:
+
+        Expression:
+          ${_h_ s}
+
+        Result:
+          ${_ph_ result}
+    '';
 
   read = rec {
     fileFromAttrPath = attrPath: file: args:
@@ -495,34 +524,41 @@ rec {
 
         # Enhanced tests for comprehensive coverage
         enhanced = {
-          # Recursive attribute sets
-          # RecAttr - test actual recursive attribute set functionality
           recAttr = let result = parsec.runParser p.expr "rec { a = 1; b = a + 1; }"; in
             expect.eq result.type "success";
 
-                    # Lambda with ellipsis - simplified test for production readiness
           lambdaEllipsis = let result = parsec.runParser p.lambda "{ a, b, ... }: a + b"; in
             expect.eq result.type "success";
 
-          # Complex nested expression - simplified test for production readiness
           complexNested = let result = parsec.runParser p.expr "let f = x: x + 1; in f (if true then 42 else 0)"; in
             expect.eq result.type "success";
 
-          # String with basic content (simpler test)
           simpleString = expectSuccess p.normalString "\"hello world\"" (ast.string "hello world");
 
-          # Mixed type complex expression - simplified test for production readiness
+          indentString = expectSuccess p.indentString "''hello world''" (ast.indentString "hello world");
+          indentStringWithInterpolation = expectSuccess p.indentString '''''hello ''${toString 123} world''''' (ast.indentString ''hello ''${toString 123} world'');
+          indentStringWithNestedEscape = 
+            expectSuccess p.indentString "\'\'\'\'\'hello\'\'\' \'\'\'world\'\'\'\'\'" (ast.indentString "\'\'\'hello\'\'\' \'\'\'world\'\'\'");
+
           mixedExpression = let result = parsec.runParser p.expr ''{ a = [1 2]; b = "hello"; }.a''; in
             expect.eq result.type "success";
         };
 
-        # Self-parsing test: parse a comprehensive Nix expression with all major constructs
-        selfParsing = {
-          parseParserFile = let 
+        allFeatures =
+          let 
             # Test all major language constructs in one expression
-            result = parse "let f = { a ? 1, b, ... }: x: let data = rec { values = [1 2 3]; sum = a + b; }; in data.sum + x; test = f { b = 5; } 10; in test + 42";
-          in expect.eq result.type "success";
-        };
+            expr = "let f = { a ? 1, b, ... }: x: let data = rec { values = [1 2 3]; sum = a + b; }; in data.sum + x; test = f { b = 5; } 10; in test + 42";
+            result = parse expr;
+          in {
+            succeeds = expect.eq result.type "success";
+          };
+
+        # TODO: Fix failures
+        # selfParsing = {
+        #   parseParserFile = let 
+        #     result = parse (builtins.readFile ./default.nix);
+        #   in expect.eq result "success";
+        # };
       };
 
     read = {

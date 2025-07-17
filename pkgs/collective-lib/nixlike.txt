@@ -1,0 +1,37 @@
+# Import shortcut
+(load-file "nixlike.el")
+
+# Quick toggles
+
+(setq debug-on-error t)
+(setq debug-on-error nil)
+
+(setq nixlike-nix-variant 'nix)
+(setq nixlike-nix-variant 'tvix)
+
+(setq nixlike-kill-repl-before-eval nil)
+(setq nixlike-kill-repl-before-eval t)
+
+(setq nixlike-mode 'shell)
+(setq nixlike-mode 'repl)
+
+(setq nixlike-nix-eval-strategy 'eval)
+(setq nixlike-nix-eval-strategy 'instantiate)
+
+(nixlike-eval-command 'nix "123" 0 t nil)
+
+<nix>
+collective-lib._tests.run {}
+</nix>
+
+<nix>
+typelib._tests.run {}
+</nix>
+
+<nix>
+parser._tests.run {}
+</nix>
+
+<nix>
+log._tests.run {}
+</nix>
