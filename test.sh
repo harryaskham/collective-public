@@ -25,7 +25,7 @@ function run-in-container() {
     nix-shell -p expect tmux --command "$(cat << EOF
 export IN_DOCKER=1 \
 && cd /workspace \
-&& tmux new -A -s agent \; set-buffer "($@ | tee /tmphost/agentout.txt);tmux detach" \; paste-buffer
+&& tmux new -A -s agent \; set-buffer "(($@ 2>&1) | tee /tmphost/agentout.txt);tmux detach" \; paste-buffer
 EOF
 )"
   cat /tmp/agentout.txt
@@ -60,7 +60,7 @@ EOF
 }
 
 function run-in-nix-eval() {
-  nix eval --show-trace --expr "$@"
+  nix --extra-experimental-features nix-command eval --impure --show-trace --expr "$@"
 }
 
 function run-in-nix-repl() {
