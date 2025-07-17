@@ -10,17 +10,22 @@ Exposes the ~pkgs/collective-lib~ library containing config-wide utilities and l
 Bootstraps a type system separate from that used by Nix's modules.
 - Bootstrap system constructed manually at level ~0~ such that ~typeOf Type_0 == Type_0~.
 - Each subsequent level ~l~ is then constructed in terms of levels ~l~ (where no circularity is required) or ~l - 1~ (where using ~l~ would introduce circularity).
-- At ~l == 4~, no ~U_0~ shim types remain, and creating a new ~Type~ type using level ~4~ constructs just produces an exact match for ~Type_4~ (e.g. Type_4 "Type" { ... } == Type_4).
+- At ~l == 4~, no ~U_0~ shim types remain, and creating a new ~Type~ type using level ~4~ constructs just produces an exact match for ~Type_4~ (e.g. ~Type_4 "Type" { ... } == Type_4~).
 - Since ~Type_4 == Type_5 == ...~, exposes the type system at level ~4~ as ~collective-lib.typed~, which overrides e.g. ~lib.typeOf~ and related machinery to handle these types alongside language builtins and the module system.
 
 Enables a fun syntax for defining typed functions:
 
 #+BEGIN_SRC nix
 let f = defun ({f}: {a ? Int, b ? Literal 7}: where f [a b] (a.value + b.getLiteral{}));
-in { _0 = f 1 7;
-     _1 = f 2.2 7;
-     _2 = f 1 8; }
-   == { _0 = 8; _1 = <type error on Float/Int>; _2 = <type error on Literal>}
+in {
+  _0 = f 1 7;
+  _1 = f 2.2 7;
+  _2 = f 1 8;
+} == { 
+  _0 = 8; 
+  _1 = <type error on Float/Int>
+  _2 = <type error on Literal>
+}
 #+END_SRC
 
 ** ~script-utils/~
