@@ -163,12 +163,78 @@ rec {
     float = fmap ast.float rawFloat;
 
     # Strings
-    normalString = annotateSource "normalString" (fmap ast.string lexer.stringLit);
+    # The following must be escaped to represent them within a string, by prefixing with a backslash (\):
+    # Double quote (")
+    # Example
+    # "\""
+    # "\""
+    # Backslash (\)
+    # Example
+    # "\\"
+    # "\\"
+    # Dollar sign followed by an opening curly bracket (${) – "dollar-curly"
+    # Example
+    # "\${"
+    # "\${"
+    # The newline, carriage return, and tab characters can be written as \n, \r and \t, respectively.
+    
+        # Custom parser that can handle Nix string escape sequences properly
+    nixStringContent = fmap (builtins.concatStringsSep "") (many (choice [
+      # Handle escape sequences first (order matters)
+      (bind (string "\\\"") (_: pure "\""))        # \" → "
+      (bind (string "\\\\") (_: pure "\\"))        # \\ → \
+      (bind (string "\\\${") (_: pure ("$" + "{")))    # \${ → ${
+      (bind (string "\\n") (_: pure "\n"))         # \n → newline
+      (bind (string "\\r") (_: pure "\r"))         # \r → carriage return
+      (bind (string "\\t") (_: pure "\t"))         # \t → tab
+      # Handle any character that's not a quote or backslash
+      (fmap (x: builtins.head x) (matching "[^\"\\\\]"))
+    ]));
+    
+    # Complete string parser with quotes
+    nixStringLit = between (string ''"'') (string ''"'') nixStringContent;
+      
+    normalString = annotateSource "normalString" (fmap ast.string nixStringLit);
+
+    # The following must be escaped to represent them in an indented string:
+    # 
+    # $ is escaped by prefixing it with two single quotes ('')
+    # Example
+    # 
+    # ''
+    #   ''$
+    # ''
+    # "$\n"
+    # '' is escaped by prefixing it with one single quote (')
+    # Example
+    # 
+    # ''
+    #   '''
+    # ''
+    # "''\n"
+    # These special characters are escaped as follows:
+    # 
+    # Linefeed (\n): ''\n
+    # Carriage return (\r): ''\r
+    # Tab (\t): ''\t
+    # ''\ escapes any other character.
+    # 
+    # A "dollar-curly" (${) can be written as follows:
+    # 
+    # Example
+    # 
+    # ''
+    #   echo ''${PATH}
+    # ''
+    # "echo ${PATH}\n"
+    # Note
+    # 
+    # This differs from the syntax for escaping a dollar-curly within double quotes ("\${"). Be aware of which one is needed at a given moment.
     indentString = annotateSource "indentString" (fmap ast.indentString (fmap (matches: 
       let content = head matches; 
           len = builtins.stringLength content;
       in builtins.substring 2 (len - 4) content
-    ) (matching "''.*''")));
+    ) (matching "''(([^']|'[^']|''['$\\])*)''")));
 
     # String interpolation
     interpolation = annotateSource "interpolation" (fmap ast.interpolation (between (string "\${") (string "}") expr));
@@ -707,12 +773,18 @@ rec {
           complexNested = let result = parsec.runParser p.expr "let f = x: x + 1; in f (if true then 42 else 0)"; in
             expect.eq result.type "success";
 
-          simpleString = expectSuccess p.normalString "\"hello world\"" (ast.string "hello world");
+          simpleString = expectSuccess p.normalString ''"hello world"'' (ast.string "hello world");
+          simpleStringWithEscapes = 
+            expectSuccess p.normalString ''
+            "hello ''${toString 123} \\''${} \"world\""
+            ''
+            (ast.string ''hello ''${toString 123} ''\\''${} "world"'');
 
           indentString = expectSuccess p.indentString "''hello world''" (ast.indentString "hello world");
-          indentStringWithInterpolation = expectSuccess p.indentString '''''hello ''${toString 123} world''''' (ast.indentString ''hello ''${toString 123} world'');
-          indentStringWithNestedEscape = 
-            expectSuccess p.indentString "\'\'\'\'\'hello\'\'\' \'\'\'world\'\'\'\'\'" (ast.indentString "\'\'\'hello\'\'\' \'\'\'world\'\'\'");
+          indentStringWithEscapes = 
+            expectSuccess p.indentString 
+              "\'\'a \'\'\'hello \'\'\${toString 123}\\nworld\'\'\'.\'\'"
+              (ast.indentString "a \'\'\'hello \'\'\${toString 123}\\nworld\'\'\'.");
 
           mixedExpression = let result = parsec.runParser p.expr ''{ a = [1 2]; b = "hello"; }.a''; in
             expect.eq result.type "success";

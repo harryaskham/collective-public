@@ -25,7 +25,8 @@ function run-in-container() {
     nix-shell -p expect tmux --command "$(cat << EOF
 export IN_DOCKER=1 \
 && cd /workspace \
-&& tmux new -A -s agent \; set-buffer "(($@ 2>&1) | tee /tmphost/agentout.txt);tmux detach" \; paste-buffer
+&& tmux new -A -s agent \; set-buffer "(($@ 2>&1) | tee /tmphost/agentout.txt);tmux detach
+" \; paste-buffer
 EOF
 )"
   cat /tmp/agentout.txt
@@ -76,15 +77,22 @@ EOF
   expect -c "$EXPECT_SCRIPT"
 }
 
-if [[ "$IN_DOCKER" == 1 ]]; then
+function run-expr() {
   RAW_EXPR=$(get-raw-nix-expr $@)
   EXPR=$(wrap-nix-expr "$RAW_EXPR")
   echo "Running in nix repl:" >&2
   echo "$EXPR" >&2
   run-in-nix-eval "$EXPR" 
-else
+}
+
+if [[ "$IN_DOCKER" == 1 ]]; then
+  run-expr "$@"
+elif [[ "$(hostname)" == "cursor" ]]; then
   install-docker
   start-container
   run-in-container "$0 $@"
+else
+  run-expr "$@"
 fi
+  
 
