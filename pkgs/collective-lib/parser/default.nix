@@ -400,7 +400,7 @@ rec {
             };
             assignments = map evalAssignment node.assignments;
           in 
-            if node.rec then 
+            if node."rec" then 
               # For recursive attribute sets, create a fixed-point
               lib.fix (self: builtins.listToAttrs (map (assign: {
                 name = assign.name;
@@ -433,7 +433,7 @@ rec {
             else throw "Unsupported unary operator: ${node.op}"
         else if node.nodeType == "conditional" then
           let cond = evalNodeWithScope scope node.cond;
-          in if cond then evalNodeWithScope scope node.then else evalNodeWithScope scope node.else
+          in if cond then evalNodeWithScope scope node."then" else evalNodeWithScope scope node."else"
         else if node.nodeType == "lambda" then
           # Return a function that takes arguments
           param: 
@@ -772,6 +772,7 @@ rec {
         parsed = expect.eq parsedResult 42;
         equivalent = expect.eq directResult parsedResult;
       };
+    };
 
         # TODO: Fix failures
         # selfParsing = {
@@ -781,12 +782,12 @@ rec {
         # };
       };
 
-    read = {
+    readTests = {
       fileFromAttrPath = let
         result = read.fileFromAttrPath [ "__testData" "deeper" "anExpr" ] ./default.nix { inherit pkgs lib collective-lib nix-parsec; };
       in expect.eq (builtins.typeOf result) "string";
     };
-    };
+  };
 
   # DO NOT MOVE - Test data for read tests
   __testData = {
