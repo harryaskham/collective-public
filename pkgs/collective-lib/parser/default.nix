@@ -336,7 +336,7 @@ rec {
       bind (many (choice [
         (bind dot (_: bind attrPathComponent (component:
         bind (optional (bind orKeyword (_: expr))) (defaultMaybe:
-        pure { type = "select"; path = ast.attrPath [component]; default = defaultMaybe; }))))
+        pure { type = "select"; path = ast.attrPath [component]; default = if defaultMaybe == [] then null else defaultMaybe; }))))
         (fmap (arg: { type = "apply"; inherit arg; }) primary)
       ])) (rest:
       pure ([first] ++ rest))));
@@ -461,10 +461,7 @@ rec {
                              else throw "Complex attribute paths not supported in evalAST";
           in 
             if builtins.hasAttr "default" node && node.default != null then 
-              if builtins.hasAttr pathComponent expr then 
-                expr.${pathComponent}
-              else 
-                evalNodeWithScope scope node.default
+              expr.${pathComponent} or (evalNodeWithScope scope node.default)
             else expr.${pathComponent}
         else if node.nodeType == "letIn" then
           let
