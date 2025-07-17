@@ -909,6 +909,32 @@ rec {
         withDefault = testRoundTrip "{ a = 42; }.b or 0" 0;
       };
 
+      # Assert expressions - testing proper Nix semantics
+      assertExpressions = {
+        # Assert with true condition should evaluate body
+        assertTrue = testRoundTrip "assert true; 42" 42;
+        # Assert with false condition should throw
+        assertFalse = expect.error (evalAST (parseAST "assert false; 42"));
+        # Assert with string condition should throw the string as error message
+        assertStringMessage = expect.error (evalAST (parseAST ''assert "custom error message"; 42''));
+        # Testing that non-boolean, non-string truthy values still work as expected
+        assertTruthy = testRoundTrip "assert 1; 42" 42;
+      };
+
+      # With expressions - testing proper scope precedence
+      withExpressions = {
+        # Basic with expression
+        basicWith = testRoundTrip "with { a = 1; }; a" 1;
+        # Lexical scope should shadow with attributes  
+        lexicalShadowing = testRoundTrip "let x = 1; in with { x = 2; }; x" 1;
+        # With attributes act as fallbacks
+        withFallback = testRoundTrip "with { y = 2; }; y" 2;
+        # Nested with expressions
+        nestedWith = testRoundTrip "with { a = 1; }; with { b = 2; }; a + b" 3;
+        # With expression with complex lexical shadowing
+        complexShadowing = testRoundTrip "let a = 10; b = 20; in with { a = 1; c = 3; }; a + b + c" 33;
+      };
+
       # Complex expressions demonstrating code transformations
       transformations = let
         # Example: transform "1 + 2" to "2 + 1" (commutativity)
