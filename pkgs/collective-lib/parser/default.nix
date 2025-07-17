@@ -460,7 +460,8 @@ rec {
                                   else throw "Complex attribute path components not supported in evalAST"
                              else throw "Complex attribute paths not supported in evalAST";
           in 
-            if node.default != null then expr.${pathComponent} or (evalNodeWithScope scope node.default)
+            if builtins.hasAttr "default" node && node.default != null then 
+              expr.${pathComponent} or (evalNodeWithScope scope node.default)
             else expr.${pathComponent}
         else if node.nodeType == "letIn" then
           let

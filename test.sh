@@ -4,8 +4,8 @@ CONTAINER=nix-container
 
 function install-docker() {
   if ! which docker; then
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sudo sh get-docker.sh
+    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+    sudo sh /tmp/get-docker.sh
     sudo service docker start
   fi
 }
@@ -14,6 +14,7 @@ function start-container() {
   sudo docker run -it -d \
     --name $CONTAINER \
     --mount type=bind,src=/workspace,dst=/workspace \
+    --mount type=bind,src=/tmp,dst=/tmphost \
     nixos/nix 2>/dev/null
 
   sudo docker start $CONTAINER 2>/dev/null
@@ -21,7 +22,13 @@ function start-container() {
 
 function run-in-container() {
   sudo docker exec -it $CONTAINER \
-    nix-shell -p expect --command "cd /workspace && IN_DOCKER=1 $@"
+    nix-shell -p expect tmux --command "$(cat << EOF
+export IN_DOCKER=1 \
+&& cd /workspace \
+&& tmux new -A -s agent \; set-buffer "($@ | tee /tmphost/agentout.txt);tmux detach" \; paste-buffer
+EOF
+)"
+  cat /tmp/agentout.txt
 }
 
 function get-raw-nix-expr() {
