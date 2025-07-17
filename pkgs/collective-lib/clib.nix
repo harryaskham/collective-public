@@ -15,11 +15,10 @@ rec {
 
     enable = {
       __functor = self: mkEnable;
-      nested = mkNestedEnable;
-
-      def = {
-        __functor = self: mkDefaultEnable;
-        nested = mkDefaultNestedEnable;
+      default = mkDefaultEnable;
+      nested = {
+        __functor = self: mkNestedEnable;
+        default = mkNestedDefaultEnable;
       };
     };
   };
