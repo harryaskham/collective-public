@@ -52,48 +52,64 @@ rec {
     __import = {}: import exprFile;
   };
 
-  eval = exprStr: (eval_ exprStr).__import {};
+  # Eval either from the store or from the parsed AST.
+  eval = {
+    __functor = self: self.ast;
+    store = exprStr: (eval_ exprStr).__import {};
+    ast = exprStr: parser.evalAST (parser.parseAST exprStr);
+  };
+
 
   # Use eval to create a callable lambda function from a string.
-  txtfn = functionText: rec {
+  txtfn_ = evalFn: functionText: rec {
     inherit functionText;
-    __fn = eval functionText;
+    __fn = evalFn functionText;
     __functor = self: arg: self.__fn arg;
     # Create a new function with a text transformation f applied.
     mapText = f: txtfn (f functionText);
   };
 
-  # For just 'collective-lib.eval "1 + 1"'
-  __functor = self: eval;
+  txtfn = {
+    __functor = self: self.ast;
+    store = txtfn_ eval.store;
+    ast = txtfn_ eval.ast;
+  };
 
+  # For just 'collective-lib.eval "1 + 1"'
+  __functor = self: eval.ast;
+
+  # Test both AST and Store eval.
   # <nix>eval._tests.run {}</nix>
   _tests = with tests; suite {
-    eval = {
-      const = expect.eq (eval "1") 1;
-      add = expect.eq (eval "1 + 1") 2;
-      eval = expect.eq (eval ''
-        { evalPath }:
-        let eval = import evalPath {};
-        in eval "1 + 1"
-      '' { evalPath = ./.; }) 2;
-      nest =
-        let nestEval = n: exprStr:
-              if n == 0 then exprStr
-              else nestEval (n - 1) (_b_ ''
-                let eval = import ${./.} {}; in
-                eval "(${replaceStrings [''"'' ''\''] [''\"'' ''\\''] exprStr}) + 1"
-              '');
-        in expect.eq (eval (nestEval 5 "0")) 5;
-    };
+    eval = mapAttrs (_: evalFn: {
+        const = expect.eq (eval "1") 1;
+        add = expect.eq (eval "1 + 1") 2;
+        eval = expect.eq (eval ''
+          { evalPath }:
+          let eval = import evalPath {};
+          in eval "1 + 1"
+        '' { evalPath = ./.; }) 2;
+        nest =
+          let nestEval = n: exprStr:
+                if n == 0 then exprStr
+                else nestEval (n - 1) (_b_ ''
+                  let eval = import ${./.} {}; in
+                  eval "(${replaceStrings [''"'' ''\''] [''\"'' ''\\''] exprStr}) + 1"
+                '');
+          in expect.eq (eval (nestEval 5 "0")) 5;
+      })
+      { inherit (eval) ast store; };
 
-    txtfn =
-      let fTxt = "a: b: 3 * a + b";
-          f = txtfn fTxt;
-          g = f.mapText (t: "z: ${t} + z");
-      in {
-        exprStr = expect.eq f.functionText fTxt;
-        call = expect.eq (f 3 1) 10;
-        fmap = expect.eq (g 5 3 1) 15;
-      };
+  txtfn = mapAttrs (_: txtfnFn: 
+    let fTxt = "a: b: 3 * a + b";
+        f = txtfn fTxt;
+        g = f.mapText (t: "z: ${t} + z");
+    in {
+      exprStr = expect.eq f.functionText fTxt;
+      call = expect.eq (f 3 1) 10;
+      fmap = expect.eq (g 5 3 1) 15;
+    })
+    { inherit (txtfn) ast store; };
+
   };
 }

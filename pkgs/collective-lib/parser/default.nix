@@ -3,6 +3,12 @@
   ...
 }:
 
+# TODO:
+# - abort, import, throw
+# - assert only accepts takes a bool true in evalAST
+# - with does not overwrite attrs
+# - let bindings need to support inherit
+
 let
   eval = collective-lib.eval;
   typed = collective-lib.typed;
@@ -140,7 +146,7 @@ rec {
     identifier =
       lex (
         bind (fmap (matches: head matches) (matching ''[a-zA-Z_][a-zA-Z0-9_\-]*'')) (identifierName:
-        if builtins.elem identifierName ["if" "then" "else" "let" "in" "with" "inherit" "assert" "rec" "or"]
+        if builtins.elem identifierName ["if" "then" "else" "let" "in" "with" "inherit" "assert" "abort" "import" "throw" "rec" "or"]
         then choice []  # fail by providing no valid alternatives
         else pure (ast.identifier identifierName)));
     keyword = k: thenSkip (string k) (notFollowedBy (matching "[a-zA-Z0-9_]"));
@@ -156,6 +162,9 @@ rec {
     assertKeyword = keyword "assert";
     recKeyword = keyword "rec";
     orKeyword = keyword "or";
+    abortKeyword = keyword "abort";
+    importKeyword = keyword "import";
+    throwKeyword = keyword "throw";
 
     # Numbers
     int = fmap ast.int lexer.decimal;
