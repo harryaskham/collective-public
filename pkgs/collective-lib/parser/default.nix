@@ -590,14 +590,17 @@ rec {
           let
             # Evaluate the with environment and merge it into scope
             withEnv = evalNodeWithScope scope node.env;
-            newScope = scope // withEnv;
+            # with attributes are fallbacks - existing lexical scope should shadow them
+            newScope = withEnv // scope;
           in evalNodeWithScope newScope node.body
         else if node.nodeType == "assert" then
           let
             # Evaluate the assertion condition
             condResult = evalNodeWithScope scope node.cond;
           in
-            if condResult then evalNodeWithScope scope node.body
+            # In Nix semantics, if condition is a string, use it as error message
+            if builtins.isString condResult then throw condResult
+            else if condResult then evalNodeWithScope scope node.body
             else throw "Assertion failed"
         else throw "Unsupported AST node type: ${node.nodeType}";
         
