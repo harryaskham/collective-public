@@ -66,7 +66,7 @@ EOF
 }
 
 if [[ "$IN_DOCKER" == 1 ]]; then
-  RAW_EXPR=$(get-raw-nix-expr)
+  RAW_EXPR=$(get-raw-nix-expr $@)
   EXPR=$(wrap-nix-expr "$RAW_EXPR")
   echo "Running in nix repl:" >&2
   echo "$EXPR" >&2
