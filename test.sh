@@ -59,6 +59,10 @@ in
 EOF
 }
 
+function run-in-nix-eval() {
+  nix eval --show-trace --expr "$@"
+}
+
 function run-in-nix-repl() {
   EXPECT_SCRIPT=$(cat << EOF
 spawn nix repl --show-trace
@@ -77,7 +81,7 @@ if [[ "$IN_DOCKER" == 1 ]]; then
   EXPR=$(wrap-nix-expr "$RAW_EXPR")
   echo "Running in nix repl:" >&2
   echo "$EXPR" >&2
-  run-in-nix-repl "$EXPR" 
+  run-in-nix-eval "$EXPR" 
 else
   install-docker
   start-container
