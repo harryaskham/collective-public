@@ -1,10 +1,39 @@
 #!/usr/bin/env bash
-RAW_EXPR="$@"
-if [[ -z "$RAW_EXPR" ]]; then
-  RAW_EXPR="collective-lib._tests.run {}"
-fi
 
-EXPR=$(cat << EOF
+CONTAINER=nix-container
+
+function install-docker() {
+  if ! which docker; then
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sudo sh get-docker.sh
+    sudo service docker start
+  fi
+}
+
+function start-container() {
+  sudo docker run -it -d \
+    --name $CONTAINER \
+    --mount type=bind,src=/workspace,dst=/workspace \
+    nixos/nix 2>/dev/null
+
+  sudo docker start $CONTAINER 2>/dev/null
+}
+
+function run-in-container() {
+  sudo docker exec -it $CONTAINER \
+    nix-shell -p expect --command "cd /workspace && IN_DOCKER=1 $@"
+}
+
+function get-raw-nix-expr() {
+  if [[ -z "$@" ]]; then
+    echo -n "collective-lib._tests.run {}"
+  else
+    echo -n "$@"
+  fi
+}
+
+function wrap-nix-expr() {
+  cat << EOF
 let
   pkgs = import <nixpkgs> {};
   lib = pkgs.lib;
@@ -19,30 +48,32 @@ let
   };
 in
   with collective-lib;
-  lib.traceSeq ($RAW_EXPR) {}
+  lib.traceSeq ($@) {}
 EOF
-)
+}
 
-NIX_DAEMON=$(which nix-daemon)
-NIX=$(which nix)
-
-if ! pgrep nix-daemon; then
-  source /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
-  sudo $NIX_DAEMON &
-fi
-
-echo "Running:"
-echo "$EXPR"
-
-LOAD_REPL_EXP=$(cat << EOF                                                                                                    
+function run-in-nix-repl() {
+  EXPECT_SCRIPT=$(cat << EOF
 spawn nix repl --show-trace
 expect "nix-repl> "
-send ":lf .\r" 
-expect "nix-repl> "
-send "${EXPR}\r" 
+send "$@\r" 
 expect "nix-repl> "
 send ""
 interact
 EOF
-)                                                                                                                             
-expect -c "$LOAD_REPL_EXP" 
+)
+  expect -c "$EXPECT_SCRIPT"
+}
+
+if [[ "$IN_DOCKER" == 1 ]]; then
+  RAW_EXPR=$(get-raw-nix-expr)
+  EXPR=$(wrap-nix-expr "$RAW_EXPR")
+  echo "Running in nix repl:" >&2
+  echo "$EXPR" >&2
+  run-in-nix-repl "$EXPR" 
+else
+  install-docker
+  start-container
+  run-in-container "$0 $@"
+fi
+
