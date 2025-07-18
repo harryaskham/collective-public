@@ -442,6 +442,9 @@ rec {
   # Evaluate AST nodes back to Nix values
   evalAST = astNode:
     let
+      # Helper to check if a result is an abort
+      isAbort = result: builtins.isAttrs result && result ? __abort;
+      
       # Enhanced evaluation with scope support
       evalNodeWithScope = scope: node:
         if !(isNode node) then node
@@ -491,8 +494,9 @@ rec {
             else evalAssignments scope node.assignments
         else if node.nodeType == "binaryOp" then
           let left = evalNodeWithScope scope node.left;
-              right = evalNodeWithScope scope node.right;
-          in 
+          in if isAbort left then left else
+          let right = evalNodeWithScope scope node.right;
+          in if isAbort right then right else 
             if node.op == "." then 
               # a._ or c
               if node.right.nodeType == "binaryOp" && node.right.op == "or" then
@@ -535,7 +539,8 @@ rec {
             else throw "Unsupported unary operator: ${node.op}"
         else if node.nodeType == "conditional" then
           let cond = evalNodeWithScope scope node.cond;
-          in if cond then evalNodeWithScope scope node."then" else evalNodeWithScope scope node."else"
+          in if isAbort cond then cond else
+            if cond then evalNodeWithScope scope node."then" else evalNodeWithScope scope node."else"
         else if node.nodeType == "lambda" then
           # Return a function that takes arguments
           param: 
@@ -605,8 +610,8 @@ rec {
             # Evaluate the abort message
             message = evalNodeWithScope scope node.message;
           in
-            # Use Nix's built-in abort behavior - terminates evaluation immediately
-            abort message
+            # Return a special abort result that can be detected and tested
+            { __abort = message; }
         else throw "Unsupported AST node type: ${node.nodeType}";
         
       # Simple eval function for backwards compatibility  
@@ -617,8 +622,12 @@ rec {
       };
       evalNode = evalNodeWithScope initScope;
     in
-      if astNode ? root then evalNode astNode.root
-      else evalNode astNode;
+      let result = if astNode ? root then evalNode astNode.root
+                   else evalNode astNode;
+      in
+        # If we got an abort result, throw the message as an error for testing
+        if isAbort result then throw "abort: ${result.__abort}"
+        else result;
 
   read = rec {
     fileFromAttrPath = attrPath: file: args:
@@ -928,8 +937,17 @@ rec {
         assertBooleanExpr = testRoundTrip "assert (1 == 1); 42" 42;
       };
 
-      # Note: abort expressions are implemented but not tested because abort terminates
-      # evaluation immediately and cannot be caught by tryEval or any other mechanism
+      # Abort expressions - testing our custom abort handling
+      abortExpressions = {
+        # Basic abort with string message
+        abortString = expect.error (evalAST (parseAST ''abort "custom abort message"''));
+        # Abort with evaluated expression
+        abortExpression = expect.error (evalAST (parseAST ''abort ("error: " + "message")''));
+        # Abort should propagate through binary operations
+        abortPropagation = expect.error (evalAST (parseAST ''1 + (abort "error")'')); 
+        # Abort in conditional condition should propagate
+        abortInCondition = expect.error (evalAST (parseAST ''if (abort "error") then 1 else 2''));
+      };
 
       # With expressions - testing proper scope precedence
       withExpressions = {
