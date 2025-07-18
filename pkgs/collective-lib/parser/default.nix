@@ -600,6 +600,13 @@ rec {
           in
             # Use Nix's built-in assert behavior for proper semantics
             assert condResult; evalNodeWithScope scope node.body
+        else if node.nodeType == "abort" then
+          let
+            # Evaluate the abort message
+            message = evalNodeWithScope scope node.message;
+          in
+            # Use Nix's built-in abort behavior - terminates evaluation immediately
+            abort message
         else throw "Unsupported AST node type: ${node.nodeType}";
         
       # Simple eval function for backwards compatibility  
@@ -920,6 +927,9 @@ rec {
         # Test with boolean expressions
         assertBooleanExpr = testRoundTrip "assert (1 == 1); 42" 42;
       };
+
+      # Note: abort expressions are implemented but not tested because abort terminates
+      # evaluation immediately and cannot be caught by tryEval or any other mechanism
 
       # With expressions - testing proper scope precedence
       withExpressions = {
