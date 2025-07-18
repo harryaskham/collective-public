@@ -598,10 +598,8 @@ rec {
             # Evaluate the assertion condition
             condResult = evalNodeWithScope scope node.cond;
           in
-            # In Nix semantics, if condition is a string, use it as error message
-            if builtins.isString condResult then throw condResult
-            else if builtins.isBool condResult && condResult then evalNodeWithScope scope node.body
-            else throw "Assertion failed"
+            # Use Nix's built-in assert behavior for proper semantics
+            assert condResult; evalNodeWithScope scope node.body
         else throw "Unsupported AST node type: ${node.nodeType}";
         
       # Simple eval function for backwards compatibility  
@@ -915,10 +913,12 @@ rec {
         assertTrue = testRoundTrip "assert true; 42" 42;
         # Assert with false condition should throw
         assertFalse = expect.error (evalAST (parseAST "assert false; 42"));
-        # Assert with string condition should throw the string as error message
-        assertStringMessage = expect.error (evalAST (parseAST ''assert "custom error message"; 42''));
-        # Testing that non-boolean, non-string values should fail (strict type checking)
-        assertNonBooleanFails = expect.error (evalAST (parseAST "assert 1; 42"));
+        # Assert with non-boolean values should fail (Nix requires boolean)
+        assertStringFails = expect.error (evalAST (parseAST ''assert "error message"; 42''));
+        assertIntegerFails = expect.error (evalAST (parseAST "assert 1; 42"));
+        assertZeroFails = expect.error (evalAST (parseAST "assert 0; 42"));
+        # Test with boolean expressions
+        assertBooleanExpr = testRoundTrip "assert (1 == 1); 42" 42;
       };
 
       # With expressions - testing proper scope precedence
