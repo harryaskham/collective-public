@@ -451,6 +451,9 @@ rec {
   # Evaluate AST nodes back to Nix values
   evalAST = astNode:
     let
+      # Helper to check if a result is an abort
+      isAbort = result: builtins.isAttrs result && result ? __abort;
+      
       # Enhanced evaluation with scope support
       evalNodeWithScope = scope: node:
         if !(isNode node) then node
@@ -500,8 +503,9 @@ rec {
             else evalAssignments scope node.assignments
         else if node.nodeType == "binaryOp" then
           let left = evalNodeWithScope scope node.left;
-              right = evalNodeWithScope scope node.right;
-          in 
+          in if isAbort left then left else
+          let right = evalNodeWithScope scope node.right;
+          in if isAbort right then right else 
             if node.op == "." then 
               # a._ or c
               if node.right.nodeType == "binaryOp" && node.right.op == "or" then
@@ -544,7 +548,8 @@ rec {
             else throw "Unsupported unary operator: ${node.op}"
         else if node.nodeType == "conditional" then
           let cond = evalNodeWithScope scope node.cond;
-          in if cond then evalNodeWithScope scope node."then" else evalNodeWithScope scope node."else"
+          in if isAbort cond then cond else
+            if cond then evalNodeWithScope scope node."then" else evalNodeWithScope scope node."else"
         else if node.nodeType == "lambda" then
           # Return a function that takes arguments
           param: 
@@ -599,15 +604,23 @@ rec {
           let
             # Evaluate the with environment and merge it into scope
             withEnv = evalNodeWithScope scope node.env;
-            newScope = scope // withEnv;
+            # with attributes are fallbacks - existing lexical scope should shadow them
+            newScope = withEnv // scope;
           in evalNodeWithScope newScope node.body
         else if node.nodeType == "assert" then
           let
             # Evaluate the assertion condition
             condResult = evalNodeWithScope scope node.cond;
           in
-            if condResult then evalNodeWithScope scope node.body
-            else throw "Assertion failed"
+            # Use Nix's built-in assert behavior for proper semantics
+            assert condResult; evalNodeWithScope scope node.body
+        else if node.nodeType == "abort" then
+          let
+            # Evaluate the abort message
+            message = evalNodeWithScope scope node.message;
+          in
+            # Return a special abort result that can be detected and tested
+            { __abort = message; }
         else throw "Unsupported AST node type: ${node.nodeType}";
         
       # Simple eval function for backwards compatibility  
@@ -618,8 +631,12 @@ rec {
       };
       evalNode = evalNodeWithScope initScope;
     in
-      if astNode ? root then evalNode astNode.root
-      else evalNode astNode;
+      let result = if astNode ? root then evalNode astNode.root
+                   else evalNode astNode;
+      in
+        # If we got an abort result, throw the message as an error for testing
+        if isAbort result then throw "abort: ${result.__abort}"
+        else result;
 
   read = rec {
     fileFromAttrPath = attrPath: file: args:
@@ -913,6 +930,46 @@ rec {
       attrAccess = {
         simple = testRoundTrip "{ a = 42; }.a" 42;
         withDefault = testRoundTrip "{ a = 42; }.b or 0" 0;
+      };
+
+      # Assert expressions - testing proper Nix semantics
+      assertExpressions = {
+        # Assert with true condition should evaluate body
+        assertTrue = testRoundTrip "assert true; 42" 42;
+        # Assert with false condition should throw
+        assertFalse = expect.error (evalAST (parseAST "assert false; 42"));
+        # Assert with non-boolean values should fail (Nix requires boolean)
+        assertStringFails = expect.error (evalAST (parseAST ''assert "error message"; 42''));
+        assertIntegerFails = expect.error (evalAST (parseAST "assert 1; 42"));
+        assertZeroFails = expect.error (evalAST (parseAST "assert 0; 42"));
+        # Test with boolean expressions
+        assertBooleanExpr = testRoundTrip "assert (1 == 1); 42" 42;
+      };
+
+      # Abort expressions - testing our custom abort handling
+      abortExpressions = {
+        # Basic abort with string message
+        abortString = expect.error (evalAST (parseAST ''abort "custom abort message"''));
+        # Abort with evaluated expression
+        abortExpression = expect.error (evalAST (parseAST ''abort ("error: " + "message")''));
+        # Abort should propagate through binary operations
+        abortPropagation = expect.error (evalAST (parseAST ''1 + (abort "error")'')); 
+        # Abort in conditional condition should propagate
+        abortInCondition = expect.error (evalAST (parseAST ''if (abort "error") then 1 else 2''));
+      };
+
+      # With expressions - testing proper scope precedence
+      withExpressions = {
+        # Basic with expression
+        basicWith = testRoundTrip "with { a = 1; }; a" 1;
+        # Lexical scope should shadow with attributes  
+        lexicalShadowing = testRoundTrip "let x = 1; in with { x = 2; }; x" 1;
+        # With attributes act as fallbacks
+        withFallback = testRoundTrip "with { y = 2; }; y" 2;
+        # Nested with expressions
+        nestedWith = testRoundTrip "with { a = 1; }; with { b = 2; }; a + b" 3;
+        # With expression with complex lexical shadowing
+        complexShadowing = testRoundTrip "let a = 10; b = 20; in with { a = 1; c = 3; }; a + b + c" 33;
       };
 
       # Complex expressions demonstrating code transformations
