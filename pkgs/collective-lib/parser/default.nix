@@ -600,7 +600,7 @@ rec {
           in
             # In Nix semantics, if condition is a string, use it as error message
             if builtins.isString condResult then throw condResult
-            else if condResult then evalNodeWithScope scope node.body
+            else if builtins.isBool condResult && condResult then evalNodeWithScope scope node.body
             else throw "Assertion failed"
         else throw "Unsupported AST node type: ${node.nodeType}";
         
@@ -917,8 +917,8 @@ rec {
         assertFalse = expect.error (evalAST (parseAST "assert false; 42"));
         # Assert with string condition should throw the string as error message
         assertStringMessage = expect.error (evalAST (parseAST ''assert "custom error message"; 42''));
-        # Testing that non-boolean, non-string truthy values still work as expected
-        assertTruthy = testRoundTrip "assert 1; 42" 42;
+        # Testing that non-boolean, non-string values should fail (strict type checking)
+        assertNonBooleanFails = expect.error (evalAST (parseAST "assert 1; 42"));
       };
 
       # With expressions - testing proper scope precedence
