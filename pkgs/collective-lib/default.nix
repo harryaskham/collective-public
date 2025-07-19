@@ -128,7 +128,10 @@ let
     };
 
   baseModules = 
-    let args = { inherit pkgs lib collective-lib; }; in
+    let 
+      args = { inherit pkgs lib collective-lib; };
+      parser = import ./parser (args // { inherit nix-parsec; });
+    in
     {
       attrsets = import ./attrsets.nix args;
       binding = import ./binding.nix args;
@@ -141,14 +144,14 @@ let
       dispatchlib = import ./dispatchlib.nix args;
       display = import ./display.nix args;
       errors = import ./errors.nix args;
-      eval = import ./eval args;
       fan = import ./fan.nix args;
       font = import ./font.nix args;
       functions = import ./functions.nix args;
       lists = import ./lists.nix args;
       log = import ./log.nix (args // { inherit traceOpts; });
       inherit modulelib;
-      parser = import ./parser (args // { inherit nix-parsec; });
+      inherit parser;
+      eval = import ./eval (args // { inherit parser; });
       rebinds = import ./rebinds.nix args;
       script-utils = import ./script-utils args;
       strings = import ./strings.nix args;

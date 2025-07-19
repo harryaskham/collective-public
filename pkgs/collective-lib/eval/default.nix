@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
+{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, parser, ... }:
 
 # TODO:
 # - Dynamic derivations should let eval-in-eval occur without requiring nested nix build:
@@ -56,7 +56,13 @@ rec {
   eval = {
     __functor = self: self.ast;
     store = exprStr: (eval_ exprStr).__import {};
-    ast = exprStr: parser.evalAST (parser.parseAST exprStr);
+    ast = exprStr: 
+      let evalResult = parser.evalAST (parser.parseAST exprStr);
+          runResult = evalResult.run parser.initEvalState;
+      in 
+        if parser.isLeft runResult.e then 
+          throw "Evaluation error: ${runResult.e.left.msg}"
+        else runResult.e.right.a;
   };
 
 
