@@ -34,13 +34,31 @@ parser._tests.run {}
 
 
 <nix>
-let b = "1".a;
-in 123
+parser.parseAST ''let x = 1; in a: b: x + a + b''
+</nix>
+<nix>
+eval._tests.debug {}
+</nix>
+
+<nix>
+{ inherit ({}) a; }
+</nix>
+<nix>
+let f = { a ? 1, b, ... }: x: let data = rec { aa = a; inherit b x; sum = aa + b + x; }; in data.sum; in f {b = 4;} 5
+</nix>
+<nix>
+with parser;
+evalAST (parseAST "let a = {b = 1;}; in { inherit a; }")
+#parseAST "let f = xs: x: let data = rec { aa = a; sum = aa + b + x; }; in data.sum; in f {b = 4;} 5"
+#parseAST "let f = xs: x: let data = rec { aa = a; inherit b x; sum = aa + b + x; }; in data.sum; in f {b = 4;} 5"
+#parse "let f = { a ? 1, b, ... }: x: let data = rec { aa = a; inherit ({}) x; sum = aa + b + x; }; in data.sum; in f {b = 4;} 5"
+#parse "let f = { a ? 1, b, ... }: x: let data = rec { aa = a; sum = aa + b + x; }; in data.sum; in f {b = 4;} 5"
 </nix>
 
 <nix>
 with parser; evalAST (parseAST "let f = {x ? 1, a ? 2, ...}: y: [x y]; in f {x = 3; abc = 1;}") 2
 </nix>
+
 <nix>
 ({a ? let x = 1; in x}: a) {}
 </nix>
@@ -52,5 +70,15 @@ in { inherit (xs) "a"; }
 </nix>
 
 <nix>
+with parser;
+(parseAST "{a = 1;}.a")
+</nix>
+<nix>
 log._tests.run {}
+</nix>
+<nix>
+parser._tests.run {}
+</nix>
+<nix>
+parser._tests.debug {}
 </nix>
