@@ -38,158 +38,188 @@ rec {
       evalNodeWithState = node:
         let 
           helper = scope: node:
-            if is EvalError node then node # TODO: catching errors via tryEval
-            else if !(is AST node) then node
+            if is EvalError node then (Eval Any).throws node
+            else if !(is AST node) then (Eval (getT node)).pure node
             else
             log.while "evaluating AST node of type '${node.nodeType}'" (
-            if node.nodeType == "int" then node.value
-            else if node.nodeType == "float" then node.value
-            else if node.nodeType == "string" then node.value
-            else if node.nodeType == "indentString" then node.value
-            else if node.nodeType == "path" then node.value
+            if node.nodeType == "int" then (Eval "int").pure node.value
+            else if node.nodeType == "float" then (Eval "float").pure node.value
+            else if node.nodeType == "string" then (Eval "string").pure node.value
+            else if node.nodeType == "indentString" then (Eval "string").pure node.value
+            else if node.nodeType == "path" then (Eval "path").pure node.value
             else if node.nodeType == "identifier" then 
-              if scope ? ${node.name} then scope.${node.name}
-              else RuntimeError (_b_ ''
+              if scope ? ${node.name} then (Eval (getT scope.${node.name})).pure scope.${node.name}
+              else (Eval Any).throws (RuntimeError (_b_ ''
                 Undefined identifier '${node.name}' in current scope:
                   ${_ph_ scope}
-                '')
+                ''))
             else if node.nodeType == "list" then 
-              map (helper scope) node.elements
+              # Use sequence to evaluate all elements monadically
+              let evalElement = helper scope;
+                  # Sequence all elements in the list
+                  sequenceList = elements: 
+                    lib.foldl 
+                      (accM: elem: 
+                        accM.bind (acc: 
+                          (evalElement elem).bind (val: 
+                            (Eval "list").pure (acc ++ [val]))))
+                      ((Eval "list").pure [])
+                      elements;
+              in sequenceList node.elements
             else if node.nodeType == "attrs" then
               let
                 evalAssignment = scope: assignOrInherit: 
                   if assignOrInherit.nodeType == "assignment" then
-                    [{
-                      name = assignOrInherit.lhs.name;
-                      value = helper scope assignOrInherit.rhs;
-                    }]
+                    (helper scope assignOrInherit.rhs).bind (value:
+                      (Eval "list").pure [{
+                        name = assignOrInherit.lhs.name;
+                        inherit value;
+                      }])
                   else if assignOrInherit.nodeType == "inherit" then
-                    let 
-                      from = 
-                        if assignOrInherit.from == null then scope
-                        else helper scope assignOrInherit.from;
-                    in map (attr:
-                          let name = if attr.nodeType == "string" then attr.value
-                                    else if attr.nodeType == "identifier" then attr.name
-                                    else RuntimeError (_b_ ''
-                                      Unsupported inherits name/string: ${attr.nodeType}:
-                                        ${_ph_ attr}
-                                      '');
-                          in {
-                            inherit name;
-                            value = from.${name};
-                          })
-                        assignOrInherit.attrs
-                  else RuntimeError (_b_ ''
+                    let fromM = 
+                      if assignOrInherit.from == null then (Eval "set").pure scope
+                      else helper scope assignOrInherit.from;
+                    in fromM.bind (from:
+                      let evalAttr = attr:
+                        let name = if attr.nodeType == "string" then (Eval "string").pure attr.value
+                                  else if attr.nodeType == "identifier" then (Eval "string").pure attr.name
+                                  else (Eval Any).throws (RuntimeError (_b_ ''
+                                    Unsupported inherits name/string: ${attr.nodeType}:
+                                      ${_ph_ attr}
+                                    ''));
+                        in name.bind (n: (Eval Any).pure {
+                          name = n;
+                          value = from.${n};
+                        });
+                      in # Sequence over all attrs
+                        lib.foldl 
+                          (accM: attr: 
+                            accM.bind (acc: 
+                              (evalAttr attr).bind (val: 
+                                (Eval "list").pure (acc ++ [val]))))
+                          ((Eval "list").pure [])
+                          assignOrInherit.attrs)
+                  else (Eval Any).throws (RuntimeError (_b_ ''
                     Unsupported assignment node type: ${assignOrInherit.nodeType}:
                       ${_ph_ assignOrInherit}
-                    '');
+                    ''));
 
                 evalAssignments = scope: assignments:
-                  listToAttrs (concatLists (map (evalAssignment scope) assignments));
+                  lib.foldl 
+                    (accM: assign: 
+                      accM.bind (acc: 
+                        (evalAssignment scope assign).bind (vals: 
+                          (Eval "list").pure (acc ++ vals))))
+                    ((Eval "list").pure [])
+                    assignments;
               in 
-                if node."rec" then 
-                  # For recursive attribute sets, create a fixed-point
-                  lib.fix (self: evalAssignments (scope // self) node.assignments)
-                else evalAssignments scope node.assignments
+                (evalAssignments scope node.assignments).bind (assignmentList:
+                  let attrs = listToAttrs assignmentList;
+                  in if node."rec" then 
+                      # For recursive attribute sets, create a fixed-point
+                      (Eval "set").pure (lib.fix (self: attrs // scope // self))
+                    else (Eval "set").pure attrs)
             else if node.nodeType == "binaryOp" then
-              let l = helper scope node.leftOperand;
-              in if Abort.check l then l else
-              let r = helper scope node.rightOperand;
-              in if Abort.check r then r else 
-                if node.op == "." then 
+              if node.op == "." then
+                # Handle attribute access specially - don't evaluate right operand as expression
+                (helper scope node.leftOperand).bind (l:
                   # a._ or c
                   if node.rightOperand.nodeType == "binaryOp" && node.rightOperand.op == "or" then
-                    let 
-                      orLeft = helper scope node.rightOperand.leftOperand;
-                      orRight = helper scope node.rightOperand.rightOperand;
-                    in 
+                    (helper scope node.rightOperand.rightOperand).bind (orRight:
                       # a.b or c
-                      if node.rightOperand.leftOperand.nodeType == "identifier" then l.${node.rightOperand.leftOperand.name} or orRight
-
-                      # a."b" or c
-                      else l.${orLeft} or orRight
-
+                      let result = if node.rightOperand.leftOperand.nodeType == "identifier" then l.${node.rightOperand.leftOperand.name} or orRight
+                                  # a."b" or c - evaluate the left operand as expression for string access
+                                  else 
+                                    let attrNameM = helper scope node.rightOperand.leftOperand;
+                                        runResult = attrNameM.run {};
+                                        attrName = if isLeft runResult then throw "Attribute name evaluation failed"
+                                                  else runResult.right.a;
+                                    in l.${attrName} or orRight;
+                      in (Eval (getT result)).pure result)
                   # a.b
-                  else if node.rightOperand.nodeType == "identifier" then l.${node.rightOperand.name}
-
-                  # a."b"
-                  else l.${orRight}
-
-                else 
-                  let runBinOp = compatibleTypeSets: res:
-                    if is EvalError l then l
-                    else if is EvalError r then r
-                    else if any id 
-                        (map 
-                          (typeSet: elem (lib.typeOf l) typeSet && elem (lib.typeOf r) typeSet)
-                          compatibleTypeSets)
-                    then res
-                    else TypeError (_b_ ''Incorrect types for binary operator ${node.op}:
-
-                      ${_ph_ l} and ${_ph_ r}
-                      
-                      (expected one of ${
-                        joinSep " | " 
+                  else if node.rightOperand.nodeType == "identifier" then 
+                    let result = l.${node.rightOperand.name};
+                    in (Eval (getT result)).pure result
+                  # a."b" - evaluate the right operand as expression for string access
+                  else 
+                    (helper scope node.rightOperand).bind (r:
+                      let result = l.${r};
+                      in (Eval (getT result)).pure result))
+              else
+                # For all other binary operators, evaluate both operands
+                (helper scope node.leftOperand).bind (l:
+                  (helper scope node.rightOperand).bind (r:
+                    let runBinOp = compatibleTypeSets: res:
+                      if is EvalError l then (Eval Any).throws l
+                      else if is EvalError r then (Eval Any).throws r
+                      else if any id 
                           (map 
-                            (typeSet: "(${joinSep " | " typeSet})") 
-                            compatibleTypeSets)})
-                    '');
-                  in 
-                    if node.op == "+" then 
-                      runBinOp [["int" "float"] ["string" "path"]] (l + r)
-                    else if node.op == "-" then
-                      runBinOp [["int" "float"]] (l - r)
-                    else if node.op == "*" then
-                      runBinOp [["int" "float"]] (l * r)
-                    else if node.op == "/" then
-                      runBinOp [["int" "float"]] (l / r)
-                    else if node.op == "++" then
-                      runBinOp [["list"]] (l ++ r)
-                    else if node.op == "//" then
-                      runBinOp [["set"]] (l // r)
-                    else if node.op == "==" then
-                      runBinOp [builtinNames] (l == r)
-                    else if node.op == "!=" then
-                      runBinOp [builtinNames] (l != r)
-                    else if node.op == "<" then
-                      runBinOp [["int" "float"] ["string"] ["path"] ["list"] ["set"]] (l < r)
-                    else if node.op == ">" then
-                      runBinOp [["int" "float"] ["string"] ["path"] ["list"] ["set"]] (l > r)
-                    else if node.op == "<=" then
-                      runBinOp [["int" "float"] ["string"] ["path"] ["list"] ["set"]] (l <= r)
-                    else if node.op == ">=" then 
-                      runBinOp [["int" "float"] ["string"] ["path"] ["list"] ["set"]] (l >= r)
-                    # Allow e.g. false && null
-                    else if node.op == "&&" then
-                      if !(lib.isBool l) || (l && !(lib.isBool r)) then TypeError (_b_ ''
-                        &&: got non-bool operand(s) of type ${typeOf l} and ${typeOf r}
-                      '') else l && r
-                    # Allow e.g. true || null
-                    else if node.op == "||" then
-                      if !(lib.isBool l) || (!l && !(lib.isBool r)) then TypeError (_b_ ''
-                        ||: got non-bool operand(s) of type ${typeOf l} and ${typeOf r}
-                      '') else l || r
-                    else RuntimeError (_b_ ''
-                      Unsupported binary operator: ${node.op}:
-                        ${_ph_ node}
-                      '')
+                            (typeSet: elem (lib.typeOf l) typeSet && elem (lib.typeOf r) typeSet)
+                            compatibleTypeSets)
+                      then (Eval (getT res)).pure res
+                      else (Eval Any).throws (TypeError (_b_ ''Incorrect types for binary operator ${node.op}:
+
+                        ${_ph_ l} and ${_ph_ r}
+                        
+                        (expected one of ${
+                          joinSep " | " 
+                            (map 
+                              (typeSet: "(${joinSep " | " typeSet})") 
+                              compatibleTypeSets)})
+                      ''));
+                    in 
+                      if node.op == "+" then 
+                        runBinOp [["int" "float"] ["string" "path"]] (l + r)
+                      else if node.op == "-" then
+                        runBinOp [["int" "float"]] (l - r)
+                      else if node.op == "*" then
+                        runBinOp [["int" "float"]] (l * r)
+                      else if node.op == "/" then
+                        runBinOp [["int" "float"]] (l / r)
+                      else if node.op == "++" then
+                        runBinOp [["list"]] (l ++ r)
+                      else if node.op == "//" then
+                        runBinOp [["set"]] (l // r)
+                      else if node.op == "==" then
+                        runBinOp [builtinNames] (l == r)
+                      else if node.op == "!=" then
+                        runBinOp [builtinNames] (l != r)
+                      else if node.op == "<" then
+                        runBinOp [["int" "float"] ["string"] ["path"] ["list"] ["set"]] (l < r)
+                      else if node.op == ">" then
+                        runBinOp [["int" "float"] ["string"] ["path"] ["list"] ["set"]] (l > r)
+                      else if node.op == "<=" then
+                        runBinOp [["int" "float"] ["string"] ["path"] ["list"] ["set"]] (l <= r)
+                      else if node.op == ">=" then 
+                        runBinOp [["int" "float"] ["string"] ["path"] ["list"] ["set"]] (l >= r)
+                      # Allow e.g. false && null
+                      else if node.op == "&&" then
+                        if !(lib.isBool l) || (l && !(lib.isBool r)) then (Eval Any).throws (TypeError (_b_ ''
+                          &&: got non-bool operand(s) of type ${typeOf l} and ${typeOf r}
+                        '')) else (Eval "bool").pure (l && r)
+                      # Allow e.g. true || null
+                      else if node.op == "||" then
+                        if !(lib.isBool l) || (!l && !(lib.isBool r)) then (Eval Any).throws (TypeError (_b_ ''
+                          ||: got non-bool operand(s) of type ${typeOf l} and ${typeOf r}
+                        '')) else (Eval "bool").pure (l || r)
+                      else (Eval Any).throws (RuntimeError (_b_ ''
+                        Unsupported binary operator: ${node.op}:
+                          ${_ph_ node}
+                        ''))))
             else if node.nodeType == "unaryOp" then
-              let operand = helper scope node.operand;
-              in 
-                if node.op == "!" then !operand
-                else if node.op == "-" then -operand
-                else RuntimeError (_b_ ''
+              (helper scope node.operand).bind (operand:
+                if node.op == "!" then (Eval "bool").pure (!operand)
+                else if node.op == "-" then (Eval (getT (-operand))).pure (-operand)
+                else (Eval Any).throws (RuntimeError (_b_ ''
                   Unsupported unary operator: ${node.op}:
                     ${_ph_ node}
-                  '')
+                  '')))
             else if node.nodeType == "conditional" then
-              let cond = helper scope node.cond;
-              in if Abort.check cond then cond else
-                if cond then helper scope node."then" else helper scope node."else"
+              (helper scope node.cond).bind (cond:
+                if cond then helper scope node."then" else helper scope node."else")
             else if node.nodeType == "lambda" then
               # Return a function that takes arguments
-              param: 
+              (Eval "lambda").pure (param: 
                 let
                   # Create new scope based on parameter type
                   newScope = scope //
@@ -199,12 +229,20 @@ rec {
                        # For attribute set parameters, param should be an attribute set
                       let allParamNames = map (param: param.name.name) node.param.attrs;
                           suppliedUnknownNames = removeAttrs param allParamNames;
+                          # For now, handle defaults synchronously (this could be improved)
                           defaults = 
                             mergeAttrsList 
                               (map 
                                 (param:
                                   if param.nodeType == "defaultParam"
-                                  then { ${param.name.name} = helper scope param.default; }
+                                  then 
+                                    let defaultResult = helper scope param.default;
+                                        # Extract from monad - this is not ideal but needed for compatibility
+                                        defaultValue = 
+                                          let runResult = defaultResult.run {};
+                                          in if isLeft runResult then throw "Default evaluation failed"
+                                             else runResult.right.a;
+                                    in { ${param.name.name} = defaultValue; }
                                   else {})
                               node.param.attrs);
                        in 
@@ -218,104 +256,109 @@ rec {
                        Unsupported parameter type: ${node.param.nodeType}:
                          ${_ph_ node.param}
                        ''));
-                in helper newScope node.body
+                  # Extract result from helper evaluation
+                  bodyResult = helper newScope node.body;
+                  runResult = bodyResult.run {};
+                in if isLeft runResult then runResult.left
+                   else runResult.right.a)
             else if node.nodeType == "application" then
-              let func = helper scope node.func;
-                  args = node.args;  # args is a list of AST nodes
-              in 
-                if is EvalError func then func else
-                lib.foldl 
-                  (f: arg: 
-                    let a = helper scope arg;
-                    in if is EvalError a then a else f a)
-                  func 
-                  args
+              (helper scope node.func).bind (func:
+                let evalArgs = args:
+                  lib.foldl 
+                    (accM: arg: 
+                      accM.bind (acc: 
+                        (helper scope arg).bind (val: 
+                          (Eval "list").pure (acc ++ [val]))))
+                    ((Eval "list").pure [])
+                    args;
+                in (evalArgs node.args).bind (args:
+                  let result = lib.foldl (f: a: f a) func args;
+                  in if is EvalError result then (Eval Any).throws result 
+                     else (Eval (getT result)).pure result))
             else if node.nodeType == "select" then
-              let expr = helper scope node.expr;
-                  # For now, only support simple attribute paths (single identifier)
-                  pathComponent = if node.path.nodeType == "attrPath" && builtins.length node.path.path == 1
-                                 then 
-                                   let comp = builtins.head node.path.path;
-                                   in if comp.nodeType == "identifier" then comp.name
-                                      else RuntimeError (_b_ ''
-                                        Complex attribute path components not supported in evalAST:
-                                          ${_ph_ comp}
-                                        '')
-                                 else RuntimeError (_b_ ''
-                                   Complex attribute paths not supported in evalAST:
-                                     ${_ph_ node.path}
-                                   '');
-              in 
-                if builtins.hasAttr "default" node && node.default != null then 
-                  expr.${pathComponent} or (helper scope node.default)
-                else expr.${pathComponent}
+              (helper scope node.expr).bind (expr:
+                # For now, only support simple attribute paths (single identifier)
+                let pathComponent = if node.path.nodeType == "attrPath" && builtins.length node.path.path == 1
+                                   then 
+                                     let comp = builtins.head node.path.path;
+                                     in if comp.nodeType == "identifier" then comp.name
+                                        else RuntimeError (_b_ ''
+                                          Complex attribute path components not supported in evalAST:
+                                            ${_ph_ comp}
+                                          '')
+                                   else RuntimeError (_b_ ''
+                                     Complex attribute paths not supported in evalAST:
+                                       ${_ph_ node.path}
+                                     '');
+                in 
+                  if is EvalError pathComponent then (Eval Any).throws pathComponent
+                  else
+                    let result = if builtins.hasAttr "default" node && node.default != null then 
+                      (helper scope node.default).bind (defaultVal:
+                        (Eval (getT (expr.${pathComponent} or defaultVal))).pure (expr.${pathComponent} or defaultVal))
+                    else (Eval (getT expr.${pathComponent})).pure expr.${pathComponent};
+                    in result)
             else if node.nodeType == "letIn" then
               let
                 # Evaluate bindings to create new scope
-                evalBinding = assign: {
-                  name = if assign.lhs.nodeType == "identifier" then assign.lhs.name
-                         else RuntimeError (_b_ ''
-                           Complex let bindings not supported in evalAST:
-                             ${_ph_ assign}
-                           '');
-                  value = helper scope assign.rhs;
-                };
-                bindings = map evalBinding node.bindings;
-                newScope = scope // (builtins.listToAttrs bindings);
-              in helper newScope node.body
+                evalBinding = assign: 
+                  if assign.lhs.nodeType == "identifier" then 
+                    (helper scope assign.rhs).bind (value:
+                      (Eval "set").pure {
+                        name = assign.lhs.name;
+                        inherit value;
+                      })
+                  else (Eval Any).throws (RuntimeError (_b_ ''
+                    Complex let bindings not supported in evalAST:
+                      ${_ph_ assign}
+                    ''));
+                evalBindings = bindings:
+                  lib.foldl 
+                    (accM: bind: 
+                      accM.bind (acc: 
+                        (evalBinding bind).bind (binding: 
+                          (Eval "list").pure (acc ++ [binding]))))
+                    ((Eval "list").pure [])
+                    bindings;
+              in (evalBindings node.bindings).bind (bindings:
+                let newScope = scope // (builtins.listToAttrs bindings);
+                in helper newScope node.body)
             else if node.nodeType == "with" then
-              let
-                # Evaluate the with environment and merge it into scope
-                withEnv = helper scope node.env;
+              (helper scope node.env).bind (withEnv:
                 # with attributes are fallbacks - existing lexical scope should shadow them
-                newScope = withEnv // scope;
-              in helper newScope node.body
+                let newScope = withEnv // scope;
+                in helper newScope node.body)
             else if node.nodeType == "assert" then
-              let
-                # Evaluate the assertion condition
-                condResult = helper scope node.cond;
-              in
-                if !(lib.isBool condResult) then TypeError (_b_ ''
+              (helper scope node.cond).bind (condResult:
+                if !(lib.isBool condResult) then (Eval Any).throws (TypeError (_b_ ''
                   assert: got non-bool condition of type ${typeOf condResult}:
                     ${_ph_ condResult}
-                  '')
-                else if !condResult then AssertError (_b_ ''
+                  ''))
+                else if !condResult then (Eval Any).throws (AssertError (_b_ ''
                   assert: condition failed:
                     ${_ph_ condResult}
-                  '')
-                else helper scope node.body
+                  ''))
+                else helper scope node.body)
             else if node.nodeType == "abort" then
-              let
-                # Evaluate the abort message
-                message = helper scope node.msg;
-              in
-                if !(lib.isString message) then TypeError (_b_ ''
+              (helper scope node.msg).bind (message:
+                if !(lib.isString message) then (Eval Any).throws (TypeError (_b_ ''
                   abort: got non-string message of type ${typeOf message}:
                     ${_ph_ message}
-                '')
-                else Abort message
+                ''))
+                else (Eval Any).throws (Abort message))
             else if node.nodeType == "throw" then
-              let
-                # Evaluate the throw message
-                message = helper scope node.msg;
-              in
-                if !(lib.isString message) then TypeError (_b_ ''
+              (helper scope node.msg).bind (message:
+                if !(lib.isString message) then (Eval Any).throws (TypeError (_b_ ''
                   throw: got non-string message of type ${typeOf message}:
                     ${_ph_ message}
-                '')
-                else Throw message
-            else RuntimeError (_b_ ''
+                ''))
+                else (Eval Any).throws (Throw message))
+            else (Eval Any).throws (RuntimeError (_b_ ''
               Unsupported AST node type: ${node.nodeType}:
                 ${_ph_ node}
-              '')
+              ''))
             );
-        in 
-          let 
-            result = helper initEvalState.scope node;
-          in 
-            if is EvalError result
-            then (Eval Any).throws result
-            else (Eval (getT result)).pure result;
+        in helper initEvalState.scope node;
 
     in evalNodeWithState astNode;
 
