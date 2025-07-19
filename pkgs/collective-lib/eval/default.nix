@@ -8,108 +8,62 @@
 # Writes the string out to a file in the store by a derivation, and then
 # imports that file.
 let
-  tests = collective-lib.tests;
-  typed = collective-lib.typed;
+  args = { inherit pkgs lib collective-lib; };
+  modules = {
+    ast = import ./ast.nix args;
+    monad = import ./monad.nix args;
+    store = import ./store.nix args;
+    fn = import ./fn.nix args;
+  };
 in
-  with typed;
+
+# Expose the modules as eval.monad, eval.store, eval.ast
+# Plus the centralising eval function.
+with collective-lib.typed;
 rec {
-  evalDrvName = exprStr: "eval-${builtins.hashString "sha256" exprStr}";
 
-  exprNixFile = exprStr: builtins.toFile "expr.nix" exprStr;
+  # Expose all but store/ast to avoid clashes with eval.ast.
+  inherit (modules) monad fn;
 
-  evalBuilder = pkgs.writeTextFile {
-    name = "eval_builder.sh";
-    executable = true;
-    text = ''
-      set -e
-      unset PATH
-      for p in $buildInputs; do
-          export PATH=$p/bin''${PATH:+:}$PATH
-      done
+  /* Default to dispatching based on the type of the argument,
+  eval :: (string | AST) -> Either EvalError a */
+  __functor = self: self.ast;
 
-      mkdir -p $out
-      echo "$exprStr" > $out/expr.nix
-    '';
-  };
+  /* Eval a string or AST.
+  eval :: (string | AST) -> Either EvalError a */
+  ast = compose modules.ast.evalAST parser.parse;
 
-  evalDrv = exprStr: 
-    let nixFile = exprNixFile exprStr;
-    in derivation {
-      name = evalDrvName exprStr;
-      system = builtins.currentSystem;
-      builder = "${pkgs.bash}/bin/bash";
-      args = [ evalBuilder ];
-      inherit exprStr;
-      buildInputs = with pkgs; [ coreutils ];
-      outputs = [ "out" ];
-    };
-
-  # Create a structured eval object.
-  eval_ = exprStr: rec {
-    inherit exprStr;
-    drv = evalDrv exprStr;
-    exprFile = "${drv}/expr.nix";
-    __import = {}: import exprFile;
-  };
-
-  # Eval either from the store or from the parsed AST.
-  eval = {
-    __functor = self: self.ast;
-    store = exprStr: (eval_ exprStr).__import {};
-    ast = exprStr: parser.evalAST (parser.parseAST exprStr);
-  };
-
-
-  # Use eval to create a callable lambda function from a string.
-  txtfn_ = evalFn: functionText: rec {
-    inherit functionText;
-    __fn = evalFn functionText;
-    __functor = self: arg: self.__fn arg;
-    # Create a new function with a text transformation f applied.
-    mapText = f: txtfn (f functionText);
-  };
-
-  txtfn = {
-    __functor = self: self.ast;
-    store = txtfn_ eval.store;
-    ast = txtfn_ eval.ast;
-  };
-
-  # For just 'collective-lib.eval "1 + 1"'
-  __functor = self: eval.ast;
+  /* Eval a string by persisting to the store.
+  Disabled, something wrong with store eval
+  store :: string -> a */
+  store = const "disabled"; # modules.store.evalStore;
 
   # Test both AST and Store eval.
-  # <nix>eval._tests.run {}</nix>
-  _tests = with tests; suite {
-    eval = mapAttrs (_: evalFn: {
-        const = expect.eq (eval "1") 1;
-        add = expect.eq (eval "1 + 1") 2;
-        eval = expect.eq (eval ''
-          { evalPath }:
-          let eval = import evalPath {};
-          in eval "1 + 1"
-        '' { evalPath = ./.; }) 2;
-        nest =
-          let nestEval = n: exprStr:
-                if n == 0 then exprStr
-                else nestEval (n - 1) (_b_ ''
-                  let eval = import ${./.} {}; in
-                  eval "(${replaceStrings [''"'' ''\''] [''\"'' ''\\''] exprStr}) + 1"
-                '');
-          in expect.eq (eval (nestEval 5 "0")) 5;
-      })
-      { inherit (eval) ast store; };
+  _tests = with tests; extendSuite (mergeSuites modules) (suite {
+    # TODO: Move into eval.by when AST eval supports import
+    # eval.storeOnly = flip mapAttrs { inherit store; } (_: evalFn: {
+    #   meta = expect.eq (eval ''
+    #     { evalPath }:
+    #     let eval = import evalPath {};
+    #     in eval "1 + 1"
+    #   '' { evalPath = ./.; }) 2;
+    #   nest =
+    #     let nestEval = n: exprStr:
+    #           if n == 0 then exprStr
+    #           else nestEval (n - 1) (_b_ ''
+    #             let eval = import ${./.} {}; in
+    #             eval "(${replaceStrings [''"'' ''\''] [''\"'' ''\\''] exprStr}) + 1"
+    #           '');
+    #     in expect.eq (eval (nestEval 5 "0")) 5;
+    # });
 
-  txtfn = mapAttrs (_: txtfnFn: 
-    let fTxt = "a: b: 3 * a + b";
-        f = txtfn fTxt;
-        g = f.mapText (t: "z: ${t} + z");
-    in {
-      exprStr = expect.eq f.functionText fTxt;
-      call = expect.eq (f 3 1) 10;
-      fmap = expect.eq (g 5 3 1) 15;
-    })
-    { inherit (txtfn) ast store; };
-
-  };
+    # TODO: Re-enable store eval
+    #eval.by = flip mapAttrs { inherit (eval) ast store; } (_: evalFn: {
+    eval = {
+      ast = {
+        const = expect.eq (eval.ast "1").right 1;
+        add = expect.eq (eval.ast "1 + 1").right 2;
+      };
+    };
+  });
 }

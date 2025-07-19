@@ -128,7 +128,9 @@ let
     };
 
   baseModules = 
-    let args = { inherit pkgs lib collective-lib; }; in
+    let 
+      args = { inherit pkgs lib collective-lib; };
+    in
     {
       attrsets = import ./attrsets.nix args;
       binding = import ./binding.nix args;

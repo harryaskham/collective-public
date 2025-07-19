@@ -71,14 +71,40 @@ in { inherit (xs) "a"; }
 
 <nix>
 with parser;
-(parseAST "{a = 1;}.a")
+evalASTEither (parseAST "(1 == 1)")
 </nix>
 <nix>
 log._tests.run {}
 </nix>
 <nix>
-parser._tests.run {}
+eval._tests.run {}
+</nix>
+<nix>
+eval._tests.debug {}
 </nix>
 <nix>
 parser._tests.debug {}
+</nix>
+
+<nix>
+eval "1"
+</nix>
+
+<nix>
+eval.monad._tests.run {}
+</nix>
+
+<nix>
+with eval.monad;
+let Int = {
+  __toString = self: "Int";
+  check = x: isInt (x.x or null);
+  __functor = self: x: {
+    inherit x;
+    __type = Int;
+    __toString = self: "Int ${_p_ self.x}";
+  };
+}; in
+
+(Eval Int).pure (Int 1)
 </nix>
