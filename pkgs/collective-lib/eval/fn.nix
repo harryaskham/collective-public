@@ -9,41 +9,39 @@ rec {
   __functor = self: self.ast;
 
   # Use eval to create a callable lambda function from a string.
-  fn = 
-    let mk = evalFn: functionExpr: rec {
+  fn = {
+    __functor = self: self.ast;
+
+    store = functionExpr: {
+      inherit functionExpr;
+      __fn = eval.eval.store functionExpr;
+      __functor = self: arg: self.__fn arg;
+      # Create a new function of the same type with a text transformation f applied.
+      mapText = f: fn.store (f functionExpr);
     };
-    in {
-      __functor = self: self.ast;
-      #store = functionExpr: {
-      #  inherit functionExpr;
-      #  __fn = eval.store functionExpr;
-      #  __functor = self: arg: self.__fn arg;
-      #  # Create a new function of the same type with a text transformation f applied.
-      #  mapText = f: fn.store (f functionExpr);
-      #};
-      ast = functionExpr: (mk eval.ast functionExpr) // {
-        inherit functionExpr;
-        __fn = 
-          with eval.monad;
-          let fE = eval.ast functionExpr;
-          in arg: 
-            case fE {
-              Left = e: toString e;
-              Right = f: f arg;
-            };
-        __functor = self: arg: self.__fn arg;
-        # Create a new function of the same type with a text transformation f applied.
-        mapText = f: fn.ast (f functionExpr);
-        # Create a new function of the same type with an AST transformation f applied.
-        mapAST = f: fn.ast (f (parser.parse functionExpr));
-      };
+
+    ast = functionExpr: {
+      inherit functionExpr;
+      __fn = 
+        with eval.monad;
+        let fE = eval.eval.ast functionExpr;
+        in arg: 
+          case fE {
+            Left = e: toString e;
+            Right = f: f arg;
+          };
+      __functor = self: arg: self.__fn arg;
+      # Create a new function of the same type with a text transformation f applied.
+      mapText = f: fn.ast (f functionExpr);
+      # Create a new function of the same type with an AST transformation f applied.
+      mapAST = f: fn.ast (f (parser.parse functionExpr));
     };
+  };
 
   # Test both AST and Store based txtfns.
   _tests = with tests; suite {
     # Store disabled due to drv errors
-    #@each = flip mapAttrs { inherit (fn) ast store; } (_: fn: 
-    fn.each = flip mapAttrs { inherit (fn) ast; } (_: fn: 
+    each = flip mapAttrs { inherit (fn) ast store; } (_: fn: 
       let fTxt = "a: b: 3 * a + b";
           f = fn fTxt;
           g = f.mapText (t: "z: ${t} + z");

@@ -4,9 +4,6 @@ with collective-lib.typed;
 with eval.monad;
 with parser;
 rec {
-  # Default to eval
-  __functor = self: self.eval;
-
   # Parse an expression lifted into the Eval monad.
   # TODO: pure infers type argument?
   parseM = with Eval AST; compose pure parse;
@@ -304,6 +301,15 @@ rec {
                     ${_ph_ message}
                 '')
                 else Throw message
+            else if node.nodeType == "import" then
+              let
+                path = helper scope node.path;
+              in
+                if !(lib.isString path || lib.isPath path) then TypeError (_b_ ''
+                  import: got non-string or path message of type ${typeOf path}:
+                    ${_ph_ path}
+                '')
+                else import path
             else RuntimeError (_b_ ''
               Unsupported AST node type: ${node.nodeType}:
                 ${_ph_ node}
@@ -324,12 +330,12 @@ rec {
   testRoundTrip = expr: expected: with collective-lib.tests; {
     # Just test that parsing succeeds and the result evaluates to expected
     roundTrip = 
-      let result = collective-lib.eval.ast expr;
+      let result = collective-lib.eval.eval.ast expr;
       in expect.noLambdasEq result ((Either EvalError (getT expected)).Right expected);
   };
 
   expectEvalError = E: expr: with collective-lib.tests;
-    let result = collective-lib.eval.ast expr;
+    let result = collective-lib.eval.eval.ast expr;
     in expect.eq (rec {
       resultIsLeft = isLeft result;
       resultEMatches = is E (result.left or null);
@@ -472,6 +478,11 @@ rec {
         nestedWith = testRoundTrip "with { a = 1; }; with { b = 2; }; a + b" 3;
         # With expression with complex lexical shadowing
         complexShadowing = testRoundTrip "let a = 10; b = 20; in with { a = 1; c = 3; }; a + b + c" 33;
+      };
+
+      importExpressions = {
+        # Basic with expression
+        importSelf = testRoundTrip "let M = import ./. {}; in M.eval \"1 + 1\"" 2;
       };
 
       # Complex expressions demonstrating code transformations

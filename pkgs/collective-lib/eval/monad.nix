@@ -131,6 +131,7 @@ rec {
     true = true;
     false = false;
     null = null;
+    import = builtins.import;
   };
 
   # Monadic evaluation state.

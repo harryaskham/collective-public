@@ -22,8 +22,9 @@ rec {
     set = node:
       if isAST node then 
         let headerParams = [ "nodeType" "name" "param" "op" ];
+            hiddenParams = [ "__type" "__isAST" "__toString" "__args" "fmap" "mapNode" ];
             nodeHeader = joinWords (nonEmpties (map (p: typed.log.show (node.${p} or "")) headerParams));
-            nodeSet = removeAttrs node headerParams;
+            nodeSet = removeAttrs node (headerParams ++ hiddenParams);
             nodePartitioned = typed.partitionAttrs (_: v: lib.isAttrs v || lib.isList v) nodeSet;
             nodeProperties = nodePartitioned.wrong;
             children = nodePartitioned.right;
@@ -157,7 +158,7 @@ rec {
     identifier =
       lex (
         bind (fmap (matches: head matches) (matching ''[a-zA-Z_][a-zA-Z0-9_\-]*'')) (identifierName:
-        if builtins.elem identifierName ["if" "then" "else" "let" "in" "with" "inherit" "assert" "abort" "import" "throw" "rec" "or"]
+        if builtins.elem identifierName ["if" "then" "else" "let" "in" "with" "inherit" "assert" "abort" "throw" "rec" "or"]
         then choice []  # fail by providing no valid alternatives
         else pure (N.identifier identifierName)));
     keyword = k: thenSkip (string k) (notFollowedBy (matching "[a-zA-Z0-9_]"));
@@ -261,7 +262,7 @@ rec {
 
     # Paths
     path = annotateSource "path" (fmap N.path (choice [
-      (fmap head (matching ''((\.?\.?|~)(/[a-zA-Z0-9\-_\.]+))+''))
+      (fmap head (matching ''((\.?\.?|~)(/[-_a-zA-Z0-9\.]+))+''))
       (fmap head (matching ''<[^>]+>''))
     ]));
 
@@ -383,7 +384,7 @@ rec {
 
     # Assert expressions
     throwParser = annotateSource "throw" (bind throwKeyword (_:
-      bind expr (body:
+      bind atom (body:
       pure (N.throwExpr body))));
 
     # Assert expressions
@@ -412,8 +413,8 @@ rec {
       assertParser
       abortParser
       throwParser
-      lambda
       application
+      lambda
     ]);
 
     atom = annotateSource "atom" (lex (choice [
@@ -430,8 +431,8 @@ rec {
     ]));
 
     exprNoOperators = annotateSource "exprNoOperators" (choice [
-      compound
       atom
+      compound
     ]);
 
     # Unary operators (or singleton expressions)
@@ -452,12 +453,15 @@ rec {
     equality = binOp eqOp relational;
     logical_and = binOp andOp equality;
     logical_or = binOp orOp logical_and;
+    
+    exprWithOperators = logical_or;
 
     # Finally expose expr as the top-level expression with operator precedence.
     expr = annotateSource "expr" (spaced (choice [
-      logical_or
-      (between (sym "(") (sym ")") expr)
+      exprWithOperators
+      (between (sym "(") (sym ")") exprWithOperators)
     ]));
+
     exprEof = annotateSource "exprEof" (
       lex (bind expr (e: bind eof (_: pure e))));
   };
@@ -665,7 +669,8 @@ rec {
           lambdaEllipsis = let result = parseWith p.lambda "{ a, b, ... }: a + b"; in
             expect.eq result.type "success";
 
-          complexNested = let result = parseWith p.expr "let f = x: x + 1; in f (if true then 42 else 0)"; in
+          complexNested = let result = parseWith p.expr 
+            "let f = x: x + 1; in f (if true then 42 else 0)"; in
             expect.eq result.type "success";
 
           simpleString = expectSuccess p.normalString ''"hello world"'' (N.string "hello world");
