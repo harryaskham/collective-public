@@ -111,7 +111,11 @@ rec {
                   else if node.rightOperand.nodeType == "identifier" then l.${node.rightOperand.name}
 
                   # a."b"
-                  else l.${orRight}
+                  else if lib.isString r then l.${r}
+                  else RuntimeError (_b_ ''
+                    Unsupported attribute access: ${node.rightOperand.nodeType}:
+                      ${_pd_ 1 l}.${_ph_ node.rightOperand}
+                    '')
 
                 else 
                   let runBinOp = compatibleTypeSets: res:
@@ -482,7 +486,7 @@ rec {
 
       importExpressions = {
         # Basic with expression
-        importSelf = testRoundTrip "let M = import ./. {}; in M.eval \"1 + 1\"" 2;
+        importSelf = testRoundTrip "let M = import ${./.} {}; in M.eval \"1 + 1\"" 2;
       };
 
       # Complex expressions demonstrating code transformations

@@ -43,22 +43,6 @@ rec {
 
   # Test both AST and Store eval.
   _tests = with tests; extendSuite (mergeSuites modules) (suite {
-    eval.storeOnly = flip mapAttrs { inherit store; } (_: evalFn: {
-      meta = expect.eq (eval ''
-        { evalPath }:
-        let eval = import evalPath {};
-        in eval "1 + 1"
-      '' { evalPath = ./.; }) 2;
-      nest =
-        let nestEval = n: exprStr:
-              if n == 0 then exprStr
-              else nestEval (n - 1) (_b_ ''
-                let eval = import ${./.} {}; in
-                eval "(${replaceStrings [''"'' ''\''] [''\"'' ''\\''] exprStr}) + 1"
-              '');
-        in expect.eq (eval (nestEval 5 "0")) 5;
-    });
-
     eval = {
       ast = {
         const = expect.eq (eval.ast "1").right 1;

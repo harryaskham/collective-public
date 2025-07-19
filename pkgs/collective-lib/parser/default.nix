@@ -153,6 +153,11 @@ rec {
           rest = many (bind opParser (op: bind term (rightOperand: pure { inherit op rightOperand; })));
       in bind term (leftOperand: bind rest (rightOperands:
         pure (lib.foldl (acc: x: N.binaryOp x.op acc x.rightOperand) leftOperand rightOperands)));
+    #binOp = opParser: termParser:
+    #  bind termParser (leftOperand:
+    #  bind opParser (op:
+    #  bind termParser (rightOperand:
+    #  pure (N.binaryOp op leftOperand rightOperand))));
 
     # Identifiers and keywords
     identifier =
@@ -413,8 +418,8 @@ rec {
       assertParser
       abortParser
       throwParser
-      application
       lambda
+      application
     ]);
 
     atom = annotateSource "atom" (lex (choice [
@@ -431,8 +436,9 @@ rec {
     ]));
 
     exprNoOperators = annotateSource "exprNoOperators" (choice [
-      atom
       compound
+      atom
+      (between (sym "(") (sym ")") exprNoOperators)
     ]);
 
     # Unary operators (or singleton expressions)
@@ -440,6 +446,7 @@ rec {
       (bind notOp (_: bind unary (operand: pure (N.unaryOp "!" operand))))
       (bind negateOp (_: bind unary (operand: pure (N.unaryOp "-" operand))))
       exprNoOperators
+      (between (sym "(") (sym ")") unary)
     ]);
 
     # Binary operators by precedence
@@ -459,7 +466,8 @@ rec {
     # Finally expose expr as the top-level expression with operator precedence.
     expr = annotateSource "expr" (spaced (choice [
       exprWithOperators
-      (between (sym "(") (sym ")") exprWithOperators)
+      exprNoOperators
+      (between (sym "(") (sym ")") expr)
     ]));
 
     exprEof = annotateSource "exprEof" (
