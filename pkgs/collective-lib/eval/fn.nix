@@ -65,6 +65,7 @@ rec {
             Undefined identifier 'argXXX' in current scope:
               { arg = 123;
                 false = false;
+                import = <lambda>;
                 null = null;
                 true = true; }
           ''));
