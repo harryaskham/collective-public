@@ -371,6 +371,16 @@ in rec {
         })
         modules);
 
+  # Extend a test suite with a new set of tests.
+  # e.g.
+  #   ...
+  #   _tests = extendSuite (mergeSuites { inherit module1 module2; } {
+  #     localTests = { ... };
+  #   };
+  # }
+  extendSuite = prevSuite: newSuite:
+    suite (lib.recursiveUpdate prevSuite.nestedTests newSuite.nestedTests);
+
   # Create a test suite from a nested set of tests.
   # e.g.
   # {

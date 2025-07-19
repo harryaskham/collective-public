@@ -43,7 +43,7 @@ Lets you keep personal scripts / utilities clean and organised.
 A ~nix-parsec~-based Nix parser written in Nix, which can reflect on module source, perform code transformations, etc.
 
 #+BEGIN_SRC nix
-(parser.parseAST ''let x = 1; in a: b: x + a + b'')
+(parse ''let x = 1; in a: b: x + a + b'')
 ==
 {
   root = {
