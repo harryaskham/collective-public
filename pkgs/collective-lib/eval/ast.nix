@@ -484,10 +484,27 @@ rec {
         complexShadowing = testRoundTrip "let a = 10; b = 20; in with { a = 1; c = 3; }; a + b + c" 33;
       };
 
-      importExpressions = {
-        # Basic with expression
-        importSelf = testRoundTrip "let M = import ${./.} {}; in M.eval \"1 + 1\"" 2;
-      };
+      importExpressions = 
+        let 
+          # Metamodule is not evaluated inside evalAST, only by delegation
+          # to "import"
+          metaModule = collective-lib.eval.store.evalStoreFile ''
+            { 
+              pkgs ? import <nixpkgs> {},
+              lib ? pkgs.lib,
+              collective-lib ? import ${../.} { inherit lib; }
+            }:
+            with collective-lib;
+            { 
+              metaEval = compose (x: x.right) eval;
+            }
+        '';
+        in {
+          importSelf = testRoundTrip ''
+            let metaModule = import ${metaModule} {};
+            in with metaModule; (metaEval "1 + 1")
+          '' 2;
+        };
 
       # Complex expressions demonstrating code transformations
       transformations = let

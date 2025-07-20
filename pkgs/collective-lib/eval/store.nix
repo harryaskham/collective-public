@@ -2,11 +2,11 @@
 
 with collective-lib.typed;
 rec {
+  # Write an expression to a file and return the path.
+  evalStoreFile = exprStr: builtins.toFile "expr.nix" exprStr;
+
   # Exposed as eval.store in default.nix
-  evalStore = exprStr: rec {
-    exprNixFile = builtins.toFile "expr.nix" exprStr;
-    value = import "${exprNixFile}";
-  }.value;
+  evalStore = exprStr: import (evalStoreFile exprStr);
 
   # Tested more thoroughly in default.nix
   _tests = with tests; suite {
