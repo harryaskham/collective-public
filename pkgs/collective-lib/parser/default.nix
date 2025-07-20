@@ -11,36 +11,131 @@
 let
   eval = collective-lib.eval;
   typed = collective-lib.typed;
+  log = collective-lib.log;
   parsec = nix-parsec.parsec;
   lexer = nix-parsec.lexer;
 in 
   with typed;
 rec {
+  sortOrder = imap (i: k: { ${k} = i; }) [
+    "name"
+    "value"
+    "path"
+    "msg"
+    "elements"
+    "rec"
+    "assignments"
+    "from"
+    "ellipsis"
+    "attrs"
+    "default"
+    "param"
+    "bindings"
+    "env"
+    "cond"
+    "then"
+    "else"
+    "func"
+    "args"
+    "op"
+    "op0"
+    "op1"
+    "operand"
+    "lhs"
+    "mhs"
+    "rhs"
+    "body"
+  ];
 
-  printableAST = dispatch.def id {
-    list = map printableAST;
-    set = node:
-      if isAST node then 
-        let headerParams = [ "nodeType" "name" "param" "op" ];
-            hiddenParams = [ "__type" "__isAST" "__toString" "__args" "fmap" "mapNode" "__src" ];
-            nodeHeader = joinWords (nonEmpties (map (p: typed.log.show (node.${p} or "")) headerParams));
-            nodeSet = removeAttrs node (headerParams ++ hiddenParams);
-            nodePartitioned = typed.partitionAttrs (_: v: lib.isAttrs v || lib.isList v) nodeSet;
-            nodeProperties = nodePartitioned.wrong;
-            children = nodePartitioned.right;
-        in 
-          [nodeHeader] ++ 
-            (optionals (nonEmpty nodeProperties) (mapAttrsToList (k: v: [k v]) nodeProperties))
-            ++ (optionals (nonEmpty children) (mapAttrsToList (k: v: [k (printableAST v)]) children))
-      else mapAttrs (_: printableAST) node;
+  sortLines = sortOn (x: sortOrder.${x.name} or 999);
+
+  filterAST = filterAttrs (k: v: !(elem k hiddenParams) && safeNonEmpty v);
+
+  signatureAST = node: if isAST node then "AST" else lib.typeOf node;
+
+  printASTName = node: switch.def node.nodeType node.nodeType {
+    int = "ℤ ${toString node.value}";
+    float = "ℝ ${toString node.value}";
+    bool = "𝔹 ${boolToString node.value}";
+    string = "\"${node.value}\"";
+    indentString = "''${node.value}''";
+    interpolation = "<\${_}>";
+    path = "path:${node.value}";
+    identifier = "`${node.name}`";
+    attrPath = "<_._._>";
+    list = "[_]";
+    attrs = "${optionalString node."rec" "rec "}{_}";
+    assignment = "<_ = _>";
+    inheritExpr = "inherit _";
+    lambda = "<λ ${printASTName node.param} → _>";
+    simpleParam = node.name;
+    attrSetParam = "{_${optionalString node.ellipsis ", ..."}}: _";
+    defaultParam = "${node.name} ? _";
+    application = "<_ $ _>";
+    conditional = "if _ then _ else _";
+    letIn = "let _ in _";
+    withExpr = "with _";
+    assertExpr = "assert _; _";
+    throwExpr = "throw _";
+    abortExpr = "abort _";
+    unaryOp = "<_ ${node.op} _>";
+    binaryOp = "<_ ${node.op} _>";
+    trinaryOp = "<_ ${node.op0} _ ${node.op1} _>";
   };
+
+  toNodeBlocks = dispatch.def.on signatureAST (x: [{ body = _p_ x; }]) {
+    AST = node: [{ name = printASTName node; body = filterAST node.__args; }];
+    set = compose sortLines (mapAttrsToList (k: v: { name = k; body = v; }));
+    list = imap0 (i: v: { name = toString i; body = v; });
+    string = body: [{ inherit body; }];
+  };
+
+  printNode = isRoot: prefix: node:
+    log.while "printing AST node ${node.nodeType or "<unnamed>"}" (
+    let blocks = toNodeBlocks node;
+        nBlocks = size blocks;
+    in _ls_ (ifor blocks (blockIx: { name ? null, body }:
+      let 
+        lines = (optionals (name != null) [name]) ++ (splitLines (printAST false prefix body));
+        nLines = size lines;
+        blockPrefix = 
+          if isRoot then {
+            first = "";
+            mid = "";
+            last = "";
+          } else if blockIx < nBlocks - 1 then {
+            first = if nLines <= 1 then "└─" else "├─";
+            mid = "│ ";
+            last = "│ ";
+          } else {
+            first = "└─";
+            mid = "  ";
+            last = "  ";
+          };
+        linePrefix = i: 
+          if i == 0 then blockPrefix.first 
+          else if i == nLines - 1 then blockPrefix.last
+          else blockPrefix.mid;
+      in _ls_ (ifor lines (i: l: "${prefix}${linePrefix i}${l}"))))
+    );
+
+  printAST = isRoot: prefix: dispatch.def.on signatureAST (x: _h_ "${prefix} ${_p_ x}") {
+    AST = printNode isRoot prefix;
+    set = printNode isRoot prefix;
+    list = printNode isRoot prefix;
+    string = s: "${prefix} ${s}";
+  };
+
+  hiddenParams = [ "__type" "__isAST" "__toString" "__args" "fmap" "mapNode" "__src"
+                   "name" "value" "param" "ellipsis" "op" "op0" "op1" "rec" ];
+  filtered = nodes: filterAttrs (k: v: !(elem k hiddenParams) && safeNonEmpty v) nodes;
 
   AST = {
     __toString = self: "AST";
     __functor = self: nodeType: args: {
       __type = AST;
       __isAST = true;
-      __toString = self: _p_ (printableAST self);
+      __toString = self: "\n" + printAST true "" self;
       __args = args;
       inherit nodeType;
       __src = args.__src or null;
@@ -62,10 +157,9 @@ rec {
     float = f: AST "float" { value = f; };
     string = s: AST "string" { value = s; };
     indentString = s: AST "indentString" { value = s; };
-    interpolation = s: AST "interpolation" { value = s; };
+    interpolation = body: AST "interpolation" { body = body; };
     path = p: AST "path" { value = p; };
     bool = b: AST "bool" { value = b; };
-    nullValue = AST "nullValue" {};
     
     # Identifiers and references
     identifier = name: AST "identifier" { inherit name; };
@@ -92,9 +186,9 @@ rec {
     abortExpr = msg: AST "abort" { inherit msg; };
     
     # Operations
-    binaryOp = op: leftOperand: rightOperand: AST "binaryOp" { inherit op leftOperand rightOperand; };
     unaryOp = op: operand: AST "unaryOp" { inherit op operand; };
-    select = expr: path: default: AST "select" { inherit expr path default; };
+    binaryOp = lhs: op: rhs: AST "binaryOp" { inherit op lhs rhs; };
+    trinaryOp = lhs: op0: mhs: op1: rhs: AST "trinaryOp" { inherit op0 op1 lhs mhs rhs; };
     
     # Parameter types
     simpleParam = name: AST "simpleParam" { inherit name; };
@@ -168,14 +262,23 @@ rec {
     # Helper for binary operators
     binOp = opParser: termParser:
       let term = termParser;
-          rest = many (bind opParser (op: bind term (rightOperand: pure { inherit op rightOperand; })));
-      in bind term (leftOperand: bind rest (rightOperands:
-        pure (lib.foldl (acc: x: N.binaryOp x.op acc x.rightOperand) leftOperand rightOperands)));
+          rest = many (bind opParser (op: bind term (rhs: pure { inherit op rhs; })));
+      in bind term (lhs: bind rest (rhss:
+        pure (lib.foldl (acc: x: N.binaryOp acc x.op x.rhs) lhs rhss)));
+
+    trinOp = termParser0: op0Parser: termParser1: op1Parser: termParser2:
+      bind termParser0 (lhs:
+      bind op0Parser (op0:
+      bind termParser1 (mhs:
+      bind op1Parser (op1:
+      bind termParser2 (rhs:
+      pure (N.trinaryOp lhs op0 mhs op1 rhs))))));
+
     #binOp = opParser: termParser:
-    #  bind termParser (leftOperand:
+    #  bind termParser (lhs:
     #  bind opParser (op:
-    #  bind termParser (rightOperand:
-    #  pure (N.binaryOp op leftOperand rightOperand))));
+    #  bind termParser (rhs:
+    #  pure (N.binaryOp op lhs rhs))));
 
     # Identifiers and keywords
     identifier =
@@ -290,8 +393,11 @@ rec {
     ]));
 
     # Lists
-    list = mkParser "list" (spaced (fmap N.list (between (sym "[") (sym "]") 
-      (sepBy atom spaces))));
+    list = mkParser "list" (
+      spaced (
+      fmap N.list (
+      between (sym "[") (sym "]") (
+      sepBy atom spaces))));
 
     # Attribute paths
     attrPathComponent = annotateSource "attrPathComponent" (choice [
@@ -440,6 +546,15 @@ rec {
     atom = annotateSource "atom" (lex (choice [
       float
       int
+      # An atom can be an orive; # The 'or' consumes one atom which can itself have an 'or':
+      # e.g. { a = add 10; } . a or add 1 2 -> error, (or add) is an atom so this is add 10 1 2
+      #      ({ a = add 10; }.b or (add 1)) 2 -> 12, correct parens
+      #      { a = add 10; } . b or add 1 2 -> 3
+      # Put this after floats/ints to avoid 1.1 being parsed as select 1 from 1
+      # Even this works:
+      # [ 1 2 { a = 4; }.b or 3 4 5] -> [1 2 3]
+      # so 'or' never actually needs parens
+      #orive
       normalString
       indentString
       path
@@ -462,9 +577,10 @@ rec {
     ]);
 
     # Binary operators by precedence  
-    orive = binOp selectOrOp unary;
-    selective = binOp selectOp orive;
-    multiplicative = binOp mulOp selective;
+    selective = binOp selectOp unary;
+    #orive = trinOp selective selectOp orive selectOrOp orive;
+    orive = binOp selectOrOp selective;
+    multiplicative = binOp mulOp orive;
     additive = binOp addOp multiplicative;
     concatenative = binOp concatOp additive;
     updative = binOp updateOp concatenative;

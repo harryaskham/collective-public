@@ -32,9 +32,16 @@ typelib._tests.run {}
 parser._tests.run {}
 </nix>
 
+<nix>
+parser.parse ''{a = id} . a 1''
+</nix>
 
 <nix>
-parser.parseAST ''let x = 1; in a: b: x + a + b''
+({a = add 10;} . a or (add 1)) 2
+</nix>
+
+<nix>
+parser.parse ''x.f 1''
 </nix>
 <nix>
 eval._tests.debug {}
@@ -87,7 +94,17 @@ parser._tests.debug {}
 </nix>
 
 <nix>
-eval "1"
+#parser.parse ''{}.a.b''
+parser.parse ''{a={b=3;};}.a.b or 1 or 2''
+</nix>
+
+<nix>
+(parser.N.string "ok")
+</nix>
+<nix>
+let f = dispatch { int = add 1; float = x: x - 1; };
+in {}.a or f 1 1.0
+
 </nix>
 
 <nix>

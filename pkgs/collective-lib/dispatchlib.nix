@@ -167,6 +167,12 @@ in rec {
     set = mapAttrs (_: (deepMap f));
   };
 
+  # Map a function over the leaves of an arbitrary value, applying it recursively to all set and list values.
+  deepMapCond = cond: f: dispatch.def f {
+    list = map (deepMapCond cond f);
+    set = mapAttrs (k: v: if cond k v then deepMapCond cond f v else f k v);
+  };
+
   deepMapParent = f: xs:
     let go = k: parent: dispatch.def (f parent k) {
       list = xs: imap0 (i: go i xs) xs;

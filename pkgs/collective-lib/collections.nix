@@ -14,6 +14,7 @@ with lib;
 let 
   log = collective-lib.log;
   typed = collective-lib.typed;
+  errors = collective-lib.errors;
 in rec {
   # Identify values that have elements.
   # Paths are collections, treated as normalised lists of components.
@@ -26,6 +27,7 @@ in rec {
     };
     check = x: assert assertMsg (collection x) "collection.check: Got non-collection ${typeOf x}"; x;
   };
+  isCollection = x: errors.tryBool (collection.check x);
 
   # Get the elements of a collection.
   elems = {
@@ -39,6 +41,15 @@ in rec {
     };
     head = xs: head (elems (nonEmpty.check xs));
     tail = xs: tail (elems (nonEmpty.check xs));
+  };
+
+  # Get the elements of a collection with an int index
+  # Returns a list of {i, value} pairs.
+  iter = dispatch {
+    list = imap0 (i: value: {inherit i value;});
+    set = compose iter elems;
+    string = compose iter elems;
+    path = compsoe iter elems;
   };
 
   # Polymorphic collection size
@@ -71,6 +82,12 @@ in rec {
       assert assertMsg (nonEmpty x) "nonEmpty.check: Got empty ${typeOf x}"; 
       x;
   };
+
+  # Any non-collection is considered non-empty
+  safeEmpty = x: if isCollection x then empty x else false;
+
+  # Any non-collection is considered non-empty
+  safeNonEmpty = x: !(safeEmpty x);
 
   # Prepend a collection to another collection.
   # The type of the second argument dictates the type of the result.

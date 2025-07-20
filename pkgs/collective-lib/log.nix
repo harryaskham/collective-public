@@ -58,6 +58,11 @@ let
       # A set of attribute names to replace, with functions from the value
       # to replace to the string value to display instead.
       replaceAttrs = {};
+      # Any matching attribute names are not printed.
+      hideAttrNames = [];
+      # A function to filter attributes before printing.
+      # Applied after any names are hidden.
+      attrsFilter = (_: _: true);
       # cycle detection
       cycles = rec {
         minLength = 5;
@@ -117,7 +122,9 @@ let
               then let f = replaceAttrs.${k}; in f v
               else print_ (descend k args) v;
         in formatBlock (
-          let px = mapAttrsToList (k: v: "${k} = ${maybePrintValue k v};") x;
+          let filteredX = 
+                filterAttrs attrsFilter (removeAttrs x hideAttrNames);
+              px = mapAttrsToList (k: v: "${k} = ${maybePrintValue k v};") filteredX;
               pxLine = "{ ${head px} }";
           in
             if length px == 1 && lineCount pxLine == 1 then pxLine
@@ -210,6 +217,8 @@ let
           replaceAttrs =
             mergeAttrsList (map (name: v: "<masked: ${name}>") names);
         };
+        hide = names: { hideAttrNames = names; };
+        filter = f: { attrsFilter = f; };
       };
       _safe = using.safe;
       _raw = using.raw;
@@ -218,6 +227,8 @@ let
       _line = using.line;
       _depth = using.depth;
       _mask = using.mask;
+      _hide = using.hide;
+      _filter = using.filter;
     };
     vprint = x: with prints; put x using.raw using.safe ___;
 

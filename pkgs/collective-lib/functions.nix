@@ -43,6 +43,10 @@ in rec {
   # Apply a function to a value with the arguments flipped.
   flap = a: f: ap f a;
 
+  # Flipped map.
+  for = flip map;
+  ifor = flip imap0;
+
   # Return a value iff a condition is met, otherwise return null
   when = cond: a: if cond then a else null;
 
@@ -56,6 +60,9 @@ in rec {
 
   # Evaluate 'a' strictly, forcing all of its components, and return the final value.
   strict = a: deepSeq a a;
+
+  # Functional 'not' for composition.
+  not = x: !x;
 
   # Create a composition pipe
   # pipe x doA doB ___;

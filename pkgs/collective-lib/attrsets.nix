@@ -89,7 +89,6 @@ let
       def = defaultV: name: xs: (mergeSolos xs).${name} or defaultV;
     };
 
-
     # Check if an attribute is solo.
     checkSolo = x:
       assert assertMsg (isAttrs x) "checkSolo: Not an attrset: ${log.print x}";

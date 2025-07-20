@@ -111,6 +111,9 @@ in rec {
   # Map a function over the lines in a string.
   mapLines = f: s: map f (splitLines s);
 
+  # Map a function over the lines in a string with index.
+  imapLines = f: s: imap0 f (splitLines s);
+
   # Map a function over the lines in a string and concat the result
   concatMapLines = f: s: joinLines (mapLines f s);
 
