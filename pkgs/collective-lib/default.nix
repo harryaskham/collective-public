@@ -129,40 +129,35 @@ let
 
   baseModules = 
     let 
-      # Break circular dependency by using lazy evaluation
-      argsWithoutCollectiveLib = { inherit pkgs lib; };
-      args = argsWithoutCollectiveLib // { collective-lib = collective-lib; };
-      # Import modules that parser depends on first
-      eval = import ./eval argsWithoutCollectiveLib;
-      typelib = import ./typelib.nix argsWithoutCollectiveLib;
+      args = { inherit pkgs lib collective-lib; };
     in
     {
-      attrsets = import ./attrsets.nix argsWithoutCollectiveLib;
-      binding = import ./binding.nix argsWithoutCollectiveLib;
-      clib = import ./clib.nix argsWithoutCollectiveLib;
-      collections = import ./collections.nix argsWithoutCollectiveLib;
-      colors = import ./colors.nix argsWithoutCollectiveLib;
-      data = import ./data.nix argsWithoutCollectiveLib;
-      debuglib = import ./debuglib.nix argsWithoutCollectiveLib;
-      disk = import ./disk.nix argsWithoutCollectiveLib;
-      dispatchlib = import ./dispatchlib.nix argsWithoutCollectiveLib;
-      display = import ./display.nix argsWithoutCollectiveLib;
-      errors = import ./errors.nix argsWithoutCollectiveLib;
-      inherit eval;
-      fan = import ./fan.nix argsWithoutCollectiveLib;
-      font = import ./font.nix argsWithoutCollectiveLib;
-      functions = import ./functions.nix argsWithoutCollectiveLib;
-      lists = import ./lists.nix argsWithoutCollectiveLib;
-      log = import ./log.nix (argsWithoutCollectiveLib // { inherit traceOpts; });
+      attrsets = import ./attrsets.nix args;
+      binding = import ./binding.nix args;
+      clib = import ./clib.nix args;
+      collections = import ./collections.nix args;
+      colors = import ./colors.nix args;
+      data = import ./data.nix args;
+      debuglib = import ./debuglib.nix args;
+      disk = import ./disk.nix args;
+      dispatchlib = import ./dispatchlib.nix args;
+      display = import ./display.nix args;
+      errors = import ./errors.nix args;
+      eval = import ./eval args;
+      fan = import ./fan.nix args;
+      font = import ./font.nix args;
+      functions = import ./functions.nix args;
+      lists = import ./lists.nix args;
+      log = import ./log.nix (args // { inherit traceOpts; });
       inherit modulelib;
-      parser = import ./parser (argsWithoutCollectiveLib // { inherit nix-parsec eval; typed = typelib.library; });
-      rebinds = import ./rebinds.nix argsWithoutCollectiveLib;
-      script-utils = import ./script-utils argsWithoutCollectiveLib;
-      strings = import ./strings.nix argsWithoutCollectiveLib;
-      syntax = import ./syntax.nix argsWithoutCollectiveLib;
-      tests = import ./tests.nix argsWithoutCollectiveLib;
-      inherit typelib;
-      wm = import ./wm.nix argsWithoutCollectiveLib;
+      parser = import ./parser (args // { inherit nix-parsec; });
+      rebinds = import ./rebinds.nix args;
+      script-utils = import ./script-utils args;
+      strings = import ./strings.nix args;
+      syntax = import ./syntax.nix args;
+      tests = import ./tests.nix args;
+      typelib = import ./typelib.nix args;
+      wm = import ./wm.nix args;
     };
 
   __libCollisions =

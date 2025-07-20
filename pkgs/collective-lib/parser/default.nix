@@ -1,7 +1,5 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib,
+{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; },
   nix-parsec,
-  eval ? null,
-  typed ? null,
   ...
 }:
 
@@ -11,6 +9,8 @@
 # - Hook into existing parser test suites for Nix
 
 let
+  eval = collective-lib.eval;
+  typed = collective-lib.typed;
   parsec = nix-parsec.parsec;
   lexer = nix-parsec.lexer;
 in 
