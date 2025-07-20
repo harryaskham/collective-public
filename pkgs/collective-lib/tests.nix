@@ -449,7 +449,7 @@ in rec {
             Status;
         failedTestNamesBlock = joinLines (map (result: "FAIL: ${result.test.name}") byStatus.Failed);
         maybeDebugAfterRun =
-          optionalString (debugOnFailure && counts.Failed > 0) debug;
+          optionalString (debugOnFailure && counts.Failed > 0) "Debug output suppressed to avoid stack overflow";
 
       in indent.blocksSep "\n\n==========\n\n" [
         header
