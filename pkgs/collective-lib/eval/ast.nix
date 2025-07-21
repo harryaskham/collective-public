@@ -237,14 +237,13 @@ rec {
         Unsupported 'or' after non-select: ${node.lhs.nodeType} or ...
       ''))
     else
-      let leftResult = evalNode scope node.lhs;
-          runResult = leftResult.run {};
-      in if isLeft runResult && MissingAttributeError.check runResult.left then
-           # Left side failed with MissingAttributeError, use default
-           evalNode scope node.rhs
-         else
-           # Left side succeeded or failed with other error, return it
-           leftResult;
+      (evalNode scope node.lhs).catch (error:
+        if MissingAttributeError.check error then
+          # Left side failed with MissingAttributeError, use default
+          evalNode scope node.rhs
+        else
+          # Re-throw other types of errors
+          liftError error);
 
   # Evaluate a unary operation
   # evalUnaryOp :: Scope -> AST -> Eval a
@@ -431,6 +430,9 @@ rec {
       else if node.nodeType == "attrPath" then
         # attrPath is just a path list, return the path
         liftValue node.path
+      else if node.nodeType == "path" then
+        # path literal evaluates to its string representation for simplicity
+        liftValue node.value
       else liftError (RuntimeError (_b_ ''
         Unsupported AST node type: ${node.nodeType}:
           ${_ph_ node}
