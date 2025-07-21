@@ -39,70 +39,102 @@ Lets you keep personal scripts / utilities clean and organised.
   - Second way uses ~parser/~ to do everything in the evaluator without derivations.
 - Implements serialisable lambdas, e.g. ~(let f = typefn "a: b: a + b"; in f 1 2) == 3~.
 
+#+BEGIN_SRC nix
+eval ''let xs = { a = 1; b = 2; }; f = {a, c ? 3, ...}: a + c; in { r = f xs; }.r or null''
+#+END_SRC
+
+gives:
+
+#+BEGIN_SRC
+Right 4
+#+END
+
+which is computed by reducing the parsed AST below.
+
 ** ~parser/~
 A ~nix-parsec~-based Nix parser written in Nix, which can reflect on module source, perform code transformations, etc.
 
 #+BEGIN_SRC nix
-(parse ''let x = 1; in a: b: x + a + b'')
-==
-{
-  root = {
-    bindings = [
-      {
-        lhs = {
-          name = "x";
-          nodeType = "identifier";
-        };
-        nodeType = "assignment";
-        rhs = {
-          nodeType = "int";
-          value = 1;
-        };
-      }
-    ];
-    body = {
-      body = {
-        body = {
-          left = {
-            left = {
-              name = "x";
-              nodeType = "identifier";
-            };
-            nodeType = "binaryOp";
-            op = "+";
-            right = {
-              name = "a";
-              nodeType = "identifier";
-            };
-          };
-          nodeType = "binaryOp";
-          op = "+";
-          right = {
-            name = "b";
-            nodeType = "identifier";
-          };
-        };
-        nodeType = "lambda";
-        param = {
-          name = {
-            name = "b";
-            nodeType = "identifier";
-          };
-          nodeType = "simpleParam";
-        };
-      };
-      nodeType = "lambda";
-      param = {
-        name = {
-          name = "a";
-          nodeType = "identifier";
-        };
-        nodeType = "simpleParam";
-      };
-    };
-    nodeType = "letIn";
-  }
-}
+toString (parse ''let xs = { a = 1; b = 2; }; f = {a, c ? 3, ...}: a + c; in { r = f xs; }.r or null'')
+#+END_SRC
+
+gives:
+
+#+BEGIN_SRC
+let _ in _
+├─bindings
+│ ├─0
+│ │ └─<_ = _>
+│ │   ├─lhs
+│ │   │ └─`xs`
+│ │   │
+│ │   └─rhs
+│ │     └─{_}
+│ │       ├─isRec
+│ │       │  └─false
+│ │       └─assignments
+│ │         ├─0
+│ │         │ └─<_ = _>
+│ │         │   ├─lhs
+│ │         │   │ └─`a`
+│ │         │   │
+│ │         │   └─rhs
+│ │         │     └─ℤ 1
+│ │         │
+│ │         └─1
+│ │           └─<_ = _>
+│ │             ├─lhs
+│ │             │ └─`b`
+│ │             │
+│ │             └─rhs
+│ │               └─ℤ 2
+│ │
+│ └─1
+│   └─<_ = _>
+│     ├─lhs
+│     │ └─`f`
+│     │
+│     └─rhs
+│       └─<λ {a, c ? _, ...} → _>
+│         └─body
+│           └─<_ + _>
+│             ├─lhs
+│             │ └─`a`
+│             │
+│             └─rhs
+│               └─`c`
+│
+└─body
+  └─<_ or _>
+    ├─lhs
+    │ └─<_ . _>
+    │   ├─lhs
+    │   │ └─{_}
+    │   │   ├─isRec
+    │   │   │  └─false
+    │   │   └─assignments
+    │   │     └─0
+    │   │       └─<_ = _>
+    │   │         ├─lhs
+    │   │         │ └─`r`
+    │   │         │
+    │   │         └─rhs
+    │   │           └─<_ $ _>
+    │   │             ├─func
+    │   │             │ └─`f`
+    │   │             │
+    │   │             └─args
+    │   │               └─0
+    │   │                 └─`xs`
+    │   │
+    │   └─rhs
+    │     └─<_._._>
+    │       └─path
+    │         └─0
+    │           └─`r`
+    │
+    └─rhs
+      └─`null`
 #+END_SRC
 
 ** ~functions.nix~
