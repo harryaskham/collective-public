@@ -171,6 +171,14 @@ rec {
               s' = compose mb.s s;
               A' = getT e'.right;
             in Eval A' s' e';
+        # Catch specific error types and handle them with a recovery function
+        # catch :: (EvalError -> Eval A) -> Eval A
+        catch = handler:
+          if isLeft e then 
+            let errorValue = e.left;
+                recovery = handler errorValue;
+            in recovery
+          else this;
         # Returns (Either EvalError set)
         run = state: this.e.fmap (a: { s = this.get; inherit a; });
       };
