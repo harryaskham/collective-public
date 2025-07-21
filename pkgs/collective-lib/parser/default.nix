@@ -581,14 +581,14 @@ rec {
     symBinOp = ops: p: binOp ops p p;
 
     # Operators by precedence
-    multiplicative = propagatingBinOp ["*" "/"] applicative;
-    additive = propagatingBinOp ["+" "-"] multiplicative;
-    concatenative = propagatingBinOp ["++"] additive;
-    updative = propagatingBinOp ["//"] concatenative;
-    relational = propagatingBinOp ["<=" "<" ">=" ">"] updative;
-    equality = propagatingBinOp ["==" "!="] relational;
-    logical_and = propagatingBinOp ["&&"] equality;
-    logical_or = propagatingBinOp ["||"] logical_and;
+    multiplicative = symBinOp ["*" "/"] applicative;
+    additive = symBinOp ["+" "-"] multiplicative;
+    concatenative = symBinOp ["++"] additive;
+    updative = symBinOp ["//"] concatenative;
+    relational = symBinOp ["<=" "<" ">=" ">"] updative;
+    equality = symBinOp ["==" "!="] relational;
+    logical_and = symBinOp ["&&"] equality;
+    logical_or = symBinOp ["||"] logical_and;
     withOperators = logical_or;
 
     # Finally expose expr as the top-level expression with operator precedence.
