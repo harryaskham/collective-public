@@ -8,8 +8,8 @@ rec {
   __functor = self: self.evalAST;
 
   # Parse an expression lifted into the Eval monad.
-  # TODO: pure infers type argument?
-  parseM = with Eval AST; compose pure parse;
+  # parseM :: (string | AST) -> Eval AST
+  parseM = compose Eval.pure parse;
 
   /*
   Parse the expression in the Eval monad and drop the state from the result.
@@ -17,35 +17,41 @@ rec {
   Exposed as eval.eval.ast (and eval.eval) in default.nix for use as just "eval"
  
   evalAST :: (string | AST) -> Either EvalError a */
-  evalAST = expr: 
-    with Eval AST;
-      # TODO: use do that auto-binds and has internal assignment
-    let 
-      result = ((
-        parseM expr ).
-        set initEvalState ).
-        bind doEvalAST;
-    in (result.run {}).fmap ({s, a}: a);
+  evalAST = expr: fold._1 (last: next: next last) [
+    # TODO: do-notation
+    (Eval.pure unit)
+    (_: with _; set initEvalState)
+    (_: with _; bind (_: parseM expr))
+    (_: with _; bind (astNode: (get {}).bind (s: evalNode s.scope astNode)))
+    (_: with _; run {})
+    (_: with _; fmap ({s, a}: a))
+  ];
+
+
+  # Main evaluation function using monadic interface
+  # doEvalAST :: AST -> Eval a
+  doEvalAST = astNode:
+    evalNode initEvalState.scope astNode;
 
   # Eval AST -> Eval a
   evalM = a: a.bind doEvalAST;
 
   # Helper function to lift errors into the Eval monad
   # liftError :: EvalError -> Eval a
-  liftError = error: (Eval Any).throws error;
+  liftError = Eval.throws;
 
   # Helper function to lift values into the Eval monad
   # liftValue :: a -> Eval a  
-  liftValue = value: (Eval (getT value)).pure value;
+  liftValue = Eval.pure;
 
   # Evaluate a literal value (int, float, string, etc.)
   # evalLiteral :: AST -> Eval a
   evalLiteral = node:
-    if node.nodeType == "int" then (Eval "int").pure node.value
-    else if node.nodeType == "float" then (Eval "float").pure node.value
-    else if node.nodeType == "string" then (Eval "string").pure node.value
-    else if node.nodeType == "indentString" then (Eval "string").pure node.value
-    else if node.nodeType == "path" then (Eval "path").pure node.value
+    if node.nodeType == "int" then liftValue node.value
+    else if node.nodeType == "float" then liftValue node.value
+    else if node.nodeType == "string" then liftValue node.value
+    else if node.nodeType == "indentString" then liftValue node.value
+    else if node.nodeType == "path" then liftValue node.value
     else liftError (RuntimeError (_b_ ''
       Unsupported literal type: ${node.nodeType}
     ''));
@@ -66,8 +72,8 @@ rec {
       (accM: elemM: 
         accM.bind (acc: 
           elemM.bind (elem: 
-            (Eval "list").pure (acc ++ [elem]))))
-      ((Eval "list").pure [])
+            liftValue (acc ++ [elem]))))
+      (liftValue [])
       evalList;
 
   # Evaluate a list of AST nodes
@@ -82,23 +88,23 @@ rec {
   evalAssignment = scope: assignOrInherit:
     if assignOrInherit.nodeType == "assignment" then
       (evalNode scope assignOrInherit.rhs).bind (value:
-        (Eval "list").pure [{
+        liftValue [{
           name = assignOrInherit.lhs.name;
           inherit value;
         }])
     else if assignOrInherit.nodeType == "inherit" then
       let fromM = 
-        if assignOrInherit.from == null then (Eval "set").pure scope
+        if assignOrInherit.from == null then liftValue scope
         else evalNode scope assignOrInherit.from;
       in fromM.bind (from:
         let evalAttr = attr:
-          let name = if attr.nodeType == "string" then (Eval "string").pure attr.value
-                    else if attr.nodeType == "identifier" then (Eval "string").pure attr.name
+          let name = if attr.nodeType == "string" then liftValue attr.value
+                    else if attr.nodeType == "identifier" then liftValue attr.name
                     else liftError (RuntimeError (_b_ ''
                       Unsupported inherits name/string: ${attr.nodeType}:
                         ${_ph_ attr}
                     ''));
-          in name.bind (n: (Eval "set").pure {
+          in name.bind (n: liftValue {
             name = n;
             value = from.${n};
           });
@@ -113,7 +119,7 @@ rec {
   evalAssignments = scope: assignments:
     let assignmentEvals = map (evalAssignment scope) assignments;
     in (sequenceM assignmentEvals).bind (assignmentLists:
-      (Eval "list").pure (lib.concatLists assignmentLists));
+      liftValue (lib.concatLists assignmentLists));
 
   # Evaluate an attribute set
   # evalAttrs :: Scope -> AST -> Eval AttrSet
@@ -134,7 +140,7 @@ rec {
         (map 
           (typeSet: elem (lib.typeOf l) typeSet && elem (lib.typeOf r) typeSet)
           compatibleTypeSets)
-    then (Eval "bool").pure true
+    then liftValue true
     else liftError (TypeError (_b_ ''Incorrect types for binary operator ${op}:
 
       ${_ph_ l} and ${_ph_ r}
@@ -326,7 +332,7 @@ rec {
     let evalBinding = assign: 
       if assign.lhs.nodeType == "identifier" then 
         (evalNode scope assign.rhs).bind (value:
-          (Eval "set").pure {
+          liftValue {
             name = assign.lhs.name;
             inherit value;
           })
@@ -437,11 +443,6 @@ rec {
         Unsupported AST node type: ${node.nodeType}:
           ${_ph_ node}
       '')));
-
-  # Main evaluation function using monadic interface
-  # doEvalAST :: AST -> Eval a
-  doEvalAST = astNode:
-    evalNode initEvalState.scope astNode;
 
   # Helper to test round-trip property: eval (parse x) == x
   testRoundTrip = expr: expected: with collective-lib.tests; {

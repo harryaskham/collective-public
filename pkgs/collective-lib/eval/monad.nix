@@ -135,54 +135,98 @@ rec {
     import = builtins.import;
   };
 
+  Unit = {
+    __toString = self: "Unit";
+    check = x: x ? __isUnit;
+    __functor = self: {}: {
+      __toString = self: "unit";
+      __type = Unit;
+      __isUnit = true;
+    };
+  };
+  unit = Unit {};
+  void = x: with x; bind (_: pure unit);
+
   # Monadic evaluation state.
   # Roughly simulates an ExceptT EvalError (StateT EvalState m) a monad stack.
-  Eval = A: assert checkTypes [A]; rec {
-    __toString = self: "Eval ${A}";
-    inherit A;
+  Eval = rec {
+    __toString = self: "Eval";
+    check = x: x ? __isEval;
     Error = EvalError;
-    E = Either Error A;
     S = EvalState;
-    check = x: x ? __isEval && is E x.e;
-    pure = with E; x: Eval (getT x) id (E.pure x);
-    throws = with E; e: Eval (getT e) id (E.Left e);
-    __functor = with E; self:
-      s: assert that (lib.isFunction s) ''Eval: expected lambda state but got ${_p_ s}'';
-      e: assert that (is E e) ''Eval: expected Either value ${E} but got ${_p_ e}'';
-      let this = {
-        __type = Eval A;
-        __isEval = true;
-        __toString = self: _b_ "Eval ${A} (${_ph_ self.e})";
-        inherit s e;
-        modify = f: self (compose f s) e;
-        set = st: this.modify (_: st);
-        get = with S; s (mempty {});
-        throws = e: self s (Left e);
-        fmap = f: Eval A s (e.fmap f);
-        bind = f:
-          if isLeft e then this else 
-          let 
-            a = e.right;
-            mb = f a;
-          in 
-            if isLeft mb.e then mb else
+    pure = x: 
+      let A = getT x;
+      in Eval A id ((Either Error A).pure x);
+    throws = e: (Eval.pure unit).throws e;
+
+    mapState = f: x: Eval x.A (f x.s) x.e;
+
+    mapEither = f: x: Eval x.A x.s (f x.e);
+
+    __functor = self: A: assert checkTypes [A]; rec {
+      __toString = self: "Eval ${A}";
+      inherit A;
+      E = Either Error A;
+      check = x: x ? __isEval && is E x.e;
+
+      __functor = self:
+        s: assert that (lib.isFunction s) ''Eval: expected lambda state but got ${_p_ s}'';
+        e: assert that (is E e) ''Eval: expected Either value ${E} but got ${_p_ e}'';
+
+        let this = {
+          __type = Eval A;
+          __isEval = true;
+          __toString = self: _b_ "Eval ${A} (${_ph_ self.e})";
+          inherit S E A s e;
+
+          # modify :: (EvalState -> EvalState) -> Eval A -> Eval {}
+          modify = f: 
+            if isLeft this.e then this else
+            mapState (const (compose f s)) (Eval.pure unit);
+
+          set = st: this.modify (const st);
+
+          get = _: this.pure (this.s (S.mempty {}));
+
+          pure = x: mapState (const this.s) (Eval.pure x);
+
+          fmap = f: Eval A this.s (this.e.fmap f);
+
+          bind = f:
+            if isLeft this.e then this else 
             let 
-              e' = mb.e;
-              s' = compose mb.s s;
-              A' = getT e'.right;
-            in Eval A' s' e';
-        # Catch specific error types and handle them with a recovery function
-        # catch :: (EvalError -> Eval A) -> Eval A
-        catch = handler:
-          if isLeft e then 
-            let errorValue = e.left;
-                recovery = handler errorValue;
-            in recovery
-          else this;
-        # Returns (Either EvalError set)
-        run = state: this.e.fmap (a: { s = this.get; inherit a; });
-      };
-      in this;
+              a = this.e.right;
+              mb = f a;
+            in 
+              assert that (is Eval mb) ''
+                Eval.bind: non-Eval value returned of type ${getT mb}:
+                  ${_p_ mb}
+              '';
+              if isLeft mb.e then mb else
+              let 
+                e' = mb.e;
+                s' = compose mb.s this.s;
+                A' = getT e'.right;
+              in Eval A' s' e';
+
+          # Set the value to the given error.
+          throws =
+            e: assert that (is Error e) ''Eval.throws: expected Either value ${Error} but got ${_p_ e}'';
+            mapEither (const (E.Left e)) this;
+
+          # Catch specific error types and handle them with a recovery function
+          # catch :: (EvalError -> Eval A) -> Eval A
+          catch = handler:
+            if isLeft this.e then 
+              let recovery = handler this.e.left;
+              in mapState (const this.s) recovery
+            else this;
+
+          # Returns (Either EvalError set)
+          run = state: this.e.fmap (a: { s = s (S.mempty {}); inherit a; });
+        };
+        in this;
+    };
   };
 
   _tests = with tests;
@@ -224,13 +268,18 @@ rec {
 
       monad = 
         let
-          a = with Eval Int; rec {
-            _42 = pure (Int 42);
-            stateXPlus2 = _42.modify (s: s.fmap (scope: scope // {x = (scope.x or 0) + 2;}));
-            stateXPlus2Times3 = stateXPlus2.modify (s: s.fmap (scope: scope // {x = scope.x * 3; }));
-            getStatePlusValue = with stateXPlus2Times3; bind (i: pure (Int (i.x + get.scope.x)));
-            thenThrows = with stateXPlus2Times3; bind (i: throws (Abort "test"));
-            bindAfterThrow = with thenThrows; bind (i: pure (Int i.x + 1));
+          a = rec {
+            _42 = Eval.pure (Int 42);
+            stateXIs2 = _42.set (EvalState { x = 2; });
+            stateXTimes3 = stateXIs2.modify (s: EvalState { x = s.scope.x * 3; });
+            const42 = with stateXTimes3; pure (Int 42);
+            getStatePlusValue = 
+              with const42; 
+              bind (i: (get {}).bind (s: pure (Int (s.scope.x + i.x))));
+            thenThrows = with stateXTimes3; bind (i: throws (Abort "test error"));
+            bindAfterThrow = with thenThrows; bind ({}: pure "not reached");
+            catchAfterThrow = with thenThrows; catch (e: pure "handled error '${e}'");
+            fmapAfterCatch = with catchAfterThrow; fmap (s: s + " then ...");
           };
           expectRun = s: a: s': a': 
             with Either EvalError "set";
@@ -243,12 +292,15 @@ rec {
               (a.run (EvalState s))
               (Left e);
         in with EvalState; {
-          pure = expectRun {} a._42 {} (Int 42);
-          modify.once = expectRun {} a.stateXPlus2 { x = 2; } (Int 42);
-          modify.twice = expectRun {} a.stateXPlus2Times3 { x = 6; } (Int 42);
-          bind.get = expectRun {} a.getStatePlusValue { x = 6; } (Int 48);
-          bind.thenThrows = expectRunError {} a.thenThrows (Abort "test");
-          bind.bindAfterThrow = expectRunError {} a.bindAfterThrow (Abort "test");
+          _0_pure = expectRun {} a._42 {} (Int 42);
+          _1_set = expectRun {} a.stateXIs2 { x = 2; } unit;
+          _2_modify = expectRun {} a.stateXTimes3 { x = 6; } unit;
+          _4_bind.get = expectRun {} a.getStatePlusValue { x = 6; } (Int 48);
+          _5_bind.thenThrows = expectRunError {} a.thenThrows (Abort "test error");
+          _6_bind.bindAfterThrow = expectRunError {} a.bindAfterThrow (Abort "test error");
+          _7_catch.noError = expectRun {} (a._42.catch (_: throw "no")) {} (Int 42);
+          _8_catch.withError = expectRun {} a.catchAfterThrow { x = 6; } "handled error 'EvalError.Abort: test error'";
+          _9_catch.thenFmap = expectRun {} a.fmapAfterCatch { x = 6; } "handled error 'EvalError.Abort: test error' then ...";
         };
     };
 }

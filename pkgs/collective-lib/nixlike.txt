@@ -137,7 +137,12 @@ in {}.a or f 1 1.0
 </nix>
 
 <nix>
-eval.monad._tests.run {}
+eval._tests.debug {}
+</nix>
+<nix>
+with eval.monad;
+let a = Eval.pure 123;
+in ((a.set (EvalState { a = 1;})).modify id).get {}
 </nix>
 
 <nix>
