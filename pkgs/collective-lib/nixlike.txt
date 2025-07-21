@@ -132,11 +132,17 @@ with parser; parse "<nixpkgs>"
 </nix>
 <nix>
 let f = dispatch { int = add 1; float = x: x - 1; };
+
 in {}.a or f 1 1.0
 
 </nix>
 
 <nix>
+with eval.monad;
+(do { x = Eval.pure 1; }).__bindings
+</nix>
+<nix>
+#collective-lib._tests.debug {}
 eval._tests.debug {}
 </nix>
 <nix>

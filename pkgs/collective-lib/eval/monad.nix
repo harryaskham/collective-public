@@ -147,6 +147,68 @@ rec {
   unit = Unit {};
   void = x: with x; bind (_: pure unit);
 
+  # Do notation
+  mkDo = __bindings: __m: {
+    inherit __bindings __m;
+    run = __m.run;
+    pure = __m.pure;
+    __functor = self: dispatch {
+      set = xs: 
+        assert isSolo xs;
+        let 
+          name = soloName xs;
+          value = soloValue xs;
+        in
+          flip dispatch value {
+
+            # { x = some monadic value; }
+            # Return new void do with the bindings bound.
+            set = valueM:
+              let
+                # Late init of __m if we can't infer it at first.
+                __m' = if self.__m == null then void valueM else self.__m;
+                __bindings' = 
+                  valueM.bind (value: 
+                    let 
+                      bindings = {
+                        ${name} = value; 
+                        _ = __m';  # Expose the monadic action for access to pure, bind, etc.
+                      };
+                    in 
+                      # Late init of __bindings if we can't infer it at first.
+                      if self.__bindings == null 
+                      then __m'.pure bindings
+                      else self.__bindings.bind (__bindings: __m'.pure (__bindings // bindings)));
+                  in 
+                    mkDo __bindings' (void __m');
+
+            # {x = { some function of state }}
+            # Bind and rebuild the do.
+            lambda = f:
+              assert (self.__m != null);
+              assert (self.__bindings != null);
+              let __m' = void self.__m;
+              in mkDo 
+                (self.__bindings.bind (bindings: 
+                (f bindings).bind (value:
+                __m'.pure (bindings // { 
+                  ${name} = value; 
+                  _ = __m';  # Expose the monadic action for access to pure, bind, etc.
+                }))))
+                __m';
+          };
+
+      lambda = f:
+        mkDo self.__bindings (self.__bindings.bind f);
+    };
+  };
+
+  # Do notation builder for a given monad.
+  mkDoFor = Monad: mkDo (Monad.pure {}) (Monad.pure unit);
+
+  # Do notation inferring type.
+  do = mkDo null null;
+
   # Monadic evaluation state.
   # Roughly simulates an ExceptT EvalError (StateT EvalState m) a monad stack.
   Eval = rec {
@@ -154,6 +216,7 @@ rec {
     check = x: x ? __isEval;
     Error = EvalError;
     S = EvalState;
+    do = mkDoFor Eval;
     pure = x: 
       let A = getT x;
       in Eval A id ((Either Error A).pure x);
@@ -301,6 +364,34 @@ rec {
           _7_catch.noError = expectRun {} (a._42.catch (_: throw "no")) {} (Int 42);
           _8_catch.withError = expectRun {} a.catchAfterThrow { x = 6; } "handled error 'EvalError.Abort: test error'";
           _9_catch.thenFmap = expectRun {} a.fmapAfterCatch { x = 6; } "handled error 'EvalError.Abort: test error' then ...";
+
+          do = solo {
+            notation = {
+              bindOne =
+                let m = do {x = Eval.pure 1;};
+                in {
+                  bindings = expectRun {} m.__bindings {} { x = 1; _ = Eval.pure unit; };
+                  run = expectRun {} m {} unit;
+                };
+              bindOneGetOne = 
+                let m = do {x = Eval.pure 1;} ({_, x}: _.pure x);
+                in expectRun {} m {} 1;
+              dependentBindGet = 
+                let m = do
+                  {x = Eval.pure 1;}
+                  {y = {_, x}: _.pure (x + 1);}
+                  ({_, x, y}: _.pure (x + y));
+                in expectRun {} m {} 3;
+              boundDo = 
+                let do = Eval.do; in with Eval;
+                let m = do
+                  {x = pure 1;}
+                  {y = pure 2;}
+                  ({x, y, ...}: pure (x + y));
+                in expectRun {} m {} 3;
+            };
+          };
         };
+
     };
 }
