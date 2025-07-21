@@ -134,7 +134,7 @@ rec {
         (map 
           (typeSet: elem (lib.typeOf l) typeSet && elem (lib.typeOf r) typeSet)
           compatibleTypeSets)
-    then (Eval "unit").pure null
+    then (Eval "bool").pure true
     else liftError (TypeError (_b_ ''Incorrect types for binary operator ${op}:
 
       ${_ph_ l} and ${_ph_ r}
@@ -211,6 +211,19 @@ rec {
       else if node.rhs.nodeType == "identifier" then
         # obj.attr
         liftValue obj.${node.rhs.name}
+      else if node.rhs.nodeType == "attrPath" then
+        # obj.a.b.c - traverse the attribute path
+        let traversePath = obj: pathComponents:
+          if pathComponents == [] then liftValue obj
+          else 
+            let head = builtins.head pathComponents;
+                tail = builtins.tail pathComponents;
+                attrName = if head.nodeType == "identifier" then head.name
+                          else if head.nodeType == "string" then head.value
+                          else throw "Unsupported path component: ${head.nodeType}";
+                         in if obj ? ${attrName} then traversePath obj.${attrName} tail
+               else liftError (MissingAttributeError attrName);
+        in traversePath obj node.rhs.path
       else
         # obj."attr" - evaluate right side as expression
         (evalNode scope node.rhs).bind (attrName:
@@ -224,10 +237,14 @@ rec {
         Unsupported 'or' after non-select: ${node.lhs.nodeType} or ...
       ''))
     else
-      (evalNode scope node.lhs).bind (orLeft:
-        (evalNode scope node.rhs).bind (orRight:
-          if MissingAttributeError.check orLeft then liftValue orRight
-          else liftValue orLeft));
+      let leftResult = evalNode scope node.lhs;
+          runResult = leftResult.run {};
+      in if isLeft runResult && MissingAttributeError.check runResult.left then
+           # Left side failed with MissingAttributeError, use default
+           evalNode scope node.rhs
+         else
+           # Left side succeeded or failed with other error, return it
+           leftResult;
 
   # Evaluate a unary operation
   # evalUnaryOp :: Scope -> AST -> Eval a
@@ -299,7 +316,7 @@ rec {
   # evalApplication :: Scope -> AST -> Eval a
   evalApplication = scope: node:
     (evalNode scope node.func).bind (func:
-      sequenceM (map (evalNode scope) node.args).bind (args:
+      (sequenceM (map (evalNode scope) node.args)).bind (args:
         let result = lib.foldl (f: a: f a) func args;
         in if is EvalError result then liftError result 
            else liftValue result));
@@ -318,7 +335,7 @@ rec {
         Complex let bindings not supported in evalAST:
           ${_ph_ assign}
       ''));
-    in sequenceM (map evalBinding node.bindings).bind (bindings:
+    in (sequenceM (map evalBinding node.bindings)).bind (bindings:
       let newScope = scope // (builtins.listToAttrs bindings);
       in evalNode newScope node.body);
 
@@ -411,6 +428,9 @@ rec {
         evalThrow scope node
       else if node.nodeType == "import" then
         evalImport scope node
+      else if node.nodeType == "attrPath" then
+        # attrPath is just a path list, return the path
+        liftValue node.path
       else liftError (RuntimeError (_b_ ''
         Unsupported AST node type: ${node.nodeType}:
           ${_ph_ node}
