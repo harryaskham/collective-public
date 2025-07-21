@@ -90,12 +90,31 @@ eval._tests.run {}
 eval._tests.debug {}
 </nix>
 <nix>
-parser._tests.debug {}
+parser._tests.run {}
+</nix>
+<nix>
+-{a=1;}.a or {}.a or 1
 </nix>
 
 <nix>
-#parser.parse ''{}.a.b''
-parser.parse ''{a={b=3;};}.a.b or 1 or 2''
+#parser.parse ''f 1 2 3''
+parser.parse ''a.b or d e''
+#parser.parse ''a . b or (c d)''
+#parser.parse ''a.b or id 1''
+</nix>
+
+<nix>
+parser.parse ''{a = 1;}.a or const 1 2''
+#with parser; (parseExpr ''{a = 1 + 1;}'')
+</nix>
+<nix>
+#with parser; parse ''let f = x: x + 1; in f (if true then 42 else 0)''
+with parser; parseExpr ''1 < 2 && 2 <= 3''
+#with parser; parseExpr ''1 == 2 == 3''
+</nix>
+
+<nix>
+parser._tests.run {}
 </nix>
 
 <nix>

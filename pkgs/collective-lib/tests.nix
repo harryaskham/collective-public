@@ -234,7 +234,7 @@ in rec {
                   ${msg}: ${indent.here (log.print result)}
                   ${optionalString (status == Status.Failed) ''
                   Diff:
-                    ${indent.here (log.vprintD 5 (diffShort test.expected result))}
+                    ${indent.here (log.vprint (diffShort test.expected result))}
                   ''}
                 '';
             };
@@ -313,6 +313,7 @@ in rec {
       if test.name == "_t" then test // { name = testName; }
       else test
     else
+      assert assertMsg (isTest test) "mkTest: Invalid test ${testName}";
       let test_ = rec {
         # Marker for detecting an augmented test.
         __wrappedTest = true;
@@ -414,12 +415,11 @@ in rec {
         (testName: test: 
           {}: f { ${testName} = test; })
         tests;
-    runOne = overOne (run_ false (test: test.run));
-    debugOne = overOne (run_ true (test: test.debug));
-    run = run_ false (test: test.run) tests;
-    runThenDebug = run_ true (test: test.run) tests;
-    debug = run_ false (test: test.debug) tests;
-    run_ = debugOnFailure: runner: tests:
+    runOne = overOne (run_ (test: test.run));
+    debugOne = overOne (run_ (test: test.debug));
+    run = run_ (test: test.run) tests;
+    debug = run_ (test: test.debug) tests;
+    run_ = runner: tests:
       {}:  # Thunk the tests to avoid strict execution.
       let
         results = mapAttrsToList (_: runner) tests;
@@ -448,8 +448,6 @@ in rec {
             (statusName: _: joinLines (map (result: result.msg) byStatus.${statusName}))
             Status;
         failedTestNamesBlock = joinLines (map (result: "FAIL: ${result.test.name}") byStatus.Failed);
-        maybeDebugAfterRun =
-          optionalString (debugOnFailure && counts.Failed > 0) "Debug output suppressed to avoid stack overflow";
 
       in indent.blocksSep "\n\n==========\n\n" [
         header
@@ -458,7 +456,6 @@ in rec {
         (indent.blocks [headers.Passed msgs.Passed])
         (indent.blocks [headers.Failed failedTestNamesBlock])
         msgs.Failed
-        maybeDebugAfterRun
       ];
   };
 }

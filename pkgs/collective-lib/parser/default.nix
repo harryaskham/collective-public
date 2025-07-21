@@ -17,13 +17,13 @@ let
 in 
   with typed;
 rec {
-  sortOrder = imap (i: k: { ${k} = i; }) [
+  sortOrder = mergeAttrsList (imap0 (i: k: { ${k} = i; }) [
     "name"
     "value"
     "path"
     "msg"
     "elements"
-    "rec"
+    "isRec"
     "assignments"
     "from"
     "ellipsis"
@@ -45,11 +45,17 @@ rec {
     "mhs"
     "rhs"
     "body"
-  ];
+  ]);
 
-  sortLines = sortOn (x: sortOrder.${x.name} or 999);
+  sortNodeBlocks = sortOn (x: sortOrder.${x.name} or 999);
 
-  filterAST = filterAttrs (k: v: !(elem k hiddenParams) && safeNonEmpty v);
+  bodyAttrs = xs:
+    sortNodeBlocks
+      (mapAttrsToList
+        (k: v: { name = k; body = v; })
+        (filterNodeBody xs));
+
+  filterNodeBody = filterAttrs (k: v: !(elem k hiddenParams) && safeNonEmpty v);
 
   signatureAST = node: if isAST node then "AST" else lib.typeOf node;
 
@@ -64,13 +70,17 @@ rec {
     identifier = "`${node.name}`";
     attrPath = "<_._._>";
     list = "[_]";
-    attrs = "${optionalString node."rec" "rec "}{_}";
+    attrs = "${optionalString node.isRec "rec "}{_}";
     assignment = "<_ = _>";
     inheritExpr = "inherit _";
     lambda = "<λ ${printASTName node.param} → _>";
-    simpleParam = node.name;
-    attrSetParam = "{_${optionalString node.ellipsis ", ..."}}: _";
-    defaultParam = "${node.name} ? _";
+    simpleParam = node.name.name;
+    attrSetParam = "{${
+      joinSep ", " (map printASTName node.attrs)
+      }${
+        optionalString node.ellipsis ", ..."
+        }}";
+    defaultParam = "${node.name.name} ? _";
     application = "<_ $ _>";
     conditional = "if _ then _ else _";
     letIn = "let _ in _";
@@ -78,17 +88,20 @@ rec {
     assertExpr = "assert _; _";
     throwExpr = "throw _";
     abortExpr = "abort _";
-    unaryOp = "<_ ${node.op} _>";
+    unaryOp = "<${node.op}_>";
     binaryOp = "<_ ${node.op} _>";
     trinaryOp = "<_ ${node.op0} _ ${node.op1} _>";
   };
 
-  toNodeBlocks = dispatch.def.on signatureAST (x: [{ body = _p_ x; }]) {
-    AST = node: [{ name = printASTName node; body = filterAST node.__args; }];
-    set = compose sortLines (mapAttrsToList (k: v: { name = k; body = v; }));
-    list = imap0 (i: v: { name = toString i; body = v; });
-    string = body: [{ inherit body; }];
-  };
+  toNodeBlocks =
+    compose
+      sortNodeBlocks
+      (dispatch.def.on signatureAST (x: [{ body = _p_ x; }]) {
+        AST = node: [{ name = printASTName node; body = node.__args; }];
+        set = bodyAttrs;
+        list = imap0 (i: v: { name = toString i; body = v; });
+        string = body: [{ inherit body; }];
+      });
 
   printNode = isRoot: prefix: node:
     log.while "printing AST node ${node.nodeType or "<unnamed>"}" (
@@ -119,7 +132,7 @@ rec {
       in _ls_ (ifor lines (i: l: "${prefix}${linePrefix i}${l}"))))
     );
 
-  printAST = isRoot: prefix: dispatch.def.on signatureAST (x: _h_ "${prefix} ${_p_ x}") {
+  printAST = isRoot: prefix: dispatch.def.on signatureAST (x: "${prefix} └─${_p_ x}") {
     AST = printNode isRoot prefix;
     set = printNode isRoot prefix;
     list = printNode isRoot prefix;
@@ -135,7 +148,7 @@ rec {
     __functor = self: nodeType: args: {
       __type = AST;
       __isAST = true;
-      __toString = self: "\n" + printAST true "" self;
+      __toString = self: printAST true "" self;
       __args = args;
       inherit nodeType;
       __src = args.__src or null;
@@ -167,7 +180,7 @@ rec {
     
     # Collections
     list = elements: AST "list" { inherit elements; };
-    attrs = assignments: isRec: AST "attrs" { inherit assignments; "rec" = isRec; };
+    attrs = assignments: isRec: AST "attrs" { inherit assignments; inherit isRec; };
     
     # Assignments and bindings
     assignment = lhs: rhs: AST "assignment" { inherit lhs rhs; };
@@ -211,7 +224,14 @@ rec {
   # Combined helper for annotateSource + withSrc
   mkParser = name: parser:
     with parsec;
-    annotateSource name (withSrc parser);
+    annotateSource name (
+    p.spaced (  # Spaced before withSrc to discard spaces
+    withSrc parser));
+
+  mkUnspacedParser = name: parser:
+    with parsec;
+    annotateSource name (
+    withSrc parser);
 
   p = with parsec; rec {
     # Whitespace and comments
@@ -222,72 +242,40 @@ rec {
     spaced = x: skipThen spaces (thenSkip x spaces);
     lex = lexer.lexeme spaces;
     sym = lexer.symbol spaces;
+    mkSymParser = s: mkParser "${s}-sym" (string s);
 
     # Punctuation
-    semi = sym ";";
-    comma = sym ",";
-    dot = sym ".";
-    colon = sym ":";
-    question = sym "?";
-    ellipsis = sym "...";
+    semi = mkSymParser ";";
+    comma = mkSymParser ",";
+    dot = mkSymParser ".";
+    colon = mkSymParser ":";
+    question = mkSymParser "?";
+    ellipsis = mkSymParser "...";
+    notOp = mkSymParser "!";
+    negateOp = mkSymParser "-";
 
-    # Operators by precedence (lowest to highest)
-    orOp = sym "||";
-    andOp = sym "&&";
-    eqOp = choice [
-      (sym "==")
-      (sym "!=")
-    ];
-    relOp = choice [
-      (sym "<=")
-      (sym ">=")
-      (sym "<")
-      (sym ">")
-    ];
-    updateOp = sym "//";
-    concatOp = sym "++";
-    addOp = choice [
-      (sym "+")
-      (sym "-")
-    ];
-    mulOp = choice [
-      (sym "*")
-      (sym "/")
-    ];
-    selectOp = sym ".";
-    selectOrOp = sym "or";
-    notOp = sym "!";
-    negateOp = sym "-";
+    unOp = op: termParser:
+      mkParser "unOp-${op}" (bind (mkSymParser op) (_: bind termParser (operand: pure (N.unaryOp op operand))));
 
     # Helper for binary operators
-    binOp = opParser: termParser:
-      let term = termParser;
-          rest = many (bind opParser (op: bind term (rhs: pure { inherit op rhs; })));
-      in bind term (lhs: bind rest (rhss:
-        pure (lib.foldl (acc: x: N.binaryOp acc x.op x.rhs) lhs rhss)));
-
-    trinOp = termParser0: op0Parser: termParser1: op1Parser: termParser2:
-      bind termParser0 (lhs:
-      bind op0Parser (op0:
-      bind termParser1 (mhs:
-      bind op1Parser (op1:
-      bind termParser2 (rhs:
-      pure (N.trinaryOp lhs op0 mhs op1 rhs))))));
-
-    #binOp = opParser: termParser:
-    #  bind termParser (lhs:
-    #  bind opParser (op:
-    #  bind termParser (rhs:
-    #  pure (N.binaryOp op lhs rhs))));
+    # Exposes the raw lhs/rhs too for additive grammar
+    binOp = ops: lhsParser: rhsParser:
+      let opParser = choice (map mkSymParser ops);
+          binOpParser =
+             mkParser "binOp-${joinSep "-" ops}" (
+              let rest = many (bind opParser (op: bind rhsParser (rhs: pure { inherit op rhs; })));
+              in spaced (bind lhsParser (lhs: bind rest (rhss:
+                pure (lib.foldl (acc: x: N.binaryOp acc x.op x.rhs) lhs rhss)))));
+      in binOpParser;
 
     # Identifiers and keywords
     identifier =
-      lex (mkParser "identifier" (
+      mkParser "identifier" (
         bind (fmap (matches: head matches) (matching ''[a-zA-Z_][a-zA-Z0-9_\-]*'')) (identifierName:
         if builtins.elem identifierName ["if" "then" "else" "let" "in" "with" "inherit" "assert" "abort" "throw" "rec" "or"]
         then choice []  # fail by providing no valid alternatives
-        else pure (N.identifier identifierName))));
-    keyword = k: thenSkip (string k) (notFollowedBy (matching "[a-zA-Z0-9_]"));
+        else pure (N.identifier identifierName)));
+    keyword = k: mkParser "keyword" (thenSkip (string k) (notFollowedBy (matching "[a-zA-Z0-9_]")));
     
     # Reserved keywords
     ifKeyword = keyword "if";
@@ -306,8 +294,9 @@ rec {
 
     # Numbers
     int = mkParser "int" (fmap N.int lexer.decimal);
-    rawFloat = fmap (matches: builtins.fromJSON (head matches)) (matching ''[0-9]+\.[0-9]+([eE][+-]?[0-9]+)?'');
-    float = mkParser "float" (fmap N.float rawFloat);
+    float = 
+      let rawFloat = fmap (matches: builtins.fromJSON (head matches)) (matching ''[0-9]+\.[0-9]+([eE][+-]?[0-9]+)?'');
+      in mkParser "float" (fmap N.float rawFloat);
 
     # Strings
     # The following must be escaped to represent them within a string, by prefixing with a backslash (\):
@@ -325,23 +314,25 @@ rec {
     # "\${"
     # The newline, carriage return, and tab characters can be written as \n, \r and \t, respectively.
     
-        # Custom parser that can handle Nix string escape sequences properly
-    nixStringContent = fmap (builtins.concatStringsSep "") (many (choice [
-      # Handle escape sequences first (order matters)
-      (bind (string "\\\"") (_: pure "\""))        # \" → "
-      (bind (string "\\\\") (_: pure "\\"))        # \\ → \
-      (bind (string "\\\${") (_: pure ("$" + "{")))    # \${ → ${
-      (bind (string "\\n") (_: pure "\n"))         # \n → newline
-      (bind (string "\\r") (_: pure "\r"))         # \r → carriage return
-      (bind (string "\\t") (_: pure "\t"))         # \t → tab
-      # Handle any character that's not a quote or backslash
-      (fmap (x: builtins.head x) (matching "[^\"\\\\]"))
-    ]));
     
     # Complete string parser with quotes
-    nixStringLit = between (string ''"'') (string ''"'') nixStringContent;
-      
-    normalString = mkParser "normalString" (fmap N.string nixStringLit);
+    normalString = 
+      let
+        # Custom parser that can handle Nix string escape sequences properly
+        nixStringContent = fmap (builtins.concatStringsSep "") (many (choice [
+          # Handle escape sequences first (order matters)
+          (bind (string "\\\"") (_: pure "\""))        # \" → "
+          (bind (string "\\\\") (_: pure "\\"))        # \\ → \
+          (bind (string "\\\${") (_: pure ("$" + "{")))    # \${ → ${
+          (bind (string "\\n") (_: pure "\n"))         # \n → newline
+          (bind (string "\\r") (_: pure "\r"))         # \r → carriage return
+          (bind (string "\\t") (_: pure "\t"))         # \t → tab
+          # Handle any character that's not a quote or backslash
+          (fmap (x: builtins.head x) (matching "[^\"\\\\]"))
+        ]));
+        nixStringLit = between (string ''"'') (string ''"'') nixStringContent;
+      in 
+        mkParser "normalString" (fmap N.string nixStringLit);
 
     # The following must be escaped to represent them in an indented string:
     # 
@@ -394,92 +385,90 @@ rec {
 
     # Lists
     list = mkParser "list" (
-      spaced (
       fmap N.list (
       between (sym "[") (sym "]") (
-      sepBy atom spaces))));
+      sepBy atom spaces)));
 
     # Attribute paths
-    attrPathComponent = annotateSource "attrPathComponent" (choice [
-      identifier
-      normalString
-      interpolation
-    ]);
-    attrPath = mkParser "attrPath" (fmap N.attrPath (sepBy1 attrPathComponent dot));
-
-    inheritPath = annotateSource "inheritPath" (choice [
-      identifier
-      normalString
-    ]);
+    attrPath = 
+      let
+        attrPathComponent = mkParser "attrPathComponent" (choice [
+          identifier
+          normalString
+          interpolation
+        ]);
+      in mkParser "attrPath" (fmap N.attrPath (sepBy1 attrPathComponent dot));
 
     # Inherit expressions
-    inheritParser = mkParser "inheritParser" (spaced (bind inheritKeyword (_:
-      bind (optional (spaced (between (sym "(") (sym ")") expr))) (from:
-      bind (many1 (spaced inheritPath)) (attrs:
-      pure (N.inheritExpr (maybeHead from) attrs))))));
+    inheritParser = 
+      let
+        inheritPath = mkParser "inheritPath" (choice [
+          identifier
+          normalString
+        ]);
+      in 
+        mkParser "inheritParser" (spaced (bind inheritKeyword (_:
+          bind (optional (spaced (between (sym "(") (sym ")") expr))) (from:
+          bind (many1 inheritPath) (attrs:
+          bind semi (_:
+          pure (N.inheritExpr (maybeHead from) attrs)))))));
 
-    # Assignment - use logical_or to allow binary operations without circular dependency
     assignment = mkParser "assignment" (
       bind identifier (name:
-      bind spaces (_:
-      bind (string "=") (_:
-      bind spaces (_:
-      bind logical_or (value:
-      pure (N.assignment name value)))))));
+      bind (mkSymParser "=") (_:
+      bind expr (value:
+      bind semi (_:
+      pure (N.assignment name value))))));
 
     # Attribute sets  
-    binding = annotateSource "binding" (choice [assignment inheritParser]);
+    binding = mkParser "binding" (choice [assignment inheritParser]);
 
     # For attribute sets: assignments inside braces
-    bindings = annotateSource "bindings" (many (bind binding (a: 
-      bind spaces (_:
-      bind (optional (string ";")) (_:
-      bind spaces (_:
-      pure a))))));
+    bindings = mkParser "bindings" (
+      many (
+        bind binding (a: 
+        pure a)));
 
     # For let expressions: assignments without braces, terminated by 'in'
-    letBindings = annotateSource "letBindings" (many (bind binding (a:
-      bind spaces (_:
-      bind (string ";") (_:
-      bind spaces (_:
-      pure a))))));
+    letBindings = mkParser "letBindings" (
+      many (
+        bind binding (a:
+        pure a)));
 
-    attrs = mkParser "attrs" (spaced (choice [
+    attrs = mkParser "attrs" (choice [
       # Recursive attribute sets (try first - more specific)  
-      (bind (thenSkip recKeyword spaces) (_:
+      (bind recKeyword (_:
         fmap (assignments: N.attrs assignments true)
         (between (sym "{") (sym "}") bindings)))
+
       # Non-recursive attribute sets
       (fmap (assignments: N.attrs assignments false)
         (between (sym "{") (sym "}") bindings))
-    ]));
+    ]);
 
     # Function parameters
     simpleParam = mkParser "simpleParam" (fmap N.simpleParam identifier);
 
     defaultParam = mkParser "defaultParam" (
       bind identifier (name:
-      bind spaces (_:
-      bind (string "?") (_:
-      bind spaces (_:
+      bind (mkSymParser "?") (_:
       bind expr (default:
-      pure (N.defaultParam name default)))))));
+      pure (N.defaultParam name default)))));
 
-    attrParam = annotateSource "attrParam" (choice [defaultParam simpleParam]);
+    attrParam = mkParser "attrParam" (choice [defaultParam simpleParam]);
 
     # Function parameters inside braces: { a, b } or { a, b, ... }
-    attrSetParam = mkParser "attrSetParam" (between (sym "{") (sym "}") 
-      (bind spaces (_:
-      bind (sepBy attrParam (bind spaces (_: bind (string ",") (_: spaces)))) (params:
-      bind spaces (_:
-      bind (optional (bind (string ",") (_: bind spaces (_: ellipsis)))) (hasEllipsis:
-      bind spaces (_:
-      pure (N.attrSetParam params (hasEllipsis != [])))))))));
+    attrSetParam = mkParser "attrSetParam" (
+      between (mkSymParser "{") (mkSymParser "}") (
+      bind (sepBy attrParam comma) (params:
+      bind (optional (skipThen comma ellipsis)) (hasEllipsis:
+      pure (N.attrSetParam params (hasEllipsis != []))))));
 
-    param = annotateSource "param" (choice [attrSetParam simpleParam]);
+    param = mkParser "param" (choice [attrSetParam simpleParam]);
 
     # Lambda expressions
-    lambda = mkParser "lambda" (bind param (p:
+    lambda = mkParser "lambda" (
+      bind param (p:
       bind colon (_:
       bind expr (body:
       pure (N.lambda p body)))));
@@ -487,12 +476,10 @@ rec {
     # Let expressions
     letIn = mkParser "letIn" (spaced (
       bind letKeyword (_:
-      bind spaces (_:
-      bind letBindings (bindings:
+      bind bindings (bindings:
       bind inKeyword (_:
-      bind spaces (_:
       bind expr (body:
-      pure (N.letIn bindings body)))))))));
+      pure (N.letIn bindings body)))))));
 
     # With expressions
     withParser = mkParser "with" (bind withKeyword (_:
@@ -527,12 +514,7 @@ rec {
       bind expr (elseExpr:
       pure (N.conditional cond thenExpr elseExpr))))))));
 
-    application = mkParser "application" (
-      bind atom (func:
-      bind (many1 atom) (args:
-      pure (N.application func args))));
-
-    compound = annotateSource "compound" (choice [
+    compound = mkParser "compound" (choice [
       letIn
       conditional
       withParser
@@ -540,62 +522,85 @@ rec {
       abortParser
       throwParser
       lambda
-      application
     ]);
 
-    atom = annotateSource "atom" (lex (choice [
+    atomWithoutSelect = mkParser "atomWithoutSelect" (choice [
       float
       int
-      # An atom can be an orive; # The 'or' consumes one atom which can itself have an 'or':
-      # e.g. { a = add 10; } . a or add 1 2 -> error, (or add) is an atom so this is add 10 1 2
-      #      ({ a = add 10; }.b or (add 1)) 2 -> 12, correct parens
-      #      { a = add 10; } . b or add 1 2 -> 3
-      # Put this after floats/ints to avoid 1.1 being parsed as select 1 from 1
-      # Even this works:
-      # [ 1 2 { a = 4; }.b or 3 4 5] -> [1 2 3]
-      # so 'or' never actually needs parens
-      #orive
       normalString
       indentString
       path
       list
       attrs
       identifier
+      (between (sym "(") (sym ")") expr)
+    ]);
+
+    mkSelective = p: mkParser "select" (binOp ["."] p attrPath);
+    mkOrive = p0: p1: mkParser "orive" (binOp ["or"] p0 p1);
+
+    select = mkSelective atomWithoutSelect;
+    orive = mkOrive select (choice [select atomWithoutSelect]);
+    selectOr = mkParser "selectOr" (spaced (choice [
+      orive
+      select
     ]));
 
-    exprNoOperators = annotateSource "exprNoOperators" (choice [
-      compound
+    atom = annotateSource "atom" (spaced (choice [
+      selectOr
+      atomWithoutSelect
+    ]));
+
+    mkApplicative = p:
+      mkParser "application" (
+        bind p (f:
+        bind (many1 p) (args:
+        pure (N.application f args))));
+
+    # Unary operators (or singleton expressions)
+    unary = mkParser "unary" (choice [
+      (unOp "!" unary)
+      (unOp "-" unary)
       atom
     ]);
 
-    # Unary operators (or singleton expressions)
-    unary = annotateSource "unary" (choice [
-      (mkParser "unaryNot" (bind notOp (_: bind unary (operand: pure (N.unaryOp "!" operand)))))
-      (mkParser "unaryNegate" (bind negateOp (_: bind unary (operand: pure (N.unaryOp "-" operand)))))
-      exprNoOperators
-      (between (sym "(") (sym ")") logical_or)
+    # Function application such that {}.x or f 1 is f 1, {a = f;}.a or null 1 is f 1
+    applicative = mkParser "applicative" (choice [
+      (mkApplicative orive)
+      atom
     ]);
 
-    # Binary operators by precedence  
-    selective = binOp selectOp unary;
-    #orive = trinOp selective selectOp orive selectOrOp orive;
-    orive = binOp selectOrOp selective;
-    multiplicative = binOp mulOp orive;
-    additive = binOp addOp multiplicative;
-    concatenative = binOp concatOp additive;
-    updative = binOp updateOp concatenative;
-    relational = binOp relOp updative;
-    equality = binOp eqOp relational;
-    logical_and = binOp andOp equality;
-    logical_or = binOp orOp logical_and;
-    
-    exprWithOperators = withSrc logical_or;
+    propagatingBinOp = ops: p:
+      let p' = mkParser "propagatingBinOp-${joinSep "-" ops}" (
+        choice [
+          (binOp ops p p')
+          p
+        ]);
+      in p';
+
+    symBinOp = ops: p: binOp ops p p;
+
+    # Operators by precedence
+    multiplicative = propagatingBinOp ["*" "/"] applicative;
+    additive = propagatingBinOp ["+" "-"] multiplicative;
+    concatenative = propagatingBinOp ["++"] additive;
+    updative = propagatingBinOp ["//"] concatenative;
+    relational = propagatingBinOp ["<=" "<" ">=" ">"] updative;
+    equality = propagatingBinOp ["==" "!="] relational;
+    logical_and = propagatingBinOp ["&&"] equality;
+    logical_or = propagatingBinOp ["||"] logical_and;
+    withOperators = logical_or;
 
     # Finally expose expr as the top-level expression with operator precedence.
-    expr = annotateSource "expr" (spaced exprWithOperators);
+    expr = mkParser "expr" (choice [
+      lambda  # Lambda first to supercede attrs for attrset params
+      withOperators
+      atom
+      compound
+      unary # Need to include here again
+    ]);
 
-    exprEof = annotateSource "exprEof" (
-      lex (bind expr (e: bind eof (_: pure e))));
+    exprEof = mkParser "exprEof" (bind expr (e: bind eof (_: pure e)));
   };
 
   parseWith = p: s: parsec.runParser p s;
@@ -610,10 +615,10 @@ rec {
         Failed to parse AST:
 
           Expression:
-            ${_h_ s}
+            ${s}
 
           Result:
-            ${_ph_ result}
+            ${_pd_ 10 result}
       '';
     set = node: 
       assert that (isAST node) ''
@@ -643,80 +648,82 @@ rec {
   _tests = with typed.tests; suite {
     parser = 
       with parsec; 
-      let expectSuccess = p: s: v: expect.noLambdasEq (parseWith p s) { type = "success"; value = v; };
-          expectError = p: s: expect.eq (parseWith p s).type "error";
+      let 
+          expectSuccess = s: v: expect.noLambdasEq (parseExpr s) { type = "success"; value = v; };
+          expectSuccess_ = s: expect.eq (parseExpr s).type "success";
+          expectError = s: expect.eq (parseExpr s).type "error";
           # Helper to create expected AST nodes with source text
           withExpectedSrc = src: node: node.mapNode (args: args // { __src = src; });
       in {
         # Basic types
         numbers = {
-          positiveInt = expectSuccess p.int "42" (withExpectedSrc "42" (N.int 42));
-          negativeInt = expectSuccess p.expr "-42" (withExpectedSrc "-42" (N.unaryOp "-" (withExpectedSrc "42" (N.int 42))));
-          float = expectSuccess p.float "3.14" (withExpectedSrc "3.14" (N.float 3.14));
-          signedFloat = expectSuccess p.expr "-3.14" (withExpectedSrc "-3.14" (N.unaryOp "-" (withExpectedSrc "3.14" (N.float 3.14))));
-          scientific = expectSuccess p.float "1.23e-4" (withExpectedSrc "1.23e-4" (N.float 0.000123));
+          positiveInt = expectSuccess "42" (withExpectedSrc "42" (N.int 42));
+          negativeInt = expectSuccess "-42" (withExpectedSrc "-42" (N.unaryOp "-" (withExpectedSrc "42" (N.int 42))));
+          float = expectSuccess "3.14" (withExpectedSrc "3.14" (N.float 3.14));
+          signedFloat = expectSuccess "-3.14" (withExpectedSrc "-3.14" (N.unaryOp "-" (withExpectedSrc "3.14" (N.float 3.14))));
+          scientific = expectSuccess "1.23e-4" (withExpectedSrc "1.23e-4" (N.float 0.000123));
         };
 
         strings = {
-          normal = expectSuccess p.normalString ''"hello"'' (withExpectedSrc ''"hello"'' (N.string "hello"));
-          indent = expectSuccess p.indentString "''hello''" (withExpectedSrc "''hello''" (N.indentString "hello"));
-          escaped = expectSuccess p.normalString ''"hello\nworld"'' (withExpectedSrc ''"hello\nworld"'' (N.string "hello\nworld"));
+          normal = expectSuccess ''"hello"'' (withExpectedSrc ''"hello"'' (N.string "hello"));
+          indent = expectSuccess "''hello''" (withExpectedSrc "''hello''" (N.indentString "hello"));
+          escaped = expectSuccess ''"hello\nworld"'' (withExpectedSrc ''"hello\nworld"'' (N.string "hello\nworld"));
         };
 
         paths = {
-          relative = expectSuccess p.path "./foo" (withExpectedSrc "./foo" (N.path "./foo"));
-          absolute = expectSuccess p.path "/etc/nixos" (withExpectedSrc "/etc/nixos" (N.path "/etc/nixos"));
-          home = expectSuccess p.path "~/config" (withExpectedSrc "~/config" (N.path "~/config"));
-          nixPath = expectSuccess p.path "<nixpkgs>" (withExpectedSrc "<nixpkgs>" (N.path "<nixpkgs>"));
+          relative = expectSuccess "./foo" (withExpectedSrc "./foo" (N.path "./foo"));
+          absolute = expectSuccess "/etc/nixos" (withExpectedSrc "/etc/nixos" (N.path "/etc/nixos"));
+          home = expectSuccess "~/config" (withExpectedSrc "~/config" (N.path "~/config"));
+          nixPath = expectSuccess "<nixpkgs>" (withExpectedSrc "<nixpkgs>" (N.path "<nixpkgs>"));
         };
 
         booleans = {
-          true = expectSuccess p.expr "true" (withExpectedSrc "true" (N.identifier "true"));
-          false = expectSuccess p.expr "false" (withExpectedSrc "false" (N.identifier "false"));
+          true = expectSuccess "true" (withExpectedSrc "true" (N.identifier "true"));
+          false = expectSuccess "false" (withExpectedSrc "false" (N.identifier "false"));
         };
 
         null = {
-          null = expectSuccess p.expr "null" (withExpectedSrc "null" (N.identifier "null"));
+          null = expectSuccess "null" (withExpectedSrc "null" (N.identifier "null"));
         };
 
         # Collections
         lists = {
-          empty = expectSuccess p.list "[]" (withExpectedSrc "[]" (N.list []));
-          singleElement = expectSuccess p.list "[1]" (withExpectedSrc "[1]" (N.list [(withExpectedSrc "1" (N.int 1))]));
-          multipleElements = expectSuccess p.list "[1 2 3]" 
-            (withExpectedSrc "[1 2 3]" (N.list [(withExpectedSrc "1" (N.int 1)) (withExpectedSrc "2" (N.int 2)) (withExpectedSrc "3" (N.int 3))]));
-          mixed = expectSuccess p.list ''[1 "hello" true]''
-            (withExpectedSrc ''[1 "hello" true]'' (N.list [(withExpectedSrc "1" (N.int 1)) (withExpectedSrc ''"hello"'' (N.string "hello")) (withExpectedSrc "true" (N.identifier "true"))]));
+          empty = expectSuccess "[]" (withExpectedSrc "[]" (N.list []));
+          singleElement = expectSuccess "[1]" (withExpectedSrc "[1]" (N.list [(withExpectedSrc "1" (N.int 1))]));
+          multipleElements = expectSuccess "[1 2 3]" 
+            (withExpectedSrc "[1 2 3]" (N.list [(withExpectedSrc "1 " (N.int 1)) (withExpectedSrc "2 " (N.int 2)) (withExpectedSrc "3" (N.int 3))]));
+          mixed = expectSuccess ''[1 "hello" true]''
+            (withExpectedSrc ''[1 "hello" true]'' (N.list [(withExpectedSrc "1 " (N.int 1)) (withExpectedSrc ''"hello" '' (N.string "hello")) (withExpectedSrc "true" (N.identifier "true"))]));
         };
 
         attrs = {
-          empty = expectSuccess p.attrs "{}" (withExpectedSrc "{}" (N.attrs [] false));
-          singleAttr = expectSuccess p.attrs "{ a = 1; }"
-            (withExpectedSrc "{ a = 1; }" (N.attrs [(withExpectedSrc "a = 1" (N.assignment (withExpectedSrc "a" (N.identifier "a")) (withExpectedSrc "1" (N.int 1))))] false));
-          multipleAttrs = expectSuccess p.attrs "{ a = 1; b = 2; }"
+          empty = expectSuccess "{}" (withExpectedSrc "{}" (N.attrs [] false));
+          singleAttr = expectSuccess "{ a = 1; }"
+            (withExpectedSrc "{ a = 1; }" (N.attrs [(withExpectedSrc "a = 1; " (N.assignment (withExpectedSrc "a" (N.identifier "a")) (withExpectedSrc "1" (N.int 1))))] false));
+          multipleAttrs = expectSuccess "{ a = 1; b = 2; }"
             (withExpectedSrc "{ a = 1; b = 2; }" (N.attrs [
-              (withExpectedSrc "a = 1" (N.assignment (withExpectedSrc "a" (N.identifier "a")) (withExpectedSrc "1" (N.int 1))))
-              (withExpectedSrc "b = 2" (N.assignment (withExpectedSrc "b" (N.identifier "b")) (withExpectedSrc "2" (N.int 2))))
+              (withExpectedSrc "a = 1; " (N.assignment (withExpectedSrc "a" (N.identifier "a")) (withExpectedSrc "1" (N.int 1))))
+              (withExpectedSrc "b = 2; " (N.assignment (withExpectedSrc "b" (N.identifier "b")) (withExpectedSrc "2" (N.int 2))))
             ] false));
         };
 
         # Functions
         lambdas = {
-          simple = expectSuccess p.lambda "x: x"
+          simple = expectSuccess "x: x"
             (withExpectedSrc "x: x" (N.lambda (withExpectedSrc "x" (N.simpleParam (withExpectedSrc "x" (N.identifier "x")))) (withExpectedSrc "x" (N.identifier "x"))));
           # AttrSet lambda - simplified test for production readiness
-          attrSet = let result = parseWith p.lambda "{ a, b }: a + b"; in
+          attrSet = let result = parseExpr "{ a, b }: a + b"; in
             expect.eq result.type "success";
           # WithDefaults lambda - simplified test for production readiness
-          withDefaults = let result = parseWith p.lambda "{ a ? 1, b }: a + b"; in
+          withDefaults = let result = parseExpr "{ a ? 1, b }: a + b"; in
             expect.eq result.type "success";
         };
 
         # Control flow
         conditionals = {
-          simple = expectSuccess p.conditional "if true then 1 else 2"
+          simple = expectSuccess "if true then 1 else 2"
             (withExpectedSrc "if true then 1 else 2" (N.conditional (withExpectedSrc "true " (N.identifier "true")) (withExpectedSrc "1 " (N.int 1)) (withExpectedSrc "2" (N.int 2))));
-          nested = expectSuccess p.conditional "if true then if false then 1 else 2 else 3"
+          nested = expectSuccess "if true then if false then 1 else 2 else 3"
             (withExpectedSrc "if true then if false then 1 else 2 else 3" (N.conditional 
               (withExpectedSrc "true " (N.identifier "true")) 
               (withExpectedSrc "if false then 1 else 2 " (N.conditional (withExpectedSrc "false " (N.identifier "false")) (withExpectedSrc "1 " (N.int 1)) (withExpectedSrc "2 " (N.int 2))))
@@ -724,13 +731,13 @@ rec {
         };
 
         letIn = {
-          simple = expectSuccess p.letIn "let a = 1; in a"
+          simple = expectSuccess "let a = 1; in a"
             (withExpectedSrc "let a = 1; in a" (N.letIn 
-              [(withExpectedSrc "a = 1" (N.assignment (withExpectedSrc "a" (N.identifier "a")) (withExpectedSrc "1" (N.int 1))))]
+              [(withExpectedSrc "a = 1; " (N.assignment (withExpectedSrc "a" (N.identifier "a")) (withExpectedSrc "1" (N.int 1))))]
               (withExpectedSrc "a" (N.identifier "a"))));
-          multiple = let result = parseWith p.letIn "let a = 1; b = 2; in a + b"; in
+          multiple = let result = parseExpr "let a = 1; b = 2; in a + b"; in
             expect.eq result.type "success";
-          multiline = expectSuccess p.letIn ''
+          multiline = expectSuccess ''
             let 
               a = 1;
             in a''
@@ -738,9 +745,9 @@ rec {
             let 
               a = 1;
             in a'' (N.letIn 
-              [(withExpectedSrc "a = 1" (N.assignment (withExpectedSrc "a" (N.identifier "a")) (withExpectedSrc "1" (N.int 1))))]
+              [(withExpectedSrc "a = 1;\n" (N.assignment (withExpectedSrc "a" (N.identifier "a")) (withExpectedSrc "1" (N.int 1))))]
               (withExpectedSrc "a" (N.identifier "a"))));
-          nested = expectSuccess p.letIn ''
+          nested = expectSuccess ''
             let 
               a = 1;
             in let b = 2; in b''
@@ -748,75 +755,70 @@ rec {
             let 
               a = 1;
             in let b = 2; in b'' (N.letIn 
-              [(withExpectedSrc "a = 1" (N.assignment (withExpectedSrc "a" (N.identifier "a")) (withExpectedSrc "1" (N.int 1))))]
+              [(withExpectedSrc "a = 1;\n" (N.assignment (withExpectedSrc "a" (N.identifier "a")) (withExpectedSrc "1" (N.int 1))))]
               (withExpectedSrc "let b = 2; in b" (N.letIn 
-                [(withExpectedSrc "b = 2" (N.assignment (withExpectedSrc "b" (N.identifier "b")) (withExpectedSrc "2" (N.int 2))))]
+                [(withExpectedSrc "b = 2; " (N.assignment (withExpectedSrc "b" (N.identifier "b")) (withExpectedSrc "2" (N.int 2))))]
                 (withExpectedSrc "b" (N.identifier "b"))))));
         };
 
         # Operators - simplified tests that focus on structure rather than exact source text
         operators = {
-          plus = let result = parseWith p.expr "1 + 1"; in
-            expect.eq result.type "success";
-          arithmetic = let result = parseWith p.expr "1 + 2 * 3"; in
-            expect.eq result.type "success";
-          logical = let result = parseWith p.expr "true && false || true"; in
-            expect.eq result.type "success";
-          comparison = let result = parseWith p.expr "1 < 2 && 2 <= 3"; in
-            expect.eq result.type "success";
-          stringConcat = let result = parseWith p.expr ''"a" + "b"''; in
-            expect.eq result.type "success";
-          stringConcatParen = let result = parseWith p.expr ''("a" + "b")''; in
-            expect.eq result.type "success";
+          plus = (expectSuccess_ "1 + 1");
+          arithmetic = (expectSuccess_ "1 + 2 * 3");
+          logical = (expectSuccess_ "true && false || true");
+          comparison = (expectSuccess_ "1 < 2 && 2 <= 3");
+          stringConcat = (expectSuccess_ ''"a" + "b"'' );
+          stringConcatParen = (expectSuccess_ ''("a" + "b")'' );
         };
 
         # Complex expressions
         complex = {
           # Function call - simplified test for production readiness
-          functionCall = let result = parseWith p.expr "f x y"; in
+          functionCall = let result = parseExpr "f x y"; in
             expect.eq result.type "success";
           # Field access - simplified test for production readiness
-          fieldAccess = let result = parseWith p.expr "x.a.b"; in
+          fieldAccess = let result = parseExpr "x.a.b"; in
             expect.eq result.type "success";
           # WithOr - simplified test for production readiness
-          withOr = let result = parseWith p.expr "x.a or 42"; in
+          withOr = let result = parseExpr "x.a or 42"; in
             expect.eq result.type "success";
         };
 
         # Comments and whitespace
         whitespace = {
-          spaces = expectSuccess p.expr "  1  " (withExpectedSrc "1  " (N.int 1));
-          lineComment = expectSuccess p.expr "1 # comment" (withExpectedSrc "1 # comment" (N.int 1));
-          blockComment = expectSuccess p.expr "1 /* comment */" (withExpectedSrc "1 /* comment */" (N.int 1));
-          multiLineComment = expectSuccess p.expr "1 /* multi\n            line\n            comment */" (withExpectedSrc "1 /* multi\n            line\n            comment */" (N.int 1));
+          spaces = expectSuccess "  1  " (withExpectedSrc "1  " (N.int 1));
+          lineComment = expectSuccess "1 # comment" (withExpectedSrc "1 # comment" (N.int 1));
+          blockComment = expectSuccess "1 /* comment */" (withExpectedSrc "1 /* comment */" (N.int 1));
+          multiLineComment = expectSuccess "1 /* multi\n            line\n            comment */" (withExpectedSrc "1 /* multi\n            line\n            comment */" (N.int 1));
         };
 
         # Enhanced tests for comprehensive coverage
         enhanced = {
-          recAttr = let result = parseWith p.expr "rec { a = 1; b = a + 1; }"; in
+          attrOp = let result = parseExpr "rec { a = 1; b = a + 1; }"; in
             expect.eq result.type "success";
 
-          lambdaEllipsis = let result = parseWith p.lambda "{ a, b, ... }: a + b"; in
+          recAttr = let result = parseExpr "rec { a = 1; b = a + 1; }"; in
             expect.eq result.type "success";
 
-          complexNested = let result = parseWith p.expr 
+          lambdaEllipsis = let result = parseExpr "{ a, b, ... }: a + b"; in
+            expect.eq result.type "success";
+
+          complexNested = let result = parseExpr 
             "let f = x: x + 1; in f (if true then 42 else 0)"; in
             expect.eq result.type "success";
 
-          simpleString = expectSuccess p.normalString ''"hello world"'' (withExpectedSrc ''"hello world"'' (N.string "hello world"));
+          simpleString = expectSuccess ''"hello world"'' (withExpectedSrc ''"hello world"'' (N.string "hello world"));
           simpleStringWithEscapes = 
-            expectSuccess p.normalString ''
-            "hello ''${toString 123} \\''${} \"world\""
-            ''
+            expectSuccess ''"hello ''${toString 123} \\''${} \"world\""''
             (withExpectedSrc ''"hello ''${toString 123} \\''${} \"world\""'' (N.string ''hello ''${toString 123} ''\\''${} "world"''));
 
-          indentString = expectSuccess p.indentString "''hello world''" (withExpectedSrc "''hello world''" (N.indentString "hello world"));
+          indentString = expectSuccess "''hello world''" (withExpectedSrc "''hello world''" (N.indentString "hello world"));
           indentStringWithEscapes = 
-            expectSuccess p.indentString 
+            expectSuccess 
               "\'\'a \'\'\'hello \'\'\${toString 123}\\nworld\'\'\'.\'\'"
               (withExpectedSrc "\'\'a \'\'\'hello \'\'\${toString 123}\\nworld\'\'\'.\'\'" (N.indentString "a \'\'\'hello \'\'\${toString 123}\\nworld\'\'\'."));
 
-          mixedExpression = let result = parseWith p.expr ''{ a = [1 2]; b = "hello"; }.a''; in
+          mixedExpression = let result = parseExpr ''{ a = [1 2]; b = "hello"; }.a''; in
             expect.eq result.type "success";
         };
       };
