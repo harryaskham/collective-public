@@ -85,38 +85,30 @@ rec {
                 evalAssignments = scope: assignments:
                   listToAttrs (concatLists (map (evalAssignment scope) assignments));
               in 
-                if node."rec" then 
+                if node.isRec then 
                   # For recursive attribute sets, create a fixed-point
                   lib.fix (self: evalAssignments (scope // self) node.assignments)
                 else evalAssignments scope node.assignments
             else if node.nodeType == "binaryOp" then
-              let l = helper scope node.leftOperand;
+              let l = helper scope node.lhs;
               in if Abort.check l then l else
-              let r = helper scope node.rightOperand;
+              let r = helper scope node.rhs;
               in if Abort.check r then r else 
-                if node.op == "." then 
-                  # a._ or c
-                  if node.rightOperand.nodeType == "binaryOp" && node.rightOperand.op == "or" then
-                    let 
-                      orLeft = helper scope node.rightOperand.leftOperand;
-                      orRight = helper scope node.rightOperand.rightOperand;
-                    in 
-                      # a.b or c
-                      if node.rightOperand.leftOperand.nodeType == "identifier" then l.${node.rightOperand.leftOperand.name} or orRight
-
-                      # a."b" or c
-                      else l.${orLeft} or orRight
-
-                  # a.b
-                  else if node.rightOperand.nodeType == "identifier" then l.${node.rightOperand.name}
-
-                  # a."b"
-                  else if lib.isString r then l.${r}
-                  else RuntimeError (_b_ ''
-                    Unsupported attribute access: ${node.rightOperand.nodeType}:
-                      ${_pd_ 1 l}.${_ph_ node.rightOperand}
-                    '')
-
+                if node.op == "or" then 
+                  let
+                    orLeft = helper scope node.lhs;
+                    orRight = helper scope node.rhs;
+                  in
+                    if node.lhs.nodeType != "binaryOp" || node.lhs.op != "." then
+                      RuntimeError (_b_ ''
+                        Unsupported 'or' after non-select: ${node.lhs.nodeType} or ...
+                      '')
+                    else if MissingAttributeError.check orLeft then orRight
+                    else orLeft
+                else if node.op == "." then 
+                  let l = helper scope node.lhs;
+                      path = helper scope node.rhs.path;
+                  in fold (acc: attr: acc.${attr.name} or (MissingAttributeError attr.name)) l path
                 else 
                   let runBinOp = compatibleTypeSets: res:
                     if is EvalError l then l
@@ -231,25 +223,6 @@ rec {
                     in if is EvalError a then a else f a)
                   func 
                   args
-            else if node.nodeType == "select" then
-              let expr = helper scope node.expr;
-                  # For now, only support simple attribute paths (single identifier)
-                  pathComponent = if node.path.nodeType == "attrPath" && builtins.length node.path.path == 1
-                                 then 
-                                   let comp = builtins.head node.path.path;
-                                   in if comp.nodeType == "identifier" then comp.name
-                                      else RuntimeError (_b_ ''
-                                        Complex attribute path components not supported in evalAST:
-                                          ${_ph_ comp}
-                                        '')
-                                 else RuntimeError (_b_ ''
-                                   Complex attribute paths not supported in evalAST:
-                                     ${_ph_ node.path}
-                                   '');
-              in 
-                if builtins.hasAttr "default" node && node.default != null then 
-                  expr.${pathComponent} or (helper scope node.default)
-                else expr.${pathComponent}
             else if node.nodeType == "letIn" then
               let
                 # Evaluate bindings to create new scope
@@ -512,21 +485,12 @@ rec {
         original = parse "1 + 2";
         transformed = original.mapNode (node: with node; { 
           op = "-";
-          leftOperand = rightOperand;
-          rightOperand = leftOperand;
+          lhs = rhs;
+          rhs = lhs;
         });
       in {
         original = testRoundTrip original 3;
         transformed = testRoundTrip transformed 1;
-      };
-
-      # TODO: Fix failures
-      selfParsing = {
-        parseParserFile = let 
-          # Skip self-parsing test for now as it requires more advanced Nix constructs
-          # result = parse (builtins.readFile ./default.nix);
-          result = { type = "success"; };
-        in expect.eq result.type "success";
       };
     };
 

@@ -109,12 +109,22 @@ parser.parse ''{a = 1;}.a or const 1 2''
 </nix>
 <nix>
 #with parser; parse ''let f = x: x + 1; in f (if true then 42 else 0)''
-with parser; parseExpr ''1 < 2 && 2 <= 3''
+with parser; parseExpr ''a.b.c.''${d}."e".f''
 #with parser; parseExpr ''1 == 2 == 3''
 </nix>
 
 <nix>
+eval._tests.run {}
+</nix>
+<nix>
 parser._tests.run {}
+</nix>
+<nix>
+#with parser; parse (builtins.readFile "/home/harry/collective/collective-public/pkgs/collective-lib/parser/default.nix")
+with parser; parse "<nixpkgs>"
+</nix>
+<nix>
+(throw "").a.b.c or 1
 </nix>
 
 <nix>

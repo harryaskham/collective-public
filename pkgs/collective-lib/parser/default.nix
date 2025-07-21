@@ -821,6 +821,10 @@ rec {
           mixedExpression = let result = parseExpr ''{ a = [1 2]; b = "hello"; }.a''; in
             expect.eq result.type "success";
         };
+
+        selfParsing = {
+          #parseParserFile = expectSuccess_ (builtins.readFile ./default.nix);
+        };
       };
 
     readTests = {

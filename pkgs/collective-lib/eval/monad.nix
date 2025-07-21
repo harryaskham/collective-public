@@ -98,12 +98,12 @@ rec {
     __functor = self: name: {
       __toString = self: "EvalError.${name}";
       check = x: (x ? __isEvalError) && (x ? "__isEvalError${name}");
-      __functor = self: msg: {
+      __functor = self: __msg: {
         __type = EvalError;
         __isEvalError = true; 
         "__isEvalError${name}" = true; 
-        __toString = self: "EvalError.${name}: ${msg}";
-        inherit msg;
+        __toString = self: "EvalError.${name}: ${__msg}";
+        inherit __msg;
       };
     };
   };
@@ -112,6 +112,7 @@ rec {
   Throw = EvalError "Throw";
   TypeError = EvalError "TypeError";
   RuntimeError = EvalError "RuntimeError";
+  MissingAttributeError = EvalError "MissingAttributeError";
 
   EvalState = rec {
     __toString = self: "EvalState";
