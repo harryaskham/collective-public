@@ -621,6 +621,7 @@ rec {
         };
         importNixpkgs = testRoundTrip "(import <nixpkgs> {}).lib.isBool true" true;
         importNixpkgsLib = testRoundTrip "(import <nixpkgs/lib>).isBool true" true;
+        importNixpkgsLibVersion = expect.True (isString (eval.ast "(import <nixpkgs/lib>).version").right);
       };
 
       # Complex expressions demonstrating code transformations
