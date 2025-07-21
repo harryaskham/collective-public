@@ -129,10 +129,18 @@ rec {
   };
 
   initEvalState = EvalState {
+    NIX_PATH = {
+      nixpkgs = <nixpkgs>;
+    };
+
     true = true;
     false = false;
     null = null;
+    builtins = builtins;
+    derivation = derivation;
     import = builtins.import;
+    throw = throw;
+    abort = abort;
   };
 
   Unit = {
@@ -365,7 +373,7 @@ rec {
           _8_catch.withError = expectRun {} a.catchAfterThrow { x = 6; } "handled error 'EvalError.Abort: test error'";
           _9_catch.thenFmap = expectRun {} a.fmapAfterCatch { x = 6; } "handled error 'EvalError.Abort: test error' then ...";
 
-          do = solo {
+          do = {
             notation = {
               bindOne =
                 let m = do {x = Eval.pure 1;};

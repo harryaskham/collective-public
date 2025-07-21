@@ -438,7 +438,21 @@ rec {
         liftValue node.path
       else if node.nodeType == "path" then
         # path literal evaluates to its string representation for simplicity
-        liftValue node.value
+        # Evaluate via stringToPath which will use the current pwd for relative paths
+        # TODO: Make cwd an eval option
+        liftValue (stringToPath node.value)
+      else if node.nodeType == "anglePath" then
+        let path = splitSep "/" node.value;
+            name = maybeHead path;
+            rest = maybeTail path;
+            restPath = joinSep "/" (def [] rest);
+        in if !(scope ? NIX_PATH) then liftError (NixPathError (_b_ ''
+          No NIX_PATH found in scope when resolving ${node.value}.
+        ''))
+        else if !(scope.NIX_PATH ? ${name}) then liftError (NixPathError (_b_ ''
+          ${name} not found in NIX_PATH when resolving ${node.value}.
+        ''))
+        else liftValue (scope.NIX_PATH.${name} + "/${restPath}")
       else liftError (RuntimeError (_b_ ''
         Unsupported AST node type: ${node.nodeType}:
           ${_ph_ node}
@@ -601,6 +615,12 @@ rec {
       importExpressions = {
         # Import self test (simplified)
         importSelf = testRoundTrip "let path = ./default.nix; in true" true;
+        paths = {
+          nixpkgs = testRoundTrip "<nixpkgs>" <nixpkgs>;
+          nixpkgsLib = testRoundTrip "<nixpkgs/lib>" <nixpkgs/lib>;
+        };
+        importNixpkgs = testRoundTrip "(import <nixpkgs> {}).lib.isBool true" true;
+        importNixpkgsLib = testRoundTrip "(import <nixpkgs/lib>).isBool true" true;
       };
 
       # Complex expressions demonstrating code transformations

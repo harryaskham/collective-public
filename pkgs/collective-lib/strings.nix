@@ -403,6 +403,12 @@ in rec {
       then ''"${replaceStrings [ ''"'' ] [ ''\"'' ] string}"''
       else string;
 
+  stringToPath = p:
+    if hasPrefix "." p then ./. + (removePrefix "." p)
+    else if hasPrefix "/" p then /. + (removePrefix "/" p)
+    else if hasPrefix "~" p then ~/. + (removePrefix "~" p)
+    else builtins.toPath p;
+
   # NOTE: This doesn't work unless we have a derivation per string;
   # for now just adds error context.
   # Make a named context object with arbitrary stringable payload.

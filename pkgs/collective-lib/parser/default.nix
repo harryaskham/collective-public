@@ -66,7 +66,8 @@ rec {
     string = "\"${node.value}\"";
     indentString = "''${node.value}''";
     interpolation = "<\${_}>";
-    path = "path:${node.value}";
+    path = node.value;
+    anglePath = "<${node.value}>";
     identifier = "`${node.name}`";
     attrPath = "<_._._>";
     list = "[_]";
@@ -172,6 +173,7 @@ rec {
     indentString = s: AST "indentString" { value = s; };
     interpolation = body: AST "interpolation" { body = body; };
     path = p: AST "path" { value = p; };
+    anglePath = p: AST "anglePath" { value = p; };
     bool = b: AST "bool" { value = b; };
     
     # Identifiers and references
@@ -377,11 +379,13 @@ rec {
     # String interpolation
     interpolation = mkParser "interpolation" (fmap N.interpolation (between (string "\${") (string "}") expr));
 
-    # Paths
-    path = mkParser "path" (fmap N.path (choice [
-      (fmap head (matching ''((\.?\.?|~)(/[-_a-zA-Z0-9\.]+))+''))
-      (fmap head (matching ''<[^>]+>''))
-    ]));
+    absOrRelPath = mkParser "absOrRelPath" (
+      fmap (composeMany [N.path head]) (matching ''((\.?\.?|~)(/[-_a-zA-Z0-9\.]+))+''));
+
+    anglePath = mkParser "anglePath" (
+      (fmap (composeMany [N.anglePath head (drop 1)]) (matching ''<([^>]+)>'')));
+
+    path = mkParser "path" (choice [absOrRelPath anglePath]);
 
     # Lists
     list = mkParser "list" (
@@ -674,7 +678,8 @@ rec {
           relative = expectSuccess "./foo" (withExpectedSrc "./foo" (N.path "./foo"));
           absolute = expectSuccess "/etc/nixos" (withExpectedSrc "/etc/nixos" (N.path "/etc/nixos"));
           home = expectSuccess "~/config" (withExpectedSrc "~/config" (N.path "~/config"));
-          nixPath = expectSuccess "<nixpkgs>" (withExpectedSrc "<nixpkgs>" (N.path "<nixpkgs>"));
+          nixPath = expectSuccess "<nixpkgs>" (withExpectedSrc "<nixpkgs>" (N.anglePath "nixpkgs"));
+          nixPathLib = expectSuccess "<nixpkgs/lib>" (withExpectedSrc "<nixpkgs/lib>" (N.anglePath "nixpkgs/lib"));
         };
 
         booleans = {
