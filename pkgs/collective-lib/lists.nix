@@ -39,6 +39,7 @@ in rec {
 
   # Polymorphic concat for [[a]] and [{_=a}]
   concat = dispatch.elem {
+    empty = id;
     list = concatLists;
     set = mergeAttrsList;
   };

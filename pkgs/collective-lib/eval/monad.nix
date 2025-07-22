@@ -33,7 +33,15 @@ rec {
 
   is = T: a: errors.tryBool (assertIs T a);
 
+  # Get the type of a value.
   getT = a: a.__type or (typeOf a);
+
+  # Get the Monad type of a value.
+  getM = a: 
+    assert that (isMonadValue a) ''
+      getM: expected monad but got ${_p_ a}
+    '';
+    getT (getT a);
 
   Any = {
     __toString = self: "Any";
@@ -113,6 +121,7 @@ rec {
   TypeError = EvalError "TypeError";
   RuntimeError = EvalError "RuntimeError";
   MissingAttributeError = EvalError "MissingAttributeError";
+  NixPathError = EvalError "NixPathError";
 
   EvalState = rec {
     __toString = self: "EvalState";
@@ -128,7 +137,8 @@ rec {
     };
   };
 
-  initEvalState = EvalState {
+  initEvalState = EvalState initScope;
+  initScope = {
     NIX_PATH = {
       nixpkgs = <nixpkgs>;
     };
@@ -153,69 +163,222 @@ rec {
     };
   };
   unit = Unit {};
-  void = x: with x; bind (_: pure unit);
+  void = m: 
+    assert that ((m ? bind) && (m ? pure)) ''
+      void: empected monad but got ${getT m}
+    '';
+    with m; bind (_: pure unit);
+  when = cond: m: if cond then m else void m;
+  unless = cond: m: if cond then void m else m;
 
-  # Do notation
-  mkDo = __bindings: __m: {
-    inherit __bindings __m;
-    run = __m.run;
-    pure = __m.pure;
-    __functor = self: dispatch {
-      set = xs: 
-        assert isSolo xs;
-        let 
-          name = soloName xs;
-          value = soloValue xs;
-        in
-          flip dispatch value {
+  isDoStatement = M: xs:
+    (M != null && isMonadOf M xs)
+    || (M != null && isDoOf M xs)
+    || (isFunction xs)
+    || (isSolo xs && isDoStatement M (soloValue xs));
 
-            # { x = some monadic value; }
-            # Return new void do with the bindings bound.
-            set = valueM:
-              let
-                # Late init of __m if we can't infer it at first.
-                __m' = if self.__m == null then void valueM else self.__m;
-                __bindings' = 
-                  valueM.bind (value: 
-                    let 
-                      bindings = {
-                        ${name} = value; 
-                        _ = __m';  # Expose the monadic action for access to pure, bind, etc.
-                      };
-                    in 
-                      # Late init of __bindings if we can't infer it at first.
-                      if self.__bindings == null 
-                      then __m'.pure bindings
-                      else self.__bindings.bind (__bindings: __m'.pure (__bindings // bindings)));
-                  in 
-                    mkDo __bindings' (void __m');
+  assertIsDoStatement = M: xs:
+    assert that (isDoStatement M xs) ''
+      do: expected a statement of form
 
-            # {x = { some function of state }}
-            # Bind and rebuild the do.
-            lambda = f:
-              assert (self.__m != null);
-              assert (self.__bindings != null);
-              let __m' = void self.__m;
-              in mkDo 
-                (self.__bindings.bind (bindings: 
-                (f bindings).bind (value:
-                __m'.pure (bindings // { 
-                  ${name} = value; 
-                  _ = __m';  # Expose the monadic action for access to pure, bind, etc.
-                }))))
-                __m';
-          };
+        ( ${if M == null then "<monadic value>" else M Any} )
 
-      lambda = f:
-        mkDo self.__bindings (self.__bindings.bind f);
-    };
-  };
+      or
+
+        ( { bindings, ... }: ${if M == null then "<monadic value>" else M Any} )
+
+      or
+
+        { name = ${if M == null then "<monadic value>" else M Any}; }
+
+      or
+
+        { name = ({ bindings, ... }: ${if M == null then "<monadic value>" else M Any}); }
+
+      but got ${_p_ xs}
+    '';
+    true;
 
   # Do notation builder for a given monad.
-  mkDoFor = Monad: mkDo (Monad.pure {}) (Monad.pure unit);
+  mkDo = M: 
+    let m = M.pure unit;
+        bindings = M.pure { _ = m; };
+        stack = [];
+        canRun = true;
+    in __mkDo M bindings m stack canRun;
 
-  # Do notation inferring type.
-  do = mkDo null null;
+  isDo = x: x ? __isDo;
+  isDoOf = M: xdo: isDo xdo && isMonadOf M xdo.__m;
+
+  __mkDo = M: bindings: m: stack: canRun:
+    let this = rec {
+      __isDo = true;
+
+      # Set to true if the last action was not assignment.
+      inherit canRun;
+
+      # Stores the actual bindings for error logging.
+      inherit stack;
+
+      # The built-up monadic action.
+      __m = if m == null then M.pure unit else m;
+
+      # Create bindings that include the void monadic action exposing pure, bind, etc.
+      __bindings = 
+        if bindings == null 
+        then M.pure { _ = void __m; }
+        else bindings;
+
+      # Print an error with the do-stack trace.
+      withStackError = self: msg: _b_ ''
+        ${msg}
+
+        in
+
+        ${toString self}
+      '';
+
+      # do-level run alias.
+      run = arg:
+        assert that canRun (withStackError this ''
+          do: final statement of a do-block cannot be an assignment.
+        '');
+        __m.run arg;
+
+      # do-level aliases.
+      do = this;
+      pure = __m.pure;
+      bind = __m.bind;
+      throws = __m.throws;
+      catch = __m.catch;
+
+      __toString = self: 
+        let 
+          doPos = if empty stack then null else debuglib.pos.path (head stack);
+          doLine = 
+            if doPos == null then null
+            else let p = soloValue doPos; in 
+                if (p ? file) && (p ? line) then "${p.file}:${toString p.line}"
+                else null;
+          header = optionalString (doLine != null) doLine;
+        in _b_ ''
+          ${header}
+          do
+            ${_h_ (_ls_ (map (debuglib.printPosWith {
+              emptyMsg = "<no source>";
+              errorMsg = "<error>";
+            }) stack))}
+        '';
+
+      __functor = self: statement:
+        let
+          stack' = stack ++ [statement];
+
+          # Create new bindings (not a new 'do' structure) with the given binding.
+          withBindingM = name: valueM: __bindings:
+            assert that (isMonadOf M valueM || isDoOf M valueM) (
+              self.withStackError (self // { stack = stack'; }) (''
+                do: expected binding RHS of ${M} but got
+                  ${_ph_ (getM valueM)}
+              ''));
+
+            __bindings.bind (bindings:
+            valueM.bind (value:
+            M.pure (bindings // { 
+              _ = void self.__m;
+            } // {
+              # Add separately to allow overwriting the '_' binding.
+              ${name} = value; 
+            })));
+
+        in flip dispatch statement {
+          # Dependent action operation:
+          # { bindings, ...}: monadic value; }
+          #
+          # Run the given function with the bindings.
+          # Bindings are not updated.
+          # If this is the final action of a monad, then the value will be returned
+          # by 'run'
+          lambda = f: 
+            let m = void (self.__m.bind (_: self.__bindings.bind f));
+                bindings = withBindingM "_" m self.__bindings;
+            in __mkDo M bindings m stack' true;
+
+          # Binding operation:
+          # { x = (monadic value) | ({ bindings, ... }: monadic value); }
+          set = xs:
+            assert assertIsDoStatement M xs;
+
+            # Independent action operation:
+            # ( monadic value )
+            # Just set the monad value.
+            # Bindings are not updated.
+            if isDoOf M xs then
+              # Propagate the previous action with a void bind
+              let m = void (self.__m.bind (_: xs.__m));
+                  bindings = withBindingM "_" m self.__bindings;
+              in __mkDo M bindings m stack' true
+
+            else if isMonadOf M xs then
+              # Propagate the previous action with a void bind
+              let m = void (self.__m.bind (_: xs));
+                  bindings = withBindingM "_" m self.__bindings;
+                in __mkDo M bindings m stack' true
+
+            else (flip dispatch) (soloValue xs) {
+              # Independent bind:
+              # { x = (monadic value); }
+              # Return new void do with the bindings bound.
+              set = valueM:
+                let 
+                  m = void (self.__m.bind (_: valueM));
+                  bindings = 
+                    withBindingM "_" m (
+                      withBindingM (soloName xs) valueM (
+                        self.__bindings));
+                in __mkDo M bindings m stack' false;
+
+              # Dependent bind:
+              # {x = { some function of state }}
+              # Build the computation for the RHS and return a new do.
+              lambda = f:
+                let valueM = self.__bindings.bind f;
+                    m = void (self.__m.bind (_: valueM));
+                    bindings = 
+                      withBindingM "_" m (
+                        withBindingM (soloName xs) valueM (
+                          self.__bindings));
+                in __mkDo M bindings m stack' false;
+            };
+        };
+    };
+  in 
+    this;
+
+  # Generic do notation that infers its type.
+  # Cannot apply lambdas without M, so can only infer from a constant binding.
+  do = dispatch {
+    lambda = _: throw "do: cannot infer monadic type from lambda expression";
+    set = xs:
+      if isDo xs then mkDo M xs.__m
+      else if isMonadOf M xs then mkDo M xs
+      else flip dispatch (soloValue xs) {
+        lambda = _: throw "do: cannot infer monadic type from dependent binding expression";
+        set = valueM:
+          let M = getT (getT valueM);
+          in mkDo M xs;
+      };
+  };
+
+  # Check if a value is a monad.
+  # i.e. isMonad (Eval.pure 1) -> true
+  #      isMonad (Either.pure 1) -> true
+  isMonadValue = x: (getT x) ? __isMonad;
+
+  # Is the given x an instance of the given monad, ignoring the type parameter?
+  # i.e. isMonadOf Eval (Eval.pure 1) -> true
+  #      isMonadOf Eval (Either.pure 1) -> false
+  isMonadOf = M: x: isMonadValue x && is (getT (M.pure unit)) (void x);
 
   # Monadic evaluation state.
   # Roughly simulates an ExceptT EvalError (StateT EvalState m) a monad stack.
@@ -224,21 +387,23 @@ rec {
     check = x: x ? __isEval;
     Error = EvalError;
     S = EvalState;
-    do = mkDoFor Eval;
+    do = mkDo Eval;
     pure = x: 
       let A = getT x;
       in Eval A id ((Either Error A).pure x);
     throws = e: (Eval.pure unit).throws e;
 
-    mapState = f: x: Eval x.A (f x.s) x.e;
-
-    mapEither = f: x: Eval x.A x.s (f x.e);
+    #mapState = f: x: Eval x.A (f x.s) x.e;
+    #mapEither = f: x: Eval x.A x.s (f x.e);
 
     __functor = self: A: assert checkTypes [A]; rec {
       __toString = self: "Eval ${A}";
+      __isMonad = true;
+      __type = Eval;
       inherit A;
       E = Either Error A;
       check = x: x ? __isEval && is E x.e;
+      pure = x: Eval A id ((Either Error A).pure x);
 
       __functor = self:
         s: assert that (lib.isFunction s) ''Eval: expected lambda state but got ${_p_ s}'';
@@ -253,26 +418,42 @@ rec {
           # modify :: (EvalState -> EvalState) -> Eval A -> Eval {}
           modify = f: 
             if isLeft this.e then this else
-            mapState (const (compose f s)) (Eval.pure unit);
+            void (this.mapState (const (compose f this.s)));
 
           set = st: this.modify (const st);
 
-          get = _: this.pure (this.s (S.mempty {}));
+          # Thunked to avoid infinite nesting - (m.get {}) is an (Eval EvalState)
+          get = _: (this.pure (S.mempty {})).fmap this.s;
 
-          pure = x: mapState (const this.s) (Eval.pure x);
+          mapState = f: Eval A (f this.s) this.e;
+          mapEither = f: Eval A this.s (f this.e);
 
+          getScope = _: (this.get {}).bind (s: this.pure s.scope);
+          setScope = scope: this.modifyScope (const scope);
+          modifyScope = f: this.modify (s: s.fmap f);
+          prependScope = newScope: this.modifyScope (scope: newScope // scope);
+          appendScope = newScope: this.modifyScope (scope: scope // newScope);
+
+          do = Eval.do;
+          pure = x: (Eval.pure x).mapState (const this.s);
           fmap = f: Eval A this.s (this.e.fmap f);
+          when = eval.monad.when;
+          unless = eval.monad.unless;
 
           bind = f:
             if isLeft this.e then this else 
             let 
               a = this.e.right;
-              mb = f a;
-            in 
-              assert that (is Eval mb) ''
-                Eval.bind: non-Eval value returned of type ${getT mb}:
-                  ${_p_ mb}
-              '';
+              # TODO: Handle 'do' more cleanly at top level
+              mb = let r = f a; in 
+                if is Eval r then r
+                else if isDoOf Eval r
+                then r.__m
+                else _throw_ ''
+                  Eval.bind: non-Eval value returned of type ${getT r}:
+                    ${_ph_ r}
+                '';
+            in
               if isLeft mb.e then mb else
               let 
                 e' = mb.e;
@@ -283,14 +464,18 @@ rec {
           # Set the value to the given error.
           throws =
             e: assert that (is Error e) ''Eval.throws: expected Either value ${Error} but got ${_p_ e}'';
-            mapEither (const (E.Left e)) this;
+            this.mapEither (const (E.Left e));
 
           # Catch specific error types and handle them with a recovery function
           # catch :: (EvalError -> Eval A) -> Eval A
           catch = handler:
             if isLeft this.e then 
               let recovery = handler this.e.left;
-              in mapState (const this.s) recovery
+              in 
+                assert that (isMonadOf Eval recovery) ''
+                  Eval.catch: expected recovery function of type Eval A but got ${_p_ recovery}
+                '';
+                recovery.mapState (const this.s)
             else this;
 
           # Returns (Either EvalError set)
@@ -373,19 +558,19 @@ rec {
           _8_catch.withError = expectRun {} a.catchAfterThrow { x = 6; } "handled error 'EvalError.Abort: test error'";
           _9_catch.thenFmap = expectRun {} a.fmapAfterCatch { x = 6; } "handled error 'EvalError.Abort: test error' then ...";
 
-          do = {
+          do = solo {
             notation = {
               bindOne =
-                let m = do {x = Eval.pure 1;};
+                let m = Eval.do {x = Eval.pure 1;} ({_, ...}: _.pure unit);
                 in {
                   bindings = expectRun {} m.__bindings {} { x = 1; _ = Eval.pure unit; };
                   run = expectRun {} m {} unit;
                 };
               bindOneGetOne = 
-                let m = do {x = Eval.pure 1;} ({_, x}: _.pure x);
+                let m = Eval.do {x = Eval.pure 1;} ({_, x}: _.pure x);
                 in expectRun {} m {} 1;
               dependentBindGet = 
-                let m = do
+                let m = Eval.do
                   {x = Eval.pure 1;}
                   {y = {_, x}: _.pure (x + 1);}
                   ({_, x, y}: _.pure (x + y));
@@ -397,6 +582,31 @@ rec {
                   {y = pure 2;}
                   ({x, y, ...}: pure (x + y));
                 in expectRun {} m {} 3;
+
+              setGet =
+                let m = Eval.do
+                  ( {_}: _.set (EvalState {x = 1;}) )
+                  ( {_}: _.get {} );
+                in expectRun {} m {x = 1;} (EvalState {x = 1;});
+
+              composes = solo {
+                do = 
+                  let a = Eval.do ( {_}: _.appendScope {x = 1;});
+                      b = Eval.do ( {_}: _.appendScope {y = 2;});
+                      c = Eval.do 
+                        a
+                        {aScope = {_}: _.getScope {};}
+                        b
+                        {bScope = {_, ...}: _.getScope {};}
+                        ( {_, aScope, bScope}: _.pure {inherit aScope bScope;} );
+                  in expectRun {} c {x = 1; y = 2;} {aScope = {x = 1;}; bScope = {x = 1; y = 2;};};
+
+                doBind =
+                  let a = Eval.do ( {_}: _.appendScope {x = 1;});
+                      b = Eval.do ( {_}: _.appendScope {y = 2;});
+                      c = a.bind (_: b.bind (_: (b.__m.get {}).bind (s: Eval.pure s.scope)));
+                  in expectRun {} c {x = 1; y = 2;} {x = 1; y = 2;};
+              };
             };
           };
         };

@@ -10,6 +10,7 @@ with collective-lib.errors;
 with collective-lib.functions;
 with collective-lib.lists;
 with collective-lib.strings;
+with collective-lib.syntax;
 with collective-lib.tests;
 
 let 
@@ -58,7 +59,15 @@ in rec {
       __functor = self: self.on lib.typeOf;
       on = getTypeF: defaultF: dict: x:
         let f = dict.${getTypeF x} or defaultF;
-        in f x;
+        in 
+        assert that (isFunction f) ''
+          dispatch.def.on: got non-function for type ${getTypeF x}:
+            ${_ph_ f}
+
+          for dict:
+            ${_ph_ dict}
+        '';
+        f x;
     };
 
     # Make a polymorphic function from the given type-to-value attrs
@@ -91,9 +100,11 @@ in rec {
     # Examples:
     #
     # let f = dispatch.elem {
+    #   empty = id;
     #   int = fmap (x: x + 1);
     #   float = fmap (x: x - 1.0);
     # };
+    # in f [] == [];
     # in f [1 2 3] == [2 3 4];
     # in f [1.0 2.0 3.0] == [0.0 1.0 2.0];
     # in f { a = 1; b = 2; c = 3; } == { a = 2; b = 3; c = 4; };
@@ -104,7 +115,7 @@ in rec {
     elem = {
       __functor = self: self.on lib.typeOf;
       on = getElemType: dict: 
-        dispatch.on (compose getElemType elems.head) dict;
+        dispatch.on (x: if empty x then "empty" else getElemType elems.head x) dict;
     };
   };
 
@@ -150,6 +161,7 @@ in rec {
         Got ${lib.typeOf x} of value: ${with log.prints; put x _safe ___}
       '';
       in switch.def.on getValue defaultV x dict;
+    typeOf = switch.on lib.typeOf;
   };
 
   ### Polymorphic functions

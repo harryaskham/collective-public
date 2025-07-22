@@ -62,6 +62,9 @@ in with typed; rec {
           else go (tail attrPath) (parent.${head attrPath});
       in go attrPath expr;
 
+  isPos = x: x ? __isPos;
+  isPosAttrs = x: isAttrs x && nonEmpty x && isPos (head (attrValues x));
+
   # Get the internal metadata of the given name in the given attrs.
   pos = 
     let 
@@ -69,13 +72,16 @@ in with typed; rec {
         if rawPos == null then null else
         rawPos // {
           inherit name;
+          __isPos = true;
           __toString = self: 
             "${self.name} (${self.file}:${toString self.line}:${toString self.column})";
         };
 
       dispatchPos = f: dispatch.def null {
         # If given a set, get positions for all its members
-        set = attrs: Unsafe.mapAttrs (name: _: mkPos name (f name attrs)) attrs;
+        set = attrs: 
+          (Unsafe.mapAttrs (name: _: mkPos name (f name attrs)) attrs);
+
         # Otherwise just the one key.
         string = name: attrs: mkPos name (f name attrs);
       };
@@ -101,6 +107,67 @@ in with typed; rec {
             if isAttrs parent then pos k parent
             else v);
     };
+
+  defaultPrintPosOpts = {
+    linesBefore = 0;
+    linesAfter = 0;
+    printHeader = false;
+    printEllipses = false;
+    posSep = "\n";
+    maxDepth = 5;
+    emptyMsg = "<printPos_: no position information available>";
+    errorMsg = "<printPos_: error printing pos>";
+  };
+
+  printPos_ = opts: p: 
+    log.while "printing the positional information for a value" (
+    flip errors.tryStrict (_: opts.errorMsg) (
+    if p == null || (isAttrs p && all (x: x == null) (attrValues p)) then
+      opts.emptyMsg
+
+    else if opts.maxDepth <= 0 then
+      "<printPos_: maxDepth reached>"
+
+    else if !(isPos p || isPosAttrs p) then
+      assert that (isAttrs p) ''
+        debuglib.printPos: cannot print non-attrs pos p
+      '';
+      log.while "obtaining positional information for printing" (
+      printPos_ opts (pos.path p)
+      )
+
+    else if isPosAttrs p then
+      log.while "printing positional information for an attrset" (
+      joinSep opts.posSep 
+        (mapAttrsToList 
+          (_: printPos_ (opts // { maxDepth = opts.maxDepth - 1; }))
+          p)
+      )
+
+    else
+      log.while "printing positional information for an individual position" (
+      let sourceLines = splitLines (builtins.readFile p.file);
+          toEnd = p.line + opts.linesAfter >= length sourceLines;
+          fromStart = p.line - opts.linesBefore < 1;
+          lines = 
+            take 
+              (1 + opts.linesBefore + opts.linesAfter) 
+              (drop (p.line - opts.linesBefore) sourceLines);
+          header = if opts.printHeader then "${toString p}\n---" else "";
+          truncatedSource = _ls_ (
+            (optionals (!fromStart && opts.printEllipses) ["..."]) ++
+            (lines) ++
+            (optionals (!toEnd && opts.printEllipses) ["..."])
+          );
+      in _ls_ [header truncatedSource]
+      )
+  ));
+
+  printPos = x: 
+    log.while "printing the default positinal information for a value" (
+    printPos_ defaultPrintPosOpts x
+    );
+  printPosWith = opts: x: printPos_ (defaultPrintPosOpts // opts) x;
 
   # <nix>debuglib._tests.run {}</nix>
   _tests = with collective-lib.tests; suite {

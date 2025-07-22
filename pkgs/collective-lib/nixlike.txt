@@ -143,22 +143,49 @@ eval ''(import <nixpkgs> {}).lib.genAttrs toString 10''
 </nix>
 
 <nix>
-with eval.monad;
-(do { x = Eval.pure 1; }).__bindings
+eval.ast.runAST (parser.parse "1")
 </nix>
 <nix>
 eval._tests.debug {}
 </nix>
 <nix>
-parser._tests.debug {}
+eval._tests.run {}
+</nix>
+<nix>
+with eval.monad;
+getM (Eval.pure 1)
 </nix>
 <nix>
 parser._tests.debug {}
+</nix>
+<nix>
+with eval.ast; with eval.monad; with parser;
+let m =
+  Eval.do
+    ((Eval.pure unit).prependScope {a = 1;})
+    {a = {_}: _.getScope {};}
+    ({a, _, ...}: _.pure a)
+  ;
+in m.run {}
+</nix>
+<nix>
+with eval.ast; with eval.monad; with parser;
+(Eval.pure unit).prependScope {a = 1;}
+  ({_}: _.prependScope {a = 1;})
+let m = Eval.do
+  ({_}: _.prependScope {a = 1;})
+  ({_}: _.getScope {})
+  ;
+in m.run {}
 </nix>
 <nix>
 with eval.monad;
 let a = Eval.pure 123;
 in ((a.set (EvalState { a = 1;})).modify id).get {}
+</nix>
+<nix>
+with eval.monad;
+(Eval.do { a = Eval.pure 1; } ({a, _}: _.pure 1)).__m.bind(a: Eval.do (Eval.pure unit))
 </nix>
 
 <nix>

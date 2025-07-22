@@ -101,4 +101,8 @@ in rec {
       };
   };
 
+  aliases = {
+    bat = path: "bat -P --style=plain --theme=Nord $(${path})";
+  };
+
 }
