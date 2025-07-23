@@ -137,6 +137,7 @@ ${eof}
     atoms = {
       h1 = { style = [bold fg.cyan]; };
       h2 = { style = [bold fg.magenta]; };
+      name = { style = [bold fg.cyan]; };
       cmdName = { style = [bold fg.green]; };
       cmd = { style = [italic]; };
       nixExpr = { style = [bg.grey]; };
