@@ -162,8 +162,11 @@ parser._tests.debug {}
 eval._tests.debug {}
 </nix>
 <nix>
+eval.monad._tests.debug {}
+</nix>
+<nix>
 with eval.ast; with eval.monad; with parser;
-runAST (parse "let a = 1; in a")
+((Eval.pure 123).bind (_: Eval.throws (Throw ""))).catch (_: Eval.pure 123)
 </nix>
 <nix>
 is EvalError E

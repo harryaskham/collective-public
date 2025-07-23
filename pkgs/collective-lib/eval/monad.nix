@@ -534,9 +534,9 @@ rec {
             getStatePlusValue = 
               with const42; 
               bind (i: (get {}).bind (s: pure (Int (s.scope.x + i.x))));
-            thenThrows = with stateXTimes3; bind (i: throws (Abort "test error"));
+            thenThrows = with stateXTimes3; bind (i: throws (Throw "test error"));
             bindAfterThrow = with thenThrows; bind ({}: pure "not reached");
-            catchAfterThrow = with thenThrows; catch (e: pure "handled error '${e}'");
+            catchAfterThrow = thenThrows.catch (e: Eval.pure "handled error '${e}'");
             fmapAfterCatch = with catchAfterThrow; fmap (s: s + " then ...");
           };
           expectRun = s: a: s': a': 
@@ -554,11 +554,11 @@ rec {
           _1_set = expectRun {} a.stateXIs2 { x = 2; } unit;
           _2_modify = expectRun {} a.stateXTimes3 { x = 6; } unit;
           _4_bind.get = expectRun {} a.getStatePlusValue { x = 6; } (Int 48);
-          _5_bind.thenThrows = expectRunError {} a.thenThrows (Abort "test error");
-          _6_bind.bindAfterThrow = expectRunError {} a.bindAfterThrow (Abort "test error");
+          _5_bind.thenThrows = expectRunError {} a.thenThrows (Throw "test error");
+          _6_bind.bindAfterThrow = expectRunError {} a.bindAfterThrow (Throw "test error");
           _7_catch.noError = expectRun {} (a._42.catch (_: throw "no")) {} (Int 42);
-          _8_catch.withError = expectRun {} a.catchAfterThrow { x = 6; } "handled error 'EvalError.Abort: test error'";
-          _9_catch.thenFmap = expectRun {} a.fmapAfterCatch { x = 6; } "handled error 'EvalError.Abort: test error' then ...";
+          _8_catch.withError = expectRun {} a.catchAfterThrow { x = 6; } "handled error 'EvalError.Throw: test error'";
+          _9_catch.thenFmap = expectRun {} a.fmapAfterCatch { x = 6; } "handled error 'EvalError.Throw: test error' then ...";
 
           do = {
             notation = {
@@ -568,15 +568,18 @@ rec {
                   bindings = expectRun {} m.__bindings {} { x = 1; _ = Eval.pure unit; };
                   run = expectRun {} m {} unit;
                 };
+
               bindOneGetOne = 
                 let m = Eval.do {x = Eval.pure 1;} ({_, x}: _.pure x);
                 in expectRun {} m {} 1;
+
               dependentBindGet = 
                 let m = Eval.do
                   {x = Eval.pure 1;}
                   {y = {_, x}: _.pure (x + 1);}
                   ({_, x, y}: _.pure (x + y));
                 in expectRun {} m {} 3;
+
               boundDo = 
                 let do = Eval.do; in with Eval;
                 let m = do
@@ -590,6 +593,49 @@ rec {
                   ( {_}: _.set (EvalState {x = 1;}) )
                   ( {_}: _.get {} );
                 in expectRun {} m {x = 1;} (EvalState {x = 1;});
+
+              setGetChainBlocks =
+                let a = Eval.do ( {_}: _.set (EvalState {x = 1;}) );
+                    b = Eval.do a ( {_}: _.get {} );
+                    m = Eval.do b;
+                in expectRun {} m {x = 1;} (EvalState {x = 1;});
+
+              setGetDifferentBlocks =
+                let a = Eval.do ( {_}: _.set (EvalState {x = 1;}) );
+                    b = Eval.do ( {_}: _.get {} );
+                    m = Eval.do a b;
+                in expectRun {} m {x = 1;} (EvalState {x = 1;});
+
+              setGetScope =
+                let m = Eval.do
+                  ( {_}: _.setScope ({x = 1;}) )
+                  ( {_}: _.getScope {} );
+                in expectRun {} m {x = 1;} {x = 1;};
+
+              setAppendGetScope =
+                let m = Eval.do
+                  ( {_}: _.setScope ({x = 1;}) )
+                  ( {_}: _.appendScope ({y = 2;}) )
+                  ( {_}: _.getScope {} );
+                in expectRun {} m {x = 1; y = 2;} {x = 1; y = 2;};
+
+              setAppendGetScopeDifferentBlocks =
+                let 
+                  a = Eval.do
+                    ( {_}: _.setScope ({x = 1;}) );
+                  b = Eval.do
+                    ( {_}: _.appendScope ({y = 2;}) );
+                  c = Eval.do
+                    ( {_}: _.getScope {} );
+                  m = Eval.do a b c;
+                in expectRun {} m {x = 1; y = 2;} {x = 1; y = 2;};
+
+              overwriteScope =
+                let m = Eval.do
+                  ( {_}: _.setScope ({x = 1;}) )
+                  ( {_}: _.appendScope ({x = 2;}) )
+                  ( {_}: _.getScope {} );
+                in expectRun {} m {x = 2;} {x = 2;};
 
               composes = 
                 let a = Eval.do ( {_}: _.appendScope {x = 1;});
