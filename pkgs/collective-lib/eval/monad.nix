@@ -361,12 +361,13 @@ rec {
   do = dispatch {
     lambda = _: throw "do: cannot infer monadic type from lambda expression";
     set = xs:
-      if isDo xs then mkDo M xs.__m
-      else if isMonadOf M xs then mkDo M xs
+      # do do x == do x
+      if isDo xs then xs
+      else if isMonadValue xs then mkDo (getM xs) xs
       else flip dispatch (soloValue xs) {
         lambda = _: throw "do: cannot infer monadic type from dependent binding expression";
         set = valueM:
-          let M = getT (getT valueM);
+          let M = getM valueM;
           in mkDo M xs;
       };
   };
@@ -447,17 +448,19 @@ rec {
             let 
               a = this.e.right;
               # TODO: Handle 'do' more cleanly at top level
-              mb = let r = f a; in 
-                if is Eval r then r
-                else if isDoOf Eval r
-                then r.__m
-                else _throw_ ''
-                  Eval.bind: non-Eval value returned of type ${getT r}:
-                    ${_ph_ r}
-                '';
+              mb =
+                let r = f a;
+                in
+                  if is Eval r then r
+                    # TODO: return .__m or raw here?
+                  else if isDoOf Eval r then r.__m
+                  else _throw_ ''
+                    Eval.bind: non-Eval value returned of type ${getT r}:
+                      ${_ph_ r}
+                  '';
             in
               if isLeft mb.e then mb else
-              let 
+              let
                 e' = mb.e;
                 s' = compose mb.s this.s;
                 A' = getT e'.right;
@@ -588,6 +591,13 @@ rec {
                   ({x, y, ...}: pure (x + y));
                 in expectRun {} m {} 3;
 
+              setGetInferred =
+                let m = do
+                  ( Eval.pure unit )
+                  ( {_}: _.set (EvalState {x = 1;}) )
+                  ( {_}: _.get {} );
+                in expectRun {} m {x = 1;} (EvalState {x = 1;});
+
               setGet =
                 let m = Eval.do
                   ( {_}: _.set (EvalState {x = 1;}) )
@@ -604,6 +614,12 @@ rec {
                 let a = Eval.do ( {_}: _.set (EvalState {x = 1;}) );
                     b = Eval.do ( {_}: _.get {} );
                     m = Eval.do a b;
+                in expectRun {} m {x = 1;} (EvalState {x = 1;});
+
+              setGetDifferentBlocksInferred =
+                let a = do (Eval.pure unit) ({_}: _.set (EvalState {x = 1;}) );
+                    b = do (Eval.pure unit) ({_}: _.get {} );
+                    m = do a b;
                 in expectRun {} m {x = 1;} (EvalState {x = 1;});
 
               setGetScope =
