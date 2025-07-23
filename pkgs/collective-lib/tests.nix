@@ -288,7 +288,7 @@ in rec {
 
   # Run the given test as a singleton test suite, formatting its results.
   evalOneTest = evalFn: test:
-    log.describe "while evaluating a test" (
+    log.describe "while evaluating a test '${test.name}'" (
     let tests = { ${test.name} = test; };
         result = evalFn (runTests tests);
     in runOneTest test result
@@ -415,8 +415,8 @@ in rec {
         (testName: test: 
           {}: f { ${testName} = test; })
         tests;
-    runOne = overOne (run_ (test: test.run));
-    debugOne = overOne (run_ (test: test.debug));
+    runOne = overOne (run_ (test: test.run {}));
+    debugOne = overOne (run_ (test: test.debug {}));
     run = run_ (test: test.run) tests;
     debug = run_ (test: test.debug) tests;
     run_ = runner: tests:

@@ -626,8 +626,8 @@ rec {
       '';
     set = node: 
       assert that (isAST node) ''
-        parse: expected string or string, got:
-          ${_ph_ node}
+        parse: expected string or AST, got:
+          ${_pd_ 2 node}
       '';
       node;
   };

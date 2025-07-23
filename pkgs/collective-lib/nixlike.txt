@@ -159,12 +159,26 @@ getM (Eval.pure 1)
 parser._tests.debug {}
 </nix>
 <nix>
+eval._tests.debug {}
+</nix>
+<nix>
+with eval.ast; with eval.monad; with parser;
+runAST (parse "let a = 1; in a")
+</nix>
+<nix>
+is EvalError E
+</nix>
+<nix>
+with eval.ast; with eval.monad; with parser;
+((((void ((((Eval.pure 123).set (EvalState {x = 3;})).getScope {}).bind(s: Eval.pure (s.x + 3)))).getScope {}).getScope {}).throws (RuntimeError ""))
+</nix>
+<nix>
 with eval.ast; with eval.monad; with parser;
 let m =
   Eval.do
-    ((Eval.pure unit).prependScope {a = 1;})
-    {a = {_}: _.getScope {};}
-    ({a, _, ...}: _.pure a)
+    ({_}: _.prependScope {abc = 1;})
+    {xxx = {_}: _.getScope {};}
+    ({xxx, _, ...}: _.pure xxx)
   ;
 in m.run {}
 </nix>
