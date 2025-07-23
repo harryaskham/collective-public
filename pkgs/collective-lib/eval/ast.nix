@@ -36,9 +36,8 @@ rec {
   evalNodeM = node:
     log.while "evaluating AST node of type '${node.nodeType or "<no .nodeType>"}'" (
     Eval.do
-      { scope = {_}: _.getScope {}; }
-      ( {_}: _.when (is EvalError node) (_.throws node) )
-      ( {_, scope}:
+      #( {_}: _.when (isEvalError node) (_.throws node) )
+      ( {_}:
         if !(is AST node) then _.pure node
 
         else flip (dispatch.on (n: n.nodeType)) node {
@@ -326,7 +325,10 @@ rec {
   evalLambdaParams = param: arg:
     log.while "evaluating 'lambda' parameters" (
     switch.on (p: p.nodeType) param {
-      simpleParam = Eval.pure { ${param.name.name} = arg; };
+      simpleParam = Eval.do
+        { name = identifierName param.name; }
+        ( {_, name, ...}: _.pure { ${name} = arg; } );
+
       attrSetParam = 
         let 
           allParamNames = map (ap: ap.name.name) param.attrs;
@@ -375,10 +377,8 @@ rec {
             # might be evaluated in Eval and later applied outside of the Eval monad.
             # However we return an unwrapped EvalError if one occurs which
             # we can throw if we apply during Eval.
-            (evalAST bodyM).case {
-              Left = e: e;
-              Right = { a, ...}: a;
-            }
+            let e = bodyM.run {};
+            in if isLeft e then e.left else e.right.a
         ) 
       )
     );

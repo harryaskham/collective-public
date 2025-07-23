@@ -123,6 +123,8 @@ rec {
   MissingAttributeError = EvalError "MissingAttributeError";
   NixPathError = EvalError "NixPathError";
 
+  isEvalError = x: x ? __isEvalError;
+
   EvalState = rec {
     __toString = self: "EvalState";
     check = x: x ? __isEvalState;
@@ -165,7 +167,7 @@ rec {
   unit = Unit {};
   void = m: 
     assert that ((m ? bind) && (m ? pure)) ''
-      void: empected monad but got ${getT m}
+      void: expected monad but got ${getT m}
     '';
     with m; bind (_: pure unit);
   when = cond: m: if cond then m else void m;
@@ -275,7 +277,7 @@ rec {
           stack' = stack ++ [statement];
 
           # Create new bindings (not a new 'do' structure) with the given binding.
-          withBindingM = name: valueM: __bindings:
+          withBindingM = name: valueM: __m: __bindings:
             assert that (isMonadOf M valueM || isDoOf M valueM) (
               self.withStackError (self // { stack = stack'; }) (''
                 do: expected binding RHS of ${M} but got
@@ -285,11 +287,16 @@ rec {
             __bindings.bind (bindings:
             valueM.bind (value:
             M.pure (bindings // { 
-              _ = void self.__m;
-            } // {
-              # Add separately to allow overwriting the '_' binding.
+              _ = void __m;
               ${name} = value; 
             })));
+
+          # Rebind the context to the given monad and bindings without adding any new bindings.
+          rebindContext = __m: __bindings:
+            __bindings.bind (bindings:
+            M.pure (bindings // { 
+              _ = void __m;
+            }));
 
         in flip dispatch statement {
           # Dependent action operation:
@@ -300,8 +307,8 @@ rec {
           # If this is the final action of a monad, then the value will be returned
           # by 'run'
           lambda = f: 
-            let m = void (self.__m.bind (_: self.__bindings.bind f));
-                bindings = withBindingM "_" m self.__bindings;
+            let m = self.__m.bind (_: self.__bindings.bind f);
+                bindings = rebindContext m self.__bindings;
             in __mkDo M bindings m stack' true;
 
           # Binding operation:
@@ -315,14 +322,14 @@ rec {
             # Bindings are not updated.
             if isDoOf M xs then
               # Propagate the previous action with a void bind
-              let m = void (self.__m.bind (_: xs.__m));
-                  bindings = withBindingM "_" m self.__bindings;
+              let m = self.__m.bind (_: xs.__m);
+                  bindings = rebindContext m self.__bindings;
               in __mkDo M bindings m stack' true
 
             else if isMonadOf M xs then
               # Propagate the previous action with a void bind
-              let m = void (self.__m.bind (_: xs));
-                  bindings = withBindingM "_" m self.__bindings;
+              let m = self.__m.bind (_: xs);
+                  bindings = rebindContext m self.__bindings;
                 in __mkDo M bindings m stack' true
 
             else (flip dispatch) (soloValue xs) {
@@ -331,11 +338,8 @@ rec {
               # Return new void do with the bindings bound.
               set = valueM:
                 let 
-                  m = void (self.__m.bind (_: valueM));
-                  bindings = 
-                    withBindingM "_" m (
-                      withBindingM (soloName xs) valueM (
-                        self.__bindings));
+                  m = self.__m.bind (_: valueM);
+                  bindings = withBindingM (soloName xs) valueM m self.__bindings;
                 in __mkDo M bindings m stack' false;
 
               # Dependent bind:
@@ -343,11 +347,8 @@ rec {
               # Build the computation for the RHS and return a new do.
               lambda = f:
                 let valueM = self.__bindings.bind f;
-                    m = void (self.__m.bind (_: valueM));
-                    bindings = 
-                      withBindingM "_" m (
-                        withBindingM (soloName xs) valueM (
-                          self.__bindings));
+                    m = self.__m.bind (_: valueM);
+                    bindings = withBindingM (soloName xs) valueM m self.__bindings;
                 in __mkDo M bindings m stack' false;
             };
         };
@@ -393,9 +394,6 @@ rec {
       in Eval A id ((Either Error A).pure x);
     throws = e: (Eval.pure unit).throws e;
 
-    #mapState = f: x: Eval x.A (f x.s) x.e;
-    #mapEither = f: x: Eval x.A x.s (f x.e);
-
     __functor = self: A: assert checkTypes [A]; rec {
       __toString = self: "Eval ${A}";
       __isMonad = true;
@@ -418,24 +416,28 @@ rec {
           # modify :: (EvalState -> EvalState) -> Eval A -> Eval {}
           modify = f: 
             if isLeft this.e then this else
-            void (this.mapState (const (compose f this.s)));
+            void (this.mapState f);
 
-          set = st: this.modify (const st);
+          set = st: 
+            if isLeft this.e then this else
+            void (this.setState st);
 
           # Thunked to avoid infinite nesting - (m.get {}) is an (Eval EvalState)
-          get = _: (this.pure (S.mempty {})).fmap this.s;
+          get = _: this.bind (_: this.pure (this.s (S.mempty {})));
 
-          mapState = f: Eval A (f this.s) this.e;
+          setState = s: Eval A (const s) this.e;
+          mapState = f: Eval A (compose f this.s) this.e;
           mapEither = f: Eval A this.s (f this.e);
 
-          getScope = _: (this.get {}).bind (s: this.pure s.scope);
+          withScope = f: (this.get {}).bind (s: f s.scope);
+          getScope = {}: this.withScope this.pure;
           setScope = scope: this.modifyScope (const scope);
           modifyScope = f: this.modify (s: s.fmap f);
           prependScope = newScope: this.modifyScope (scope: newScope // scope);
           appendScope = newScope: this.modifyScope (scope: scope // newScope);
 
           do = Eval.do;
-          pure = x: (Eval.pure x).mapState (const this.s);
+          pure = x: this.bind (_: Eval.pure x);
           fmap = f: Eval A this.s (this.e.fmap f);
           when = eval.monad.when;
           unless = eval.monad.unless;
@@ -463,7 +465,7 @@ rec {
 
           # Set the value to the given error.
           throws =
-            e: assert that (is Error e) ''Eval.throws: expected Either value ${Error} but got ${_p_ e}'';
+            e: assert that (is Error e) ''Eval.throws: expected Either value ${Error} but got ${_p_ e} of type ${getT e}'';
             this.mapEither (const (E.Left e));
 
           # Catch specific error types and handle them with a recovery function
@@ -475,7 +477,7 @@ rec {
                 assert that (isMonadOf Eval recovery) ''
                   Eval.catch: expected recovery function of type Eval A but got ${_p_ recovery}
                 '';
-                recovery.mapState (const this.s)
+                (this.mapEither (const (E.Right unit))).bind (_: recovery)
             else this;
 
           # Returns (Either EvalError set)
@@ -558,7 +560,7 @@ rec {
           _8_catch.withError = expectRun {} a.catchAfterThrow { x = 6; } "handled error 'EvalError.Abort: test error'";
           _9_catch.thenFmap = expectRun {} a.fmapAfterCatch { x = 6; } "handled error 'EvalError.Abort: test error' then ...";
 
-          do = solo {
+          do = {
             notation = {
               bindOne =
                 let m = Eval.do {x = Eval.pure 1;} ({_, ...}: _.pure unit);
@@ -589,24 +591,25 @@ rec {
                   ( {_}: _.get {} );
                 in expectRun {} m {x = 1;} (EvalState {x = 1;});
 
-              composes = solo {
-                do = 
-                  let a = Eval.do ( {_}: _.appendScope {x = 1;});
-                      b = Eval.do ( {_}: _.appendScope {y = 2;});
-                      c = Eval.do 
-                        a
-                        {aScope = {_}: _.getScope {};}
-                        b
-                        {bScope = {_, ...}: _.getScope {};}
-                        ( {_, aScope, bScope}: _.pure {inherit aScope bScope;} );
-                  in expectRun {} c {x = 1; y = 2;} {aScope = {x = 1;}; bScope = {x = 1; y = 2;};};
+              composes = 
+                let a = Eval.do ( {_}: _.appendScope {x = 1;});
+                    b = Eval.do ( {_}: _.appendScope {y = 2;});
+                in {
+                  scopeExists = expectRun {} a {x = 1;} unit;
 
-                doBind =
-                  let a = Eval.do ( {_}: _.appendScope {x = 1;});
-                      b = Eval.do ( {_}: _.appendScope {y = 2;});
-                      c = a.bind (_: b.bind (_: (b.__m.get {}).bind (s: Eval.pure s.scope)));
-                  in expectRun {} c {x = 1; y = 2;} {x = 1; y = 2;};
-              };
+                  do = 
+                    let c = 
+                      Eval.do 
+                        a
+                        b
+                        ( {_}: _.get {} );
+                    in expectRun {} c {x = 1; y = 2;} (EvalState {x = 1; y = 2;});
+
+                  doBind =
+                    let 
+                      c = (a.bind (_: b.bind (_: Eval.pure unit))).get {};
+                    in expectRun {} c {x = 1; y = 2;} (EvalState {x = 1; y = 2;});
+                };
             };
           };
         };
