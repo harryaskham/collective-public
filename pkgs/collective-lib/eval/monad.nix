@@ -33,6 +33,8 @@ rec {
 
   is = T: a: errors.tryBool (assertIs T a);
 
+  tEq = a: b: pointerEqual a b || toString a == toString b;
+
   # Get the type of a value.
   getT = a: a.__type or (typeOf a);
 
@@ -41,7 +43,8 @@ rec {
     assert that (isMonadValue a) ''
       getM: expected monad but got ${_p_ a}
     '';
-    getT (getT a);
+    if isDo a then a.M
+    else getT (getT a);
 
   Any = {
     __toString = self: "Any";
@@ -173,9 +176,12 @@ rec {
   when = cond: m: if cond then m else void m;
   unless = cond: m: if cond then void m else m;
 
+  isDo = x: x ? __isDo;
+
+  isDoOf = M: xdo: isDo xdo && tEq xdo.M M;
+
   isDoStatement = M: xs:
     (M != null && isMonadOf M xs)
-    || (M != null && isDoOf M xs)
     || (isFunction xs)
     || (isSolo xs && isDoStatement M (soloValue xs));
 
@@ -201,186 +207,160 @@ rec {
     '';
     true;
 
-  # Do notation builder for a given monad.
-  mkDo = M: 
-    let m = M.pure unit;
-        bindings = M.pure { _ = m; };
-        stack = [];
-        canRun = true;
-    in __mkDo M bindings m stack canRun;
+  withStackError = self: msg: _b_ ''
+    ${msg}
 
-  isDo = x: x ? __isDo;
-  isDoOf = M: xdo: isDo xdo && isMonadOf M xdo.__m;
+    in
 
-  __mkDo = M: bindings: m: stack: canRun:
-    let this = rec {
-      __isDo = true;
+    ${toString self}
+  '';
 
-      # Set to true if the last action was not assignment.
-      inherit canRun;
-
-      # Stores the actual bindings for error logging.
-      inherit stack;
-
-      # The built-up monadic action.
-      __m = if m == null then M.pure unit else m;
-
-      # Create bindings that include the void monadic action exposing pure, bind, etc.
-      __bindings = 
-        if bindings == null 
-        then M.pure { _ = void __m; }
-        else bindings;
-
-      # Print an error with the do-stack trace.
-      withStackError = self: msg: _b_ ''
-        ${msg}
-
-        in
-
-        ${toString self}
-      '';
-
-      # do-level run alias.
-      run = arg:
-        assert that canRun (withStackError this ''
-          do: final statement of a do-block cannot be an assignment.
-        '');
-        __m.run arg;
-
-      # do-level aliases.
-      do = this;
-      pure = __m.pure;
-      bind = __m.bind;
-      throws = __m.throws;
-      catch = __m.catch;
-
-      __toString = self: 
-        let 
-          doPos = if empty stack then null else debuglib.pos.path (head stack);
-          doLine = 
-            if doPos == null then null
-            else let p = soloValue doPos; in 
-                if (p ? file) && (p ? line) then "${p.file}:${toString p.line}"
-                else null;
-          header = optionalString (doLine != null) doLine;
-        in _b_ ''
-          ${header}
-          do
-            ${_h_ (_ls_ (map (debuglib.printPosWith {
-              emptyMsg = "<no source>";
-              errorMsg = "<error>";
-            }) stack))}
-        '';
-
-      __functor = self: statement:
-        let
-          stack' = stack ++ [statement];
-
-          # Create new bindings (not a new 'do' structure) with the given binding.
-          withBindingM = name: valueM: __m: __bindings:
-            assert that (isMonadOf M valueM || isDoOf M valueM) (
-              self.withStackError (self // { stack = stack'; }) (''
-                do: expected binding RHS of ${M} but got
-                  ${_ph_ (getM valueM)}
-              ''));
-
-            __bindings.bind (bindings:
-            valueM.bind (value:
-            M.pure (bindings // { 
-              _ = void __m;
-              ${name} = value; 
-            })));
-
-          # Rebind the context to the given monad and bindings without adding any new bindings.
-          rebindContext = __m: __bindings:
-            __bindings.bind (bindings:
-            M.pure (bindings // { 
-              _ = void __m;
-            }));
-
-        in flip dispatch statement {
-          # Dependent action operation:
-          # { bindings, ...}: monadic value; }
-          #
-          # Run the given function with the bindings.
-          # Bindings are not updated.
-          # If this is the final action of a monad, then the value will be returned
-          # by 'run'
-          lambda = f: 
-            let m = self.__m.bind (_: self.__bindings.bind f);
-                bindings = rebindContext m self.__bindings;
-            in __mkDo M bindings m stack' true;
-
-          # Binding operation:
-          # { x = (monadic value) | ({ bindings, ... }: monadic value); }
-          set = xs:
-            assert assertIsDoStatement M xs;
-
-            # Independent action operation:
-            # ( monadic value )
-            # Just set the monad value.
-            # Bindings are not updated.
-            if isDoOf M xs then
-              # Propagate the previous action with a void bind
-              let m = self.__m.bind (_: xs.__m);
-                  bindings = rebindContext m self.__bindings;
-              in __mkDo M bindings m stack' true
-
-            else if isMonadOf M xs then
-              # Propagate the previous action with a void bind
-              let m = self.__m.bind (_: xs);
-                  bindings = rebindContext m self.__bindings;
-                in __mkDo M bindings m stack' true
-
-            else (flip dispatch) (soloValue xs) {
-              # Independent bind:
-              # { x = (monadic value); }
-              # Return new void do with the bindings bound.
-              set = valueM:
-                let 
-                  m = self.__m.bind (_: valueM);
-                  bindings = withBindingM (soloName xs) valueM m self.__bindings;
-                in __mkDo M bindings m stack' false;
-
-              # Dependent bind:
-              # {x = { some function of state }}
-              # Build the computation for the RHS and return a new do.
-              lambda = f:
-                let valueM = self.__bindings.bind f;
-                    m = self.__m.bind (_: valueM);
-                    bindings = withBindingM (soloName xs) valueM m self.__bindings;
-                in __mkDo M bindings m stack' false;
-            };
-        };
-    };
-  in 
-    this;
-
-  # Generic do notation that infers its type.
-  # Cannot apply lambdas without M, so can only infer from a constant binding.
-  do = dispatch {
+  inferMonadFromStatement = dispatch {
     lambda = _: throw "do: cannot infer monadic type from lambda expression";
     set = xs:
-      # do do x == do x
-      if isDo xs then xs
-      else if isMonadValue xs then mkDo (getM xs) xs
-      else flip dispatch (soloValue xs) {
+      if isDo xs then xs.M
+      else if isMonadValue xs then (getM xs)
+      else if isSolo xs then flip dispatch (soloValue xs) {
+        set = getM;
         lambda = _: throw "do: cannot infer monadic type from dependent binding expression";
-        set = valueM:
-          let M = getM valueM;
-          in mkDo M xs;
+      }
+      else throw "do: malformed non-solo non-monad non-do set statement: ${_p_ xs}";
+  };
+
+  inferTypeFromStatement = dispatch {
+    null = _: throw "do: cannot infer type from null statement";
+    lambda = _: throw "do: cannot infer type from lambda expression";
+    set = xs:
+      if isMonadValue xs then (getT xs)
+      else if isSolo xs then flip dispatch (soloValue xs) {
+        set = getT;
+        lambda = _: throw "do: cannot infer type from dependent binding expression";
+      }
+      else throw "do: malformed non-solo non-monad non-do set statement: ${_p_ xs}";
+  };
+
+  doStatementSignature = M: dispatch {
+    lambda = _: "DependentAction";
+    set = statement:
+      if isMonadOf M statement then "IndependentAction"
+      else switch.typeOf (soloValue statement) {
+        lambda = "DependentBind";
+        set = "IndependentBind";
       };
   };
+
+  printDo = self:
+    let 
+      doPos = 
+        if empty self.__statements then null
+        else debuglib.pos.path (head self.__statements);
+      doLine = 
+        if doPos == null then null
+        else let p = soloValue doPos; in 
+            if (p ? file) && (p ? line) then "${p.file}:${toString p.line}"
+            else null;
+      header = optionalString (doLine != null) doLine;
+    in _b_ ''
+      ${header}
+      do
+        ${_h_ (_ls_ (map (debuglib.printPosWith {
+          emptyMsg = "<no source>";
+          errorMsg = "<error>";
+        }) self.__statements))}
+    '';
+
+  # Given a monad M, a state containing an M bindings and an M m monadic action,
+  # and a statement of one of these forms:
+  #
+  # <M value>
+  # { bindings, ... }: <M value>
+  # { nameToBind = <M value>; }
+  # { nameToBind = { bindings, ... }: <M value>; }
+  #
+  # Return an updated state with the bindings updated inside the monad to any new
+  # bindings, and an updated monadic action.
+  handleDoStatement = 
+    M: {bindings, m, canBind}: statement:
+    assert (assertIsDoStatement M statement);
+    switch (doStatementSignature M statement) {
+      IndependentAction = {
+        inherit bindings;
+        m = m.bind (_: statement);
+        canBind = true;
+      };
+      DependentAction = {
+        inherit bindings;
+        m = bindings.bind (bindings: m.bind (_: statement (bindings // { _ = void m; })));
+        canBind = true;
+      };
+      IndependentBind = 
+        let
+          name = soloName statement;
+          m' = m.bind (_: soloValue statement);
+        in {
+          bindings = bindings.bind (bindings: m'.bind (v: M.pure (bindings // { ${name} = v; })));
+          m = m';
+          canBind = false;
+        };
+      DependentBind =
+        let
+          name = soloName statement;
+          m' = bindings.bind (bindings: m.bind (_: (soloValue statement) (bindings // { _ = void m; })));
+        in {
+          bindings = bindings.bind (bindings: m'.bind (v: M.pure (bindings // { ${name} = v; })));
+          m = m';
+          canBind = false;
+        };
+    };
+
+  # Do-notation functor that simply stores the statements given to it
+  # When bound, it runs the statements in order to produce the monadic value
+  # on which to call bind.
+  do_ = M: statement: mkDo M [ statement ];
+  do = statement: mkDo (inferMonadFromStatement statement) [ statement ];
+
+  mkDo = M: __statements:
+    let this = {
+      __isDo = true;
+      __isMonad = true;
+      __type = inferTypeFromStatement (maybeLast __statements);
+      inherit M __statements;
+      inherit (M) pure;
+
+      __toString = printDo;
+
+      __functor = self: statement:
+        mkDo M (self.__statements ++ [statement]);
+
+      bind = f:
+        let 
+          initAcc = {
+            bindings = M.pure {};
+            m = M.pure unit;
+            canBind = false;
+          };
+          state = fold (handleDoStatement M) initAcc this.__statements;
+        in 
+          assert that state.canBind (withStackError this ''
+            do: final statement of a do-block cannot be an assignment.
+          '');
+          state.m.bind f;
+
+      run = (this.bind M.pure).run;
+      mapState = (this.bind M.pure).mapState;
+    };
+    in this;
 
   # Check if a value is a monad.
   # i.e. isMonad (Eval.pure 1) -> true
   #      isMonad (Either.pure 1) -> true
-  isMonadValue = x: (getT x) ? __isMonad;
+  #      isMonad (do (Eval.pure 1)) -> true
+  isMonadValue = x: isDo x || (getT x) ? __isMonad;
 
   # Is the given x an instance of the given monad, ignoring the type parameter?
   # i.e. isMonadOf Eval (Eval.pure 1) -> true
   #      isMonadOf Eval (Either.pure 1) -> false
-  isMonadOf = M: x: isMonadValue x && is (getT (M.pure unit)) (void x);
+  isMonadOf = M: x: isMonadValue x && tEq M (getM x);
 
   # Monadic evaluation state.
   # Roughly simulates an ExceptT EvalError (StateT EvalState m) a monad stack.
@@ -389,7 +369,7 @@ rec {
     check = x: x ? __isEval;
     Error = EvalError;
     S = EvalState;
-    do = mkDo Eval;
+    do = mkDo Eval [];
     pure = x: 
       let A = getT x;
       in Eval A id ((Either Error A).pure x);
@@ -417,17 +397,17 @@ rec {
           # modify :: (EvalState -> EvalState) -> Eval A -> Eval {}
           modify = f: 
             if isLeft this.e then this else
-            void (this.mapState f);
+            void (this.mapState (s: st: f (s st)));
 
           set = st: 
             if isLeft this.e then this else
-            void (this.setState st);
+            void (this.setState (const st));
 
           # Thunked to avoid infinite nesting - (m.get {}) is an (Eval EvalState)
           get = _: this.bind (_: this.pure (this.s (S.mempty {})));
 
-          setState = s: Eval A (const s) this.e;
-          mapState = f: Eval A (compose f this.s) this.e;
+          setState = s: Eval A s this.e;
+          mapState = f: Eval A (f this.s) this.e;
           mapEither = f: Eval A this.s (f this.e);
 
           withScope = f: (this.get {}).bind (s: f s.scope);
@@ -447,24 +427,24 @@ rec {
             if isLeft this.e then this else 
             let 
               a = this.e.right;
-              # TODO: Handle 'do' more cleanly at top level
               mb =
                 let r = f a;
                 in
-                  if is Eval r then r
-                    # TODO: return .__m or raw here?
-                  else if isDoOf Eval r then r.__m
+                  if isMonadOf Eval r then r
                   else _throw_ ''
                     Eval.bind: non-Eval value returned of type ${getT r}:
                       ${_ph_ r}
                   '';
             in
-              if isLeft mb.e then mb else
-              let
-                e' = mb.e;
-                s' = compose mb.s this.s;
-                A' = getT e'.right;
-              in Eval A' s' e';
+              mb.mapState (s': st: s' (this.s st));
+             #   if isLeft e then e
+             #   else 
+             # if isLeft mb.e then mb else
+             # let
+             #   e' = mb.e;
+             #   s' = compose mb.s this.s;
+             #   A' = getT e'.right;
+             # in Eval A' s' e';
 
           # Set the value to the given error.
           throws =
@@ -553,126 +533,161 @@ rec {
               (a.run (EvalState s))
               (Left e);
         in with EvalState; {
-          _0_pure = expectRun {} a._42 {} (Int 42);
-          _1_set = expectRun {} a.stateXIs2 { x = 2; } unit;
-          _2_modify = expectRun {} a.stateXTimes3 { x = 6; } unit;
-          _4_bind.get = expectRun {} a.getStatePlusValue { x = 6; } (Int 48);
-          _5_bind.thenThrows = expectRunError {} a.thenThrows (Throw "test error");
-          _6_bind.bindAfterThrow = expectRunError {} a.bindAfterThrow (Throw "test error");
-          _7_catch.noError = expectRun {} (a._42.catch (_: throw "no")) {} (Int 42);
-          _8_catch.withError = expectRun {} a.catchAfterThrow { x = 6; } "handled error 'EvalError.Throw: test error'";
-          _9_catch.thenFmap = expectRun {} a.fmapAfterCatch { x = 6; } "handled error 'EvalError.Throw: test error' then ...";
+          __smoke = {
+            isMonadOf.monad = expect.True (isMonadOf Eval (Eval.pure unit));
+            isMonadOf.do = expect.True (isMonadOf Eval (do (Eval.pure unit)));
+            isMonadOf.false = expect.False (isMonadOf Eval ((Either EvalError Int).Right (Int 42)));
 
-          do = {
-            notation = {
-              bindOne =
-                let m = Eval.do {x = Eval.pure 1;} ({_, ...}: _.pure unit);
-                in {
-                  bindings = expectRun {} m.__bindings {} { x = 1; _ = Eval.pure unit; };
-                  run = expectRun {} m {} unit;
-                };
+            getM.monad = expect.True (tEq Eval (getM (Eval.pure unit)));
+            getM.do = expect.True (tEq Eval (getM (do (Eval.pure unit))));
 
-              bindOneGetOne = 
-                let m = Eval.do {x = Eval.pure 1;} ({_, x}: _.pure x);
-                in expectRun {} m {} 1;
+            getT.monad = expect.True (tEq (Eval Unit) (getT (Eval.pure unit)));
+            getT.do = expect.True (tEq (Eval Unit) (getT (do (Eval.pure unit))));
+          };
 
-              dependentBindGet = 
-                let m = Eval.do
-                  {x = Eval.pure 1;}
-                  {y = {_, x}: _.pure (x + 1);}
-                  ({_, x, y}: _.pure (x + y));
-                in expectRun {} m {} 3;
+          _00_pure = expectRun {} a._42 {} (Int 42);
+          _01_set = expectRun {} a.stateXIs2 { x = 2; } unit;
+          _02_modify = expectRun {} a.stateXTimes3 { x = 6; } unit;
+          _04_bind.get = expectRun {} a.getStatePlusValue { x = 6; } (Int 48);
+          _05_bind.thenThrows = expectRunError {} a.thenThrows (Throw "test error");
+          _06_bind.bindAfterThrow = expectRunError {} a.bindAfterThrow (Throw "test error");
+          _07_catch.noError = expectRun {} (a._42.catch (_: throw "no")) {} (Int 42);
+          _08_catch.withError = expectRun {} a.catchAfterThrow { x = 6; } "handled error 'EvalError.Throw: test error'";
+          _09_catch.thenFmap = expectRun {} a.fmapAfterCatch { x = 6; } "handled error 'EvalError.Throw: test error' then ...";
 
-              boundDo = 
-                let do = Eval.do; in with Eval;
-                let m = do
-                  {x = pure 1;}
-                  {y = pure 2;}
-                  ({x, y, ...}: pure (x + y));
-                in expectRun {} m {} 3;
+          _10_signatures = {
+            IndependentAction.monad =
+              expect.eq (doStatementSignature Eval (Eval.pure unit)) "IndependentAction";
+            IndependentAction.do =
+              expect.eq (doStatementSignature Eval (do (Eval.pure unit))) "IndependentAction";
+            IndependentBind =
+              expect.eq (doStatementSignature Eval {a = Eval.pure unit;}) "IndependentBind";
+            DependentAction =
+              expect.eq (doStatementSignature Eval ({_}: _.pure unit)) "DependentAction";
+            DependentBind =
+              expect.eq (doStatementSignature Eval {a = {_}: _.pure unit;}) "DependentBind";
+          };
 
-              setGetInferred =
-                let m = do
-                  ( Eval.pure unit )
-                  ( {_}: _.set (EvalState {x = 1;}) )
-                  ( {_}: _.get {} );
-                in expectRun {} m {x = 1;} (EvalState {x = 1;});
+          _11_inferMonad = {
+            IndependentAction.monad =
+              expect.True (tEq Eval (inferMonadFromStatement (Eval.pure unit)));
+            IndependentAction.do =
+              expect.True (tEq Eval (inferMonadFromStatement (do (Eval.pure unit))));
+            IndependentBind =
+              expect.True (tEq Eval (inferMonadFromStatement {a = Eval.pure unit;}));
+            DependentAction =
+              expect.error (inferMonadFromStatement ({_}: _.pure unit));
+            DependentBind =
+              expect.error (inferMonadFromStatement {a = {_}: _.pure unit;});
+          };
 
-              setGet =
-                let m = Eval.do
-                  ( {_}: _.set (EvalState {x = 1;}) )
-                  ( {_}: _.get {} );
-                in expectRun {} m {x = 1;} (EvalState {x = 1;});
+          do.notation = {
+            bindOne =
+              let m = Eval.do {x = Eval.pure 1;} ({_, ...}: _.pure unit);
+              in {
+                run = expectRun {} m {} unit;
+              };
 
-              setGetChainBlocks =
-                let a = Eval.do ( {_}: _.set (EvalState {x = 1;}) );
-                    b = Eval.do a ( {_}: _.get {} );
-                    m = Eval.do b;
-                in expectRun {} m {x = 1;} (EvalState {x = 1;});
+            bindOneGetOne = 
+              let m = Eval.do {x = Eval.pure 1;} ({_, x}: _.pure x);
+              in expectRun {} m {} 1;
 
-              setGetDifferentBlocks =
-                let a = Eval.do ( {_}: _.set (EvalState {x = 1;}) );
-                    b = Eval.do ( {_}: _.get {} );
-                    m = Eval.do a b;
-                in expectRun {} m {x = 1;} (EvalState {x = 1;});
+            dependentBindGet = 
+              let m = Eval.do
+                {x = Eval.pure 1;}
+                {y = {_, x}: _.pure (x + 1);}
+                ({_, x, y}: _.pure (x + y));
+              in expectRun {} m {} 3;
 
-              setGetDifferentBlocksInferred =
-                let a = do (Eval.pure unit) ({_}: _.set (EvalState {x = 1;}) );
-                    b = do (Eval.pure unit) ({_}: _.get {} );
-                    m = do a b;
-                in expectRun {} m {x = 1;} (EvalState {x = 1;});
+            boundDo = 
+              let do = Eval.do; in with Eval;
+              let m = do
+                {x = pure 1;}
+                {y = pure 2;}
+                ({x, y, ...}: pure (x + y));
+              in expectRun {} m {} 3;
 
-              setGetScope =
-                let m = Eval.do
-                  ( {_}: _.setScope ({x = 1;}) )
+            setGetInferred =
+              let m = do
+                ( Eval.pure unit )
+                ( {_}: _.set (EvalState {x = 1;}) )
+                ( {_}: _.get {} );
+              in expectRun {} m {x = 1;} (EvalState {x = 1;});
+
+            setGet =
+              let m = Eval.do
+                ( {_}: _.set (EvalState {x = 1;}) )
+                ( {_}: _.get {} );
+              in expectRun {} m {x = 1;} (EvalState {x = 1;});
+
+            setGetChainBlocks =
+              let a = Eval.do ( {_}: _.set (EvalState {x = 1;}) );
+                  b = Eval.do a ( {_}: _.get {} );
+                  m = Eval.do b;
+              in expectRun {} m {x = 1;} (EvalState {x = 1;});
+
+            setGetDifferentBlocks =
+              let a = Eval.do ( {_}: _.set (EvalState {x = 1;}) );
+                  b = Eval.do ( {_}: _.get {} );
+                  m = Eval.do a b;
+              in expectRun {} m {x = 1;} (EvalState {x = 1;});
+
+            setGetDifferentBlocksInferred =
+              let a = do (Eval.pure unit) ({_}: _.set (EvalState {x = 1;}) );
+                  b = do (Eval.pure unit) ({_}: _.get {} );
+                  m = do a b;
+              in expectRun {} m {x = 1;} (EvalState {x = 1;});
+
+            setGetScope =
+              let m = Eval.do
+                ( {_}: _.setScope ({x = 1;}) )
+                ( {_}: _.getScope {} );
+              in expectRun {} m {x = 1;} {x = 1;};
+
+            setAppendGetScope =
+              let m = Eval.do
+                ( {_}: _.setScope ({x = 1;}) )
+                ( {_}: _.appendScope ({y = 2;}) )
+                ( {_}: _.getScope {} );
+              in expectRun {} m {x = 1; y = 2;} {x = 1; y = 2;};
+
+            setAppendGetScopeDifferentBlocks =
+              let 
+                a = Eval.do
+                  ( {_}: _.setScope ({x = 1;}) );
+                b = Eval.do
+                  ( {_}: _.appendScope ({y = 2;}) );
+                c = Eval.do
                   ( {_}: _.getScope {} );
-                in expectRun {} m {x = 1;} {x = 1;};
+                m = Eval.do a b c;
+              in expectRun {} m {x = 1; y = 2;} {x = 1; y = 2;};
 
-              setAppendGetScope =
-                let m = Eval.do
-                  ( {_}: _.setScope ({x = 1;}) )
-                  ( {_}: _.appendScope ({y = 2;}) )
-                  ( {_}: _.getScope {} );
-                in expectRun {} m {x = 1; y = 2;} {x = 1; y = 2;};
+            overwriteScope =
+              let m = Eval.do
+                ( {_}: _.setScope ({x = 1;}) )
+                ( {_}: _.appendScope ({x = 2;}) )
+                ( {_}: _.getScope {} );
+              in expectRun {} m {x = 2;} {x = 2;};
 
-              setAppendGetScopeDifferentBlocks =
-                let 
-                  a = Eval.do
-                    ( {_}: _.setScope ({x = 1;}) );
-                  b = Eval.do
-                    ( {_}: _.appendScope ({y = 2;}) );
-                  c = Eval.do
-                    ( {_}: _.getScope {} );
-                  m = Eval.do a b c;
-                in expectRun {} m {x = 1; y = 2;} {x = 1; y = 2;};
+            composes = 
+              let a = Eval.do ( {_}: _.appendScope {x = 1;});
+                  b = Eval.do ( {_}: _.appendScope {y = 2;});
+              in {
+                scopeExists = expectRun {} a {x = 1;} unit;
 
-              overwriteScope =
-                let m = Eval.do
-                  ( {_}: _.setScope ({x = 1;}) )
-                  ( {_}: _.appendScope ({x = 2;}) )
-                  ( {_}: _.getScope {} );
-                in expectRun {} m {x = 2;} {x = 2;};
+                do = 
+                  let c = 
+                    Eval.do 
+                      a
+                      b
+                      ( {_}: _.get {} );
+                  in expectRun {} c {x = 1; y = 2;} (EvalState {x = 1; y = 2;});
 
-              composes = 
-                let a = Eval.do ( {_}: _.appendScope {x = 1;});
-                    b = Eval.do ( {_}: _.appendScope {y = 2;});
-                in {
-                  scopeExists = expectRun {} a {x = 1;} unit;
-
-                  do = 
-                    let c = 
-                      Eval.do 
-                        a
-                        b
-                        ( {_}: _.get {} );
-                    in expectRun {} c {x = 1; y = 2;} (EvalState {x = 1; y = 2;});
-
-                  doBind =
-                    let 
-                      c = (a.bind (_: b.bind (_: Eval.pure unit))).get {};
-                    in expectRun {} c {x = 1; y = 2;} (EvalState {x = 1; y = 2;});
-                };
-            };
+                doBind =
+                  let 
+                    c = (a.bind (_: b.bind (_: Eval.pure unit))).get {};
+                  in expectRun {} c {x = 1; y = 2;} (EvalState {x = 1; y = 2;});
+              };
           };
         };
 

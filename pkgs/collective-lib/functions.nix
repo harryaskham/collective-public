@@ -29,6 +29,7 @@ let
   typelib = collective-lib.typelib;
   typed = collective-lib.typed;
 in rec {
+  pointerEqual = a: b: [ a ] == [ b ];
 
   # Compose two functions left-to-right
   compose = g: f: a: g (f a);

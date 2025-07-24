@@ -164,6 +164,22 @@ eval._tests.debug {}
 <nix>
 eval.monad._tests.debug {}
 </nix>
+
+<nix>
+with eval.ast; with eval.monad; with parser;
+getT (do (Eval.pure 123))
+</nix>
+
+<nix>
+with eval.ast; with eval.monad; with parser;
+let do = simpleDo_ Eval;
+    a = do
+      { a = do.pure 123; }
+      { b = {a}: do.pure (a + 1); }
+      ( {a, b}: do.pure (a + b) );
+in a
+</nix>
+
 <nix>
 with eval.ast; with eval.monad; with parser;
 ((Eval.pure 123).bind (_: Eval.throws (Throw ""))).catch (_: Eval.pure 123)

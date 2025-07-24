@@ -144,6 +144,15 @@ let
       set = mapAttrsToList (k: v: { ${k} = v; });
     };
 
+    # Apply an (f :: k -> v -> a) to a single solo, returning an a.
+    apSolo = f: x: f (soloName x) (soloValue x);
+
+    # Apply an (f :: k -> v -> a) to a single solo, returning a { k -> a } solo.
+    mapSolo = f: x: mapAttrs f (checkSolo x);
+
+    # Set the value of a single solo.
+    setSoloValue = value: mapSolo (_: value);
+
     # Map an (f :: k -> v -> a) over a list of solos [{k -> v}], returning a list of solos [{k -> a}].
     # If xs is a set, it is first converted to solos.
     mapSolos = {

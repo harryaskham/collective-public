@@ -126,6 +126,9 @@ in rec {
   # Get the tail of a list or null if empty.
   maybeTail = xs: if xs == [] then null else tail xs;
 
+  # Get the last of a list or null if empty.
+  maybeLast = xs: if xs == [] then null else lib.last xs;
+
   # As maybeSnoc, but throws if the list is empty.
   snoc = xs:
     assert assertMsg (nonEmpty xs) "snoc: Empty list";
