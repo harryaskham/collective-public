@@ -21,6 +21,8 @@ let
   # Can't put this inside e.g. lists/attrsets otherwise it gets merged into itself here.
   modulelib = import ./modulelib.nix { inherit lib; };
 
+  removeTests = lib.mapAttrs (_: module: removeAttrs module [ "_tests" ]);
+
   # Merge all modules in base into a single module.
   #
   # Individual modules should not use the merged version, instead explicitly calling into
@@ -42,47 +44,39 @@ let
   # Modules and top-level attributes in modules that should not be merged.
   # These are only exposed either as collective-lib.log or e.g. collective-lib.base.typelib._tests.
   # In the case of _tests, a new suite is created at collective-lib._tests.
-  mergeBase = baseModules:
+  mergeBase = withTests: baseModulesWithTests:
     let
-      # TODO: Split out to test files and default.nix.
-      unmergeableAttrNames = [ "_tests" ];
-      splitModule = modulelib.partitionAttrs (k: _: lib.elem k unmergeableAttrNames);
-
-      # Modules intended to be merged together deeply.
-      mergeableModuleNames = [
-        "attrsets"
-        "clib"
-        "collections"
-        "debuglib"
-        "dispatchlib"
-        "functions"
-        "lists"
-        "modulelib"
-        "rebinds"
-        "strings"
-        "syntax"
-        "typelib"
-      ];
-
-      splitModules = modulelib.partitionAttrs (k: _: lib.elem k mergeableModuleNames);
-
-      moduleMergeable = _: module: (splitModule module).wrong;
-
-      baseModulesSplit = splitModules baseModules;
-      baseModulesMergeable = lib.mapAttrs moduleMergeable baseModulesSplit.right;
+      baseModulesNoTests = removeTests baseModulesWithTests;
+      mergeableModules = {
+        inherit (baseModulesNoTests)
+          attrsets
+          clib
+          collections
+          debuglib
+          dispatchlib
+          functions
+          lists
+          modulelib
+          rebinds
+          strings
+          syntax
+          typelib;
+      };
     in
       modulelib.recursiveMergeAttrsList 
-        [ baseModules 
-          (modulelib.recursiveMergeAttrsList (lib.attrValues baseModulesMergeable))];
+        [ (if withTests then baseModulesWithTests else baseModulesNoTests)
+          (modulelib.recursiveMergeAttrsList (lib.attrValues mergeableModules))];
 
-  mkCollectiveLib = withTests: baseModules:
-    let baseMerged = mergeBase baseModules;
+  mkCollectiveLib = withTests: baseModulesWithTests:
+    let baseModules = if withTests then baseModulesWithTests else removeTests baseModulesWithTests;
+        baseMerged = mergeBase withTests baseModulesWithTests;
     in baseMerged // rec {
       # Merge with another downstream collective-lib extension.
       # Merges deeply s.t. modules that share names are themselves merged.
       # i.e. merge log.* with log.shell.*
-      extend = otherBaseModules: mkCollectiveLib withTests (
-        lib.recursiveUpdate baseModules otherBaseModules);
+      extend = otherBaseModules:
+        mkCollectiveLib withTests (
+          lib.recursiveUpdate baseModules otherBaseModules);
 
       noTests = mkCollectiveLib false baseModules;
 
@@ -129,11 +123,9 @@ let
       _testsUntyped = baseModules.tests.mergeSuites (removeAttrs baseModules [ "typelib" ]);
     };
 
-  baseModules = 
-    let 
-      args = { inherit pkgs lib collective-lib; };
-    in
-    {
+  baseModules =
+    let args = { inherit pkgs lib collective-lib; };
+    in {
       attrsets = import ./attrsets.nix args;
       binding = import ./binding.nix args;
       clib = import ./clib.nix args;
