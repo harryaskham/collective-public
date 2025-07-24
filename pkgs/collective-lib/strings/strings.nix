@@ -1,4 +1,9 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
+{ pkgs ? import <nixpkgs> {},
+  lib ? pkgs.lib,
+  collective-lib ? import ./. { inherit lib; },
+  tildePath ? builtins.getEnv "HOME",
+  ... 
+}:
 
 with lib;
 with lib.strings;
@@ -403,12 +408,15 @@ in rec {
       then ''"${replaceStrings [ ''"'' ] [ ''\"'' ] string}"''
       else string;
 
+  # Convert a string to a path.
+  # If the string starts with a tilde, use the tildePath.
+  # If the string starts with a dot, use the current directory.
+  # If the string starts with a slash, use the root directory.
+  # Otherwise, use the builtins.toPath function.
   stringToPath = p:
     if hasPrefix "." p then ./. + (removePrefix "." p)
     else if hasPrefix "/" p then /. + (removePrefix "/" p)
-    else if hasPrefix "~" p then 
-      if inPureEvalMode then throw "~ is not supported in pure eval mode"
-      else ~/. + (removePrefix "~" p)
+    else if hasPrefix "~" p then tildePath + removePrefix "~" p
     else builtins.toPath p;
 
   # NOTE: This doesn't work unless we have a derivation per string;

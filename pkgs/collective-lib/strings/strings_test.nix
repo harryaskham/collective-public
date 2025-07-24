@@ -1,11 +1,9 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
+{ lib ? import <nixpkgs/lib>,
+  collective-lib ? import ./. { inherit lib; }, 
+  strings ? import ./strings.nix { inherit lib collective-lib; tildePath = /home/test; },
+  ... }:
 
-with lib;
-with lib.strings;
-with collective-lib.lists;
-with collective-lib.functions;
-with collective-lib.syntax;
-with collective-lib.rebinds;
+with strings;
 with collective-lib.tests;
 
 suite {
@@ -127,5 +125,12 @@ suite {
         named.empty = mkContextTest (Context.String "name" "string");
         unnamed.attrs = mkContextTest (Context.String ctx "string");
       };
+  };
+
+  stringToPath = {
+    tilde = expect.eq (stringToPath "~") /home/test;
+    tildeWithPath = expect.eq (stringToPath "~/a/b") /home/test/a/b;
+    dot = expect.eq (stringToPath "./a/b/c") ./a/b/c;
+    slash = expect.eq (stringToPath "/a/b/c") /a/b/c;
   };
 }
