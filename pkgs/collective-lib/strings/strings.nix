@@ -406,7 +406,9 @@ in rec {
   stringToPath = p:
     if hasPrefix "." p then ./. + (removePrefix "." p)
     else if hasPrefix "/" p then /. + (removePrefix "/" p)
-    else if hasPrefix "~" p then ~/. + (removePrefix "~" p)
+    else if hasPrefix "~" p then 
+      if inPureEvalMode then throw "~ is not supported in pure eval mode"
+      else ~/. + (removePrefix "~" p)
     else builtins.toPath p;
 
   # NOTE: This doesn't work unless we have a derivation per string;
