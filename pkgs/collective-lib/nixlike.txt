@@ -162,7 +162,28 @@ parser._tests.debug {}
 eval._tests.debug {}
 </nix>
 <nix>
+eval._tests.run {}
+</nix>
+<nix>
+eval.monad._tests.run {}
+</nix>
+<nix>
 eval.monad._tests.debug {}
+</nix>
+<nix>
+strings._tests.run {}
+</nix>
+<nix>
+functions._tests.run {}
+</nix>
+<nix>
+functionArgs (a: 123)
+</nix>
+
+<nix>
+with eval.ast; with eval.monad; with parser;
+#(normaliseDoStatement Eval ({_}: _.get {})).f {_ = Eval.pure unit;}
+(Eval.pure unit).bind (x: Eval.pure x)
 </nix>
 
 <nix>

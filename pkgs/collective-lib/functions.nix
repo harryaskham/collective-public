@@ -20,6 +20,7 @@ with collective-lib.debuglib;
 with collective-lib.errors;
 with collective-lib.lists;
 with collective-lib.strings;
+with collective-lib.syntax;
 with collective-lib.tests;
 
 # Misc functional utilities
@@ -70,6 +71,26 @@ in rec {
   pipe = x:
     Variadic.mkListThen
       (fs: let f = typed.foldl1 compose (reverseList fs); in f x);
+
+  # Add an implied ellipsis to the given function of a arg-set without one.
+  # f = {a, b}: a + b;
+  # g = {a, b, ...}: a + b;
+  # f {a = 1; b = 2;} = 3
+  # f {a = 1; b = 2; c = 3;} = error
+  # g {a = 1; b = 2; c = 3;} = 3
+  # addEllipsis f {a = 1; b = 2;} = 3
+  # addEllipsis f == g;
+  # addEllipsis f {a = 1; b = 2; c = 3;} = 3
+  addEllipsis = f:
+    if f ? __isAddedEllipsis then f else
+    let fArgs = builtins.functionArgs f;
+    in assert that (nonEmpty fArgs) ''
+      addEllipsis: function has no arguments.
+    '';
+    {
+      __isAddedEllipsis = true;
+      __functor = self: args: f (intersectAttrs fArgs args); 
+    };
 
   # Make a thunk out of a value
   thunk = x: _: x;
@@ -740,6 +761,12 @@ in rec {
             ___)
           "124 is 124";
       };
+
+      addEllipsis = 
+        let f = {a, b}: a + b;
+        in {
+          simple = expect.eq (addEllipsis f {a = 1; b = 2; c = 5;}) 3;
+        };
 
       thunk = {
         manual = expect.eq ((thunk 123) {}) 123;
