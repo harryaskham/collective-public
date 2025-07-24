@@ -68,7 +68,9 @@ let
           (modulelib.recursiveMergeAttrsList (lib.attrValues mergeableModules))];
 
   mkCollectiveLib = withTests: baseModulesWithTests:
-    let baseModules = if withTests then baseModulesWithTests else removeTests baseModulesWithTests;
+    let baseModules = 
+          if withTests then baseModulesWithTests
+          else removeTests baseModulesWithTests;
         baseMerged = mergeBase withTests baseModulesWithTests;
     in baseMerged // rec {
       # Merge with another downstream collective-lib extension.
