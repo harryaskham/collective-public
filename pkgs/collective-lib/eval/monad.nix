@@ -239,7 +239,7 @@ rec {
       else throw "do: malformed non-solo non-monad non-do set statement: ${_p_ xs}";
   };
 
-  doStatementSignature = M: dispatch {
+  bindStatementSignature = M: dispatch {
     lambda = _: "DependentAction";
     set = statement:
       if isMonadOf M statement then "IndependentAction"
@@ -282,7 +282,7 @@ rec {
   handleDoStatement = 
     M: {bindings, m, canBind}: statement:
     assert (assertIsDoStatement M statement);
-    switch (doStatementSignature M statement) {
+    switch (bindStatementSignature M statement) {
       IndependentAction = {
         inherit bindings;
         m = m.bind (_: statement);
@@ -332,11 +332,15 @@ rec {
       __functor = self: statement:
         mkDo M (self.__statements ++ [statement]);
 
-      bind = f:
+      # If there is no previous action, we bind from scratch with unit state.
+      bind = f: this.bind_ (M.pure unit) f;
+
+      # To correctly nest do statements, we need to start inside the action we're binding to.
+      bind_ = initM: f:
         let 
           initAcc = {
             bindings = M.pure {};
-            m = M.pure unit;
+            m = initM;
             canBind = false;
           };
           state = fold (handleDoStatement M) initAcc this.__statements;
@@ -423,20 +427,29 @@ rec {
           when = eval.monad.when;
           unless = eval.monad.unless;
 
-          bind = f:
-            if isLeft this.e then this else 
-            let 
-              a = this.e.right;
-              mb =
-                let r = f a;
-                in
-                  if isMonadOf Eval r then r
-                  else _throw_ ''
-                    Eval.bind: non-Eval value returned of type ${getT r}:
-                      ${_ph_ r}
-                  '';
-            in
-              mb.mapState (s': st: s' (this.s st));
+          bind = statement:
+            if isLeft this.e then this else
+            switch.def
+              (throw "Eval.bind: cannot bind to a statement of type ${bindStatementSignature Eval statement}")
+              (bindStatementSignature Eval statement) {
+              IndependentAction = this.bind ({_, ...}: statement);
+              DependentAction =
+                let 
+                  bindings = {
+                    _ = void this;
+                  };
+                  f = statement bindings;
+                  a = this.e.right;
+                  mb =
+                    let r = f a;
+                    in
+                      if isMonadOf Eval r then r
+                      else _throw_ ''
+                        Eval.bind: non-Eval value returned of type ${getT r}:
+                          ${_ph_ r}
+                      '';
+                in mb.mapState (s': st: s' (this.s st));
+              };
              #   if isLeft e then e
              #   else 
              # if isLeft mb.e then mb else
@@ -557,15 +570,15 @@ rec {
 
           _10_signatures = {
             IndependentAction.monad =
-              expect.eq (doStatementSignature Eval (Eval.pure unit)) "IndependentAction";
+              expect.eq (bindStatementSignature Eval (Eval.pure unit)) "IndependentAction";
             IndependentAction.do =
-              expect.eq (doStatementSignature Eval (do (Eval.pure unit))) "IndependentAction";
+              expect.eq (bindStatementSignature Eval (do (Eval.pure unit))) "IndependentAction";
             IndependentBind =
-              expect.eq (doStatementSignature Eval {a = Eval.pure unit;}) "IndependentBind";
+              expect.eq (bindStatementSignature Eval {a = Eval.pure unit;}) "IndependentBind";
             DependentAction =
-              expect.eq (doStatementSignature Eval ({_}: _.pure unit)) "DependentAction";
+              expect.eq (bindStatementSignature Eval ({_}: _.pure unit)) "DependentAction";
             DependentBind =
-              expect.eq (doStatementSignature Eval {a = {_}: _.pure unit;}) "DependentBind";
+              expect.eq (bindStatementSignature Eval {a = {_}: _.pure unit;}) "DependentBind";
           };
 
           _11_inferMonad = {
@@ -626,11 +639,24 @@ rec {
                   m = Eval.do b;
               in expectRun {} m {x = 1;} (EvalState {x = 1;});
 
+            setGetWithoutDo =
+              let a = (Eval.pure unit).bind ({_}: _.set (EvalState {x = 1;}));
+                  b = (Eval.pure unit).bind ({_}: _.modify (s: EvalState {x = s.scope.x + 1;}));
+                  c = (Eval.pure unit).bind ({_}: _.get {}).bind ({_}: _.pure s.scope.x);
+                  m = a.bind ({_}: b.bind ({_}: c));
+              in solo expectRun {} m {x = 1;} 4;
+
+            setGetDifferentBlocksBind =
+              let a = Eval.do ( {_}: _.set (EvalState {x = 1;}) );
+                  b = Eval.do ( {_}: _.bind (xxx: _.get {}) );
+                  m = a.bind (_: b);
+              in solo expectRun {} m {x = 1;} (EvalState {x = 1;});
+
             setGetDifferentBlocks =
               let a = Eval.do ( {_}: _.set (EvalState {x = 1;}) );
-                  b = Eval.do ( {_}: _.get {} );
+                  b = Eval.do ( {_}: _.bind (xxx: _.get {}) );
                   m = Eval.do a b;
-              in expectRun {} m {x = 1;} (EvalState {x = 1;});
+              in solo expectRun {} m {x = 1;} (EvalState {x = 1;});
 
             setGetDifferentBlocksInferred =
               let a = do (Eval.pure unit) ({_}: _.set (EvalState {x = 1;}) );
