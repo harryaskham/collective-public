@@ -1,6 +1,5 @@
 { pkgs ? import <nixpkgs> {},
   lib ? pkgs.lib,
-  withTests ? true,
   traceOpts ? null,
   nix-parsec ? (
     let
@@ -45,6 +44,7 @@ let
   # In the case of _tests, a new suite is created at collective-lib._tests.
   mergeBase = baseModules:
     let
+      # TODO: Split out to test files and default.nix.
       unmergeableAttrNames = [ "_tests" ];
       splitModule = modulelib.partitionAttrs (k: _: lib.elem k unmergeableAttrNames);
 
@@ -84,8 +84,10 @@ let
       extend = otherBaseModules: mkCollectiveLib withTests (
         lib.recursiveUpdate baseModules otherBaseModules);
 
+      noTests = mkCollectiveLib false baseModules;
+
       # Keep a reference to the original base so that we can still access it unmerged.
-      base = baseModules;
+      base = if withTests then baseModules else removeAttrs baseModules [ "_tests" ];
 
       # Keep a reference to the merged base so that we can inspect only the merged state.
       inherit baseMerged;
@@ -153,7 +155,7 @@ let
       parser = import ./parser (args // { inherit nix-parsec; });
       rebinds = import ./rebinds.nix args;
       script-utils = import ./script-utils args;
-      strings = import ./strings.nix args;
+      strings = import ./strings args;
       syntax = import ./syntax.nix args;
       tests = import ./tests.nix args;
       typelib = import ./typelib.nix args;
@@ -179,7 +181,7 @@ let
     )# </nix>
     ;
 
-  collective-lib = mkCollectiveLib withTests baseModules;
+  collective-lib = mkCollectiveLib true baseModules;
 
   #collective-lib-from-drv = import "${collective-lib-drv}" { inherit pkgs lib; };
 
