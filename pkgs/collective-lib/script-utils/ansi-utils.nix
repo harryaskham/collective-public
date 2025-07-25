@@ -138,9 +138,11 @@ ${eof}
       h1 = { style = [bold fg.cyan]; };
       h2 = { style = [bold fg.magenta]; };
       name = { style = [bold fg.cyan]; };
+      number = { style = [bold fg.yellow]; };
       cmdName = { style = [bold fg.green]; };
       cmd = { style = [italic]; };
       nixExpr = { style = [bg.grey]; };
+      file = { style = [italic fg.blue]; };
       requiredOpt = { style = [fg.brightwhite]; };
       optionalOpt = { style = [fg.white]; };
     };

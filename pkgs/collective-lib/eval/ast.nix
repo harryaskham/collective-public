@@ -75,8 +75,8 @@ rec {
   identifierName = node:
     Eval.do
       (while "evaluating a name")
-      {name =
-        if node.nodeType == "identifier" then pure node.name
+      {name = {_}:
+        if node.nodeType == "identifier" then _.pure node.name
         else evalNodeM node;}
       (guard ({name}: lib.isString name) ({name}: RuntimeError ''
         Expected string identifier name, got ${lib.typeOf name}
@@ -272,11 +272,9 @@ rec {
   evalOrOperation = node:
     Eval.do
       (while "evaluating 'or' node")
-      (guard 
-        ({_}: node.lhs.nodeType == "binaryOp" && node.lhs.op == ".")
-        (RuntimeError (_b_ ''
-          Unsupported 'or' after non-select: ${node.lhs.nodeType} or ...
-        '')))
+      (guard ({_}: node.lhs.nodeType == "binaryOp" && node.lhs.op == ".") ({_}: RuntimeError ''
+        Unsupported 'or' after non-select: ${node.lhs.nodeType} or ...
+      ''))
       (evalNodeM node.lhs)
       ({_}: _.catch ({_, _e}:
         if MissingAttributeError.check _e then
@@ -391,65 +389,58 @@ rec {
   evalLetIn = node:
     Eval.do
       (while "evaluating 'letIn' node")
-      { bindings = traverse evalNodeM node.bindings; }
-      ( {_, bindings}: _.appendScope (listToAttrs bindings) )
-      ( evalNodeM node.body );
+      {bindings = traverse evalNodeM node.bindings;}
+      ({_, bindings}: _.appendScope (listToAttrs bindings))
+      (evalNodeM node.body);
 
   # Evaluate a with expression
   # evalWith :: AST -> Eval a
   evalWith = node: 
-    log.while "evaluating 'with' node" (
     Eval.do
-      { env = evalNodeM node.env; }
-      ( {_, env, ...}: _.prependScope env )
-      ( evalNodeM node.body )
-    );
+      (while "evaluating 'with' node")
+      {env = evalNodeM node.env;}
+      ({_, env}: _.prependScope env)
+      (evalNodeM node.body);
 
   # Evaluate an assert expression
   # evalAssert :: AST -> Eval a
   evalAssert = node:
-    log.while "evaluating 'assert' node" (
     Eval.do
-      { cond = evalNodeM node.cond; }
-      ( {_, cond, ...}:
-          if !(lib.isBool cond) then _.throws (TypeError (_b_ ''
-            assert: got non-bool condition of type ${typeOf cond}:
-              ${_ph_ cond}
-          ''))
-          else if !cond then _.throws(AssertError (_b_ ''
-            assert: condition failed:
-              ${_ph_ cond}
-          ''))
-          else evalNodeM node.body )
-    );
+      (while "evaluating 'assert' node")
+      {cond = evalNodeM node.cond;}
+      (guard ({cond}: lib.isBool cond) ({cond}: TypeError ''
+        assert: got non-bool condition of type ${typeOf cond}:
+          ${_ph_ cond}
+      ''))
+      (guard ({cond}: cond) ({cond}: AssertError ''
+        assert: condition failed:
+          ${_ph_ cond}
+      ''))
+      (evalNodeM node.body);
 
   # Evaluate an abort expression
   # evalAbort :: Scope -> AST -> Eval a
   evalAbort = node:
-    log.while "evaluating 'abort' node" (
     Eval.do
-      { msg = evalNodeM node.msg; }
-      ( {_, msg, ...}:
-        if !(lib.isString msg) then _.throws (TypeError (_b_ ''
-          abort: got non-string message of type ${typeOf msg}:
-            ${_ph_ msg}
-        ''))
-        else _.throws (Abort msg))
-    );
+      (while "evaluating 'abort' node")
+      {msg = evalNodeM node.msg;}
+      (guard ({msg}: lib.isString msg) ({msg}: TypeError ''
+        abort: got non-string message of type ${typeOf msg}:
+          ${_ph_ msg}
+      ''))
+      (throws (Abort msg));
 
   # Evaluate a throw expression
   # evalThrow :: Scope -> AST -> Eval a
   evalThrow = node: 
-    log.while "evaluating 'throw' node" (
     Eval.do
-      { msg = evalNodeM node.msg; }
-      ( {_, msg, ...}:
-        if !(lib.isString msg) then _.throws (TypeError (_b_ ''
-          throw: got non-string message of type ${typeOf message}:
-            ${_ph_ message}
-        ''))
-        else _.throws (Throw msg))
-    );
+      (while "evaluating 'throw' node")
+      {msg = evalNodeM node.msg; }
+      (guard ({msg}: lib.isString msg) ({msg}: TypeError ''
+        throw: got non-string message of type ${typeOf msg}:
+          ${_ph_ msg}
+      ''))
+      (throws (Throw msg));
 
   # Evaluate an import expression
   # evalImport :: Scope -> AST -> Eval a
@@ -457,10 +448,10 @@ rec {
     Eval.do
       (while "evaluating 'import' node")
       {path = evalNodeM node.path;}
-      (guard ({path}: lib.isString path || lib.isPath path) (TypeError (_b_ ''
+      (guard ({path}: lib.isString path || lib.isPath path) ({path}: TypeError ''
         import: got non-string or path message of type ${typeOf path}:
           ${_ph_ path}
-      '')))
+      ''))
       (pure (import path));
 
   # attrPath is just a path list, return the path
@@ -484,12 +475,12 @@ rec {
             rest = maybeTail path;
             restPath = joinSep "/" (def [] rest);
         in Eval.do
-          (guard ({...}: (scope ? NIX_PATH)) (NixPathError (_b_ ''
+          (guard ({_}: scope ? NIX_PATH) ({_}: NixPathError ''
             No NIX_PATH found in scope when resolving ${node.value}.
-          '')))
-          (guard ({...}: (scope.NIX_PATH ? ${name})) (NixPathError (_b_ ''
+          ''))
+          (guard ({_}: scope.NIX_PATH ? ${name}) ({_}: NixPathError ''
             ${name} not found in NIX_PATH when resolving ${node.value}.
-          '')))
+          ''))
           (pure (scope.NIX_PATH.${name} + "/${restPath}")));
 
   # Helper to test round-trip property: eval (parse x) == x

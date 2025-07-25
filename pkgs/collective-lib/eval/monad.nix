@@ -401,9 +401,9 @@ rec {
 
 
   pure = x: {_}: _.pure x;
-  guard = condF: e_: args: 
-    let e = if isFunction e_ then addEllipsis e_ else {...}: e;
-    in unless (addEllipsis condF args) (args._.throws (addEllipsis e args));
+  throws = e: {_}: _.throws e;
+  guard = condF: e: args:
+    (compose (b: unless b (throws (addEllipsis e args))) (addEllipsis condF)) args;
   while = msg: {_}: _.while msg;
 
   # Check if a value is a monad.
