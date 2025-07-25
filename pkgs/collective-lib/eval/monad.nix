@@ -115,7 +115,10 @@ rec {
         __type = EvalError;
         __isEvalError = true; 
         "__isEvalError${name}" = true; 
-        __toString = self: "EvalError.${name}: ${__msg}";
+        __toString = self: _b_ ''
+          EvalError.${name}:
+            ${_h_ __msg}
+        '';
         inherit __msg;
       };
     };
@@ -390,10 +393,18 @@ rec {
 
       # Bind pure with {} initial state to convert do<M a> to M a
       action = this.bind ({_, _a}: _.pure _a);
-      inherit (this.action) mapState sq run;
+      inherit (this.action) mapState sq run while;
       do = mkDo M this.action [];
+      guard = condF: e: (this (compose M.pure condF)).bind ({_, _a}: unless _a (_.throws e));
     };
     in this;
+
+
+  pure = x: {_}: _.pure x;
+  guard = condF: e_: args: 
+    let e = if isFunction e_ then addEllipsis e_ else {...}: e;
+    in unless (addEllipsis condF args) (args._.throws (addEllipsis e args));
+  while = msg: {_}: _.while msg;
 
   # Check if a value is a monad.
   # i.e. isMonad (Eval.pure 1) -> true
@@ -466,6 +477,7 @@ rec {
           fmap = f: Eval A this.s (this.e.fmap f);
           when = eval.monad.when;
           unless = eval.monad.unless;
+          while = msg: this.bind ({_}: log.while msg (_.pure unit));
 
           bind = statement: 
             this.e.case {
@@ -544,7 +556,7 @@ rec {
             _42 = Eval.pure (Int 42);
             stateXIs2 = _42.set (EvalState { x = 2; });
             stateXTimes3 = stateXIs2.modify (s: EvalState { x = s.scope.x * 3; });
-            const42 = with stateXTimes3; pure (Int 42);
+            const42 = stateXTimes3.pure (Int 42);
             getStatePlusValue = 
               const42.bind ({_, _a}: let i = _a; in (_.get {}).bind ({_, _a}: _.pure (Int (_a.scope.x + i.x))));
             thenThrows = stateXTimes3.bind ({_}: _.throws (Throw "test error"));
@@ -582,8 +594,8 @@ rec {
           _05_bind.thenThrows = expectRunError {} a.thenThrows (Throw "test error");
           _06_bind.bindAfterThrow = expectRunError {} a.bindAfterThrow (Throw "test error");
           _07_catch.noError = expectRun {} (a._42.catch (_: throw "no")) {} (Int 42);
-          _08_catch.withError = expectRun {} a.catchAfterThrow { x = 6; } "handled error 'EvalError.Throw: test error'";
-          _09_catch.thenFmap = expectRun {} a.fmapAfterCatch { x = 6; } "handled error 'EvalError.Throw: test error' then ...";
+          _08_catch.withError = expectRun {} a.catchAfterThrow { x = 6; } "handled error 'EvalError.Throw:\n  test error'";
+          _09_catch.thenFmap = expectRun {} a.fmapAfterCatch { x = 6; } "handled error 'EvalError.Throw:\n  test error' then ...";
 
           _10_signatures = {
             IndependentAction.monad =
@@ -642,9 +654,9 @@ rec {
             boundDo = 
               let do = Eval.do; in with Eval;
               let m = do
-                {x = pure 1;}
-                {y = pure 2;}
-                ({x, y, ...}: pure (x + y));
+                {x = Eval.pure 1;}
+                {y = Eval.pure 2;}
+                ({x, y, ...}: Eval.pure (x + y));
               in expectRun {} m {} 3;
 
             setGet = {

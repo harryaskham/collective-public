@@ -84,13 +84,15 @@ in rec {
   addEllipsis = f:
     if f ? __isAddedEllipsis then f else
     let fArgs = builtins.functionArgs f;
-    in assert that (nonEmpty fArgs) ''
-      addEllipsis: function has no arguments.
-    '';
-    {
-      __isAddedEllipsis = true;
-      __functor = self: args: f (intersectAttrs fArgs args); 
-    };
+    in 
+      {
+        __isAddedEllipsis = true;
+        __functor = 
+          if (nonEmpty fArgs) then
+            self: args: f (intersectAttrs fArgs args)
+          else 
+            self: args: f args;
+      };
 
   # Make a thunk out of a value
   thunk = x: _: x;

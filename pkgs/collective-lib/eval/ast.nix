@@ -16,13 +16,11 @@ rec {
  
   runAST :: (string | AST) -> Either EvalError {a :: a, s :: EvalState} */
   runAST = expr: 
-    log.while "running string or AST node evaluation" (
     let m = 
       Eval.do
-        ({_}: _.setScope initScope)
+        (while "running string or AST node evaluation")
         (evalNodeM (parse expr));
-    in m.run (EvalState {})
-    );
+    in m.run (EvalState {scope = initScope;});
 
   /*
   evalAST :: (string | AST) -> Either EvalError a */
@@ -34,12 +32,11 @@ rec {
   /* Main monadic eval entrypoint.
   evalNodeM :: AST -> Eval a */
   evalNodeM = node:
-    log.while "evaluating AST node of type '${node.nodeType or "<no .nodeType>"}'" (
-    {_}: _.do
-      #( {_}: _.when (isEvalError node) (_.throws node) )
-      ( if !(is AST node)
-        then {_}: _.pure node
-        else switch node.nodeType {
+    if !(is AST node) then pure node
+    else
+      Eval.do
+        (while "evaluating AST node of type '${node.nodeType or "<no .nodeType>"}'")
+        ({_}: switch node.nodeType {
           int = evalLiteral node;
           float = evalLiteral node;
           string = evalLiteral node;
@@ -63,63 +60,53 @@ rec {
           "throw" = evalThrow node;
           "import" = evalImport node;
           "inherit" = evalInherit node;
-      } )
-    );
+        });
 
   # Evaluate a literal value (int, float, string, etc.)
   # evalLiteral :: AST -> Eval a
   evalLiteral = node: 
-    {_}: 
-      log.while "evaluating 'literal' node" (
-      _.pure node.value
-      );
+    Eval.do
+      (while "evaluating 'literal' node")
+      (pure node.value);
 
   # Evaluate a name (identifier or string)
   # If identifier, get the name itself, not evaluate it.
   # This can then be used on LHS of assignments.
   identifierName = node:
-    log.while "evaluating a name" (
-    {_}:
-      if node.nodeType == "identifier" 
-      then _.pure node.name
-      else _.do
-        { n = evalNodeM node; }
-        ({_, n}: unless (lib.isString n) (_.throws (RuntimeError (_b_ ''
-          Expected string identifier name, got ${lib.typeOf n}
-        ''))))
-        ({_, n}: _.pure n)
-    );
+    Eval.do
+      (while "evaluating a name")
+      {name =
+        if node.nodeType == "identifier" then pure node.name
+        else evalNodeM node;}
+      (guard ({name}: lib.isString name) ({name}: RuntimeError ''
+        Expected string identifier name, got ${lib.typeOf name}
+      ''))
+      ({_, name}: _.pure name);
 
   # Evaluate an identifier lookup
   # evalIdentifier :: Scope -> AST -> Eval a
   evalIdentifier = node:
-    log.while "evaluating 'identifier' node" (
     Eval.do
-      { scope = {_}: _.getScope {}; }
-      ( {_, scope}:
-        if scope ? ${node.name} then _.pure scope.${node.name}
-        else _.throws (RuntimeError (_b_ ''
-          Undefined identifier '${node.name}' in current scope:
-            ${_ph_ scope}
-        '')))
-    );
+      (while "evaluating 'identifier' node")
+      {scope = {_}: _.getScope {};}
+      (guard ({scope}: scope ? ${node.name}) ({scope}: RuntimeError ''
+        Undefined identifier '${node.name}' in current scope:
+          ${_ph_ scope}
+      ''))
+      ({_, scope}: _.pure scope.${node.name});
 
   # sequenceM :: [Eval a] -> Eval [a]
-  sequenceM = ms:
-    lib.foldl 
-      (accM: elemM: 
-        accM.bind (acc: 
-          elemM.bind (elem: 
-            Eval.pure (acc ++ [elem]))))
-      (Eval.pure [])
-      ms;
+  sequenceM = foldM Eval (acc: elemM: elemM.bind ({_, _a}: _.pure (acc ++ [_a]))) [];
+
+  # traverse :: (a -> Eval b) -> [a] -> Eval [b]
+  traverse = f: xs: sequenceM (map f xs);
 
   # Evaluate a list of AST nodes
   # evalList :: AST -> Eval [a]
   evalList = node:
-    log.while "evaluating 'list' node" (
-    sequenceM (map evalNodeM node.elements)
-    );
+    Eval.do
+      (while "evaluating 'list' node")
+      (traverse evalNodeM node.elements);
 
   # Evaluate an assignment (name-value pair)
   # evalAssignment :: AST -> Eval [(name, value)]
@@ -145,8 +132,8 @@ rec {
       { from = {_}: 
           if inheritNode.from == null then _.getScope {}
           else evalNodeM inheritNode.from; }
-      { assignments = {from, ...}: sequenceM (map (evalAttrFrom from) inheritNode.attrs); }
-      ( {_, assignments, ...}: _.pure (mergeAttrsList assignments) )
+      { assignments = {from}: traverse (evalAttrFrom from) inheritNode.attrs; }
+      ( {_, assignments}: _.pure (mergeAttrsList assignments) )
     );
 
   # Evaluate attribute set assignments
@@ -242,8 +229,8 @@ rec {
   # TODO: Duplicative of binary op handlers.
   # evalAttributeAccess :: AST -> Eval a
   evalAttributeAccess = node:
-    log.while "evaluating 'attribute access' node" (
     Eval.do
+      (while "evaluating 'attribute access' node")
       { obj = evalNodeM node.lhs; }
       ( {_, obj, ...}:
 
@@ -279,26 +266,25 @@ rec {
             { attrName = evalNodeM node.rhs; }
             ( {_, attrName}: _.unless (obj ? ${attrName}) (_.throws (MissingAttributeError attrName)) )
             ( {_, attrName, ...}: _.pure obj.${attrName} )
-        )
-    );
+        );
 
   # evalOrOperation :: AST -> Eval a
   evalOrOperation = node:
-    log.while "evaluating 'or' node" (
     Eval.do
-      ( {_}: _.unless 
-          (node.lhs.nodeType == "binaryOp" && node.lhs.op == ".")
-          (_.throws (RuntimeError (_b_ ''
-            Unsupported 'or' after non-select: ${node.lhs.nodeType} or ...
-          '')) ) )
-      ( {_}: (evalNodeM node.lhs).catch (error:
-          if MissingAttributeError.check error then
-            # Left side failed with MissingAttributeError, use default
-            evalNodeM node.rhs
-          else
-            # Re-throw other types of errors
-            _.throws error) )
-    );
+      (while "evaluating 'or' node")
+      (guard 
+        ({_}: node.lhs.nodeType == "binaryOp" && node.lhs.op == ".")
+        (RuntimeError (_b_ ''
+          Unsupported 'or' after non-select: ${node.lhs.nodeType} or ...
+        '')))
+      (evalNodeM node.lhs)
+      ({_}: _.catch ({_, _e}:
+        if MissingAttributeError.check _e then
+          # Left side failed with MissingAttributeError, use default
+          evalNodeM node.rhs
+        else
+          # Re-throw other types of errors
+          _.throws error));
 
   # evalUnaryOp :: AST -> Eval a
   evalUnaryOp = node:
@@ -403,12 +389,11 @@ rec {
   # TODO: Recursive access
   # evalLetIn :: AST -> Eval a
   evalLetIn = node:
-    log.while "evaluating 'letIn' node" (
     Eval.do
-      { bindings = sequenceM (map evalNodeM node.bindings); }
-      ( {_, bindings, ...}: _.appendScope (listToAttrs bindings) )
-      ( evalNodeM node.body )
-    );
+      (while "evaluating 'letIn' node")
+      { bindings = traverse evalNodeM node.bindings; }
+      ( {_, bindings}: _.appendScope (listToAttrs bindings) )
+      ( evalNodeM node.body );
 
   # Evaluate a with expression
   # evalWith :: AST -> Eval a
@@ -469,48 +454,43 @@ rec {
   # Evaluate an import expression
   # evalImport :: Scope -> AST -> Eval a
   evalImport = node:
-    log.while "evaluating 'import' node" (
     Eval.do
-      { path = evalNodeM node.path; }
-      ( {_, path, ...}:
-        if !(lib.isString path || lib.isPath path) then _.throws (
-          _.throws (TypeError (_b_ ''
-            import: got non-string or path message of type ${typeOf path}:
-              ${_ph_ path}
-          '')))
-        else _.pure (import path) )
-    );
+      (while "evaluating 'import' node")
+      {path = evalNodeM node.path;}
+      (guard ({path}: lib.isString path || lib.isPath path) (TypeError (_b_ ''
+        import: got non-string or path message of type ${typeOf path}:
+          ${_ph_ path}
+      '')))
+      (pure (import path));
 
   # attrPath is just a path list, return the path
   evalAttrPath = node: 
-    log.while "evaluating 'attrPath' node" (
-    Eval.pure node.path
-    );
+    Eval.do
+      (while "evaluating 'attrPath' node")
+      (pure node.path);
 
   evalPath = node: 
-    log.while "evaluating 'path' node" (
-    Eval.pure (stringToPath node.value)
-    );
+    Eval.do
+      (while "evaluating 'path' node")
+      (pure (stringToPath node.value));
 
   evalAnglePath = node:
-    log.while "evaluating 'anglePath' node" (
-    let path = splitSep "/" node.value;
-        name = maybeHead path;
-        rest = maybeTail path;
-        restPath = joinSep "/" (def [] rest);
-    in 
-      Eval.do
-        { scope = {_}: _.getScope {}; }
-        ( {_, scope}:
-          if !(scope ? NIX_PATH) then _.throws (NixPathError (_b_ ''
+    Eval.do
+      (while "evaluating 'anglePath' node")
+      { scope = {_}: _.getScope {}; }
+      ({_, scope}:
+        let path = splitSep "/" node.value;
+            name = maybeHead path;
+            rest = maybeTail path;
+            restPath = joinSep "/" (def [] rest);
+        in Eval.do
+          (guard ({...}: (scope ? NIX_PATH)) (NixPathError (_b_ ''
             No NIX_PATH found in scope when resolving ${node.value}.
-          ''))
-          else if !(scope.NIX_PATH ? ${name}) then _.throws (NixPathError (_b_ ''
+          '')))
+          (guard ({...}: (scope.NIX_PATH ? ${name})) (NixPathError (_b_ ''
             ${name} not found in NIX_PATH when resolving ${node.value}.
-          ''))
-          else _.pure (scope.NIX_PATH.${name} + "/${restPath}")
-        )
-    );
+          '')))
+          (pure (scope.NIX_PATH.${name} + "/${restPath}")));
 
   # Helper to test round-trip property: eval (parse x) == x
   testRoundTrip = expr: expected: with collective-lib.tests; {
@@ -533,7 +513,7 @@ rec {
   _tests = with tests; suite {
 
     # Tests for evalAST round-trip property
-    evalAST = {
+    evalAST = solo {
 
       smoke = {
         int = testRoundTrip "1" 1;
