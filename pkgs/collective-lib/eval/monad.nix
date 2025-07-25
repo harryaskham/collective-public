@@ -76,6 +76,7 @@ rec {
         __isLeft = true; 
         __toString = self: "Left ${_p_ e}";
         left = e; 
+        case = case this;
         fmap = _: this;
       }; in this;
   };
@@ -90,6 +91,7 @@ rec {
         __isRight = true; 
         __toString = self: "Right ${_p_ a}"; 
         right = a; 
+        case = case this;
         fmap = f: 
           let 
             b = f a;
@@ -265,7 +267,7 @@ rec {
 
   # Idempotently convert all do statements to the same form.
   # { bindName = null | string; f = { _, _a, bindings... }: statement }
-  normaliseBindStatement = M: this: dispatch.on (bindStatementSignature M) {
+  normaliseBindStatement = M: dispatch.on (bindStatementSignature M) {
     IndependentAction = statement:
       mkNormalisedDoStatement statement null ({_ ? M.pure unit, _a ? unit, ...}: statement);
     DependentAction = statement: 
@@ -296,6 +298,27 @@ rec {
         }) self.__statements))}
     '';
 
+  #bindNormalised = M: this: bindings: a: statement:
+  #  let 
+  #    normalised = normaliseBindStatement M statement;
+  #    bm_ = a.bind ({_, _a}: normalised.f (bindings // { inherit _ _a; }));
+  #  in 
+  #    if isDo bm_ then bm_.__setInitM a else bm_;
+
+  #handleBindStatement = 
+  #  M: this: {bindings, m, canBind}: statement:
+  #  assert (assertIsDoStatement M statement);
+  #  let 
+  #    m' = bindNormalised M this bindings m statement;
+  #  in 
+  #    m'.bind ({_, _a}: _.pure {
+  #      bindings = bindings // optionalAttrs (normalised.bindName != null) {
+  #        ${normalised.bindName} = _a; 
+  #      };
+  #      m = m';
+  #      canBind = normalised.bindName == null;
+  #    });
+
   # Given a monad M, a state containing an M bindings and an M m monadic action,
   # and a statement of one of these forms:
   #
@@ -307,21 +330,21 @@ rec {
   # Return an updated state with the bindings updated inside the monad to any new
   # bindings, and an updated monadic action.
   handleBindStatement = 
-    M: this: {bindings, m, canBind}: statement:
+    M: acc: statement:
     assert (assertIsDoStatement M statement);
-    let 
-      normalised = normaliseBindStatement M this statement;
-      m'_ = m.bind ({_, _a}: normalised.f (bindings // { inherit _ _a; }));
-      # If we encounter a nested do, it needs to keep track of its monadic start-value.
-      m' = if isDo m'_ then m'_.__setInitM m else m'_;
+    let normalised = normaliseBindStatement M statement;
     in 
-      m'.bind ({_, _a}: _.pure {
-        bindings = bindings // optionalAttrs (normalised.bindName != null) {
-          ${normalised.bindName} = _a; 
-        };
-        m = m';
-        canBind = normalised.bindName == null;
-      });
+      (acc.m.bind ({_, _a}: 
+        let mb_ = normalised.f (acc.bindings // { inherit _ _a; });
+            mb = if isDo mb_ then mb_.__setInitM _ else mb_;
+        in 
+          mb.bind ({_, _a}: _.pure {
+            bindings = acc.bindings // optionalAttrs (normalised.bindName != null) {
+              ${normalised.bindName} = _a; 
+            };
+            canBind = normalised.bindName == null;
+            m = mb;
+          })));
 
   # foldM :: (acc -> a -> M acc) -> acc -> [a] -> M acc
   foldM = M: f: initAcc: xs:
@@ -354,20 +377,20 @@ rec {
         let 
           initAcc = {
             bindings = {};
-            m = this.__initM;
             canBind = false;
+            m = this.__initM;
           };
-          accM = foldM M (handleBindStatement M this) initAcc (this.__statements ++ [statement]);
-        in 
+          accM = foldM M (handleBindStatement M) initAcc (this.__statements);
+        in
           accM.bind ({_, _a}:
             assert that _a.canBind (withStackError this ''
               do: final statement of a do-block cannot be an assignment.
             '');
-            _a.m);
+            (handleBindStatement M _a statement).bind ({_, _a}: _a.m));
 
       # Bind pure with {} initial state to convert do<M a> to M a
       action = this.bind ({_, _a}: _.pure _a);
-      inherit (this.action) run mapState sq;
+      inherit (this.action) mapState sq run;
       do = mkDo M this.action [];
     };
     in this;
@@ -444,20 +467,18 @@ rec {
           when = eval.monad.when;
           unless = eval.monad.unless;
 
-          bind = statement:
-            if isLeft this.e then this else
-            let a = this.e.right;
-                normalised = normaliseBindStatement Eval this statement; in
-            assert that (normalised.bindName == null) ''
-              Eval.bind: cannot bind to a statement of type ${bindStatementSignature Eval statement}
-            '';
-            let mb_ = normalised.f { _ = this; _a = a; }; 
-                mb = if isDo mb_ then mb_.__setInitM this else mb_; in
-            assert that (isMonadOf Eval mb) ''
-              Eval.bind: non-Eval value returned of type ${getT mb}:
-                ${_ph_ mb}
-            '';
-            mb.mapState (s': st: s' (this.s st));
+          bind = statement: 
+            this.e.case {
+              Left = _: this;
+              Right = a:
+                let normalised = normaliseBindStatement Eval statement;
+                    mb = normalised.f {_ = this; _a = a;};
+                in assert that (isMonadOf Eval mb) ''
+                  Eval.bind: non-Eval value returned of type ${getT mb}:
+                    ${_ph_ mb}
+                '';
+                mb.mapState (s: compose s this.s);
+            };
 
           sq = b: this.bind ({_}: b);
 
@@ -474,7 +495,7 @@ rec {
             else this;
 
           # Returns (Either EvalError set)
-          run = state: this.e.fmap (a: { s = s (S.mempty {}); inherit a; });
+          run = state: this.e.fmap (a: { s = this.s state; inherit a; });
         };
         in this;
     };
@@ -597,6 +618,10 @@ rec {
 
             bindOne =
               let m = Eval.do {x = Eval.pure 1;} ({_, ...}: _.pure unit);
+              in expectRun {} m {} unit;
+
+            bindOneBound =
+              let m = Eval.do {x = {_}: _.pure 1;} ({_}: _.pure unit);
               in expectRun {} m {} unit;
 
             bindOneInferred =

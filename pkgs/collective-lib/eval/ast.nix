@@ -21,7 +21,7 @@ rec {
       Eval.do
         ({_}: _.setScope initScope)
         (evalNodeM (parse expr));
-    in m.run {}
+    in m.run (EvalState {})
     );
 
   /*
@@ -35,58 +35,59 @@ rec {
   evalNodeM :: AST -> Eval a */
   evalNodeM = node:
     log.while "evaluating AST node of type '${node.nodeType or "<no .nodeType>"}'" (
-    Eval.do
+    {_}: _.do
       #( {_}: _.when (isEvalError node) (_.throws node) )
-      ( {_}:
-        if !(is AST node) then _.pure node
-
-        else flip (dispatch.on (n: n.nodeType)) node {
-          int = evalLiteral;
-          float = evalLiteral;
-          string = evalLiteral;
-          indentString = evalLiteral;
-          path = evalPath;
-          anglePath = evalAnglePath;
-          list = evalList;
-          attrs = evalAttrs;
-          identifier = evalIdentifier;
-          binaryOp = evalBinaryOp;
-          unaryOp = evalUnaryOp;
-          conditional = evalConditional;
-          lambda = evalLambda;
-          application = evalApplication;
-          letIn = evalLetIn;
-          assignment = evalAssignment;
-          attrPath = evalAttrPath;
-          "with" = evalWith;
-          "assert" = evalAssert;
-          "abort" = evalAbort;
-          "throw" = evalThrow;
-          "import" = evalImport;
-          "inherit" = evalInherit;
+      ( if !(is AST node)
+        then {_}: _.pure node
+        else switch node.nodeType {
+          int = evalLiteral node;
+          float = evalLiteral node;
+          string = evalLiteral node;
+          indentString = evalLiteral node;
+          path = evalPath node;
+          anglePath = evalAnglePath node;
+          list = evalList node;
+          attrs = evalAttrs node;
+          identifier = evalIdentifier node;
+          binaryOp = evalBinaryOp node;
+          unaryOp = evalUnaryOp node;
+          conditional = evalConditional node;
+          lambda = evalLambda node;
+          application = evalApplication node;
+          letIn = evalLetIn node;
+          assignment = evalAssignment node;
+          attrPath = evalAttrPath node;
+          "with" = evalWith node;
+          "assert" = evalAssert node;
+          "abort" = evalAbort node;
+          "throw" = evalThrow node;
+          "import" = evalImport node;
+          "inherit" = evalInherit node;
       } )
     );
 
   # Evaluate a literal value (int, float, string, etc.)
   # evalLiteral :: AST -> Eval a
   evalLiteral = node: 
-    log.while "evaluating 'literal' node" (
-    Eval.pure node.value
-    );
+    {_}: 
+      log.while "evaluating 'literal' node" (
+      _.pure node.value
+      );
 
   # Evaluate a name (identifier or string)
   # If identifier, get the name itself, not evaluate it.
   # This can then be used on LHS of assignments.
   identifierName = node:
     log.while "evaluating a name" (
-    if node.nodeType == "identifier" then Eval.pure node.name
-    else Eval.do
-      { n = evalNodeM node; }
-      ( {_, n, ...}:
-        unless (lib.isString n) (_.throws (RuntimeError (_b_ ''
+    {_}:
+      if node.nodeType == "identifier" 
+      then _.pure node.name
+      else _.do
+        { n = evalNodeM node; }
+        ({_, n}: unless (lib.isString n) (_.throws (RuntimeError (_b_ ''
           Expected string identifier name, got ${lib.typeOf n}
-        ''))) )
-      ( {_, n, ...}: _.pure n )
+        ''))))
+        ({_, n}: _.pure n)
     );
 
   # Evaluate an identifier lookup
