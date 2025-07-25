@@ -143,6 +143,7 @@ ${eof}
       cmd = { style = [italic]; };
       nixExpr = { style = [bg.grey]; };
       file = { style = [italic fg.blue]; };
+      path = { style = [italic fg.cyan]; };
       requiredOpt = { style = [fg.brightwhite]; };
       optionalOpt = { style = [fg.white]; };
     };
