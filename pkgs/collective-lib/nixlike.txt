@@ -179,6 +179,9 @@ functions._tests.run {}
 <nix>
 functionArgs (a: 123)
 </nix>
+<nix>
+({a,...}@b: b) {a=1; c=3;}
+</nix>
 
 <nix>
 with eval.ast; with eval.monad; with parser;

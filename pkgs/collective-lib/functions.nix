@@ -84,10 +84,8 @@ in rec {
   addEllipsis = f:
     if f ? __isAddedEllipsis then f else
     let fArgs = builtins.functionArgs f;
-    in assert that (nonEmpty fArgs) ''
-      addEllipsis: function has no arguments.
-    '';
-    {
+    in if (empty fArgs) then {...}@args: f args
+    else {
       __isAddedEllipsis = true;
       __functor = self: args: f (intersectAttrs fArgs args); 
     };

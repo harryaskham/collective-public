@@ -16,11 +16,9 @@ rec {
  
   runAST :: (string | AST) -> Either EvalError {a :: a, s :: EvalState} */
   runAST = expr: 
-    let m = 
-      Eval.do
-        (while "running string or AST node evaluation")
-        (evalNodeM (parse expr));
-    in m.run (EvalState {scope = initScope;});
+    log.while "running string or AST node evaluation" (
+    (evalM expr).run (EvalState.mempty {})
+    );
 
   /*
   evalAST :: (string | AST) -> Either EvalError a */
@@ -28,6 +26,12 @@ rec {
     log.while "evaluating string or AST node" (
     (runAST expr).fmap (r: r.a)
     );
+
+  evalM = expr:
+    Eval.do
+      ( {_}: _.set (EvalState {scope = initScope;}))
+      (while "running string or AST node evaluation")
+      (evalNodeM (parse expr));
 
   /* Main monadic eval entrypoint.
   evalNodeM :: AST -> Eval a */
@@ -78,7 +82,7 @@ rec {
       {name = {_}:
         if node.nodeType == "identifier" then _.pure node.name
         else evalNodeM node;}
-      (guard ({name}: lib.isString name) ({name}: RuntimeError ''
+      ({_, name}: _.guard (lib.isString name) (RuntimeError ''
         Expected string identifier name, got ${lib.typeOf name}
       ''))
       ({_, name}: _.pure name);
@@ -89,7 +93,7 @@ rec {
     Eval.do
       (while "evaluating 'identifier' node")
       {scope = {_}: _.getScope {};}
-      (guard ({scope}: scope ? ${node.name}) ({scope}: RuntimeError ''
+      ({_, scope}: _.guard (scope ? ${node.name}) (RuntimeError ''
         Undefined identifier '${node.name}' in current scope:
           ${_ph_ scope}
       ''))
@@ -272,7 +276,7 @@ rec {
   evalOrOperation = node:
     Eval.do
       (while "evaluating 'or' node")
-      (guard ({_}: node.lhs.nodeType == "binaryOp" && node.lhs.op == ".") ({_}: RuntimeError ''
+      ({_}: _.guard (node.lhs.nodeType == "binaryOp" && node.lhs.op == ".") (RuntimeError ''
         Unsupported 'or' after non-select: ${node.lhs.nodeType} or ...
       ''))
       (evalNodeM node.lhs)
@@ -408,11 +412,11 @@ rec {
     Eval.do
       (while "evaluating 'assert' node")
       {cond = evalNodeM node.cond;}
-      (guard ({cond}: lib.isBool cond) ({cond}: TypeError ''
+      ({_, cond}: _.guard (lib.isBool cond) (TypeError ''
         assert: got non-bool condition of type ${typeOf cond}:
           ${_ph_ cond}
       ''))
-      (guard ({cond}: cond) ({cond}: AssertError ''
+      ({_, cond}: _.guard cond (AssertError ''
         assert: condition failed:
           ${_ph_ cond}
       ''))
@@ -424,7 +428,7 @@ rec {
     Eval.do
       (while "evaluating 'abort' node")
       {msg = evalNodeM node.msg;}
-      (guard ({msg}: lib.isString msg) ({msg}: TypeError ''
+      ({_, msg}: _.guard (lib.isString msg) (TypeError ''
         abort: got non-string message of type ${typeOf msg}:
           ${_ph_ msg}
       ''))
@@ -436,7 +440,7 @@ rec {
     Eval.do
       (while "evaluating 'throw' node")
       {msg = evalNodeM node.msg; }
-      (guard ({msg}: lib.isString msg) ({msg}: TypeError ''
+      ({_, msg}: _.guard (lib.isString msg) (TypeError ''
         throw: got non-string message of type ${typeOf msg}:
           ${_ph_ msg}
       ''))
@@ -448,7 +452,7 @@ rec {
     Eval.do
       (while "evaluating 'import' node")
       {path = evalNodeM node.path;}
-      (guard ({path}: lib.isString path || lib.isPath path) ({path}: TypeError ''
+      ({_, path}: _.guard (lib.isString path || lib.isPath path) (TypeError ''
         import: got non-string or path message of type ${typeOf path}:
           ${_ph_ path}
       ''))
@@ -475,10 +479,10 @@ rec {
             rest = maybeTail path;
             restPath = joinSep "/" (def [] rest);
         in Eval.do
-          (guard ({_}: scope ? NIX_PATH) ({_}: NixPathError ''
+          ({_}: _.guard (scope ? NIX_PATH) (NixPathError ''
             No NIX_PATH found in scope when resolving ${node.value}.
           ''))
-          (guard ({_}: scope.NIX_PATH ? ${name}) ({_}: NixPathError ''
+          ({_}: _.guard (scope.NIX_PATH ? ${name}) (NixPathError ''
             ${name} not found in NIX_PATH when resolving ${node.value}.
           ''))
           (pure (scope.NIX_PATH.${name} + "/${restPath}")));

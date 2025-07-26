@@ -395,15 +395,13 @@ rec {
       action = this.bind ({_, _a}: _.pure _a);
       inherit (this.action) mapState sq run while;
       do = mkDo M this.action [];
-      guard = condF: e: (this (compose M.pure condF)).bind ({_, _a}: unless _a (_.throws e));
+      guard = cond: e: unless cond (this.throws e);
     };
     in this;
 
 
   pure = x: {_}: _.pure x;
   throws = e: {_}: _.throws e;
-  guard = condF: e: args:
-    (compose (b: unless b (throws (addEllipsis e args))) (addEllipsis condF)) args;
   while = msg: {_}: _.while msg;
 
   # Check if a value is a monad.
@@ -478,6 +476,7 @@ rec {
           when = eval.monad.when;
           unless = eval.monad.unless;
           while = msg: this.bind ({_}: log.while msg (_.pure unit));
+          guard = cond: e: unless cond (this.throws e);
 
           bind = statement: 
             this.e.case {
@@ -740,6 +739,18 @@ rec {
                         ( {_}: _.appendScope ({y = 2;}) )
                         ( {_}: _.getScope {} );
                     m = Eval.do a;
+                  in expectRun {} m {x = 1; y = 2;} {x = 1; y = 2;};
+
+                appendScopeDifferentEvalBlocks =
+                  let 
+                    a = 
+                      Eval.do 
+                        ( {_}: _.setScope ({x = 1;}) );
+                    b = 
+                      Eval.do 
+                        ( {_}: _.appendScope ({y = 2;}) )
+                        ( {_}: _.getScope {} );
+                    m = Eval.do a b;
                   in expectRun {} m {x = 1; y = 2;} {x = 1; y = 2;};
 
                 #appendScopeDifferentBlock =
