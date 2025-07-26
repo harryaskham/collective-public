@@ -64,6 +64,7 @@ let
           rebinds
           strings
           syntax
+          ;
       };
     in
       modulelib.recursiveMergeAttrsList 
