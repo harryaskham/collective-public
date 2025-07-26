@@ -13,20 +13,23 @@
     self,
     nixpkgs,
     flake-utils,
-    nix-parsec,
     ...
   } @ inputs:
     let
       inherit (self) outputs;
-    in
+      # TODO: Move whole library away from pkgs.
+      collective-lib = self.packages.x86_64-linux.collective-lib;
+    in 
       flake-utils.lib.eachDefaultSystem (system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
+        let pkgs = nixpkgs.legacyPackages.${system};
         in {
-          packages = import ./pkgs { inherit nix-parsec pkgs; };
+          packages = import ./pkgs { inherit pkgs inputs; };
           devShells = { default = pkgs.mkShell {}; };
-        }) // rec {
-          overlays = import ./overlays { inherit inputs; inherit (nixpkgs) lib; inherit nix-parsec; };
-          nixosModules = import ./modules/nixos;
-        };
+        }
+      ) 
+      // {
+        lib = collective-lib;
+        overlays = import ./overlays { inherit inputs; inherit (nixpkgs) lib; };
+        nixosModules = import ./modules/nixos;
+      };
 }

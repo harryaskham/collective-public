@@ -1,8 +1,8 @@
-{ pkgs, nix-parsec, ...}:
+{ pkgs, inputs, ...}:
 
 rec {
   # Public subset of the Collective base library.
-  collective-lib = import ./collective-lib { inherit pkgs; inherit nix-parsec; };
+  collective-lib = import ./collective-lib { inherit pkgs inputs; };
 
   # Namespaced python packages.
   collective-pythonPackages = import ./pythonPackages { inherit pkgs; };

@@ -165,6 +165,22 @@ eval._tests.debug {}
 eval._tests.run {}
 </nix>
 <nix>
+let
+  module = import ../../../modules/nix-on-droid/unexpected-keyboard;
+  c = evalModules {
+    specialArgs = { inherit collective-lib; };
+    modules = [
+      module
+      ({...}: {
+        config.services.unexpected-keyboard = {
+          enable = false;
+        };
+      })
+    ];
+  };
+in c.config
+</nix>
+<nix>
 eval.monad._tests.run {}
 </nix>
 <nix>

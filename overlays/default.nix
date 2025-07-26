@@ -19,7 +19,7 @@ let
       };
       python3Packages = prev.python3Packages // final.python3.pkgs;
     };
-    packagesOverlay = final: prev: import ../pkgs { pkgs = prev; inherit nix-parsec; };
+    packagesOverlay = final: prev: import ../pkgs { pkgs = prev; inherit inputs; };
   };
 in
 overlays

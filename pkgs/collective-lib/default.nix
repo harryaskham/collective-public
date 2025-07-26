@@ -1,18 +1,20 @@
 { pkgs ? import <nixpkgs> {},
   lib ? pkgs.lib,
   traceOpts ? null,
-  nix-parsec ? (
-    let
-      version = "v0.1.0";
-      sha256 = "sha256-HOsko3wE4wt6+TdfPdaQj3A3UJ8AB9vHmHuDfyBlosY=";
-    in
-      import (pkgs.fetchFromGitHub {
-        owner = "nprindle";
-        repo = "nix-parsec";
-        rev = version;
-        sha256 = "sha256-JVgNZSj3ViroWymo0ydkIEVnlRJdXRV+D0ig0OiuZ7o=";
-      })
-  ),
+  # Passed from the flake, but set here for local importing.
+  inputs ? {
+    nix-parsec =
+      let
+        version = "v0.1.0";
+        sha256 = "sha256-HOsko3wE4wt6+TdfPdaQj3A3UJ8AB9vHmHuDfyBlosY=";
+      in
+        import (pkgs.fetchFromGitHub {
+          owner = "nprindle";
+          repo = "nix-parsec";
+          rev = version;
+          sha256 = "sha256-JVgNZSj3ViroWymo0ydkIEVnlRJdXRV+D0ig0OiuZ7o=";
+        });
+  },
   ... 
 }:
 
@@ -52,15 +54,16 @@ let
           attrsets
           clib
           collections
+          data
           debuglib
           dispatchlib
+          errors
           functions
           lists
           modulelib
           rebinds
           strings
           syntax
-          typelib;
       };
     in
       modulelib.recursiveMergeAttrsList 
@@ -146,7 +149,7 @@ let
       lists = import ./lists.nix args;
       log = import ./log.nix (args // { inherit traceOpts; });
       inherit modulelib;
-      parser = import ./parser (args // { inherit nix-parsec; });
+      parser = import ./parser (args // { inherit (inputs) nix-parsec; });
       rebinds = import ./rebinds.nix args;
       script-utils = import ./script-utils args;
       strings = import ./strings args;

@@ -367,7 +367,7 @@ in rec {
         (name: module: {
           ${name} = 
             if (module ? _tests) 
-            then module._tests.nestedTests
+            then module._tests.nestedTests {}
             else { emptyTestSuite = expect.True true; };
         })
         modules);
@@ -380,7 +380,7 @@ in rec {
   #   };
   # }
   extendSuite = prevSuite: newSuite:
-    suite (lib.recursiveUpdate prevSuite.nestedTests newSuite.nestedTests);
+    suite (lib.recursiveUpdate (prevSuite.nestedTests {}) (newSuite.nestedTests {}));
 
   # Create a test suite from a nested set of tests.
   # e.g.
@@ -400,10 +400,10 @@ in rec {
   #     section2 = { ... };
   #   };
   # }
-  suite = nestedTests: rec {
-    inherit nestedTests;
-    tests =
-      let flatTests = mapAttrs mkTest (flattenTests nestedTests);
+  suite = nestedTests_: rec {
+    nestedTests = {}: nestedTests_;
+    tests = {}:
+      let flatTests = mapAttrs mkTest (flattenTests nestedTests_);
           soloTests = filterAttrs (_: t: t.solo) flatTests;
           nonSoloTests = filterAttrs (_: t: !t.solo) flatTests;
       in if soloTests == {}
@@ -414,11 +414,11 @@ in rec {
       mapAttrs
         (testName: test: 
           {}: f { ${testName} = test; })
-        tests;
+        (tests {});
     runOne = overOne (run_ (test: test.run {}));
     debugOne = overOne (run_ (test: test.debug {}));
-    run = run_ (test: test.run) tests;
-    debug = run_ (test: test.debug) tests;
+    run = run_ (test: test.run) (tests {});
+    debug = run_ (test: test.debug) (tests {});
     run_ = runner: tests:
       {}:  # Thunk the tests to avoid strict execution.
       let
@@ -455,7 +455,20 @@ in rec {
         msgs.Skipped
         (indent.blocks [headers.Passed msgs.Passed])
         (indent.blocks [headers.Failed failedTestNamesBlock])
-        #msgs.Failed
+        msgs.Failed
       ];
+  };
+
+  withTestOption = options: options // {
+    _enableTests = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''Whether to enable tests for this module.'';
+    };
+    _tests = mkOption {
+      type = types.attrs;
+      default = suite {};
+      description = ''The test suite for this module.'';
+    };
   };
 }

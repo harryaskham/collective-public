@@ -3,10 +3,10 @@
 with collective-lib.typed;
 rec {
   # Write an expression to a file and return the path.
-  evalStoreFile = exprStr: builtins.toFile "expr.nix" exprStr;
+  file = exprStr: builtins.toFile "expr.nix" exprStr;
 
   # Exposed as eval.store in default.nix
-  evalStore = exprStr: import (evalStoreFile exprStr);
+  evalStore = exprStr: import (file exprStr);
 
   # Tested more thoroughly in default.nix
   _tests = with tests; suite {
