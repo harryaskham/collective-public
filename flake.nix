@@ -18,7 +18,7 @@
     let
       inherit (self) outputs;
       collectiveLibForArchitecture = architectureStr:
-        outputs.packages.${architectureStr}.collective-lib.noTests;
+        outputs.packages.${architectureStr}.collective-lib;
     in 
       flake-utils.lib.eachDefaultSystem (system:
         let pkgs = nixpkgs.legacyPackages.${system};
