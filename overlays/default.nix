@@ -1,4 +1,4 @@
-{inputs, lib, nix-parsec, ...}:
+{inputs, lib, ...}:
 
 let
   imageGoNordOverlay = self: super: {
