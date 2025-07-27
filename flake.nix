@@ -17,18 +17,18 @@
   } @ inputs:
     let
       inherit (self) outputs;
-      # TODO: Move whole library away from pkgs.
-      collective-lib = self.packages.x86_64-linux.collective-lib;
+      collectiveLibFor = system:
+        outputs.packages.${system.architecture.value}.collective-lib.noTests;
     in 
       flake-utils.lib.eachDefaultSystem (system:
         let pkgs = nixpkgs.legacyPackages.${system};
         in {
           packages = import ./pkgs { inherit pkgs inputs; };
           devShells = { default = pkgs.mkShell {}; };
+          lib = collectiveLibFor system;
         }
       ) 
       // {
-        lib = collective-lib;
         overlays = import ./overlays { inherit inputs; inherit (nixpkgs) lib; };
         nixosModules = import ./modules/nixos;
       };
