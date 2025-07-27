@@ -164,11 +164,44 @@ eval._tests.debug {}
 <nix>
 eval._tests.run {}
 </nix>
+
+<nix>
+let
+  uk = import ../../../modules/nix-on-droid/unexpected-keyboard;
+  fakeModule = {...}: {
+    options = {
+      environment.etc = mkOption {
+        type = types.attrsOf (types.attrsOf types.str);
+        default = {};
+      };
+      build.activationAfter = mkOption {
+        type = types.attrsOf (types.attrsOf types.str);
+        default = {};
+      };
+    };
+  };
+  cfg = {...}: {
+    services.unexpected-keyboard = {
+      enable = true;
+      _enableTests = true;
+    };
+  };
+in
+  (evalModules {
+    specialArgs = {
+      inherit lib collective-lib;
+      systemType = data.SystemType.NixOS;
+    };
+    modules = [ fakeModule uk cfg ];
+  }).config.services.unexpected-keyboard._tests.run {}
+  #}).config.services.unexpected-keyboard.layouts."QWERTY (US)".xmlSource
+</nix>
+
 <nix>
 let
   module = import ../../../modules/nix-on-droid/unexpected-keyboard;
   c = evalModules {
-    specialArgs = { inherit collective-lib; };
+    specialArgs = { inherit collective-lib; systemType = null; };
     modules = [
       module
       ({...}: {
