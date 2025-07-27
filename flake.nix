@@ -25,7 +25,7 @@
         in {
           packages = import ./pkgs { inherit pkgs inputs; };
           devShells = { default = pkgs.mkShell {}; };
-          lib = collectiveLibForArchitecture system
+          lib = collectiveLibForArchitecture system;
         }
       ) 
       // {
