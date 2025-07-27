@@ -192,9 +192,8 @@ in
       inherit lib collective-lib;
       systemType = data.SystemType.NixOS;
     };
-    modules = [ fakeModule uk cfg ];
+    modules = [ fakeModule uk cfg ] ;
   }).config.services.unexpected-keyboard._tests.run {}
-  #}).config.services.unexpected-keyboard.layouts."QWERTY (US)".xmlSource
 </nix>
 
 <nix>
@@ -212,6 +211,9 @@ let
     ];
   };
 in c.config
+</nix>
+<nix>
+lists._tests.run {}
 </nix>
 <nix>
 eval.monad._tests.run {}

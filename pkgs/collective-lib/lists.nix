@@ -7,6 +7,7 @@ with collective-lib.attrsets;
 with collective-lib.rebinds;
 with {
   inherit (lib)
+  const
   length
   head tail
   take drop
@@ -36,6 +37,15 @@ in rec {
   # Insert element at position pos in list xs.
   insertAt = pos: x: xs:
     take pos xs ++ [x] ++ drop pos xs;
+
+  # Update element at position pos in list xs.
+  updateAt = pos: f: xs:
+    let init = take pos xs;
+        rest = drop pos xs;
+    in init ++ mapSnoc f id rest;
+
+  # Set element at position pos in list xs.
+  setAt = pos: x: updateAt pos (const x);
 
   # Polymorphic concat for [[a]] and [{_=a}]
   concat = dispatch.elem {
@@ -140,14 +150,14 @@ in rec {
         t = tail xs;
     in if xs == [] then null else {head = h; tail = t;};
 
+  # Map over the head and tail of a list.
   mapSnoc = fHead: fTail: xs:
     let snoc = maybeSnoc xs;
     in if snoc == null then xs
        else if snoc.tail == null then [(fHead snoc.head)]
        else
          let tail' = fTail snoc.tail;
-             tail'' = if isString tail' then [tail'] else tail';
-         in [(fHead snoc.head)] ++ tail'';
+         in [(fHead snoc.head)] ++ tail';
 
   mapHead = fHead: mapSnoc fHead id;
 
@@ -192,32 +202,30 @@ in rec {
     fold._1.list.right = {
       sum = expect.eq 6 (fold._1.list.right (a: b: a + b) [1 2 3]);
     };
-    append = {
-      expr = append 5 [1 2 3];
-      expected = [1 2 3 5];
-    };
-    cons = {
-      expr = cons 0 [1 2 3];
-      expected = [0 1 2 3];
-    };
+
+    append = expect.eq (append 5 [1 2 3]) [1 2 3 5];
+
+    cons = expect.eq (cons 0 [1 2 3]) [0 1 2 3];
+
     insertAt = {
-      start = {
-        expr = insertAt 0 99 [1 2 3 4];
-        expected = [99 1 2 3 4];
-      };
-      middle = {
-        expr = insertAt 2 99 [1 2 3 4];
-        expected = [1 2 99 3 4];
-      };
-      end = {
-        expr = insertAt 4 99 [1 2 3 4];
-        expected = [1 2 3 4 99];
-      };
-      beyondEnd = {
-        expr = insertAt 10 99 [1 2 3 4];
-        expected = [1 2 3 4 99];
-      };
+      start = expect.eq (insertAt 0 99 [1 2 3 4]) [99 1 2 3 4];
+      middle = expect.eq (insertAt 2 99 [1 2 3 4]) [1 2 99 3 4];
+      end = expect.eq (insertAt 4 99 [1 2 3 4]) [1 2 3 4 99];
+      beyondEnd = expect.eq (insertAt 10 99 [1 2 3 4]) [1 2 3 4 99];
     };
+
+    updateAt = {
+      start = expect.eq (updateAt 0 (a: a + 1) [1 2 3 4]) [2 2 3 4];
+      middle = expect.eq (updateAt 2 (a: a + 1) [1 2 3 4]) [1 2 4 4];
+      end = expect.eq (updateAt 3 (a: a + 1) [1 2 3 4]) [1 2 3 5];
+    };
+
+    setAt = {
+      start = expect.eq (setAt 0 99 [1 2 3 4]) [99 2 3 4];
+      middle = expect.eq (setAt 2 99 [1 2 3 4]) [1 2 99 4];
+      end = expect.eq (setAt 3 99 [1 2 3 4]) [1 2 3 99];
+    };
+
     concat = {
       listOfLists = {
         expr = concat [[1 2] [3 4] [5]];
