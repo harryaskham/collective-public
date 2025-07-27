@@ -17,15 +17,15 @@
   } @ inputs:
     let
       inherit (self) outputs;
-      collectiveLibFor = system:
-        outputs.packages.${system.architecture.value}.collective-lib.noTests;
+      collectiveLibForArchitecture = architectureStr:
+        outputs.packages.${architectureStr}.collective-lib.noTests;
     in 
       flake-utils.lib.eachDefaultSystem (system:
         let pkgs = nixpkgs.legacyPackages.${system};
         in {
           packages = import ./pkgs { inherit pkgs inputs; };
           devShells = { default = pkgs.mkShell {}; };
-          lib = collectiveLibFor system;
+          lib = collectiveLibForArchitecture system
         }
       ) 
       // {
