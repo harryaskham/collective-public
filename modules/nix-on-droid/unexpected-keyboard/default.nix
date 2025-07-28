@@ -119,7 +119,7 @@ let
       lefty = gap: precompose [fitWidth (scaleGap_ gap)];
 
       # Right-aligned one-handed layout
-      righty = gap: precompose [(lefty gap) (shiftRight gap)];
+      righty = gap: precompose [(Variants.lefty gap) (shiftRight gap)];
     };
 
     # Default variants to apply if includeDefaultVariants is set.
