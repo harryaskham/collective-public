@@ -224,7 +224,7 @@ rec {
           warn = msg: "log warn ${toShellValue msg}";
           error = msg: "log error ${toShellValue msg}";
           exit = rec {
-            usage = ''log-exit-with-usage 0 "" success ${toShellValue msg}'';
+            usage = ''log-exit-with-usage 0 "" success ""'';
             success = msg: ''log-exit 0 "" success ${toShellValue msg}'';
             fatalCode = exitCode: msg: ''log-exit ${toString exitCode} "" fatal ${toShellValue msg}'';
             fatal = msg: fatalCode 1 msg;
