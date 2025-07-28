@@ -21,13 +21,12 @@
       flake-utils.lib.eachDefaultSystem (system:
         let 
           collective-lib = outputs.packages.${system}.collective-lib;
-          importModules = path: collective-lib.tests.removeTests (import path { inherit collective-lib; });
           pkgs = nixpkgs.legacyPackages.${system};
         in {
           lib = collective-lib;
           packages = import ./pkgs { inherit pkgs inputs; };
           devShells = { default = pkgs.mkShell {}; };
-          modules = removeTests (import ./modules { inherit collective-lib; });
+          modules = collective-lib.tests.removeTests (import ./modules { inherit collective-lib; });
         }
       ) // {
         overlays = import ./overlays { inherit inputs; inherit (nixpkgs) lib; };
