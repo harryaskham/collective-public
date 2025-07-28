@@ -116,10 +116,16 @@ let
 
     Variants = {
       # Left-aligned one-handed layout
-      lefty = gap: precompose [fitWidth (scaleGap_ gap)];
+      lefty = gap: precompose [
+        fitWidth
+        (scaleGap_ gap)
+      ];
 
       # Right-aligned one-handed layout
-      righty = gap: precompose [(Variants.lefty gap) (shiftRight gap)];
+      righty = gap: precompose [
+        (Variants.lefty gap)
+        (shiftRight gap)
+      ];
     };
 
     # Default variants to apply if includeDefaultVariants is set.

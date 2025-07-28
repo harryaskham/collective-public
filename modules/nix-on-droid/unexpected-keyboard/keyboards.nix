@@ -398,7 +398,7 @@ with uklib;
             (updateKey 1 6 (addShift gap))
             (updateKey 2 6 (addShift spacePaddingR))
             # Insert spacebar into centre of split
-            (insertKey 2 6 6 (K spaceWidth spacePaddingL w.cur_l  " " c.spc  e.cur_r))
+            (insertKey 2 6 6 (K spaceWidth spacePaddingL w.cur_l  " " c.spc  e.cur_r K))
             # Finally fit to width to scale 20 -> 10
             fitWidth
           ];
