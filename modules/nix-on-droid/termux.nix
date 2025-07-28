@@ -69,7 +69,7 @@ in {
         '';
       };
 
-      sharedDir.copy = {
+      termux.sharedDir.copy = {
         ".termux" = "/data/data/com.termux.nix/files/home/.termux";
         ".bootstrap-from-nixondroid.sh" = "/etc/termux/bootstrap-from-nixondroid.sh";
       };
@@ -102,7 +102,7 @@ in {
           wait
         '';
       };
-      sharedDir.copy."termux-x11" = "/etc/termux-x11";
+      termux.sharedDir.copy."termux-x11" = "/etc/termux-x11";
     })
 
   ]));

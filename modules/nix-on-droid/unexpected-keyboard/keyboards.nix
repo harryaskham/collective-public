@@ -8,6 +8,7 @@ with uklib;
   {
     # <keyboard name="QWERTY (US)" script="latin">
     name = "QWERTY (US)";
+    includeDefaultVariants = false;
     rows = with codes; [
       # <row>
       #   <key c="q" ne="1" se="loc esc"/>
@@ -369,43 +370,63 @@ with uklib;
   {
     name = "Code QWERTY Compact";
     bottomRow = false;
-    variants = with codes; {
+    variants = with codes; 
+      let 
+        mkSplit = gap: spacePadding: composeMany [
+          fitWidth
+          (insertKey 0 0 (K "⎋" c.esc nw.tab K))
+          (insertKey 1 0 (K 1.5 "✲" c.ctrl "❖" sw.meta "⌥" ne.alt K))
+          (insertKey 2 0 (K 2 c.shift K))
+          (insertCol 5 (
+            K "✲" c.ctrl "⎋" se.esc nw.tab
+            _ c.shift "❖" sw.meta "⌥" ne.alt
+            _ gap spacePadding w.cur_l  " " c.spc  e.cur_r
+            K))
+          (updateKey 0 5 (addShift gap + 2))
+          (updateKey 1 5 (addShift gap + 1.5))
+          (updateKey 2 5 (addShift spacePadding))
+          (deleteRow 3)
+        ];
+      in {
+        # Add mods down the left side and remove duplicates on the old column-0
+        leftMods = composeMany [
+          fitWidth
+          (insertCol 0 (
+            K "⎋" c.esc nw.tab ne."`" sw."~"
+            _ "✲" c.ctrl
+            _ c.shift
+            _ "❖" c.meta
+            K))
+          (setKey 0 0 (K c.q ne."1" sw."!" K))
+          (updateKey 0 0 clearOrdinal.nw)
+          (updateKey 0 0 clearOrdinal.se)
+          (updateKey 0 0 clearOrdinal.sw)
+          (updateKey 0 1 clearOrdinal.nw)
+          (updateKey 1 0 clearOrdinal.nw)
+          (updateKey 1 0 clearOrdinal.ne)
+          (updateKey 1 0 clearOrdinal.se)
+          (deleteKey 3 0)
+        ];
 
-      # Add mods down the left side and remove duplicates on the old column-0
-      leftMods = composeMany [
-        (scaleWidth (10.0 / 11.0))
-        (insertCol 0 (
-          K "⎋" c.esc ne.tab ne."`" se."~"
-          _ "✲" c.ctrl
-          _ c.shift
-          _ "❖" c.meta
-          K))
-        (setKey 0 0 (K c.q ne."1" sw."!" K))
-        (updateKey 0 0 clearOrdinal.nw)
-        (updateKey 0 0 clearOrdinal.se)
-        (updateKey 0 0 clearOrdinal.sw)
-        (updateKey 0 1 clearOrdinal.nw)
-        (updateKey 1 0 clearOrdinal.nw)
-        (updateKey 1 0 clearOrdinal.ne)
-        (updateKey 1 0 clearOrdinal.se)
-        (deleteKey 3 0)
-      ];
+        # Split layout with most mods in the middle and no fourth row.
+        splitCentralMods = composeMany [
+          fitWidth
+          (insertCol 6 (
+            K c.bsp sw.del
+            _ c.enter
+            K))
+          (insertCol 5 (
+            K "✲" c.ctrl "⎋" se.esc nw.tab
+            _ c.shift "❖" sw.meta "⌥" ne.alt
+            _ 2 w.cur_l  " " c.spc  e.cur_r
+            K))
+          (deleteRow 3)
+        ];
 
-      # Split layout with most mods in the middle and no fourth row.
-      splitCentralMods = composeMany [
-        (scaleWidth (10.0 / 12.0))
-        (insertCol 6 (
-          K c.bsp sw.del
-          _ c.enter
-          K))
-        (insertCol 5 (
-          K "✲" c.ctrl "⎋" se.esc nw.tab
-          _ c.shift "❖" sw.meta "⌥" ne.alt
-          _ 2 w.cur_l  " " c.spc  e.cur_r
-          K))
-        (deleteRow 3)
-      ];
-    };
+        # Split layout with empty middle row for landscape mode.
+        splitPortrait = mkSplit 2 0.5;
+        splitLandscape = mkSplit 6 1;
+      };
 
     rows = with codes; let height = 0.65; in [{
         inherit height;

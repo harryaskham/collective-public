@@ -134,6 +134,9 @@ in rec {
   # Get the maximum of a list of numbers.
   maximum = typed.fold._1.right max;
 
+  # Get the sum of a list of numbers.
+  sum = typed.fold._1.right (a: b: a + b);
+
   # Get the tail of a list or null if empty.
   maybeHead = xs: if xs == [] then null else head xs;
 

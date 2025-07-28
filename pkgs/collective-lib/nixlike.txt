@@ -167,18 +167,10 @@ eval._tests.run {}
 
 <nix>
 let
-  uk = import ../modules/nix-on-droid/unexpected-keyboard;
+  uk = import ../../modules/nix-on-droid/unexpected-keyboard;
   fakeModule = {...}: {
-    options = {
-      environment.etc = mkOption {
-        type = types.attrsOf (types.attrsOf types.str);
-        default = {};
-      };
-      build.activationAfter = mkOption {
-        type = types.attrsOf (types.attrsOf types.str);
-        default = {};
-      };
-    };
+    options.environment.etc = mkOption { type = types.attrsOf (types.attrsOf types.str); default = {};  };
+    options.termux.sharedDir.copy = mkOption { type = types.attrsOf types.str; default = {};  };
   };
   cfg = {...}: {
     services.unexpected-keyboard = {
@@ -193,7 +185,8 @@ in
       systemType = data.SystemType.NixOS;
     };
     modules = [ fakeModule uk cfg ] ;
-  }).config.services.unexpected-keyboard._tests.run {}
+  #}).config.services.unexpected-keyboard._tests.run {}
+  }).config.services.unexpected-keyboard._tests.debug {}
 </nix>
 
 <nix>

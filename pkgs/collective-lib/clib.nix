@@ -1,6 +1,7 @@
 { pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
 
 with lib;
+with collective-lib;
 
 # Misc library fns
 rec {
@@ -52,4 +53,34 @@ rec {
   });
 
   mkDefaultNull = type: mkDefaultOption (types.nullOr type) null;
+
+  # Misc
+  pow = lib.fix (
+    self: base: power:
+      if power != 0
+      then base * (self base (power - 1))
+      else 1
+    );
+
+  trunc = d: x: let e = pow 10 d; in x - ((x * e - round (x * e)) / e);
+  round = x: 
+    let f = builtins.floor x;
+        d = x - f;
+    in if d >= 0.5 then f + 1 else f;
+
+  _tests = with typed.tests; suite {
+    round = {
+      low = expect.eq (round 1.2345) 1;
+      high = expect.eq (round 1.8345) 2;
+      neg = expect.eq (round (-1.8345)) (-2);
+      int = expect.eq (round 1) 1;
+    };
+    trunc = {
+      low = expect.eq (trunc 1 1.2345) 1.2;
+      high = expect.eq (trunc 2 1.8345) 1.83;
+      neg = expect.eq (trunc 2 (-1.8345)) (-1.83);
+      int = expect.eq (trunc 2 1) 1;
+      zero = expect.eq (trunc 0 1.2345) 1;
+    };
+  };
 }

@@ -92,19 +92,32 @@ let
     imodifyKeys = prop: f: imapKeys (rowI: colI: modify prop (f rowI colI));
     modifyRows = prop: f: mapRows (modify prop f);
 
-    scaleWidth = c: modifyKeys "width" (w: 1.0 * w * c);
-    scaleHeight = c: modifyRows "height" (h: 1.0 * h * c);
-    scaleGap = gap: scaleWidth ((10.0 - gap) / 10.0);
+    addShift = s: modify "shift" (s': s + s');
+    addWidth = w: modify "width" (w': w + w');
+
+    _5sf = x: trunc 4 x;
+    scaleWidth = c: composeMany [
+      (modifyKeys "width" (w: _5sf (w * c)))
+      (modifyKeys "shift" (s: _5sf (s * c)))
+    ];
+    scaleHeight = c: modifyRows "height" (h: _5sf (h * c));
+    scaleGap = w: gap: scaleWidth ((w - gap) / w);
+
+    # Scale a keyboard to fit left-to-right according to its largest row.
+    fitWidth = k: scaleWidth (10.0 / (maxRowWidth k)) k;
 
     shiftRight = shift: imodifyKeys "shift" (_: colI: shift':
       if colI == 0 then shift + shift' else shift');
     shiftLeft = shift: shiftRight (-shift);
 
+    rowWidth = row: sum (map (key: key.width + key.shift) row.keys);
+    maxRowWidth = keyboard: maximum (map rowWidth keyboard.rows);
+
     # Left-aligned one-handed layout
-    lefty = gap: k: scaleGap gap k;
+    lefty = gap: k: scaleGap (maxRowWidth k) gap k;
 
     # Right-aligned one-handed layout
-    righty = gap: k: shiftRight gap (scaleGap gap k);
+    righty = gap: k: shiftRight gap (scaleGap (maxRowWidth k) gap k);
 
     defaultVariants = {
       lefty = lefty 2.0;
@@ -994,7 +1007,7 @@ in {
     };
     enable = mkEnable "Whether to enable Unexpected Keyboard configuration.";
     copyConfigDir = mkOption {
-      type = types.bool types.str;
+      type = types.bool;
       default = false;
       description = ''
         If set, copy the generated /etc configs to the configured Termux shared/ dir.
@@ -1175,7 +1188,7 @@ in {
 
       # If enabled, copy the generated /etc configs to the shared dir.
       (mkIf cfg.copyConfigDir {
-        sharedDir.copy."unexpected_keyboard" = "/etc/unexpected_keyboard";
+        termux.sharedDir.copy."unexpected_keyboard" = "/etc/unexpected_keyboard";
       })
 
 
@@ -1217,7 +1230,7 @@ in {
             fakeModule =
               {...}: {
                 options.environment.etc = mkOption { type = types.attrsOf (types.attrsOf types.str); default = {}; };
-                options.build.activationAfter = mkOption { type = types.attrsOf (types.attrsOf types.str); default = {}; };
+                options.termux.sharedDir.copy = mkOption { type = types.attrsOf types.str; default = {}; };
               };
             mkConfigModule = includeDefaultKeyboards: keyboards:
               {...}: { 
@@ -1238,7 +1251,7 @@ in {
               in {
                 layouts = expect.eq (config.services.unexpected-keyboard.layouts) {};
                 etc = expect.eq (config.environment.etc) {};
-                buildAfter = expect.eq (config.build.activationAfter) {};
+                sharedDir = expect.eq (config.termux.sharedDir.copy) {};
               };
             defaults = 
               let config = mkConfig typed.SystemType.NixOnDroid (mkConfigModule true []);
@@ -1281,7 +1294,7 @@ in {
                   let l = getLayout "Code QWERTY Compact (leftMods)";
                       k = l.keyboard;
                       tl_key = getKey 0 0 k;
-                  in expect.eq [tl_key.c.k tl_key.width] [ "tab" (10.0 / 11.0) ];
+                  in expect.eq [tl_key.c.k tl_key.width] [ "esc" (_5sf (10.0 / 11.0)) ];
               };
           });
       })
