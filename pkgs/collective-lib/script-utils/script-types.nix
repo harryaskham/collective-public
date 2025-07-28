@@ -3,6 +3,7 @@
 with lib;
 with lib.strings;
 with collective-lib.strings;
+with collective-lib.functions;
 with ansi-utils;
 with log-utils;
 with usage-utils;
