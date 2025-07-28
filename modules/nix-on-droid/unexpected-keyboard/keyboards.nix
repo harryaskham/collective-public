@@ -372,20 +372,22 @@ with uklib;
     bottomRow = false;
     variants = with codes; 
       let 
-        mkSplit = gap: spacePadding: composeMany [
-          fitWidth
-          (insertKey 0 0 (K "⎋" c.esc nw.tab K))
-          (insertKey 1 0 (K 1.5 "✲" c.ctrl "❖" sw.meta "⌥" ne.alt K))
-          (insertKey 2 0 (K 2 c.shift K))
-          (insertCol 5 (
+        mkSplit = gap: spacePadding: ap.list [
+          (deleteRow 3)
+          (updateKey 0 5 (addShift (gap + 2)))
+          (updateKey 1 5 (addShift (gap + 1.5)))
+          (updateKey 2 5 (addShift spacePadding))
+          (insertCol 0 (
+            K "⎋" c.esc nw.tab
+            _ 1.5 "✲" c.ctrl "❖" sw.meta "⌥" ne.alt
+            _ 2 c.shift
+            K))
+          (insertCol 6 (
             K "✲" c.ctrl "⎋" se.esc nw.tab
             _ c.shift "❖" sw.meta "⌥" ne.alt
             _ gap spacePadding w.cur_l  " " c.spc  e.cur_r
             K))
-          (updateKey 0 5 (addShift gap + 2))
-          (updateKey 1 5 (addShift gap + 1.5))
-          (updateKey 2 5 (addShift spacePadding))
-          (deleteRow 3)
+          fitWidth
         ];
       in {
         # Add mods down the left side and remove duplicates on the old column-0
