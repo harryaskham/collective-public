@@ -19,14 +19,14 @@ in {
     x11 = mkNestedEnable "Whether to enable x11 and associated scripts";
     sharedDir = {
       enable = mkEnable "Whether to enable shared directory";
-      path = mkOption {
+      path = lib.mkOption {
         type = lib.types.str;
         default = "/storage/emulated/0/shared";
         description = ''
           The directory in shared storage to output files.
         '';
       };
-      copy = mkOption {
+      copy = lib.mkOption {
         type = lib.types.attrsOf lib.types.str;
         default = {};
         description = ''
