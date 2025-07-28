@@ -27,12 +27,10 @@
           lib = collective-lib;
           packages = import ./pkgs { inherit pkgs inputs; };
           devShells = { default = pkgs.mkShell {}; };
-          # Modules still have _tests here; removed before applying them to
-          # systems.
           inherit testedModules;
           modules = 
-            with collective-lib.tests;
-            removeTests (mapAttrs (_: removeTests) testedModules);
+            with collective-lib.typed;
+            tests.removeTests (mapAttrs (_: tests.removeTests) testedModules);
         }
       ) // {
         overlays = import ./overlays { inherit inputs; inherit (nixpkgs) lib; };
