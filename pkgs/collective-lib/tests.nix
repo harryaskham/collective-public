@@ -477,6 +477,21 @@ in rec {
        then testModule._tests
        else emptySuite;
 
+  getModuleFromTestableModule = module:
+    if (isFunction module && ((builtins.functionArgs module) ? testableModule))
+    then module { testableModule = lib.const; }
+    else module;
+
+  getTestsFromTestableModule = module:
+    if (isFunction module && ((builtins.functionArgs module) ? testableModule))
+    then module { testableModule = flip lib.const; }
+    else module;
+
+  collectTestableModules = maybeTestableModules:
+    (mapAttrs (_: getModuleFromTestableModule) maybeTestableModules) // {
+      _tests = mergeModuleSuites (mapAttrs (_: getTestsFromTestableModule) maybeTestableModules);
+    };
+
   mergeModuleSuites = modules:
     mergeSuites (mapAttrs (_: testModule) modules);
 }

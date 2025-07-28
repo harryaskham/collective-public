@@ -176,8 +176,9 @@ functions._tests.run {}
 <nix>
 (tests.testModule ../../modules/nix-on-droid/unexpected-keyboard).run {}
 </nix>
+
 <nix>
-(import ../../modules/nix-on-droid/unexpected-keyboard).run {}
+(import ../../modules { inherit collective-lib; })._tests.run {}
 </nix>
 
 <nix>

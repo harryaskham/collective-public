@@ -1,4 +1,6 @@
-{ config, lib, typed, testableModule ? lib.const, ...}: 
+{ testableModule }: 
+
+{ config, lib, typed} : 
 
 testableModule (
 
