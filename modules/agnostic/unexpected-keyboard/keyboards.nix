@@ -374,7 +374,7 @@ with uklib;
       let
         addLeftMods = precompose [
           (setKey 0 0 (K c.q ne."1" sw."!" K)) # Clears Q
-          (updateKey 0 2 clearOrdinal.nw) # Clears W !
+          (updateKey 0 2 clearCardinal.nw) # Clears W !
           (setKey 1 0 (K c.a K)) # Clears A
           (setKey 2 0 (K c.z ne."|" sw."\\" K)) # Clears Z
           # Adds LHS mods

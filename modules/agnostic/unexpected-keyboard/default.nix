@@ -31,7 +31,7 @@ let
       in updateRows (updateAt rowI (updateRowKeys (insertAt colI key)));
     deleteKey = rowI: colI: updateRows (updateAt rowI (updateRowKeys (deleteAt colI)));
 
-    setOrdinal = {
+    setCardinal = {
       c = m: key: key // {c = m;};
       n = m: key: key // {n = m;};
       ne = m: key: key // {ne = m;};
@@ -44,7 +44,7 @@ let
       anticircle = m: key: key // {anticircle = m;};
     };
 
-    updateOrdinal = {
+    updateCardinal = {
       c = f: key: key // {c = f key.c;};
       n = f: key: key // {n = f key.n;};
       ne = f: key: key // {ne = f key.ne;};
@@ -57,7 +57,7 @@ let
       anticircle = f: key: key // {anticircle = f key.anticircle;};
     };
 
-    clearOrdinal = {
+    clearCardinal = {
       c = key: key // {c = null;};
       n = key: key // {n = null;};
       ne = key: key // {ne = null;};
