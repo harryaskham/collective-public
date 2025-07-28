@@ -125,7 +125,17 @@ rec {
         (maybeRunMainBlock args)
       ];
 
-    in fullScript;
+    in
+      # Along the way, building the script drops the context of interpolated
+      # dependencies, so we need to re-add the context from the main and body
+      compose [
+        (addContextFrom (args.summary or ""))
+        (addContextFrom (args.preamble or ""))
+        (addContextFrom (args.usage or ""))
+        (addContextFrom (args.main or ""))
+        (addContextFrom (args.body or ""))
+      ]
+      fullScript;
 
   # Check equality of script types by comparing their IDs.
   scriptTypeEquals = a: b: a.id == b.id;

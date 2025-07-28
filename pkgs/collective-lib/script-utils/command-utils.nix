@@ -39,7 +39,7 @@ in rec {
     '';
     main = ''
       if [[ -z "$COMMAND" ]]; then
-        ${log.fatalWithUsage "No command given"}
+        ${log.exit.usage}
       fi
 
       CMD="${name}-''${COMMAND}"
