@@ -33,6 +33,7 @@
         agnosticModules = import ./modules/agnostic;
         nixosModules = import ./modules/nixos;
         nixOnDroidModules = import ./modules/nix-on-droid;
-        nixDarwinModules = {};
+        nixDarwinModules = import ./modules/nix-darwin;
+        homeManagerModules = import ./modules/home-manager;
       };
 }
