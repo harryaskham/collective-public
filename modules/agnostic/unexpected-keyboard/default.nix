@@ -1,6 +1,6 @@
 { testableModule }: 
 
-{ config, lib, typed} : 
+{ config, lib, typed }: 
 
 testableModule (
 

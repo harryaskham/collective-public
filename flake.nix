@@ -17,28 +17,19 @@
   } @ inputs:
     let
       inherit (self) outputs;
-      collectiveLibForArchitecture = architectureStr:
-        outputs.packages.${architectureStr}.collective-lib;
     in 
       flake-utils.lib.eachDefaultSystem (system:
-        let pkgs = nixpkgs.legacyPackages.${system};
+        let 
+          collective-lib = outputs.packages.${system}.collective-lib;
+          importModules = path: collective-lib.tests.removeTests (import path { inherit collective-lib; });
+          pkgs = nixpkgs.legacyPackages.${system};
         in {
+          lib = collective-lib;
           packages = import ./pkgs { inherit pkgs inputs; };
           devShells = { default = pkgs.mkShell {}; };
-          lib = collectiveLibForArchitecture system;
+          modules = removeTests (import ./modules { inherit collective-lib; });
         }
-      ) // (
-        let
-          # TODO: Decouple reliance on system.
-          inherit (self.lib.x86_64-linux) tests;
-          moduleArgs = { collective-lib = self.lib; };
-          importModules = path: tests.removeTests (import path moduleArgs);
-        in {
-          overlays = import ./overlays { inherit inputs; inherit (nixpkgs) lib; };
-          agnosticModules = importModules ./modules/agnostic;
-          nixosModules = importModules ./modules/nixos;
-          nixOnDroidModules = importModules ./modules/nix-on-droid;
-          nixDarwinModules = importModules ./modules/nix-darwin;
-          homeManagerModules = importModules ./modules/home-manager;
-        });
+      ) // {
+        overlays = import ./overlays { inherit inputs; inherit (nixpkgs) lib; };
+      };
 }
