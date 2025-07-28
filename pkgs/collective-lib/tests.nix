@@ -462,19 +462,6 @@ in rec {
       ];
   };
 
-  withTestOption = options: options // {
-    _enableTests = mkOption {
-      type = types.bool;
-      default = false;
-      description = ''Whether to enable tests for this module.'';
-    };
-    _tests = mkOption {
-      type = types.attrs;
-      default = suite {};
-      description = ''The test suite for this module.'';
-    };
-  };
-
   removeTests = xs: removeAttrs xs ["_tests"];
 
   testModule = module_:
