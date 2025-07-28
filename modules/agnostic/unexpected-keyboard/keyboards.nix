@@ -1,4 +1,4 @@
-{ uklib, typed }:
+{ uklib, typed, ... }:
 
 with typed;
 with uklib;
