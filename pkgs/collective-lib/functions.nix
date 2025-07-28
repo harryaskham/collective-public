@@ -535,14 +535,29 @@ in rec {
       list.orderDependent.math = expect.eq (ap.list (a: b: c: a + b * c) [1 2 3]) 7;
     };
 
-    compose = {
-      expr =
-        let f = a: a + 1;
-            g = a: a * 3;
-            gf = compose g f;
-        in map gf [0 1 2 3];
-      expected = [3 6 9 12];
-    };
+    compose =
+      let f = a: a + 1;
+          g = a: a * 3;
+      in {
+        fns =
+          let gf = compose g f;
+          in expect.eq (map gf [0 1 2 3]) [3 6 9 12];
+        list =
+          let gf = compose [g f];
+          in expect.eq (map gf [0 1 2 3]) [3 6 9 12];
+      };
+
+    precompose =
+      let f = a: a + 1;
+          g = a: a * 3;
+      in {
+        fns =
+          let gf = precompose f g;
+          in expect.eq (map gf [0 1 2 3]) [3 6 9 12];
+        list =
+          let gf = precompose [f g];
+          in expect.eq (map gf [0 1 2 3]) [3 6 9 12];
+      };
 
     Variadic = {
       default = {

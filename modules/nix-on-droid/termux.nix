@@ -1,4 +1,5 @@
-{ config, lib, pkgs, outputs, untyped, ...}:
+{ config, lib, pkgs, outputs, untyped, typed,
+  toShellValue ? typed.toShellValueUnsafe, ...}:
 
 # Convenience scripts for exposing actions from Nix-on-Droid to Termux.
 # Enables easier composition with Tasker for one-click actions like
