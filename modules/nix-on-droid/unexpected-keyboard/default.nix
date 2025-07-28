@@ -103,16 +103,20 @@ let
     ];
     scaleHeight = c: modifyRows "height" (h: _4dp (h * c));
     scaleGap = w: gap: scaleWidth ((w - gap) / w);
-    scaleGap_ = gap: scaleGap 10.0;
+    scaleGap_ = scaleGap 10.0;
 
     # Scale a keyboard to fit left-to-right according to its largest row.
-    fitWidth = k: scaleWidth (10.0 / (maxRowWidth k)) k;
+    fitWidth = k: scaleWidth (10.0 / (getMaxRowWidth k)) k;
 
-    shiftRight = shift: imodifyKeys "shift" (_: colI: shift':
-      if colI == 0 then shift + shift' else shift');
+    # Shift all rows to the right by the given amount.
+    shiftRight = shift:
+      imapKeys (_: colI: if colI == 0 then addShift shift else id);
 
-    rowWidth = row: sum (map (key: key.width + key.shift) row.keys);
-    maxRowWidth = keyboard: maximum (map rowWidth keyboard.rows);
+    # Get the unnormalized width of a row (widths plus shifts)
+    getRowWidth = row: sum (map (key: key.width + key.shift) row.keys);
+
+    # Get the maximum unnormalized width of a row in a keyboard.
+    getMaxRowWidth = keyboard: maximum (map getRowWidth keyboard.rows);
 
     Variants = {
       # Left-aligned one-handed layout
@@ -918,7 +922,6 @@ let
   # Option type storing a keyboard along with its compiled XML.
   layoutType = types.submodule {
     options = {
-      enabled = mkDefaultEnable "Whether to enable this keyboard layout.";
       keyboard = mkOption {
         type = keyboardType;
         description = "The keyboard layout that generated this layout file";
@@ -1180,15 +1183,15 @@ in {
                 keyboards // variants;
 
             # Write compiled layouts out to the service config.
-            layouts = mkDefault
-              (mapAttrs
+            layouts = 
+              mapAttrs
                 (_: keyboard: rec {
                   inherit keyboard;
                   xmlSource = xml.mkLayoutXML keyboard;
                   relPath = layoutPath keyboard;
                   mkFile = { ${relPath}.text = xmlSource; };
                 })
-                cfg.keyboardsWithVariants);
+                cfg.keyboardsWithVariants;
           }
         ];
 
@@ -1267,8 +1270,8 @@ in {
             defaults = 
               let config = mkConfig typed.SystemType.NixOnDroid (mkConfigModule true []);
               in with config.services.unexpected-keyboard.lib; {
-                etc.size = expect.eq (size config.environment.etc) 11;
-                layouts.size = expect.eq (size config.services.unexpected-keyboard.layouts) 11;
+                etc.size = expect.eq (size config.environment.etc) 10;
+                layouts.size = expect.eq (size config.services.unexpected-keyboard.layouts) 10;
                 layouts.golden = 
                   expect.eq config.services.unexpected-keyboard.layouts."QWERTY (US)".xmlSource
                   "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\n<keyboard\n  bottom_row=\"true\"\n  embedded_number_row=\"false\"\n  locale_extra_keys=\"false\"\n  name=\"QWERTY (US)\"\n  numpad_script=\"latin\"\n  script=\"latin\"\n  >\n  \n  <row height=\"1.0\">\n    <key c=\"q\" ne=\"1\" se=\"loc esc\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"w\" ne=\"2\" nw=\"~\" shift=\"0.0\" sw=\"@\" width=\"1.0\" />\n    <key c=\"e\" ne=\"3\" nw=\"!\" se=\"loc €\" shift=\"0.0\" sw=\"#\" width=\"1.0\" />\n    <key c=\"r\" ne=\"4\" shift=\"0.0\" sw=\"$\" width=\"1.0\" />\n    <key c=\"t\" ne=\"5\" shift=\"0.0\" sw=\"%\" width=\"1.0\" />\n    <key c=\"y\" ne=\"6\" shift=\"0.0\" sw=\"^\" width=\"1.0\" />\n    <key c=\"u\" ne=\"7\" shift=\"0.0\" sw=\"&amp;\" width=\"1.0\" />\n    <key c=\"i\" ne=\"8\" shift=\"0.0\" sw=\"*\" width=\"1.0\" />\n    <key c=\"o\" ne=\"9\" se=\")\" shift=\"0.0\" sw=\"(\" width=\"1.0\" />\n    <key c=\"p\" ne=\"0\" shift=\"0.0\" width=\"1.0\" />\n  </row>\n  \n  <row height=\"1.0\">\n    <key c=\"a\" ne=\"`\" shift=\"0.5\" width=\"1.0\" />\n    <key c=\"s\" ne=\"loc §\" shift=\"0.0\" sw=\"loc ß\" width=\"1.0\" />\n    <key c=\"d\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"f\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"g\" ne=\"-\" shift=\"0.0\" sw=\"_\" width=\"1.0\" />\n    <key c=\"h\" ne=\"=\" shift=\"0.0\" sw=\"+\" width=\"1.0\" />\n    <key c=\"j\" se=\"}\" shift=\"0.0\" sw=\"{\" width=\"1.0\" />\n    <key c=\"k\" se=\"]\" shift=\"0.0\" sw=\"[\" width=\"1.0\" />\n    <key c=\"l\" ne=\"|\" shift=\"0.0\" sw=\"\\\" width=\"1.0\" />\n  </row>\n  \n  <row height=\"1.0\">\n    <key c=\"shift\" ne=\"loc capslock\" shift=\"0.0\" width=\"1.5\" />\n    <key c=\"z\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"x\" ne=\"†\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"c\" ne=\"&lt;\" shift=\"0.0\" sw=\".\" width=\"1.0\" />\n    <key c=\"v\" ne=\"&gt;\" shift=\"0.0\" sw=\",\" width=\"1.0\" />\n    <key c=\"b\" ne=\"?\" shift=\"0.0\" sw=\"/\" width=\"1.0\" />\n    <key c=\"n\" ne=\":\" shift=\"0.0\" sw=\";\" width=\"1.0\" />\n    <key c=\"m\" ne=\"&quot;\" shift=\"0.0\" sw=\"'\" width=\"1.0\" />\n    <key c=\"backspace\" ne=\"delete\" shift=\"0.0\" width=\"1.5\" />\n  </row>\n\n</keyboard>";
@@ -1305,7 +1308,7 @@ in {
                   let l = getLayout "Code QWERTY Compact (leftMods)";
                       k = l.keyboard;
                       tl_key = getKey 0 0 k;
-                  in expect.eq [tl_key.c.k tl_key.width] [ "esc" (_5sf (10.0 / 11.0)) ];
+                  in expect.eq [tl_key.c.k tl_key.width] [ "esc" (_4dp (10.0 / 11.0)) ];
               };
           });
       })
