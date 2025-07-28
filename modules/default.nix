@@ -6,4 +6,4 @@ collective-lib.tests.withMergedSuites {
   nixos = import ./nixos args;
   nix-on-droid = import ./nix-on-droid args;
   nix-darwin = import ./nix-darwin args;
-};
+}
