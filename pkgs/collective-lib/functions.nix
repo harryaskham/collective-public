@@ -33,8 +33,23 @@ in rec {
   pointerEqual = a: b: [ a ] == [ b ];
 
   # Compose two functions left-to-right
-  compose = g: f: a: g (f a);
+  compose = dispatch.on (x: boolToString (isFunction x)) {
+    true = f: g: a: f (g a);
+    false = dispatch {
+      list = composeMany;
+    };
+  };
+
+  # Compose two functions left-to-right
+  precompose = dispatch.on (x: boolToString (isFunction x)) {
+    true = f: g: a: g (f a);
+    false = dispatch {
+      list = precomposeMany;
+    };
+  };
+
   composeMany = typed.foldl' compose id;
+  precomposeMany = typed.foldl' precompose id;
 
   # Apply a function to a value
   ap = {

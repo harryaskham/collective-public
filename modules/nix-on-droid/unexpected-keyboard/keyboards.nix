@@ -372,7 +372,7 @@ with uklib;
     bottomRow = false;
     variants = with codes; 
       let 
-        mkSplit = gap: spacePadding: ap.list [
+        mkSplit = gap: spacePadding: precompose [
           (deleteRow 3)
           (updateKey 0 5 (addShift (gap + 2)))
           (updateKey 1 5 (addShift (gap + 1.5)))
