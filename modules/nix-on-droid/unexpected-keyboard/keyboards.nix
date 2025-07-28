@@ -371,63 +371,49 @@ with uklib;
     name = "Code QWERTY Compact";
     bottomRow = false;
     variants = with codes; 
-      let 
-        mkSplit = gap: spacePadding: precompose [
-          (deleteRow 3)
-          (updateKey 0 5 (addShift (gap + 2)))
-          (updateKey 1 5 (addShift (gap + 1.5)))
-          (updateKey 2 5 (addShift spacePadding))
-          (insertCol 0 (
-            K "⎋" c.esc nw.tab
-            _ 1.5 "✲" c.ctrl "❖" sw.meta "⌥" ne.alt
-            _ 2 c.shift
-            K))
-          (insertCol 6 (
-            K "✲" c.ctrl "⎋" se.esc nw.tab
-            _ c.shift "❖" sw.meta "⌥" ne.alt
-            _ gap spacePadding w.cur_l  " " c.spc  e.cur_r
-            K))
-          fitWidth
-        ];
-      in {
-        # Add mods down the left side and remove duplicates on the old column-0
-        leftMods = composeMany [
-          fitWidth
+      let
+        addLeftMods = precompose [
+          (setKey 0 0 (K c.q ne."1" sw."!" K)) # Clears Q
+          (updateKey 0 2 clearOrdinal.nw) # Clears W !
+          (setKey 1 0 (K c.a K)) # Clears A
+          (setKey 2 0 (K c.z ne."|" sw."\\" K)) # Clears Z
+          # Adds LHS mods
           (insertCol 0 (
             K "⎋" c.esc nw.tab ne."`" sw."~"
-            _ "✲" c.ctrl
+            _ "✲" c.ctrl "❖" sw.meta "⌥" ne.alt "▤" nw.fn
             _ c.shift
-            _ "❖" c.meta
             K))
-          (setKey 0 0 (K c.q ne."1" sw."!" K))
-          (updateKey 0 0 clearOrdinal.nw)
-          (updateKey 0 0 clearOrdinal.se)
-          (updateKey 0 0 clearOrdinal.sw)
-          (updateKey 0 1 clearOrdinal.nw)
-          (updateKey 1 0 clearOrdinal.nw)
-          (updateKey 1 0 clearOrdinal.ne)
-          (updateKey 1 0 clearOrdinal.se)
-          (deleteKey 3 0)
         ];
 
-        # Split layout with most mods in the middle and no fourth row.
-        splitCentralMods = composeMany [
+        mkSplit = gap: spacePaddingL: spacePaddingR:
+          let spaceWidth = gap - spacePaddingL - spacePaddingR;
+          in precompose [
+            addLeftMods
+            (deleteRow 3) # Removes modes, spacebar, cursor and enter
+            (setKey 1 10 (K nw.shift ne.del c.bsp "✲" sw.ctrl K)) # Re-adds backspace
+            (setKey 2 9 (K n.up w.left e.right s.down K)) # Re-adds cursor keys
+            (setKey 2 10 (K c.enter K)) # Re-adds enter
+            # Insert split
+            (updateKey 0 6 (addShift gap))
+            (updateKey 1 6 (addShift gap))
+            (updateKey 2 6 (addShift spacePaddingR))
+            # Insert spacebar into centre of split
+            (insertKey 2 6 6 (K spaceWidth spacePaddingL w.cur_l  " " c.spc  e.cur_r))
+            # Finally fit to width to scale 20 -> 10
+            fitWidth
+          ];
+      in {
+        # Add mods down the left side and remove duplicates on the old column-0
+        leftMods = precompose [
+          (setKey 3 0 (K "❖" c.meta K))
+          (updateKey 3 2 (addWidth 1))
+          addLeftMods
           fitWidth
-          (insertCol 6 (
-            K c.bsp sw.del
-            _ c.enter
-            K))
-          (insertCol 5 (
-            K "✲" c.ctrl "⎋" se.esc nw.tab
-            _ c.shift "❖" sw.meta "⌥" ne.alt
-            _ 2 w.cur_l  " " c.spc  e.cur_r
-            K))
-          (deleteRow 3)
         ];
 
         # Split layout with empty middle row for landscape mode.
-        splitPortrait = mkSplit 2 0.5;
-        splitLandscape = mkSplit 6 1;
+        splitPortrait = mkSplit 4 1 2;
+        splitLandscape = mkSplit 10 1 2;
       };
 
     rows = with codes; let height = 0.65; in [{
@@ -478,7 +464,7 @@ with uklib;
       {
         inherit height;
         keys =
-          K 1
+          K
             nw.tab     ne.shift
                   c.a
                       "✲" se.ctrl
@@ -516,9 +502,8 @@ with uklib;
                     c.l
 
           _
-            nw.shift     ne.del
-                    c.bsp
-            "✲" sw.ctrl  
+                         ne."\""
+                    c.";"
 
         K;
       }
@@ -558,14 +543,10 @@ with uklib;
                         ne.";"
                   c."."
             sw.","
-          _
-                      n.up
-              w.left  c.enter   e.right
-                      s.down
-          _
-
-                c.enter
-
+          _ 2
+            nw.shift     ne.del
+                    c.bsp
+            "✲" sw.ctrl
           K;
       }
 
@@ -579,16 +560,18 @@ with uklib;
            "ℕ" nw._123    "▤" ne.fn
                   "⌥" c.alt
 
-          _ 4
+          _ 6
 
               w.cur_l  " " c.spc  e.cur_r
 
           _
-                      "✲" ne.ctrl
-                 "❖" c.meta
+                      n.up
+              w.left        e.right
+                      s.down
           _
-                       "⌥" ne.alt
-                 "▤" c.fn
+
+                          ne.action
+                   c.enter
 
           K;
       }

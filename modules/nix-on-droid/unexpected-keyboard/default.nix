@@ -95,33 +95,37 @@ let
     addShift = s: modify "shift" (s': s + s');
     addWidth = w: modify "width" (w': w + w');
 
-    _5sf = x: trunc 4 x;
+    _4dp = x: trunc 4 x;
+
     scaleWidth = c: composeMany [
-      (modifyKeys "width" (w: _5sf (w * c)))
-      (modifyKeys "shift" (s: _5sf (s * c)))
+      (modifyKeys "width" (w: _4dp (w * c)))
+      (modifyKeys "shift" (s: _4dp (s * c)))
     ];
-    scaleHeight = c: modifyRows "height" (h: _5sf (h * c));
+    scaleHeight = c: modifyRows "height" (h: _4dp (h * c));
     scaleGap = w: gap: scaleWidth ((w - gap) / w);
+    scaleGap_ = gap: scaleGap 10.0;
 
     # Scale a keyboard to fit left-to-right according to its largest row.
     fitWidth = k: scaleWidth (10.0 / (maxRowWidth k)) k;
 
     shiftRight = shift: imodifyKeys "shift" (_: colI: shift':
       if colI == 0 then shift + shift' else shift');
-    shiftLeft = shift: shiftRight (-shift);
 
     rowWidth = row: sum (map (key: key.width + key.shift) row.keys);
     maxRowWidth = keyboard: maximum (map rowWidth keyboard.rows);
 
-    # Left-aligned one-handed layout
-    lefty = gap: k: scaleGap (maxRowWidth k) gap k;
+    Variants = {
+      # Left-aligned one-handed layout
+      lefty = gap: precompose [fitWidth (scaleGap_ gap)];
 
-    # Right-aligned one-handed layout
-    righty = gap: k: shiftRight gap (scaleGap (maxRowWidth k) gap k);
+      # Right-aligned one-handed layout
+      righty = gap: precompose [(lefty gap) (shiftRight gap)];
+    };
 
+    # Default variants to apply if includeDefaultVariants is set.
     defaultVariants = {
-      lefty = lefty 2.0;
-      righty = righty 2.0;
+      lefty = Variants.lefty 2.0;
+      righty = Variants.righty 2.0;
     };
 
     defaultKeyValueAliases = with codes; {
@@ -908,6 +912,7 @@ let
   # Option type storing a keyboard along with its compiled XML.
   layoutType = types.submodule {
     options = {
+      enabled = mkDefaultEnable "Whether to enable this keyboard layout.";
       keyboard = mkOption {
         type = keyboardType;
         description = "The keyboard layout that generated this layout file";
@@ -1169,15 +1174,15 @@ in {
                 keyboards // variants;
 
             # Write compiled layouts out to the service config.
-            layouts =
-              mapAttrs
+            layouts = mkDefault
+              (mapAttrs
                 (_: keyboard: rec {
                   inherit keyboard;
                   xmlSource = xml.mkLayoutXML keyboard;
                   relPath = layoutPath keyboard;
                   mkFile = { ${relPath}.text = xmlSource; };
                 })
-                cfg.keyboardsWithVariants;
+                cfg.keyboardsWithVariants);
           }
         ];
 
