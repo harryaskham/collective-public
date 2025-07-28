@@ -32,9 +32,8 @@
           # TODO: Decouple reliance on system.
           inherit (self.lib.x86_64-linux) tests;
           moduleArgs = { collective-lib = self.lib; };
-          importModules = path: removeTests (import path moduleArgs);
-        in 
-        with tests; {
+          importModules = path: tests.removeTests (import path moduleArgs);
+        in {
           overlays = import ./overlays { inherit inputs; inherit (nixpkgs) lib; };
           agnosticModules = importModules ./modules/agnostic;
           nixosModules = importModules ./modules/nixos;
