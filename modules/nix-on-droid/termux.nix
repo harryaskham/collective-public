@@ -46,7 +46,7 @@ in {
           (dst: src: {
             "copy-to-shared-dir__${src}__${dst}" = ''
               SRC=${toShellValue src}
-              DEST="${toShellValue cfg.sharedDir}/${toShellValue dst}"
+              DEST="${toShellValue cfg.sharedDir.path}/${toShellValue dst}"
               echo "Copying $SRC to $DEST"
               mkdir -p $(dirname "$DEST")
               cp -Lr "$SRC" "$DEST"
@@ -62,10 +62,10 @@ in {
           # Run in fresh Termux install after Nix-on-Droid is set up to
           # install Termux themes/settings from the NOD home-manager config:
           # 
-          # $ ${cfg.sharedDir}/bootstrap-from-nixondroid.sh
+          # $ ${cfg.sharedDir.path}/bootstrap-from-nixondroid.sh
 
           rm -rf ~/.termux
-          cp -Lr ${cfg.sharedDir}/.termux ~/.termux
+          cp -Lr ${cfg.sharedDir.path}/.termux ~/.termux
         '';
       };
 
