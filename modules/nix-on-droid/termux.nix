@@ -50,7 +50,7 @@ in {
               echo "Copying $SRC to $DEST"
               mkdir -p $(dirname "$DEST")
               cp -Lr "$SRC" "$DEST"
-            ''
+            '';
           }) 
           cfg.sharedDir.copy;
     })
