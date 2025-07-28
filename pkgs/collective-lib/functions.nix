@@ -105,6 +105,22 @@ in rec {
       __functor = self: args: f (intersectAttrs fArgs args); 
     };
 
+  nullArgs = f:
+    mapAttrs (_: _: null) (builtins.functionArgs f);
+
+  unitArgs = f:
+    mapAttrs (_: _: {}) (builtins.functionArgs f);
+
+  nullRequiredArgs = f:
+    concatMapAttrs 
+      (name: hasDefault: if hasDefault then {} else { ${name} = null; })
+      (builtins.functionArgs f);
+
+  unitRequiredArgs = f:
+    concatMapAttrs 
+      (name: hasDefault: if hasDefault then {} else { ${name} = {}; })
+      (builtins.functionArgs f);
+
   # Make a thunk out of a value
   thunk = x: _: x;
 
@@ -795,6 +811,11 @@ in rec {
         in {
           simple = expect.eq (addEllipsis f {a = 1; b = 2; c = 5;}) 3;
         };
+
+      unitArgs = expect.eq (unitArgs ({a, b, c ? 3}: a + b + c)) {a = {}; b = {}; c = {};};
+      nullArgs = expect.eq (nullArgs ({a, b, c ? 3}: a + b + c)) {a = null; b = null; c = null;};
+      nullRequiredArgs = expect.eq (nullRequiredArgs ({a, b, c ? 3}: a + b + c)) {a = null; b = null;};
+      unitRequiredArgs = expect.eq (unitRequiredArgs ({a, b, c ? 3}: a + b + c)) {a = {}; b = {};};
 
       thunk = {
         manual = expect.eq ((thunk 123) {}) 123;

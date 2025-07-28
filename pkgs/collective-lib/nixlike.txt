@@ -168,6 +168,17 @@ eval._tests.debug {}
 <nix>
 eval._tests.run {}
 </nix>
+<nix>
+functions._tests.run {}
+</nix>
+
+
+<nix>
+(tests.testModule ../../modules/nix-on-droid/unexpected-keyboard).run {}
+</nix>
+<nix>
+(import ../../modules/nix-on-droid/unexpected-keyboard).run {}
+</nix>
 
 <nix>
 let
@@ -186,7 +197,6 @@ in
   (evalModules {
     specialArgs = {
       inherit lib collective-lib;
-      systemType = data.SystemType.NixOS;
     };
     modules = [ fakeModule uk cfg ] ;
   #}).config.services.unexpected-keyboard._tests.run {}

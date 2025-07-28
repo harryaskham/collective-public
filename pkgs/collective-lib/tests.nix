@@ -359,6 +359,9 @@ in rec {
       };
     in test_;
 
+  emptyTests = { emptyTestSuite = expect.True true; };
+  emptySuite = suite emptyTests;
+
   # Collect the tests from a given set of modules / sets containining a _tests attribute into
   # a single test suite.
   mergeSuites = modules:
@@ -368,7 +371,7 @@ in rec {
           ${name} = 
             if (module ? _tests) 
             then module._tests.nestedTests {}
-            else { emptyTestSuite = expect.True true; };
+            else emptyTests;
         })
         modules);
 
@@ -471,4 +474,22 @@ in rec {
       description = ''The test suite for this module.'';
     };
   };
+
+  removeTests = xs: removeAttrs xs ["_tests"];
+
+  testModule = module_:
+    let module = if (isPath module_ || isString module_) then import module_ else module_;
+        args = unitRequiredArgs module // {
+          inherit lib;
+          inherit collective-lib;
+          inherit (collective-lib) untyped typed;
+          testableModule = flip lib.const;
+        };
+        testModule = (addEllipsis module) args;
+    in if ((builtins.functionArgs module) ? testableModule)
+       then testModule._tests
+       else emptySuite;
+
+  mergeModuleSuites = modules:
+    mergeSuites (mapAttrs (_: testModule) modules);
 }

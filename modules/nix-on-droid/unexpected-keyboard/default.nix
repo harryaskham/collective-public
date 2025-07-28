@@ -1,6 +1,8 @@
-{ config, lib, collective-lib, systemType, ...}:
+{ config, lib, typed, testableModule ? lib.const, ...}: 
 
-let typed = collective-lib.typed; in with typed;
+testableModule (
+
+with typed;
 
 let
   # Library for building layouts exposed as services.unexpected-keyboard.lib.
@@ -1014,7 +1016,7 @@ let
 
 in {
 
-  options.services.unexpected-keyboard = typed.tests.withTestOption {
+  options.services.unexpected-keyboard = {
     lib = mkOption {
       type = types.attrs;
       description = ''The Unexpected Keyboard library exposed on the service config.'';
@@ -1205,114 +1207,80 @@ in {
         termux.sharedDir.copy."unexpected_keyboard" = "/etc/unexpected_keyboard";
       })
 
-
-      /* TODO: Make testable without needing to import the module
-      <nix>
-      let
-        uk = import ../../../modules/nix-on-droid/unexpected-keyboard;
-        fakeModule = {...}: {
-          options = {
-            environment.etc = mkOption {
-              type = types.attrsOf (types.attrsOf types.str);
-              default = {};
-            };
-            build.activationAfter = mkOption {
-              type = types.attrsOf (types.attrsOf types.str);
-              default = {};
-            };
-          };
-        };
-        cfg = {...}: {
-          services.unexpected-keyboard = {
-            enable = true;
-            _enableTests = true;
-          };
-        };
-      in
-        (evalModules {
-          specialArgs = {
-            inherit lib collective-lib;
-            systemType = data.SystemType.NixOS;
-          };
-          modules = [ fakeModule uk cfg ];
-        }).config.services.unexpected-keyboard._tests.run {}
-      </nix>
-      */
-      (mkIf cfg._enableTests {
-        services.unexpected-keyboard._tests = with typed.tests; suite (
-          let 
-            fakeModule =
-              {...}: {
-                options.environment.etc = mkOption { type = types.attrsOf (types.attrsOf types.str); default = {}; };
-                options.termux.sharedDir.copy = mkOption { type = types.attrsOf types.str; default = {}; };
-              };
-            mkConfigModule = includeDefaultKeyboards: keyboards:
-              {...}: { 
-                services.unexpected-keyboard = {
-                  enable = true;
-                  inherit keyboards includeDefaultKeyboards;
-                };
-              };
-            mkConfig = systemType: configModule:
-              let evaluated = evalModules {
-                specialArgs = { inherit lib collective-lib systemType; };
-                modules = [ fakeModule (import ./.) configModule ];
-              };
-              in evaluated.config;
-          in {
-            empty = 
-              let config = mkConfig typed.SystemType.NixOnDroid (mkConfigModule false []);
-              in {
-                layouts = expect.eq (config.services.unexpected-keyboard.layouts) {};
-                etc = expect.eq (config.environment.etc) {};
-                sharedDir = expect.eq (config.termux.sharedDir.copy) {};
-              };
-            defaults = 
-              let config = mkConfig typed.SystemType.NixOnDroid (mkConfigModule true []);
-              in with config.services.unexpected-keyboard.lib; {
-                etc.size = expect.eq (size config.environment.etc) 10;
-                layouts.size = expect.eq (size config.services.unexpected-keyboard.layouts) 10;
-                layouts.golden = 
-                  expect.eq config.services.unexpected-keyboard.layouts."QWERTY (US)".xmlSource
-                  "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\n<keyboard\n  bottom_row=\"true\"\n  embedded_number_row=\"false\"\n  locale_extra_keys=\"false\"\n  name=\"QWERTY (US)\"\n  numpad_script=\"latin\"\n  script=\"latin\"\n  >\n  \n  <row height=\"1.0\">\n    <key c=\"q\" ne=\"1\" se=\"loc esc\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"w\" ne=\"2\" nw=\"~\" shift=\"0.0\" sw=\"@\" width=\"1.0\" />\n    <key c=\"e\" ne=\"3\" nw=\"!\" se=\"loc €\" shift=\"0.0\" sw=\"#\" width=\"1.0\" />\n    <key c=\"r\" ne=\"4\" shift=\"0.0\" sw=\"$\" width=\"1.0\" />\n    <key c=\"t\" ne=\"5\" shift=\"0.0\" sw=\"%\" width=\"1.0\" />\n    <key c=\"y\" ne=\"6\" shift=\"0.0\" sw=\"^\" width=\"1.0\" />\n    <key c=\"u\" ne=\"7\" shift=\"0.0\" sw=\"&amp;\" width=\"1.0\" />\n    <key c=\"i\" ne=\"8\" shift=\"0.0\" sw=\"*\" width=\"1.0\" />\n    <key c=\"o\" ne=\"9\" se=\")\" shift=\"0.0\" sw=\"(\" width=\"1.0\" />\n    <key c=\"p\" ne=\"0\" shift=\"0.0\" width=\"1.0\" />\n  </row>\n  \n  <row height=\"1.0\">\n    <key c=\"a\" ne=\"`\" shift=\"0.5\" width=\"1.0\" />\n    <key c=\"s\" ne=\"loc §\" shift=\"0.0\" sw=\"loc ß\" width=\"1.0\" />\n    <key c=\"d\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"f\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"g\" ne=\"-\" shift=\"0.0\" sw=\"_\" width=\"1.0\" />\n    <key c=\"h\" ne=\"=\" shift=\"0.0\" sw=\"+\" width=\"1.0\" />\n    <key c=\"j\" se=\"}\" shift=\"0.0\" sw=\"{\" width=\"1.0\" />\n    <key c=\"k\" se=\"]\" shift=\"0.0\" sw=\"[\" width=\"1.0\" />\n    <key c=\"l\" ne=\"|\" shift=\"0.0\" sw=\"\\\" width=\"1.0\" />\n  </row>\n  \n  <row height=\"1.0\">\n    <key c=\"shift\" ne=\"loc capslock\" shift=\"0.0\" width=\"1.5\" />\n    <key c=\"z\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"x\" ne=\"†\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"c\" ne=\"&lt;\" shift=\"0.0\" sw=\".\" width=\"1.0\" />\n    <key c=\"v\" ne=\"&gt;\" shift=\"0.0\" sw=\",\" width=\"1.0\" />\n    <key c=\"b\" ne=\"?\" shift=\"0.0\" sw=\"/\" width=\"1.0\" />\n    <key c=\"n\" ne=\":\" shift=\"0.0\" sw=\";\" width=\"1.0\" />\n    <key c=\"m\" ne=\"&quot;\" shift=\"0.0\" sw=\"'\" width=\"1.0\" />\n    <key c=\"backspace\" ne=\"delete\" shift=\"0.0\" width=\"1.5\" />\n  </row>\n\n</keyboard>";
-
-                keys.testOne =
-                  let l = getLayout "QWERTY (US)";
-                      k = l.keyboard;
-                      q_key = getKey 0 0 k;
-                  in expect.eq q_key {
-                    anticircle = null;
-                    c = { e = null; k = "q"; legend = null; loc = false; m = null; s = null; };
-                    e = null;
-                    indication = null;
-                    n = null;
-                    ne = { e = null; k = "1"; legend = null; loc = false; m = null; s = null; };
-                    nw = null;
-                    overrideXML = null;
-                    s = null;
-                    se = { e = null; k = "esc"; legend = null; loc = true; m = null; s = null; };
-                    shift = 0.0;
-                    sw = null;
-                    w = null;
-                    width = 1.0;
-                  };
-
-
-                variants.noMods =
-                  let l = getLayout "Code QWERTY Compact";
-                      k = l.keyboard;
-                      q_key = getKey 0 0 k;
-                  in expect.eq q_key.c.k "q";
-
-                variants.addMods =
-                  let l = getLayout "Code QWERTY Compact (leftMods)";
-                      k = l.keyboard;
-                      tl_key = getKey 0 0 k;
-                  in expect.eq [tl_key.c.k tl_key.width] [ "esc" (_4dp (10.0 / 11.0)) ];
-              };
-          });
-      })
-
     ]);
 
-}
+})
+
+(with typed; with typed.tests;
+let 
+  fakeModule =
+    {...}: {
+      options.environment.etc = mkOption { type = types.attrsOf (types.attrsOf types.str); default = {}; };
+      options.termux.sharedDir.copy = mkOption { type = types.attrsOf types.str; default = {}; };
+    };
+  mkConfigModule = includeDefaultKeyboards: keyboards:
+    {...}: { 
+      services.unexpected-keyboard = {
+        enable = true;
+        inherit keyboards includeDefaultKeyboards;
+      };
+    };
+  mkConfig = configModule:
+    let evaluated = evalModules {
+      specialArgs = { inherit lib typed; testableModule = lib.const; };
+      modules = [ fakeModule (import ./.) configModule ];
+    };
+    in evaluated.config;
+in {
+  _tests = with typed.tests; suite {
+    empty = 
+      let config = mkConfig (mkConfigModule false []);
+      in {
+        layouts = expect.eq (config.services.unexpected-keyboard.layouts) {};
+        etc = expect.eq (config.environment.etc) {};
+        sharedDir = expect.eq (config.termux.sharedDir.copy) {};
+      };
+    defaults = 
+      let config = mkConfig (mkConfigModule true []);
+      in with config.services.unexpected-keyboard.lib; {
+        etc.size = expect.eq (size config.environment.etc) 10;
+        layouts.size = expect.eq (size config.services.unexpected-keyboard.layouts) 10;
+        layouts.golden = 
+          expect.eq config.services.unexpected-keyboard.layouts."QWERTY (US)".xmlSource
+          "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\n<keyboard\n  bottom_row=\"true\"\n  embedded_number_row=\"false\"\n  locale_extra_keys=\"false\"\n  name=\"QWERTY (US)\"\n  numpad_script=\"latin\"\n  script=\"latin\"\n  >\n  \n  <row height=\"1.0\">\n    <key c=\"q\" ne=\"1\" se=\"loc esc\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"w\" ne=\"2\" nw=\"~\" shift=\"0.0\" sw=\"@\" width=\"1.0\" />\n    <key c=\"e\" ne=\"3\" nw=\"!\" se=\"loc €\" shift=\"0.0\" sw=\"#\" width=\"1.0\" />\n    <key c=\"r\" ne=\"4\" shift=\"0.0\" sw=\"$\" width=\"1.0\" />\n    <key c=\"t\" ne=\"5\" shift=\"0.0\" sw=\"%\" width=\"1.0\" />\n    <key c=\"y\" ne=\"6\" shift=\"0.0\" sw=\"^\" width=\"1.0\" />\n    <key c=\"u\" ne=\"7\" shift=\"0.0\" sw=\"&amp;\" width=\"1.0\" />\n    <key c=\"i\" ne=\"8\" shift=\"0.0\" sw=\"*\" width=\"1.0\" />\n    <key c=\"o\" ne=\"9\" se=\")\" shift=\"0.0\" sw=\"(\" width=\"1.0\" />\n    <key c=\"p\" ne=\"0\" shift=\"0.0\" width=\"1.0\" />\n  </row>\n  \n  <row height=\"1.0\">\n    <key c=\"a\" ne=\"`\" shift=\"0.5\" width=\"1.0\" />\n    <key c=\"s\" ne=\"loc §\" shift=\"0.0\" sw=\"loc ß\" width=\"1.0\" />\n    <key c=\"d\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"f\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"g\" ne=\"-\" shift=\"0.0\" sw=\"_\" width=\"1.0\" />\n    <key c=\"h\" ne=\"=\" shift=\"0.0\" sw=\"+\" width=\"1.0\" />\n    <key c=\"j\" se=\"}\" shift=\"0.0\" sw=\"{\" width=\"1.0\" />\n    <key c=\"k\" se=\"]\" shift=\"0.0\" sw=\"[\" width=\"1.0\" />\n    <key c=\"l\" ne=\"|\" shift=\"0.0\" sw=\"\\\" width=\"1.0\" />\n  </row>\n  \n  <row height=\"1.0\">\n    <key c=\"shift\" ne=\"loc capslock\" shift=\"0.0\" width=\"1.5\" />\n    <key c=\"z\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"x\" ne=\"†\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"c\" ne=\"&lt;\" shift=\"0.0\" sw=\".\" width=\"1.0\" />\n    <key c=\"v\" ne=\"&gt;\" shift=\"0.0\" sw=\",\" width=\"1.0\" />\n    <key c=\"b\" ne=\"?\" shift=\"0.0\" sw=\"/\" width=\"1.0\" />\n    <key c=\"n\" ne=\":\" shift=\"0.0\" sw=\";\" width=\"1.0\" />\n    <key c=\"m\" ne=\"&quot;\" shift=\"0.0\" sw=\"'\" width=\"1.0\" />\n    <key c=\"backspace\" ne=\"delete\" shift=\"0.0\" width=\"1.5\" />\n  </row>\n\n</keyboard>";
+
+        keys.testOne =
+          let l = getLayout "QWERTY (US)";
+              k = l.keyboard;
+              q_key = getKey 0 0 k;
+          in expect.eq q_key {
+            anticircle = null;
+            c = { e = null; k = "q"; legend = null; loc = false; m = null; s = null; };
+            e = null;
+            indication = null;
+            n = null;
+            ne = { e = null; k = "1"; legend = null; loc = false; m = null; s = null; };
+            nw = null;
+            overrideXML = null;
+            s = null;
+            se = { e = null; k = "esc"; legend = null; loc = true; m = null; s = null; };
+            shift = 0.0;
+            sw = null;
+            w = null;
+            width = 1.0;
+          };
+
+        variants.noMods =
+          let l = getLayout "Code QWERTY Compact";
+              k = l.keyboard;
+              q_key = getKey 0 0 k;
+          in expect.eq q_key.c.k "q";
+
+        variants.addMods =
+          let l = getLayout "Code QWERTY Compact (leftMods)";
+              k = l.keyboard;
+              tl_key = getKey 0 0 k;
+          in expect.eq [tl_key.c.k tl_key.width] [ "esc" (_4dp (10.0 / 11.0)) ];
+      };
+  };
+})

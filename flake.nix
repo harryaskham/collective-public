@@ -27,13 +27,19 @@
           devShells = { default = pkgs.mkShell {}; };
           lib = collectiveLibForArchitecture system;
         }
-      ) 
-      // {
-        overlays = import ./overlays { inherit inputs; inherit (nixpkgs) lib; };
-        agnosticModules = import ./modules/agnostic;
-        nixosModules = import ./modules/nixos;
-        nixOnDroidModules = import ./modules/nix-on-droid;
-        nixDarwinModules = import ./modules/nix-darwin;
-        homeManagerModules = import ./modules/home-manager;
-      };
+      ) // (
+        let
+          # TODO: Decouple reliance on system.
+          inherit (self.lib.x86_64-linux) tests;
+          moduleArgs = { collective-lib = self.lib; };
+          importModules = path: removeTests (import path moduleArgs);
+        in 
+        with tests; {
+          overlays = import ./overlays { inherit inputs; inherit (nixpkgs) lib; };
+          agnosticModules = importModules ./modules/agnostic;
+          nixosModules = importModules ./modules/nixos;
+          nixOnDroidModules = importModules ./modules/nix-on-droid;
+          nixDarwinModules = importModules ./modules/nix-darwin;
+          homeManagerModules = importModules ./modules/home-manager;
+        });
 }
