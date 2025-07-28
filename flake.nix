@@ -30,6 +30,9 @@
       ) 
       // {
         overlays = import ./overlays { inherit inputs; inherit (nixpkgs) lib; };
+        agnosticModules = import ./modules/agnostic;
         nixosModules = import ./modules/nixos;
+        nixOnDroidModules = import ./modules/nix-on-droid;
+        nixDarwinModules = {};
       };
 }
