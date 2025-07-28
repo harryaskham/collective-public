@@ -47,6 +47,10 @@ in rec {
   # Set element at position pos in list xs.
   setAt = pos: x: updateAt pos (const x);
 
+  # Delete element at position pos in list xs.
+  deleteAt = pos: xs:
+    take pos xs ++ drop (pos + 1) xs;
+
   # Polymorphic concat for [[a]] and [{_=a}]
   concat = dispatch.elem {
     empty = id;
@@ -224,6 +228,12 @@ in rec {
       start = expect.eq (setAt 0 99 [1 2 3 4]) [99 2 3 4];
       middle = expect.eq (setAt 2 99 [1 2 3 4]) [1 2 99 4];
       end = expect.eq (setAt 3 99 [1 2 3 4]) [1 2 3 99];
+    };
+
+    deleteAt = {
+      start = expect.eq (deleteAt 0 [1 2 3 4]) [2 3 4];
+      middle = expect.eq (deleteAt 2 [1 2 3 4]) [1 2 4];
+      end = expect.eq (deleteAt 3 [1 2 3 4]) [1 2 3];
     };
 
     concat = {
