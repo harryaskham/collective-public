@@ -167,7 +167,7 @@ eval._tests.run {}
 
 <nix>
 let
-  uk = import ../../../modules/nix-on-droid/unexpected-keyboard;
+  uk = import ../modules/nix-on-droid/unexpected-keyboard;
   fakeModule = {...}: {
     options = {
       environment.etc = mkOption {
