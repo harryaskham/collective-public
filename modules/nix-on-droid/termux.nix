@@ -1,5 +1,4 @@
-{ config, lib, pkgs, outputs, untyped, typed,
-  toShellValue ? typed.toShellValueUnsafe, ...}:
+{ config, lib, pkgs, outputs, untyped, typed, ...}:
 
 # Convenience scripts for exposing actions from Nix-on-Droid to Termux.
 # Enables easier composition with Tasker for one-click actions like
@@ -12,6 +11,7 @@ with untyped.clib;
 
 let
   cfg = config.termux;
+  toShellValue = typed.toShellValueUnsafe;
 in {
   options.termux = {
     enable = mkEnable ''
