@@ -197,22 +197,6 @@ in
 </nix>
 
 <nix>
-let
-  module = import ../../../modules/nix-on-droid/unexpected-keyboard;
-  c = evalModules {
-    specialArgs = { inherit collective-lib; systemType = null; };
-    modules = [
-      module
-      ({...}: {
-        config.services.unexpected-keyboard = {
-          enable = false;
-        };
-      })
-    ];
-  };
-in c.config
-</nix>
-<nix>
 lists._tests.run {}
 </nix>
 <nix>
