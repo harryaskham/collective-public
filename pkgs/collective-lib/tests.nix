@@ -496,5 +496,5 @@ in rec {
     mergeSuites (mapAttrs (_: testModule) modules);
 
   withMergedSuites = modules:
-    modules // { _tests = mergeModuleSuites modules; }
+    modules // { _tests = mergeModuleSuites modules; };
 }
