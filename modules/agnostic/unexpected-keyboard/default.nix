@@ -1,8 +1,8 @@
-{ testableModule }: 
-
-{ config, lib, typed, ... }: 
+{ testableModule, lib, collective-lib, ... }: 
 
 testableModule (
+
+{ config, lib, typed, ... }: 
 
 with typed;
 
@@ -1201,11 +1201,11 @@ in {
 
 })
 
-(with typed; with typed.tests;
+(with collective-lib; with typed; with typed.tests;
 let 
   fakeModule =
     {...}: {
-      options.environment.etc = mkOption { type = types.attrsOf (types.attrsOf types.str); default = {}; };
+      options.agnostic.environment.etc = mkOption { type = types.attrs; default = {}; };
     };
   mkConfigModule = includeDefaultKeyboards: keyboards:
     {...}: { 
@@ -1217,7 +1217,7 @@ let
   mkConfig = configModule:
     let evaluated = evalModules {
       specialArgs = { inherit lib typed; testableModule = lib.const; };
-      modules = [ fakeModule (import ./.) configModule ];
+      modules = [ fakeModule (getModuleFromTestableModule ./.) configModule ];
     };
     in evaluated.config;
 in {

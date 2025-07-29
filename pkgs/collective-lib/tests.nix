@@ -464,27 +464,21 @@ in rec {
 
   removeTests = xs: removeAttrs xs ["_tests"];
 
-  testModule = module_:
-    let module = if (isPath module_ || isString module_) then import module_ else module_;
-        args = unitRequiredArgs module // {
-          inherit lib;
-          inherit collective-lib;
-          inherit (collective-lib) untyped typed;
-          testableModule = flip lib.const;
-        };
-        testModule = (addEllipsis module) args;
-    in if ((builtins.functionArgs module) ? testableModule)
-       then testModule._tests
-       else emptySuite;
+  testModule = module: 
+    (getTestsFromTestableModule module)._tests or emptySuite;
 
   getModuleFromTestableModule = module:
-    if (isFunction module && ((builtins.functionArgs module) ? testableModule))
-    then module { testableModule = lib.const; }
+    if (isString module || isPath module) 
+    then (getModuleFromTestableModule (import module))
+    else if (isFunction module && ((builtins.functionArgs module) ? testableModule))
+    then module { testableModule = lib.const; inherit lib collective-lib; }
     else module;
 
   getTestsFromTestableModule = module:
-    if (isFunction module && ((builtins.functionArgs module) ? testableModule))
-    then module { testableModule = flip lib.const; }
+    if (isString module || isPath module)
+    then (getTestsFromTestableModule (import module))
+    else if (isFunction module && ((builtins.functionArgs module) ? testableModule))
+    then module { testableModule = flip lib.const; inherit lib collective-lib; }
     else module;
 
   collectTestableModules = maybeTestableModules:
