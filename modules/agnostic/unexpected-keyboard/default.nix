@@ -127,16 +127,26 @@ let
     # Get the maximum unnormalized width of a row in a keyboard.
     getMaxRowWidth = keyboard: maximum (map getRowWidth keyboard.rows);
 
+    # Get the maximum unnormalized width of a row in a keyboard.
+    getWidestRow = keyboard: fold._1 (widest: row: if getRowWidth row > getRowWidth widest then row else widest) keyboard.rows;
+
     Variants = {
-      # Left-aligned one-handed layout
+      # Left-aligned one-handed layout.
       lefty = gap: precompose [
         fitWidth
         (scaleGap_ gap)
+        # Hack required since UK scales the longest row to 10.0, so we need to insert a
+        # dummy key of gap size at the end of each row.
+        (precompose 
+          (k: imap0 
+            (i: row: insertKey i (length row.keys) (K 0 gap " " c.removed K))
+            k.rows))
       ];
 
       # Right-aligned one-handed layout
       righty = gap: precompose [
-        (Variants.lefty gap)
+        fitWidth
+        (scaleGap_ gap)
         (shiftRight gap)
       ];
     };

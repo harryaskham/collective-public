@@ -372,8 +372,10 @@ with uklib;
     bottomRow = false;
     variants = with codes; 
       let
-        cursorSpace = spaceWidth: spacePaddingL:
-          K spaceWidth spacePaddingL w.cur_l  " " c.spc  e.cur_r K;
+        udlr = K n.up w.left e.right s.down K;
+
+        cursorSpace = width: paddingL:
+          K width paddingL w.cur_l  " " c.spc  e.cur_r K;
 
         clearEscAdjacent = precompose [
           (setKey 0 0 (K c.q ne."1" sw."!" K)) # Clears Q
@@ -387,47 +389,89 @@ with uklib;
           (setKey 1 3 (K c.f K))
         ];
 
+        clearModsAndEsc = precompose [
+          clearEscAdjacent
+          clearHomeRowMods
+        ];
+
         modCol = 
           K "⎋" c.esc nw.tab ne."`" sw."~"
           _ "✲" c.ctrl "❖" sw.meta "⌥" ne.alt "▤" nw.fn
           _ c.shift
           K;
 
-        withModCol = colI: precompose [
-          clearEscAdjacent
-          clearHomeRowMods
+        withModCol = colI: {...}: precompose [
+          clearModsAndEsc
           (insertCol colI modCol)
         ];
 
-        mkSplit = modColI: gap: spacePaddingL: spacePaddingR:
-          let spaceWidth = gap - spacePaddingL - spacePaddingR;
+        modGridL = paddingL: 
+          K 1 paddingL "⎋" c.esc nw.tab ne."`" sw."~"
+          _ 1 paddingL "✲" c.ctrl "❖" sw.meta "⌥" ne.alt "▤" nw.fn
+          K;
+
+        modGridR = gap:
+          K 1 (gap - 2) n.up w.left e.right s.down K
+          _ 1 (gap - 2) c.shift
+          K;
+
+        returnOverCursor = precompose [
+          (deleteKey 2 8)
+          (updateKey 2 8 (addWidth 1))
+        ];
+
+        withModGrid = {gap, paddingL, paddingR, ...} @ args: precompose [
+          clearModsAndEsc
+          returnOverCursor
+          (updateKey 0 5 (addShift paddingR))
+          (updateKey 1 5 (addShift paddingR))
+          (insertCol 5 (modGridL paddingL))
+          (insertCol 6 (modGridR gap))
+        ];
+
+        withEmptySplit = {gap, ...} @ args: precompose [
+          (updateKey 0 5 (addShift gap))
+          (updateKey 1 5 (addShift gap))
+        ];
+
+        withSplitSpace = {gap, paddingL, paddingR, ...} @ args:
+          let width = gap - paddingL - paddingR;
           in precompose [
-            (withModCol modColI)
-            (deleteRow 3) # Removes mods, spacebar, cursor and enter
-            # Insert split
-            (updateKey 0 6 (addShift gap))
-            (updateKey 1 6 (addShift gap))
-            # Insert spacebar into centre of split
-            (updateKey 2 6 (addShift spacePaddingR))
-            (insertKey 2 6 (cursorSpace spaceWidth spacePaddingL))
-            # Finally fit to widtth to scale 20 -> 10
+            (updateKey 2 5 (addShift paddingR))
+            (insertKey 2 5 (cursorSpace width paddingL))
+          ];
+
+        withoutModRow = (deleteRow 3)
+
+        mkSplit = {gap, paddingL ? 0, paddingR ? 0, insertMods ? ({...}: id)} @ args:
+          in precompose [
+            withoutModRow
+            (withEmptySplit args)
+            (withSplitSpace args)
+            (insertMods args)
             fitWidth
           ];
-      in {
+
         # Add mods down the left side and remove duplicates on the old column-0
+        # Split layout with empty middle row for landscape mode.
         leftMods = precompose [
           (setKey 3 0 (K "❖" c.meta K))
           (swapKeys 3 0 3 1)  # alt-meta not meta-alt
           (updateKey 3 2 (addWidth 1)) # space fills width
-          (withModCol 0)
+          (withModCol 0 {})
           fitWidth
         ];
 
-        # Split layout with empty middle row for landscape mode.
-        splitPortrait = mkSplit 0 2 0 0;
-        splitLandscape = mkSplit 0 10 0 0;
-        splitPortraitCentralMod = mkSplit 5 4 0 0;
-        splitLandscapeCentralMod = mkSplit 5 10 0 0;
+      in rec {
+        inherit leftMods;
+        leftModsLefty = Variants.lefty leftMods;
+        leftModsRight = Variants.righty leftMods;
+        splitPortraitMod0 = mkSplit { gap = 2; mods = withModCol 0; };
+        splitLandscapeMod0 = mkSplit { gap = 12; mods = withModCol 0; };
+        splitPortraitMod5 = mkSplit { gap = 2; mods = withModCol 5; };
+        splitLandscapeMod5 = mkSplit { gap = 12; mods = withModCol 5; };
+        splitPortraitModGrid = mkSplit { gap = 2; mods = withModGrid; };
+        splitLandscapeModGrid = mkSplit { gap = 12; mods = withModGrid; };
       };
 
     rows = with codes; let height = 0.65; in [{
