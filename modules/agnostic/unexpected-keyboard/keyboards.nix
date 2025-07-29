@@ -410,7 +410,7 @@ with uklib;
             # Insert spacebar into centre of split
             (updateKey 2 6 (addShift spacePaddingR))
             (insertKey 2 6 (cursorSpace spaceWidth spacePaddingL))
-            # Finally fit to width to scale 20 -> 10
+            # Finally fit to widtth to scale 20 -> 10
             fitWidth
           ];
       in {
@@ -418,7 +418,7 @@ with uklib;
         leftMods = precompose [
           (setKey 3 0 (K "❖" c.meta K))
           (swapKeys 3 0 3 1)  # alt-meta not meta-alt
-          #(updateKey 3 2 (addWidth 1))
+          (updateKey 3 2 (addWidth 1)) # space fills width
           (withModCol 0)
           fitWidth
         ];
