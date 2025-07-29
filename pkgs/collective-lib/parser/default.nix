@@ -12,11 +12,13 @@ let
   eval = collective-lib.eval;
   typed = collective-lib.typed;
   log = collective-lib.log;
-  parsec = nix-parsec.parsec;
-  lexer = nix-parsec.lexer;
 in 
   with typed;
-rec {
+let this = rec {
+
+  parsec = nix-parsec.parsec;
+  lexer = nix-parsec.lexer;
+
   sortOrder = mergeAttrsList (imap0 (i: k: { ${k} = i; }) [
     "name"
     "value"
@@ -224,16 +226,14 @@ rec {
       ));
 
   # Combined helper for annotateSource + withSrc
-  mkParser = name: parser:
-    with parsec;
-    annotateSource name (
-    p.spaced (  # Spaced before withSrc to discard spaces
-    withSrc parser));
+  mkParser_ = {spaced ? p.spaced, withOffsetInfo ? parsec.withOffsetInfo, withSrc ? this.withSrc}: name: parser:
+    parsec.annotateContext name (
+      spaced (  # Spaced before withSrc to discard spaces
+        withSrc (
+          withOffsetInfo parser)));
 
-  mkUnspacedParser = name: parser:
-    with parsec;
-    annotateSource name (
-    withSrc parser);
+  mkParser = mkParser_ {};
+  mkUnspacedParser = mkParser_ {};
 
   p = with parsec; rec {
     # Whitespace and comments
@@ -550,7 +550,7 @@ rec {
       select
     ]));
 
-    atom = annotateSource "atom" (spaced (choice [
+    atom = mkParser "atom" (spaced (choice [
       selectOr
       atomWithoutSelect
     ]));
@@ -856,4 +856,5 @@ rec {
            "{]}[()]())))[[['')))))) 1 2 3);
     };
   };
-}
+};
+in this

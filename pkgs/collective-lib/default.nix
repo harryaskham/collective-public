@@ -3,17 +3,8 @@
   traceOpts ? null,
   # Passed from the flake, but set here for local importing.
   inputs ? {
-    nix-parsec =
-      let
-        version = "v0.1.0";
-        sha256 = "sha256-HOsko3wE4wt6+TdfPdaQj3A3UJ8AB9vHmHuDfyBlosY=";
-      in
-        import (pkgs.fetchFromGitHub {
-          owner = "nprindle";
-          repo = "nix-parsec";
-          rev = version;
-          sha256 = "sha256-JVgNZSj3ViroWymo0ydkIEVnlRJdXRV+D0ig0OiuZ7o=";
-        });
+    # via /nix/store/nlawm43dvjgaz5q9bj45vwk6a3rfddbn-source
+    nix-parsec = import /nix/store/nlawm43dvjgaz5q9bj45vwk6a3rfddbn-source;
   },
   ... 
 }:

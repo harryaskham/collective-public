@@ -171,6 +171,26 @@ eval._tests.run {}
 <nix>
 functions._tests.run {}
 </nix>
+<nix>
+parser.parsec
+</nix>
+<nix>
+parser._tests.debug {}
+</nix>
+
+<nix>
+with parser;
+let
+  xs = {
+    a = [p.list "[]"];
+    b = [p.atom "1"];
+    c = [p.lambda "x: y"];
+    d = [p.exprEof "x: y"];
+  }.a;
+  f = xs: parse (elem 1 xs);
+in
+f xs
+</nix>
 
 
 <nix>

@@ -33,6 +33,7 @@
             tests.removeTests (mapAttrs (_: tests.removeTests) testedModules);
         }
       ) // {
+        inherit inputs;
         overlays = import ./overlays { inherit inputs; inherit (nixpkgs) lib; };
       };
 }
