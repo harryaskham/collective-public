@@ -31,6 +31,11 @@ let
       in updateRows (updateAt rowI (updateRowKeys (insertAt colI key)));
     deleteKey = rowI: colI: updateRows (updateAt rowI (updateRowKeys (deleteAt colI)));
 
+    swapKeys = rowI: colI: rowI': colI': keyboard:
+      let key = getKey rowI colI keyboard;
+          key' = getKey rowI' colI' keyboard;
+      in compose (setKey rowI colI key') (setKey rowI' colI' key) keyboard;
+
     setCardinal = {
       c = m: key: key // {c = m;};
       n = m: key: key // {n = m;};
