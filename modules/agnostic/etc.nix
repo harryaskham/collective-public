@@ -9,7 +9,7 @@ let
   cfg = config.agnostic.environment;
 in {
   options.agnostic.environment = {
-    enable = mkEnableOption "Enable agnostic environment settings";
+    enable = Opt.enable.default "Enable agnostic environment settings";
     etc = mkOption {
       type = types.attrs;
       default = {};
