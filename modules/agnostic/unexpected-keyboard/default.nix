@@ -133,18 +133,18 @@ let
       let row = getRow rowI keyboard;
       in insertKey rowI (length row.keys) key keyboard;
 
+    # Hack required since UK scales the longest row to 10.0, so we need to insert a
+    # dummy key of gap size at the end of each row.
+    addRightGapKeys = gap: keyboard:
+      let f = precompose (imap0 (rowI: _: appendKey rowI (K 0 gap " " c.removed K)) keyboard.rows);
+      in f keyboard;
+
     Variants = with codes; {
       # Left-aligned one-handed layout.
       lefty = gap: precompose [
         fitWidth
         (scaleGap_ gap)
-        # Hack required since UK scales the longest row to 10.0, so we need to insert a
-        # dummy key of gap size at the end of each row.
-        (precompose [
-          numRows
-          (genList (flip appendKey (K 0 gap " " c.removed K)))
-          compose
-        ])
+        (addRightGapKeys gap)
       ];
 
       # Right-aligned one-handed layout

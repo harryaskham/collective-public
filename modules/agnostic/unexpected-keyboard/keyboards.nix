@@ -459,8 +459,8 @@ with uklib;
 
       in rec {
         inherit leftMods;
-        leftModsLefty = Variants.lefty 2.0 leftMods;
-        leftModsRight = Variants.righty 2.0 leftMods;
+        leftModsLefty = precompose [leftMods (Variants.lefty 2.0)];
+        leftModsRight = precompose [leftMods (Variants.righty 2.0)];
         splitPortraitMod0 = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withModCol 0; };
         splitLandscapeMod0 = mkSplit { gap = 12; paddingL = 1; paddingR = 1; mods = withModCol 0; };
         splitPortraitMod5 = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withModCol 5; };
