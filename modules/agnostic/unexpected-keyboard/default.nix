@@ -1024,13 +1024,6 @@ in {
       description = ''The Unexpected Keyboard library exposed on the service config.'';
     };
     enable = mkEnable "Whether to enable Unexpected Keyboard configuration.";
-    copyConfigDir = mkOption {
-      type = types.bool;
-      default = false;
-      description = ''
-        If set, copy the generated /etc configs to the configured Termux shared/ dir.
-      '';
-    };
     keyboards = mkOption {
       type = types.listOf keyboardType;
       default = [];
@@ -1204,11 +1197,6 @@ in {
         environment.etc = concatMapAttrs (_: layout: layout.mkFile) cfg.layouts;
       }
 
-      # If enabled, copy the generated /etc configs to the shared dir.
-      (mkIf cfg.copyConfigDir {
-        termux.sharedDir.copy."unexpected_keyboard" = "/etc/unexpected_keyboard";
-      })
-
     ]);
 
 })
@@ -1218,7 +1206,6 @@ let
   fakeModule =
     {...}: {
       options.environment.etc = mkOption { type = types.attrsOf (types.attrsOf types.str); default = {}; };
-      options.termux.sharedDir.copy = mkOption { type = types.attrsOf types.str; default = {}; };
     };
   mkConfigModule = includeDefaultKeyboards: keyboards:
     {...}: { 
@@ -1240,7 +1227,6 @@ in {
       in {
         layouts = expect.eq (config.services.unexpected-keyboard.layouts) {};
         etc = expect.eq (config.environment.etc) {};
-        sharedDir = expect.eq (config.termux.sharedDir.copy) {};
       };
     defaults = 
       let config = mkConfig (mkConfigModule true []);
