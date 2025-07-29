@@ -142,7 +142,7 @@ let
         # dummy key of gap size at the end of each row.
         (precompose [
           numRows
-          (genList (flip appendKey (with codes; K 0 gap " " c.removed K)))
+          (genList (flip appendKey (K 0 gap " " c.removed K)))
           compose
         ])
       ];
