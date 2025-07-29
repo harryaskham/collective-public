@@ -15,6 +15,8 @@ let
 
     getLayout = name: cfg.layouts.${name};
 
+    getRows = keyboard: keyboard.rows;
+    numRows = keyboard: length keyboard.rows;
     getRow = rowI: keyboard: elemAt keyboard.rows rowI;
     updateRows = f: keyboard: keyboard // {rows = f keyboard.rows;};
     updateRowKeys = f: row: row // {keys = f row.keys;};
@@ -127,24 +129,22 @@ let
     # Get the maximum unnormalized width of a row in a keyboard.
     getMaxRowWidth = keyboard: maximum (map getRowWidth keyboard.rows);
 
-    # Get the maximum unnormalized width of a row in a keyboard.
-    getWidestRow = keyboard: fold._1 (widest: row: if getRowWidth row > getRowWidth widest then row else widest) keyboard.rows;
+    appendKey = rowI: key: keyboard:
+      let row = getRow rowI keyboard;
+      in insertKey rowI (length row.keys) key keyboard;
 
     Variants = {
       # Left-aligned one-handed layout.
-      lefty = gap: precompose [
+      lefty = gap: precompose ([
         fitWidth
         (scaleGap_ gap)
         # Hack required since UK scales the longest row to 10.0, so we need to insert a
         # dummy key of gap size at the end of each row.
-        (k:
-          let f = 
-             precompose
-              (imap0 
-                (i: row: insertKey i (length row.keys) (with codes; K 0 gap " " c.removed K))
-                k.rows);
-          in f k)
-      ];
+        (precompose [
+          numRows
+          (genList (flip appendKey (with codes; K 0 gap " " c.removed K)))
+          compose
+        ]));
 
       # Right-aligned one-handed layout
       righty = gap: precompose [
