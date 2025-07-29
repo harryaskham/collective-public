@@ -372,36 +372,43 @@ with uklib;
     bottomRow = false;
     variants = with codes; 
       let
-        addLeftMods = precompose [
+        cursorSpace = K spaceWidth spacePaddingL w.cur_l  " " c.spc  e.cur_r K;
+
+        clearEscAdjacent = precompose [
           (setKey 0 0 (K c.q ne."1" sw."!" K)) # Clears Q
           (updateKey 0 2 clearCardinal.nw) # Clears W !
-          # Clear home-row mods
-          (setKey 1 0 (K c.a K))
-          (setKey 1 1 (K c.s K))
-          (setKey 2 2 (K c.d K))
-          (setKey 3 3 (K c.f K))
-          # Adds LHS mods
-          (insertCol 0 (
-            K "⎋" c.esc nw.tab ne."`" sw."~"
-            _ "✲" c.ctrl "❖" sw.meta "⌥" ne.alt "▤" nw.fn
-            _ c.shift
-            K))
         ];
 
-        mkSplit = gap: spacePaddingL: spacePaddingR:
+        clearHomeRowMods = precompose [
+          (setKey 1 0 (K c.a K))
+          (setKey 1 1 (K c.s K))
+          (setKey 1 2 (K c.d K))
+          (setKey 1 3 (K c.f K))
+        ];
+
+        modCol = 
+          K "⎋" c.esc nw.tab ne."`" sw."~"
+          _ "✲" c.ctrl "❖" sw.meta "⌥" ne.alt "▤" nw.fn
+          _ c.shift
+          K;
+
+        withModCol = colI: precompose [
+          clearEscAdjacent
+          clearHomeRowMods
+          (insertCol colI modCol)
+        ];
+
+        mkSplit = modColI: gap: spacePaddingL: spacePaddingR:
           let spaceWidth = gap - spacePaddingL - spacePaddingR;
           in precompose [
-            addLeftMods
+            (withModCol modColI)
             (deleteRow 3) # Removes mods, spacebar, cursor and enter
-            #(setKey 1 10 (K nw.shift ne.del c.bsp "✲" sw.ctrl K)) # Re-adds backspace
-            #(setKey 2 9 (K n.up w.left e.right s.down K)) # Re-adds cursor keys
-            #(setKey 2 10 (K c.enter K)) # Re-adds enter
             # Insert split
             (updateKey 0 6 (addShift gap))
             (updateKey 1 6 (addShift gap))
             # Insert spacebar into centre of split
             (updateKey 2 6 (addShift spacePaddingR))
-            (insertKey 2 6 (K spaceWidth spacePaddingL w.cur_l  " " c.spc  e.cur_r K))
+            (insertKey 2 6 cursorSpace)
             # Finally fit to width to scale 20 -> 10
             fitWidth
           ];
@@ -410,14 +417,16 @@ with uklib;
         leftMods = precompose [
           (setKey 3 0 (K "❖" c.meta K))
           (swapKeys 3 0 3 1)  # alt-meta not meta-alt
-          (updateKey 3 2 (addWidth 1))
-          addLeftMods
+          #(updateKey 3 2 (addWidth 1))
+          (withModCol 0)
           fitWidth
         ];
 
         # Split layout with empty middle row for landscape mode.
-        splitPortrait = mkSplit 4 0 0;
-        splitLandscape = mkSplit 10 1 1;
+        splitPortrait = mkSplit 0 2 0 0;
+        splitLandscape = mkSplit 0 10 0 0;
+        splitPortraitCentralMod = mkSplit 5 4 0 0;
+        splitLandscapeCentralMod = mkSplit 5 10 0 0;
       };
 
     rows = with codes; let height = 0.65; in [{
