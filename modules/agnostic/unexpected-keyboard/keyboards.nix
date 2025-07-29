@@ -372,11 +372,6 @@ with uklib;
     bottomRow = false;
     variants = with codes; 
       let
-        udlr = K n.up w.left e.right s.down K;
-
-        cursorSpace = width: paddingL:
-          K width paddingL w.cur_l  " " c.spc  e.cur_r K;
-
         clearEscAdjacent = precompose [
           (setKey 0 0 (K c.q ne."1" sw."!" K)) # Clears Q
           (updateKey 0 2 clearCardinal.nw) # Clears W !
@@ -411,7 +406,7 @@ with uklib;
           K;
 
         modGridR = gap:
-          K 1 (gap - 2) n.up w.left e.right s.down K
+          K 1 (gap - 2) n.up w.left e.right s.down
           _ 1 (gap - 2) c.shift
           K;
 
@@ -438,7 +433,7 @@ with uklib;
           let width = gap - paddingL - paddingR;
           in precompose [
             (updateKey 2 5 (addShift paddingR))
-            (insertKey 2 5 (cursorSpace width paddingL))
+            (insertKey 2 5 (K width paddingL w.cur_l  " " c.spc  e.cur_r K))
           ];
 
         withoutModRow = (deleteRow 3);

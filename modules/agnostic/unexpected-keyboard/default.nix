@@ -137,10 +137,13 @@ let
         (scaleGap_ gap)
         # Hack required since UK scales the longest row to 10.0, so we need to insert a
         # dummy key of gap size at the end of each row.
-        (precompose 
-          (k: imap0 
-            (i: row: insertKey i (length row.keys) (K 0 gap " " c.removed K))
-            k.rows))
+        (k:
+          let f = 
+             precompose
+              (imap0 
+                (i: row: insertKey i (length row.keys) (K 0 gap " " c.removed K))
+                k.rows);
+          in f k)
       ];
 
       # Right-aligned one-handed layout
@@ -246,6 +249,8 @@ let
             "switch_forward" "switch_backward" "switch_greekmath" "switch_clipboard"
             "change_method" "change_method_prev" "action" "voice_typing"
             "voice_typing_chooser" "shareText" ];
+
+          unused = selfAttrs [ "replaceText" "textAssist" "autofill" "removed" ];
         };
 
         # Print an individual gesture mapping e.g. printMapping { c = { k = "!" } } == "c -> !"
@@ -1246,8 +1251,8 @@ in {
     defaults = 
       let config = mkConfig (mkConfigModule true []);
       in with config.services.unexpected-keyboard.lib; {
-        etc.size = expect.eq (size config.agnostic.environment.etc) 10;
-        layouts.size = expect.eq (size config.services.unexpected-keyboard.layouts) 10;
+        etc.size = expect.eq (size config.agnostic.environment.etc) 16;
+        layouts.size = expect.eq (size config.services.unexpected-keyboard.layouts) 16;
         layouts.golden = 
           expect.eq config.services.unexpected-keyboard.layouts."QWERTY (US)".xmlSource
           "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\n<keyboard\n  bottom_row=\"true\"\n  embedded_number_row=\"false\"\n  locale_extra_keys=\"false\"\n  name=\"QWERTY (US)\"\n  numpad_script=\"latin\"\n  script=\"latin\"\n  >\n  \n  <row height=\"1.0\">\n    <key c=\"q\" ne=\"1\" se=\"loc esc\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"w\" ne=\"2\" nw=\"~\" shift=\"0.0\" sw=\"@\" width=\"1.0\" />\n    <key c=\"e\" ne=\"3\" nw=\"!\" se=\"loc €\" shift=\"0.0\" sw=\"#\" width=\"1.0\" />\n    <key c=\"r\" ne=\"4\" shift=\"0.0\" sw=\"$\" width=\"1.0\" />\n    <key c=\"t\" ne=\"5\" shift=\"0.0\" sw=\"%\" width=\"1.0\" />\n    <key c=\"y\" ne=\"6\" shift=\"0.0\" sw=\"^\" width=\"1.0\" />\n    <key c=\"u\" ne=\"7\" shift=\"0.0\" sw=\"&amp;\" width=\"1.0\" />\n    <key c=\"i\" ne=\"8\" shift=\"0.0\" sw=\"*\" width=\"1.0\" />\n    <key c=\"o\" ne=\"9\" se=\")\" shift=\"0.0\" sw=\"(\" width=\"1.0\" />\n    <key c=\"p\" ne=\"0\" shift=\"0.0\" width=\"1.0\" />\n  </row>\n  \n  <row height=\"1.0\">\n    <key c=\"a\" ne=\"`\" shift=\"0.5\" width=\"1.0\" />\n    <key c=\"s\" ne=\"loc §\" shift=\"0.0\" sw=\"loc ß\" width=\"1.0\" />\n    <key c=\"d\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"f\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"g\" ne=\"-\" shift=\"0.0\" sw=\"_\" width=\"1.0\" />\n    <key c=\"h\" ne=\"=\" shift=\"0.0\" sw=\"+\" width=\"1.0\" />\n    <key c=\"j\" se=\"}\" shift=\"0.0\" sw=\"{\" width=\"1.0\" />\n    <key c=\"k\" se=\"]\" shift=\"0.0\" sw=\"[\" width=\"1.0\" />\n    <key c=\"l\" ne=\"|\" shift=\"0.0\" sw=\"\\\" width=\"1.0\" />\n  </row>\n  \n  <row height=\"1.0\">\n    <key c=\"shift\" ne=\"loc capslock\" shift=\"0.0\" width=\"1.5\" />\n    <key c=\"z\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"x\" ne=\"†\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"c\" ne=\"&lt;\" shift=\"0.0\" sw=\".\" width=\"1.0\" />\n    <key c=\"v\" ne=\"&gt;\" shift=\"0.0\" sw=\",\" width=\"1.0\" />\n    <key c=\"b\" ne=\"?\" shift=\"0.0\" sw=\"/\" width=\"1.0\" />\n    <key c=\"n\" ne=\":\" shift=\"0.0\" sw=\";\" width=\"1.0\" />\n    <key c=\"m\" ne=\"&quot;\" shift=\"0.0\" sw=\"'\" width=\"1.0\" />\n    <key c=\"backspace\" ne=\"delete\" shift=\"0.0\" width=\"1.5\" />\n  </row>\n\n</keyboard>";
