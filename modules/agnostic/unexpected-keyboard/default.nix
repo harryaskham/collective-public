@@ -133,9 +133,9 @@ let
       let row = getRow rowI keyboard;
       in insertKey rowI (length row.keys) key keyboard;
 
-    Variants = {
+    Variants = with codes; {
       # Left-aligned one-handed layout.
-      lefty = gap: precompose ([
+      lefty = gap: precompose [
         fitWidth
         (scaleGap_ gap)
         # Hack required since UK scales the longest row to 10.0, so we need to insert a
@@ -144,7 +144,8 @@ let
           numRows
           (genList (flip appendKey (with codes; K 0 gap " " c.removed K)))
           compose
-        ]));
+        ])
+      ];
 
       # Right-aligned one-handed layout
       righty = gap: precompose [
