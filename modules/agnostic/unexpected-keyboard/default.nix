@@ -141,7 +141,7 @@ let
           let f = 
              precompose
               (imap0 
-                (i: row: insertKey i (length row.keys) (K 0 gap " " c.removed K))
+                (i: row: insertKey i (length row.keys) (with codes; K 0 gap " " c.removed K))
                 k.rows);
           in f k)
       ];
