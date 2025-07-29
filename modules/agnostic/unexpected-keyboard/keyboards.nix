@@ -374,7 +374,7 @@ with uklib;
       let
         clearEscAdjacent = precompose [
           (setKey 0 0 (K c.q ne."1" sw."!" K)) # Clears Q
-          (updateKey 0 2 clearCardinal.nw) # Clears W !
+          (setKey 0 1 (K c.w ne."2" sw."@" K)) # Clears W
         ];
 
         clearHomeRowMods = precompose [
@@ -441,7 +441,6 @@ with uklib;
         mkSplit = {gap, paddingL, paddingR, mods} @ args:
           precompose [
             withoutModRow
-            (withEmptySplit args)
             (withSplitSpace args)
             (mods args)
             fitWidth
@@ -461,6 +460,8 @@ with uklib;
         inherit leftMods;
         leftModsLefty = precompose [leftMods (Variants.lefty 2.0)];
         leftModsRight = precompose [leftMods (Variants.righty 2.0)];
+        splitPortrait = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withEmptySplit; };
+        splitLandscape = mkSplit { gap = 12; paddingL = 1; paddingR = 1; mods = withEmptySplit; };
         splitPortraitMod0 = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withModCol 0; };
         splitLandscapeMod0 = mkSplit { gap = 12; paddingL = 1; paddingR = 1; mods = withModCol 0; };
         splitPortraitMod5 = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withModCol 5; };
