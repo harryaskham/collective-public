@@ -372,7 +372,8 @@ with uklib;
     bottomRow = false;
     variants = with codes; 
       let
-        cursorSpace = K spaceWidth spacePaddingL w.cur_l  " " c.spc  e.cur_r K;
+        cursorSpace = spaceWidth: spacePaddingL:
+          K spaceWidth spacePaddingL w.cur_l  " " c.spc  e.cur_r K;
 
         clearEscAdjacent = precompose [
           (setKey 0 0 (K c.q ne."1" sw."!" K)) # Clears Q
@@ -408,7 +409,7 @@ with uklib;
             (updateKey 1 6 (addShift gap))
             # Insert spacebar into centre of split
             (updateKey 2 6 (addShift spacePaddingR))
-            (insertKey 2 6 cursorSpace)
+            (insertKey 2 6 (cursorSpace spaceWidth spacePaddingL))
             # Finally fit to width to scale 20 -> 10
             fitWidth
           ];
