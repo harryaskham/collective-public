@@ -106,13 +106,29 @@ let this = rec {
         string = body: [{ inherit body; }];
       });
 
+  box = rec {
+    space = "  ";
+    vline = "│ ";
+    hline = "─ ";
+    knee = "└─";
+    tee = "├─";
+  };
+
+  safeBox = {
+    vline = "|";
+    hline = " ";
+    knee = ''\__'';
+    tee = "|__";
+  };
+
   printNode = isRoot: prefix: node:
+    with box;
     log.while "printing AST node ${node.nodeType or "<unnamed>"}" (
     let blocks = toNodeBlocks node;
         nBlocks = size blocks;
     in _ls_ (ifor blocks (blockIx: { name ? null, body }:
       let 
-        lines = (optionals (name != null) [name]) ++ (splitLines (printAST false prefix body));
+        lines = (optionals (name != null) [name]) ++ (splitLines (printAST_ false prefix body));
         nLines = size lines;
         blockPrefix = 
           if isRoot then {
@@ -120,27 +136,30 @@ let this = rec {
             mid = "";
             last = "";
           } else if blockIx < nBlocks - 1 then {
-            first = if nLines <= 1 then "└─" else "├─";
-            mid = "│ ";
-            last = "│ ";
+            first = if nLines <= 1 then "${knee}" else "${tee}";
+            mid = "${vline} ";
+            last = "${vline} ";
           } else {
-            first = "└─";
-            mid = "  ";
-            last = "  ";
+            first = "${knee}";
+            mid = space;
+            last = space;
           };
         linePrefix = i: 
           if i == 0 then blockPrefix.first 
           else if i == nLines - 1 then blockPrefix.last
           else blockPrefix.mid;
-      in _ls_ (ifor lines (i: l: "${prefix}${linePrefix i}${l}"))))
+      in _ls_ (ifor lines (i: l: "${prefix}${space}${linePrefix i}${l}"))))
     );
 
-  printAST = isRoot: prefix: dispatch.def.on signatureAST (x: "${prefix} └─${_p_ x}") {
-    AST = printNode isRoot prefix;
-    set = printNode isRoot prefix;
-    list = printNode isRoot prefix;
-    string = s: "${prefix} ${s}";
-  };
+  printAST = printAST_ true "";
+  printAST_ = isRoot: prefix: 
+    with box;
+    dispatch.def.on signatureAST (x: "${prefix}${space}${knee}${_p_ x}") {
+      AST = printNode isRoot prefix;
+      set = printNode isRoot prefix;
+      list = printNode isRoot prefix;
+      string = s: "${prefix}${space}${s}";
+    };
 
   hiddenParams = [ "__type" "__isAST" "__toString" "__args" "fmap" "mapNode" "__src" "__offset"
                    "name" "value" "param" "ellipsis" "op" "op0" "op1" "rec" ];
@@ -151,7 +170,7 @@ let this = rec {
     __functor = self: nodeType: args: {
       __type = AST;
       __isAST = true;
-      __toString = self: printAST true "" self;
+      __toString = self: printAST self;
       __args = args;
       inherit nodeType;
       __src = args.__src or null;

@@ -180,7 +180,8 @@ eval._tests.debug {}
 
 <nix>
 with parser;
-(parseExpr "a == {b = 1 + 1; }")
+#toString (parse "a == {b = 1 + 1; }")
+toString (parse "a: b: { x = c: 123; }")
 </nix>
 
 

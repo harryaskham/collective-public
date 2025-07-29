@@ -374,9 +374,12 @@ with uklib;
       let
         addLeftMods = precompose [
           (setKey 0 0 (K c.q ne."1" sw."!" K)) # Clears Q
-          (updateKey 0 2 clearCardinal.nw) # Clears W !
-          (setKey 1 0 (K c.a K)) # Clears A
-          (setKey 2 0 (K c.z ne."|" sw."\\" K)) # Clears Z
+          (updateKey 0 2 clearOrdinal.nw) # Clears W !
+          # Clear home-row mods
+          (setKey 1 0 (K c.a K))
+          (setKey 1 1 (K c.s K))
+          (setKey 2 2 (K c.d K))
+          (setKey 3 3 (K c.f K))
           # Adds LHS mods
           (insertCol 0 (
             K "⎋" c.esc nw.tab ne."`" sw."~"
@@ -389,16 +392,16 @@ with uklib;
           let spaceWidth = gap - spacePaddingL - spacePaddingR;
           in precompose [
             addLeftMods
-            (deleteRow 3) # Removes modes, spacebar, cursor and enter
-            (setKey 1 10 (K nw.shift ne.del c.bsp "✲" sw.ctrl K)) # Re-adds backspace
-            (setKey 2 9 (K n.up w.left e.right s.down K)) # Re-adds cursor keys
-            (setKey 2 10 (K c.enter K)) # Re-adds enter
+            (deleteRow 3) # Removes mods, spacebar, cursor and enter
+            #(setKey 1 10 (K nw.shift ne.del c.bsp "✲" sw.ctrl K)) # Re-adds backspace
+            #(setKey 2 9 (K n.up w.left e.right s.down K)) # Re-adds cursor keys
+            #(setKey 2 10 (K c.enter K)) # Re-adds enter
             # Insert split
             (updateKey 0 6 (addShift gap))
             (updateKey 1 6 (addShift gap))
             # Insert spacebar into centre of split
-            (insertKey 2 6 (K spaceWidth spacePaddingL w.cur_l  " " c.spc  e.cur_r K))
             (updateKey 2 6 (addShift spacePaddingR))
+            (insertKey 2 6 (K spaceWidth spacePaddingL w.cur_l  " " c.spc  e.cur_r K))
             # Finally fit to width to scale 20 -> 10
             fitWidth
           ];
@@ -406,14 +409,15 @@ with uklib;
         # Add mods down the left side and remove duplicates on the old column-0
         leftMods = precompose [
           (setKey 3 0 (K "❖" c.meta K))
+          (swapKeys 3 0 3 1)  # alt-meta not meta-alt
           (updateKey 3 2 (addWidth 1))
           addLeftMods
           fitWidth
         ];
 
         # Split layout with empty middle row for landscape mode.
-        splitPortrait = mkSplit 4 1 2;
-        splitLandscape = mkSplit 10 1 2;
+        splitPortrait = mkSplit 4 0 0;
+        splitLandscape = mkSplit 10 1 1;
       };
 
     rows = with codes; let height = 0.65; in [{
@@ -502,9 +506,9 @@ with uklib;
                     c.l
 
           _
-                         ne."\""
-                    c.";"
-
+            nw.shift     ne.del
+                    c.bsp
+            "✲" sw.ctrl
         K;
       }
 
@@ -514,7 +518,7 @@ with uklib;
           K
                             ne."|"
                   c.z
-            se."\\"
+            sw."\\"
           _
                           ne.cut
                   c.x
@@ -543,10 +547,14 @@ with uklib;
                         ne.";"
                   c."."
             sw.","
-          _ 2
-            nw.shift     ne.del
-                    c.bsp
-            "✲" sw.ctrl
+          _
+                      n.up
+              w.left        e.right
+                      s.down
+          _
+                          ne.action
+                   c.enter
+
           K;
       }
 
@@ -560,18 +568,9 @@ with uklib;
            "ℕ" nw._123    "▤" ne.fn
                   "⌥" c.alt
 
-          _ 6
+          _ 8
 
               w.cur_l  " " c.spc  e.cur_r
-
-          _
-                      n.up
-              w.left        e.right
-                      s.down
-          _
-
-                          ne.action
-                   c.enter
 
           K;
       }
