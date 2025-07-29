@@ -175,21 +175,12 @@ functions._tests.run {}
 parser.parsec
 </nix>
 <nix>
-parser._tests.debug {}
+eval._tests.debug {}
 </nix>
 
 <nix>
 with parser;
-let
-  xs = {
-    a = [p.list "[]"];
-    b = [p.atom "1"];
-    c = [p.lambda "x: y"];
-    d = [p.exprEof "x: y"];
-  }.a;
-  f = xs: parse (elem 1 xs);
-in
-f xs
+(parseExpr "a == {b = 1 + 1; }")
 </nix>
 
 

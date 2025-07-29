@@ -142,7 +142,7 @@ let this = rec {
     string = s: "${prefix} ${s}";
   };
 
-  hiddenParams = [ "__type" "__isAST" "__toString" "__args" "fmap" "mapNode" "__src"
+  hiddenParams = [ "__type" "__isAST" "__toString" "__args" "fmap" "mapNode" "__src" "__offset"
                    "name" "value" "param" "ellipsis" "op" "op0" "op1" "rec" ];
   filtered = nodes: filterAttrs (k: v: !(elem k hiddenParams) && safeNonEmpty v) nodes;
 
@@ -213,7 +213,6 @@ let this = rec {
     defaultParam = name: default: AST "defaultParam" { inherit name default; };
   };
 
-  # Helper to add source text to AST nodes
   withSrc = parser: 
     with parsec;
     bind (withMatch parser) (result:
@@ -225,12 +224,22 @@ let this = rec {
         else value
       ));
 
+  withOffset = parser: 
+    with parsec;
+    bind state (info:
+      bind parser (value: 
+        pure (
+          if isAST value 
+          then value.mapNode (args: args // { __offset = { str = elemAt info 0; offset = elemAt info 1; }; })
+          else value
+        )));
+
   # Combined helper for annotateSource + withSrc
-  mkParser_ = {spaced ? p.spaced, withOffsetInfo ? parsec.withOffsetInfo, withSrc ? this.withSrc}: name: parser:
+  mkParser_ = {spaced ? p.spaced, withOffset ? this.withOffset, withSrc ? this.withSrc}: name: parser:
     parsec.annotateContext name (
       spaced (  # Spaced before withSrc to discard spaces
         withSrc (
-          withOffsetInfo parser)));
+          withOffset parser)));
 
   mkParser = mkParser_ {};
   mkUnspacedParser = mkParser_ {};
@@ -374,7 +383,7 @@ let this = rec {
       let content = head matches; 
           len = builtins.stringLength content;
       in builtins.substring 2 (len - 4) content
-    ) (matching "''(([^']|'[^']|''['$\\])*)''")));
+    ) (matching "''(([^']|'[^']|''['$\\\\])*)''")));
 
     # String interpolation
     interpolation = mkParser "interpolation" (fmap N.interpolation (between (string "\${") (string "}") expr));
