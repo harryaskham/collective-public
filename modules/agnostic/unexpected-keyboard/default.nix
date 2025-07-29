@@ -136,10 +136,11 @@ let
     # Hack required since UK scales the longest row to 10.0, so we need to insert a
     # dummy key of gap size at the end of each row.
     addRightGapKeys = gap: keyboard:
+      with codes;
       let f = precompose (imap0 (rowI: _: appendKey rowI (K 0 gap " " c.removed K)) keyboard.rows);
       in f keyboard;
 
-    Variants = with codes; {
+    Variants = {
       # Left-aligned one-handed layout.
       lefty = gap: precompose [
         fitWidth
