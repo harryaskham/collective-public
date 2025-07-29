@@ -1194,7 +1194,7 @@ in {
 
         # Write layouts out to /etc
         # Generates a set of { environment.etc = { layout0.text = xmlSource; layout1.text = xmlSource; ... }; }
-        environment.etc = concatMapAttrs (_: layout: layout.mkFile) cfg.layouts;
+        agnostic.environment.etc = concatMapAttrs (_: layout: layout.mkFile) cfg.layouts;
       }
 
     ]);
@@ -1226,12 +1226,12 @@ in {
       let config = mkConfig (mkConfigModule false []);
       in {
         layouts = expect.eq (config.services.unexpected-keyboard.layouts) {};
-        etc = expect.eq (config.environment.etc) {};
+        etc = expect.eq (config.agnostic.environment.etc) {};
       };
     defaults = 
       let config = mkConfig (mkConfigModule true []);
       in with config.services.unexpected-keyboard.lib; {
-        etc.size = expect.eq (size config.environment.etc) 10;
+        etc.size = expect.eq (size config.agnostic.environment.etc) 10;
         layouts.size = expect.eq (size config.services.unexpected-keyboard.layouts) 10;
         layouts.golden = 
           expect.eq config.services.unexpected-keyboard.layouts."QWERTY (US)".xmlSource
