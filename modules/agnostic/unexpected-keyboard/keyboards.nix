@@ -441,14 +441,14 @@ with uklib;
             (insertKey 2 5 (cursorSpace width paddingL))
           ];
 
-        withoutModRow = (deleteRow 3)
+        withoutModRow = (deleteRow 3);
 
-        mkSplit = {gap, paddingL ? 0, paddingR ? 0, insertMods ? ({...}: id)} @ args:
-          in precompose [
+        mkSplit = {gap, paddingL, paddingR, mods} @ args:
+          precompose [
             withoutModRow
             (withEmptySplit args)
             (withSplitSpace args)
-            (insertMods args)
+            (mods args)
             fitWidth
           ];
 
@@ -466,12 +466,12 @@ with uklib;
         inherit leftMods;
         leftModsLefty = Variants.lefty leftMods;
         leftModsRight = Variants.righty leftMods;
-        splitPortraitMod0 = mkSplit { gap = 2; mods = withModCol 0; };
-        splitLandscapeMod0 = mkSplit { gap = 12; mods = withModCol 0; };
-        splitPortraitMod5 = mkSplit { gap = 2; mods = withModCol 5; };
-        splitLandscapeMod5 = mkSplit { gap = 12; mods = withModCol 5; };
-        splitPortraitModGrid = mkSplit { gap = 2; mods = withModGrid; };
-        splitLandscapeModGrid = mkSplit { gap = 12; mods = withModGrid; };
+        splitPortraitMod0 = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withModCol 0; };
+        splitLandscapeMod0 = mkSplit { gap = 12; paddingL = 1; paddingR = 1; mods = withModCol 0; };
+        splitPortraitMod5 = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withModCol 5; };
+        splitLandscapeMod5 = mkSplit { gap = 12; paddingL = 1; paddingR = 1; mods = withModCol 5; };
+        splitPortraitModGrid = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withModGrid; };
+        splitLandscapeModGrid = mkSplit { gap = 12; paddingL = 1; paddingR = 1; mods = withModGrid; };
       };
 
     rows = with codes; let height = 0.65; in [{
