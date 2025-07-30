@@ -395,33 +395,39 @@ with uklib;
           _ c.shift
           K;
 
-        withModCol = colI: {...}: precompose [
+        withModCol = colI: precompose [
           clearModsAndEsc
           (insertCol colI modCol)
         ];
 
-        modGridL = paddingL: 
+        modGridL = { paddingL, ... }:
           K 1 paddingL "⎋" c.esc nw.tab ne."`" sw."~"
           _ 1 paddingL "✲" c.ctrl "❖" sw.meta "⌥" ne.alt "▤" nw.fn
           K;
 
-        modGridR = gap:
+        modGridR = { gap, paddingL, ...}:
           K 1 (gap - 2) n.up w.left e.right s.down
           _ 1 (gap - 2) c.shift
           K;
 
         returnOverCursor = precompose [
-          (deleteKey 2 8)
-          (updateKey 2 8 (addWidth 1))
+          (deleteKey 2 9)
+          (updateKey 2 9 (addWidth 1))
         ];
+
 
         withModGrid = {gap, paddingL, paddingR, ...} @ args: precompose [
           clearModsAndEsc
           returnOverCursor
           (updateKey 0 5 (addShift paddingR))
           (updateKey 1 5 (addShift paddingR))
-          (insertCol 5 (modGridL paddingL))
-          (insertCol 6 (modGridR gap))
+          (insertCol 5 (modGridL args))
+          (insertCol 6 (modGridR args))
+        ];
+
+        withPaddedSplit = {paddingR, ...} @ args: precompose [
+          (updateKey 0 5 (addShift paddingR))
+          (updateKey 1 5 (addShift paddingR))
         ];
 
         withEmptySplit = {gap, ...} @ args: precompose [
@@ -452,23 +458,30 @@ with uklib;
           (setKey 3 0 (K "❖" c.meta K))
           (swapKeys 3 0 3 1)  # alt-meta not meta-alt
           (updateKey 3 2 (addWidth 1)) # space fills width
-          (withModCol 0 {})
+          (withModCol 0)
           fitWidth
         ];
 
-      in rec {
-        inherit leftMods;
-        leftModsLefty = precompose [leftMods (Variants.lefty 2.0)];
-        leftModsRight = precompose [leftMods (Variants.righty 2.0)];
-        splitPortrait = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withEmptySplit; };
-        splitLandscape = mkSplit { gap = 12; paddingL = 1; paddingR = 1; mods = withEmptySplit; };
-        splitPortraitMod0 = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withModCol 0; };
-        splitLandscapeMod0 = mkSplit { gap = 12; paddingL = 1; paddingR = 1; mods = withModCol 0; };
-        splitPortraitMod5 = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withModCol 5; };
-        splitLandscapeMod5 = mkSplit { gap = 12; paddingL = 1; paddingR = 1; mods = withModCol 5; };
-        splitPortraitModGrid = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withModGrid; };
-        splitLandscapeModGrid = mkSplit { gap = 12; paddingL = 1; paddingR = 1; mods = withModGrid; };
-      };
+        withSplitModCol = colI: args: precompose [
+          (withPaddedSplit args)
+          (withModCol colI)
+        ];
+
+        prefixI = xs: mergeAttrsList (imapSolos (i: name: value: { "${toString i}-${name}" = value; } xs));
+
+      in [
+        { inherit leftMods; }
+        { leftModsLefty = precompose [leftMods (Variants.lefty 2.0)]; }
+        { leftModsRight = precompose [leftMods (Variants.righty 2.0)]; }
+        { splitPortrait = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withEmptySplit; }; }
+        { splitLandscape = mkSplit { gap = 12; paddingL = 1; paddingR = 1; mods = withEmptySplit; }; }
+        { splitPortraitMod0 = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withModColSplit 0; }; }
+        { splitLandscapeMod0 = mkSplit { gap = 12; paddingL = 1; paddingR = 1; mods = withModColSplit 0; }; }
+        { splitPortraitMod5 = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withModColSplit 5; }; }
+        { splitLandscapeMod5 = mkSplit { gap = 12; paddingL = 1; paddingR = 1; mods = withModColSplit 5; }; }
+        { splitPortraitModGrid = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withModGrid; }; }
+        { splitLandscapeModGrid = mkSplit { gap = 12; paddingL = 1; paddingR = 1; mods = withModGrid; }; }
+      ];
 
     rows = with codes; let height = 0.65; in [{
         inherit height;
