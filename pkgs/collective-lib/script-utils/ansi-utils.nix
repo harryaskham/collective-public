@@ -145,11 +145,16 @@ ${eof}
       nixExpr = { style = [bg.grey]; };
       file = { style = [italic fg.blue]; };
       path = { style = [italic fg.cyan]; };
+      address = { style = [underline fg.blue]; };
+      port = { style = [underline fg.yellow]; };
       requiredOpt = { style = [fg.brightwhite]; };
       optionalOpt = { style = [fg.white]; };
+      mode = { style = [fg.magenta]; };
     };
 
     # Shorthand for making atoms e.g. ${ansi.atom.cmd "cmdname"}
-    atom = mapAttrs (_: atomAttrs: style atomAttrs.style) atoms;
+    atom = mapAttrs (_: atomAttrs: style atomAttrs.style) atoms // {
+      addressPort = address: port: "${atom.name address}${style [underline] ":"}${atom.number (toString port)}";
+    };
   };
 }
