@@ -157,7 +157,7 @@ ${eof}
 
     # Shorthand for making atoms e.g. ${ansi.atom.cmd "cmdname"}
     atom = mapAttrs (_: atomAttrs: style atomAttrs.style) atoms // {
-      addressPort = address: port: "${atom.name address}${style [underline] ":"}${atom.number (toString port)}";
+      addressPort = address: port: "${atom.address address}${style [underline] ":"}${atom.port (toString port)}";
     };
   };
 }
