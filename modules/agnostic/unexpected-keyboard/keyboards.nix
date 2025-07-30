@@ -418,11 +418,6 @@ with uklib;
           (updateKey 2 9 (addWidth 1))
         ];
 
-        withPaddedSplit = {paddingR, ...} @ args: precompose [
-          (updateKey 0 5 (addShift paddingR))
-          (updateKey 1 5 (addShift paddingR))
-        ];
-
         withSplitSpace = {gap, paddingL, paddingR, ...} @ args:
           let width = gap - paddingL - paddingR;
           in precompose [
@@ -440,8 +435,9 @@ with uklib;
             (updateKey 1 5 (addShift gap))
           ];
 
-          Col = colI: args: precompose [
-            (withPaddedSplit args)
+          Col = colI: {gap, ...}: precompose [
+            (updateKey 0 5 (addShift (gap - 1)))
+            (updateKey 1 5 (addShift (gap - 1)))
             (withModCol colI)
           ];
 
