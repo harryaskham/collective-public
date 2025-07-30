@@ -109,16 +109,8 @@ let this = rec {
   box = rec {
     space = "  ";
     vline = "│ ";
-    hline = "─ ";
     knee = "└─";
     tee = "├─";
-  };
-
-  safeBox = {
-    vline = "|";
-    hline = " ";
-    knee = ''\__'';
-    tee = "|__";
   };
 
   printNode = isRoot: prefix: node:
@@ -132,15 +124,15 @@ let this = rec {
         nLines = size lines;
         blockPrefix = 
           if isRoot then {
-            first = "";
+            first = "\n";
             mid = "";
             last = "";
           } else if blockIx < nBlocks - 1 then {
-            first = if nLines <= 1 then "${knee}" else "${tee}";
-            mid = "${vline} ";
-            last = "${vline} ";
+            first = if nLines <= 1 then knee else tee;
+            mid = vline;
+            last = vline;
           } else {
-            first = "${knee}";
+            first = knee;
             mid = space;
             last = space;
           };

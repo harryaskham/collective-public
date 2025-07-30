@@ -137,6 +137,7 @@ ${eof}
     atoms = {
       h1 = { style = [bold fg.cyan]; };
       h2 = { style = [bold fg.magenta]; };
+      li-h1 = { style = [bold fg.brightwhite]; };
       name = { style = [bold fg.cyan]; };
       number = { style = [bold fg.yellow]; };
       cmdName = { style = [bold fg.green]; };
