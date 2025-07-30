@@ -150,6 +150,9 @@ ${eof}
       requiredOpt = { style = [fg.brightwhite]; };
       optionalOpt = { style = [fg.white]; };
       mode = { style = [fg.magenta]; };
+      action = { style = [bold fg.brightblue]; };
+      actionGreen = { style = [bold fg.green]; };
+      actionRed = { style = [bold fg.red]; };
     };
 
     # Shorthand for making atoms e.g. ${ansi.atom.cmd "cmdname"}
