@@ -370,6 +370,7 @@ with uklib;
   {
     name = "Code QWERTY Compact";
     bottomRow = false;
+    includeDefaultVariants = false;  # Added back manually as part of the ordered variants below.
     variants = with codes; 
       let
         clearEscAdjacent = precompose [
@@ -416,23 +417,9 @@ with uklib;
         ];
 
 
-        withModGrid = {gap, paddingL, paddingR, ...} @ args: precompose [
-          clearModsAndEsc
-          returnOverCursor
-          (updateKey 0 5 (addShift paddingR))
-          (updateKey 1 5 (addShift paddingR))
-          (insertCol 5 (modGridL args))
-          (insertCol 6 (modGridR args))
-        ];
-
         withPaddedSplit = {paddingR, ...} @ args: precompose [
           (updateKey 0 5 (addShift paddingR))
           (updateKey 1 5 (addShift paddingR))
-        ];
-
-        withEmptySplit = {gap, ...} @ args: precompose [
-          (updateKey 0 5 (addShift gap))
-          (updateKey 1 5 (addShift gap))
         ];
 
         withSplitSpace = {gap, paddingL, paddingR, ...} @ args:
@@ -444,6 +431,29 @@ with uklib;
 
         withoutModRow = (deleteRow 3);
 
+        # Add modifier keys to split layouts and handle padding the split if necessary
+        # Use as 'mod' arguments to mkSplit
+        Mods = {
+          Empty = {gap, ...}: precompose [
+            (updateKey 0 5 (addShift gap))
+            (updateKey 1 5 (addShift gap))
+          ];
+
+          Col = colI: args: precompose [
+            (withPaddedSplit args)
+            (withModCol colI)
+          ];
+
+          Grid = {gap, paddingL, paddingR, ...} @ args: precompose [
+            clearModsAndEsc
+            returnOverCursor
+            (updateKey 0 5 (addShift paddingR))
+            (updateKey 1 5 (addShift paddingR))
+            (insertCol 5 (modGridL args))
+            (insertCol 6 (modGridR args))
+          ];
+        };
+
         mkSplit = {gap, paddingL, paddingR, mods} @ args:
           precompose [
             withoutModRow
@@ -454,7 +464,7 @@ with uklib;
 
         # Add mods down the left side and remove duplicates on the old column-0
         # Split layout with empty middle row for landscape mode.
-        leftMods = precompose [
+        C0Mods = precompose [
           (setKey 3 0 (K "❖" c.meta K))
           (swapKeys 3 0 3 1)  # alt-meta not meta-alt
           (updateKey 3 2 (addWidth 1)) # space fills width
@@ -462,25 +472,35 @@ with uklib;
           fitWidth
         ];
 
-        withSplitModCol = colI: args: precompose [
-          (withPaddedSplit args)
-          (withModCol colI)
-        ];
+        portraitArgs = {
+          gap = 2;
+          paddingL = 0;
+          paddingR = 0;
+        };
 
-        prefixI = xs: mergeAttrsList (imapSolos (i: name: value: { "${toString i}-${name}" = value; } xs));
+        landscapeArgs = {
+          gap = 12;
+          paddingL = 0.5;
+          paddingR = 0.5;
+        };
+
+        mkLandscapeSplit = mods: mkSplit (landscapeArgs // {mods = mods;});
+        mkPortraitSplit = mods: mkSplit (portraitArgs // {mods = mods;});
 
       in indexPrefixedAttrs [
-        { inherit leftMods; }
-        { leftModsLefty = precompose [leftMods (Variants.lefty 2.0)]; }
-        { leftModsRight = precompose [leftMods (Variants.righty 2.0)]; }
-        { splitPortrait = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withEmptySplit; }; }
-        { splitLandscape = mkSplit { gap = 12; paddingL = 1; paddingR = 1; mods = withEmptySplit; }; }
-        { splitPortraitMod0 = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withModColSplit 0; }; }
-        { splitLandscapeMod0 = mkSplit { gap = 12; paddingL = 1; paddingR = 1; mods = withModColSplit 0; }; }
-        { splitPortraitMod5 = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withModColSplit 5; }; }
-        { splitLandscapeMod5 = mkSplit { gap = 12; paddingL = 1; paddingR = 1; mods = withModColSplit 5; }; }
-        { splitPortraitModGrid = mkSplit { gap = 2; paddingL = 0; paddingR = 0; mods = withModGrid; }; }
-        { splitLandscapeModGrid = mkSplit { gap = 12; paddingL = 1; paddingR = 1; mods = withModGrid; }; }
+        { L = Variants.lefty 2.0; }
+        { R = Variants.righty 2.0; }
+        { inherit C0Mods; }
+        { C0ModsL = precompose [leftMods (Variants.lefty 2.0)]; }
+        { C0ModsR = precompose [leftMods (Variants.righty 2.0)]; }
+        { splitPE = mkPortraitSplit Mods.Empty; }
+        { splitPG = mkPortraitSplit Mods.Grid; }
+        { splitP0 = mkPortraitSplit (Mods.Col 0); }
+        { splitP5 = mkPortraitSplit (Mods.Col 5); }
+        { splitLE = mkLandscapeSplit Mods.Empty; }
+        { splitL0 = mkLandscapeSplit (Mods.Col 0); }
+        { splitL5 = mkLandscapeSplit (Mods.Col 5); }
+        { splitLG = mkLandscapeSplit Mods.Grid; }
       ];
 
     rows = with codes; let height = 0.65; in [{
