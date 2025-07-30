@@ -471,8 +471,8 @@ with uklib;
 
         portraitArgs = {
           gap = 2;
-          paddingL = 0;
-          paddingR = 0;
+          paddingL = 0.2;
+          paddingR = 0.2;
         };
 
         landscapeArgs = {
