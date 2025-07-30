@@ -436,8 +436,8 @@ with uklib;
           ];
 
           Col = colI: {gap, ...}: precompose [
-            (updateKey 0 5 (addShift (gap - 1)))
-            (updateKey 1 5 (addShift (gap - 1)))
+            (updateKey 0 5 (addShift gap))
+            (updateKey 1 5 (addShift gap))
             (withModCol colI)
           ];
 
