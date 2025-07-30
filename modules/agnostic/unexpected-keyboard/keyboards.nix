@@ -469,7 +469,7 @@ with uklib;
 
         prefixI = xs: mergeAttrsList (imapSolos (i: name: value: { "${toString i}-${name}" = value; } xs));
 
-      in [
+      in indexPrefixedAttrs [
         { inherit leftMods; }
         { leftModsLefty = precompose [leftMods (Variants.lefty 2.0)]; }
         { leftModsRight = precompose [leftMods (Variants.righty 2.0)]; }

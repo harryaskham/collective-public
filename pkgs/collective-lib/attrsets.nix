@@ -274,6 +274,13 @@ let
     indices = concatMapSolos (k: x: mkSolo k x.index);
     unindexed = concatMapSolos (k: x: mkSolo k x.value);
 
+    indexPrefixed = xs: 
+      concatMapSolos 
+        (name: item: { "${toString item.index}_${name}" = item.value; })
+        (indexed xs);
+
+    indexPrefixedAttrs = compose mergeSolos indexPrefixed;
+
     # Diff two attrsets, returning any divergent keys and their values.
     diff = a: b:
       if isList a && isList b
@@ -532,6 +539,8 @@ let
         unindexedSet = expect.eq (unindexed (indexed {a = 1; b = 2;})) {a = 1; b = 2;};
         indicesList = expect.eq (indices (indexed [ {a = 1;} {b = 2;} ])) [ {a = 0;} {b = 1;} ];
         indicesSet = expect.eq (indices (indexed {a = 1; b = 2;})) {a = 0; b = 1;};
+        indexPrefixed = expect.eq (indexPrefixed [ {a = 1;} {b = 2;} ]) [{ "0_a" = 1; } {"1_b" = 2; }];
+        indexPrefixedAttrs = expect.eq (indexPrefixedAttrs [ {a = 1;} {b = 2;} ]) { "0_a" = 1; "1_b" = 2; };
       };
 
       LazyAttrs = {

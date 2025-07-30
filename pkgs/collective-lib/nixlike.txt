@@ -177,6 +177,9 @@ parser.parsec
 <nix>
 eval._tests.debug {}
 </nix>
+<nix>
+attrsets._tests.debug {}
+</nix>
 
 <nix>
 with parser;
