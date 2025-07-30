@@ -231,9 +231,9 @@ rec {
             fatalWithUsage = msg: ''log-exit-with-usage 1 "" fatal ${toShellValue msg}'';
           };
           return = rec {
-            success = msg: ''log-return 0 "" success ${toShellValue msg}'';
-            value = v: ''log-return 0 ${toShellValue v} success ""'';
-            errorCode = returnCode: msg: ''log-return ${toString returnCode} "" error ${toShellValue msg}'';
+            success = msg: ''log-return 0 "" success ${toShellValue msg}; return $?'';
+            value = v: ''log-return 0 ${toShellValue v} success ""; return $?'';
+            errorCode = returnCode: msg: ''log-return ${toString returnCode} "" error ${toShellValue msg}; return $?'';
             error = msg: errorCode 1 msg;
           };
         }
@@ -377,25 +377,23 @@ rec {
     }
 
     function log-return() {
+      CODE="$1"
       __log-return "$@"
-    }
-
-    function log-return-with-usage() {
-      if (__log-return "$@"); then
-        echo "" >&2
-        usage
-      fi
+      return "$CODE"
     }
 
     function log-exit() {
       CODE="$1"
-      log-return "$@"
+      __log-return "$@"
       exit "$CODE"
     }
 
     function log-exit-with-usage() {
       CODE="$1"
-      log-return-with-usage "$@"
+      if (__log-return "$@"); then
+        echo "" >&2
+        usage
+      fi
       exit "$CODE"
     }
 

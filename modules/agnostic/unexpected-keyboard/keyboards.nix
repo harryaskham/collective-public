@@ -406,16 +406,17 @@ with uklib;
           _ 1 paddingL "✲" c.ctrl "❖" sw.meta "⌥" ne.alt "▤" nw.fn
           K;
 
-        modGridR = { gap, paddingL, ...}:
-          K 1 (gap - 2) n.up w.left e.right s.down
-          _ 1 (gap - 2) c.shift
-          K;
+        modGridR = { gap, paddingL, paddingR, ...}:
+          let centralGap = gap - 2 - paddingL - paddingR;
+          in 
+            K 1 centralGap n.up w.left e.right s.down
+            _ 1 centralGap c.shift
+            K;
 
         returnOverCursor = precompose [
           (deleteKey 2 9)
           (updateKey 2 9 (addWidth 1))
         ];
-
 
         withPaddedSplit = {paddingR, ...} @ args: precompose [
           (updateKey 0 5 (addShift paddingR))
