@@ -487,20 +487,25 @@ with uklib;
         mkLandscapeSplit = mods: mkSplit (landscapeArgs // {mods = mods;});
         mkPortraitSplit = mods: mkSplit (portraitArgs // {mods = mods;});
 
-      in indexPrefixedAttrs [
-        { L = Variants.lefty 2.0; }
-        { R = Variants.righty 2.0; }
+        applyLefty = f: precompose [f (Variants.lefty 2.0)];
+        applyRighty = f: precompose [f (Variants.righty 2.0)];
+
+      in 
+      # Emit the variants in order for switching back and forth
+      indexPrefixedAttrs [
+        { L = applyLefty id; }
+        { R = applyRighty id; }
         { inherit C0Mods; }
-        { C0ModsL = precompose [leftMods (Variants.lefty 2.0)]; }
-        { C0ModsR = precompose [leftMods (Variants.righty 2.0)]; }
+        { C0ModsL = applyLefty C0Mods; }
+        { C0ModsR = applyRighty C0Mods; }
         { splitPE = mkPortraitSplit Mods.Empty; }
         { splitPG = mkPortraitSplit Mods.Grid; }
         { splitP0 = mkPortraitSplit (Mods.Col 0); }
         { splitP5 = mkPortraitSplit (Mods.Col 5); }
         { splitLE = mkLandscapeSplit Mods.Empty; }
+        { splitLG = mkLandscapeSplit Mods.Grid; }
         { splitL0 = mkLandscapeSplit (Mods.Col 0); }
         { splitL5 = mkLandscapeSplit (Mods.Col 5); }
-        { splitLG = mkLandscapeSplit Mods.Grid; }
       ];
 
     rows = with codes; let height = 0.65; in [{
