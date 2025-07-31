@@ -304,7 +304,7 @@ with uklib;
                   c.z
             sw."\\"    
           _
-
+            nw.change_method
                   c.x
             sw.bwd     se.fwd
           _
@@ -605,7 +605,7 @@ with uklib;
                   c.z
             sw."\\"
           _
-                          ne.cut
+            nw.change_method   ne.cut
                   c.x
             sw.bwd       se.fwd
           _
