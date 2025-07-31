@@ -253,6 +253,10 @@ let
             "voice_typing_chooser" "shareText" ];
 
           unused = selfAttrs [ "replaceText" "textAssist" "autofill" "removed" ];
+
+          fork = 
+            let xs = selfAttrs [ "toggle_floating" ];
+            in if cfg.enableFork then xs else mapAttrs (_: _: "removed") xs;
         };
 
         # Print an individual gesture mapping e.g. printMapping { c = { k = "!" } } == "c -> !"
@@ -1046,6 +1050,10 @@ in {
       description = ''The Unexpected Keyboard library exposed on the service config.'';
     };
     enable = mkEnable "Whether to enable Unexpected Keyboard configuration.";
+    enableFork = mkEnable ''
+      Whether to enable fork-specific features of UK for
+      https://github.com/harryaskham/unexpected-keyboard
+    '';
     keyboards = mkOption {
       type = types.listOf keyboardType;
       default = [];
