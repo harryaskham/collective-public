@@ -97,7 +97,8 @@ eval._tests.debug {}
 parser._tests.debug {}
 </nix>
 <nix>
--{a=1;}.a or {}.a or 1
+with parser;
+parse "{ a = 1; }"
 </nix>
 
 <nix>

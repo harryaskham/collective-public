@@ -497,18 +497,22 @@ rec {
 
   expectEvalError = E: expr: with collective-lib.tests;
     let result = collective-lib.eval.ast expr;
-    in expect.eq (rec {
+    in expect.noLambdasEq (rec {
       resultIsLeft = isLeft result;
       resultEMatches = is E (result.left or null);
+      inherit E;
+      resultE = result.left or null;
     }) {
       resultIsLeft = true;
       resultEMatches = true;
+      inherit E;
+      resultE = result.left or null;
     };
 
   _tests = with tests; suite {
 
     # Tests for evalAST round-trip property
-    evalAST = solo {
+    evalAST = {
 
       smoke = {
         int = testRoundTrip "1" 1;
@@ -621,7 +625,7 @@ rec {
       };
 
       # Abort expressions - testing our custom abort handling
-      abortExpressions = {
+      abortExpressions = solo {
         # Basic abort with string message
         abortString = expectEvalError Abort ''abort "custom abort message"'';
         # Abort with evaluated expression
