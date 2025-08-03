@@ -3,7 +3,8 @@
   traceOpts ? null,
   # Passed from the flake, but set here for local importing.
   inputs ? {
-    # via /nix/store/nlawm43dvjgaz5q9bj45vwk6a3rfddbn-source
+    # via 
+    # nix eval --raw .#inputs.nix-parsec.outPath 2>/dev/null
     nix-parsec = import /nix/store/nlawm43dvjgaz5q9bj45vwk6a3rfddbn-source;
   },
   ... 

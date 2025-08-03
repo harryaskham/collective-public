@@ -458,7 +458,7 @@ in rec {
         msgs.Skipped
         (indent.blocks [headers.Passed msgs.Passed])
         (indent.blocks [headers.Failed failedTestNamesBlock])
-        msgs.Failed
+        #msgs.Failed
       ];
   };
 

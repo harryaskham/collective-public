@@ -395,7 +395,10 @@ rec {
       action = this.bind ({_, _a}: _.pure _a);
       inherit (this.action) mapState sq run while;
       do = mkDo M this.action [];
-      guard = cond: e: unless cond (this.throws e);
+      guard = cond: e: 
+        if cond 
+        then this.bind ({_}: _.pure unit) 
+        else (this.throws e);
     };
     in this;
 
@@ -466,9 +469,15 @@ rec {
           withScope = f: (this.get {}).bind ({_a}: f _a.scope);
           getScope = {}: this.withScope this.pure;
           setScope = scope: this.modifyScope (const scope);
-          modifyScope = f: this.modify (s: s.fmap f);
-          prependScope = newScope: this.modifyScope (scope: newScope // scope);
-          appendScope = newScope: this.modifyScope (scope: scope // newScope);
+          modifyScope = f: this.modify (state: state.fmap f);
+          prependScope = newScope:
+            this.withScope (scope:
+              let scope' = newScope // scope;
+              in this.setScope scope');
+          appendScope = newScope:
+            this.withScope (scope:
+              let scope' = scope // newScope;
+              in this.setScope scope');
 
           do = statement: mkDo Eval this [] statement;
           pure = x: this.bind (Eval.pure x);
@@ -476,7 +485,10 @@ rec {
           when = eval.monad.when;
           unless = eval.monad.unless;
           while = msg: this.bind ({_}: log.while msg (_.pure unit));
-          guard = cond: e: unless cond (this.throws e);
+          guard = cond: e: 
+            if cond 
+            then this.bind ({_}: _.pure unit) 
+            else (this.throws e);
 
           bind = statement: 
             this.e.case {
@@ -657,6 +669,18 @@ rec {
                 {y = Eval.pure 2;}
                 ({x, y, ...}: Eval.pure (x + y));
               in expectRun {} m {} 3;
+
+            guard.pass =
+              let m = Eval.do
+                ( {_}: _.guard true (TypeError "fail"))
+                ( {_}: _.pure unit );
+              in expectRun {} m {} unit;
+
+            guard.fail =
+              let m = Eval.do
+                ( {_}: _.guard false (TypeError "fail"))
+                ( {_}: _.pure unit );
+              in expectRunError {} m (TypeError "fail");
 
             setGet = {
               inferred =
