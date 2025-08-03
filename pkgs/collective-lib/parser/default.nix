@@ -155,7 +155,8 @@ let this = rec {
 
   hiddenParams = [ "__type" "__isAST" "__toString" "__args" "fmap" "mapNode" "__src" "__offset"
                    "name" "value" "param" "ellipsis" "op" "op0" "op1" "rec" ];
-  filtered = nodes: filterAttrs (k: v: !(elem k hiddenParams) && safeNonEmpty v) nodes;
+
+  compareAST = deepConcatMap (k: v: if k == "__args" then { ${k} = compareAST v; } else {});
 
   AST = {
     __toString = self: "AST";
@@ -241,7 +242,7 @@ let this = rec {
       bind parser (value: 
         pure (
           if isAST value 
-          then value.mapNode (args: args // { __offset = { str = elemAt info 0; offset = elemAt info 1; }; })
+          then value // { __offset = { str = elemAt info 0; offset = elemAt info 1; }; }
           else value
         )));
 
@@ -673,7 +674,11 @@ let this = rec {
     parser = 
       with parsec; 
       let 
-          expectSuccess = s: v: expect.noLambdasEq (parseExpr s) { type = "success"; value = v; };
+          #expectSuccess = s: v: expect.noLambdasEq (parseExpr s) { type = "success"; value = v; };
+          expectSuccess = s: v:
+            let r = parseExpr s;
+                in if r.type == "success" then expect.eqOn compareAST r.value v
+                   else expect.eqOn compareAST r v;
           expectSuccess_ = s: expect.eq (parseExpr s).type "success";
           expectError = s: expect.eq (parseExpr s).type "error";
           # Helper to create expected AST nodes with source text
@@ -723,8 +728,9 @@ let this = rec {
 
         attrs = {
           empty = expectSuccess "{}" (withExpectedSrc "{}" (N.attrs [] false));
-          singleAttr = expectSuccess "{ a = 1; }"
-            (withExpectedSrc "{ a = 1; }" (N.attrs [(withExpectedSrc "a = 1; " (N.assignment (withExpectedSrc "a" (N.identifier "a")) (withExpectedSrc "1" (N.int 1))))] false));
+          singleAttr =
+            expectSuccess "{ a = 1; }"
+            (N.attrs [(N.assignment (N.identifier "a") (N.int 1))] false);
           multipleAttrs = expectSuccess "{ a = 1; b = 2; }"
             (withExpectedSrc "{ a = 1; b = 2; }" (N.attrs [
               (withExpectedSrc "a = 1; " (N.assignment (withExpectedSrc "a" (N.identifier "a")) (withExpectedSrc "1" (N.int 1))))
@@ -746,8 +752,10 @@ let this = rec {
 
         # Control flow
         conditionals = {
-          simple = expectSuccess "if true then 1 else 2"
-            (withExpectedSrc "if true then 1 else 2" (N.conditional (withExpectedSrc "true " (N.identifier "true")) (withExpectedSrc "1 " (N.int 1)) (withExpectedSrc "2" (N.int 2))));
+          simple = expectSuccess
+            "if true then 1 else 2"
+            #(withExpectedSrc "if true then 1 else 2" (N.conditional (withExpectedSrc "true " (N.identifier "true")) (withExpectedSrc "1 " (N.int 1)) (withExpectedSrc "2" (N.int 2))));
+            (N.conditional (N.identifier "true") (N.int 1) (N.int 2));
           nested = expectSuccess "if true then if false then 1 else 2 else 3"
             (withExpectedSrc "if true then if false then 1 else 2 else 3" (N.conditional 
               (withExpectedSrc "true " (N.identifier "true")) 

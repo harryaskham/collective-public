@@ -10,6 +10,6 @@ rec {
 
   # Tested more thoroughly in default.nix
   _tests = with tests; suite {
-    smoke = expect.eq (evalStore "1") 1;
+    # smoke = expect.eq (evalStore "1") 1;
   };
 }

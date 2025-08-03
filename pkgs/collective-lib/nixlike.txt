@@ -94,7 +94,7 @@ eval._tests.run {}
 eval._tests.debug {}
 </nix>
 <nix>
-parser._tests.run {}
+parser._tests.debug {}
 </nix>
 <nix>
 -{a=1;}.a or {}.a or 1
