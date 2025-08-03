@@ -226,7 +226,7 @@ with uklib;
                    c.r
             sw."$"
           _
-            "⌨" nw.toggle_floating            ne."5"
+                        ne."5"
                    c.t
             sw."%"
           _
@@ -524,7 +524,7 @@ with uklib;
                   c.r
             sw."$"
           _
-            "⌨" nw.toggle_floating            ne."5"
+                        ne."5"
                   c.t
             sw."%"
           _
