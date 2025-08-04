@@ -156,7 +156,7 @@ rec {
     true = true;
     false = false;
     null = null;
-    builtins = builtins;
+    builtins = (removeAttrs builtins ["builtins"]);
     derivation = derivation;
     import = builtins.import;
     throw = throw;
@@ -292,14 +292,16 @@ rec {
             if (p ? file) && (p ? line) then "${p.file}:${toString p.line}"
             else null;
       header = optionalString (doLine != null) doLine;
-    in _b_ ''
-      ${header}
-      do
-        ${_h_ (_ls_ (map (debuglib.printPosWith {
-          emptyMsg = "<no source>";
-          errorMsg = "<error>";
-        }) self.__statements))}
-    '';
+    in 
+      if empty self.__statements then "<empty do-block>"
+      else _b_ ''
+        ${header}
+        do
+          ${_h_ (_ls_ (map (debuglib.printPosWith {
+            emptyMsg = "<no source>";
+            errorMsg = "<error>";
+          }) self.__statements))}
+      '';
 
   #bindNormalised = M: this: bindings: a: statement:
   #  let 
@@ -393,7 +395,7 @@ rec {
 
       # Bind pure with {} initial state to convert do<M a> to M a
       action = this.bind ({_, _a}: _.pure _a);
-      inherit (this.action) mapState sq run while;
+      inherit (this.action) mapState setState mapEither sq run while;
       do = mkDo M this.action [];
       guard = cond: e: 
         if cond 
@@ -453,11 +455,11 @@ rec {
           # modify :: (EvalState -> EvalState) -> Eval A -> Eval {}
           modify = f: 
             if isLeft this.e then this else
-            void (this.mapState (s: st: f (s st)));
+            void (this.mapState (compose f));
 
-          set = st: 
+          set = state: 
             if isLeft this.e then this else
-            void (this.setState (const st));
+            void (this.setState (const state));
 
           # Thunked to avoid infinite nesting - (m.get {}) is an (Eval EvalState)
           get = _: this.bind ({_}: _.pure (this.s (S.mempty {})));
@@ -466,18 +468,11 @@ rec {
           mapState = f: Eval A (f this.s) this.e;
           mapEither = f: Eval A this.s (f this.e);
 
-          withScope = f: (this.get {}).bind ({_a}: f _a.scope);
-          getScope = {}: this.withScope this.pure;
-          setScope = scope: this.modifyScope (const scope);
-          modifyScope = f: this.modify (state: state.fmap f);
-          prependScope = newScope:
-            this.withScope (scope:
-              let scope' = newScope // scope;
-              in this.setScope scope');
-          appendScope = newScope:
-            this.withScope (scope:
-              let scope' = scope // newScope;
-              in this.setScope scope');
+          getScope = this.bind getScope;
+          setScope = newScope: this.bind (setScope newScope);
+          modifyScope = f: this.bind (modifyScope f);
+          prependScope = newScope: this.bind (prependScope newScope);
+          appendScope = newScope: this.bind (appendScope newScope);
 
           do = statement: mkDo Eval this [] statement;
           pure = x: this.bind (Eval.pure x);
@@ -490,6 +485,14 @@ rec {
             then this.bind ({_}: _.pure unit) 
             else (this.throws e);
 
+          foldM = foldM Eval;
+
+          # sequenceM :: [Eval a] -> Eval [a]
+          sequenceM = this.foldM (acc: elemM: elemM.bind ({_, _a}: _.pure (acc ++ [_a]))) [];
+
+          # traverse :: (a -> Eval b) -> [a] -> Eval [b]
+          traverse = f: xs: this.sequenceM (map f xs);
+
           bind = statement: 
             this.e.case {
               Left = _: this;
@@ -500,7 +503,7 @@ rec {
                   Eval.bind: non-Eval value returned of type ${getT mb}:
                     ${_ph_ mb}
                 '';
-                mb.mapState (s: compose s this.s);
+                mb.mapState (s: compose s this.s);  # State should already be updated by the time we get here.
             };
 
           sq = b: this.bind ({_}: b);
@@ -518,11 +521,38 @@ rec {
             else this;
 
           # Returns (Either EvalError set)
-          run = state: this.e.fmap (a: { s = this.s state; inherit a; });
+          run = initialState: 
+            this.e.fmap (a: { s = this.s initialState; inherit a; });
         };
         in this;
     };
   };
+
+  setScope = newScope: {_, ...}:
+    _.do
+      (while "setting scope")
+      (_.set (EvalState newScope));
+  
+  modifyScope = f: {_, ...}:
+    _.do
+      (while "modifying scope")
+      ({_}: _.modify (s: s.fmap f));
+
+  getScope = {_, ...}:
+    _.do
+      (while "getting scope")
+      {state = {_}: _.get {};}
+      ({_, state}: _.pure state.scope);
+
+  prependScope = newScope: {_, ...}:
+    _.do
+      (while "prepending scope")
+      (modifyScope (scope: newScope // scope));
+
+  appendScope = newScope: {_, ...}:
+    _.do
+      (while "appending scope")
+      (modifyScope (scope: scope // newScope));
 
   _tests = with tests;
     let
@@ -683,6 +713,38 @@ rec {
               in expectRunError {} m (TypeError "fail");
 
             setGet = {
+              helpers = {
+                get = 
+                  let m = Eval.do
+                    (getScope);
+                  in expectRun {} m {} {};
+
+                set = 
+                  let m = Eval.do (setScope {x = 1;});
+                  in expectRun {} m {x = 1;} unit;
+
+                setModGet = 
+                  let m = Eval.do
+                    (setScope {x = 1;})
+                    (modifyScope (scope: scope // {x = scope.x + 2; y = 2;}))
+                    (getScope);
+                  in expectRun {} m {x = 3; y = 2;} {x = 3; y = 2;};
+
+                setModGetBlocks = 
+                  let sets = {_, ...}: _.setScope {x = 1;};
+                      mods = {_, ...}: _.modifyScope (scope: scope // {x = scope.x + 2; y = 2;});
+                      gets = {_, ...}: _.getScope;
+                      m = Eval.do sets mods gets;
+                  in expectRun {} m {x = 3; y = 2;} {x = 3; y = 2;};
+
+                setModGetBlocksDo = 
+                  let sets = Eval.do ({_, ...}: _.setScope {x = 1;});
+                      mods = Eval.do ({_, ...}: _.modifyScope (scope: scope // {x = scope.x + 2; y = 2;}));
+                      gets = Eval.do ({_, ...}: _.getScope);
+                      m = Eval.do sets mods gets;
+                  in expectRun {} m {x = 3; y = 2;} {x = 3; y = 2;};
+              };
+
               inferred =
                 let m = do
                   ( Eval.pure unit )
@@ -711,23 +773,34 @@ rec {
 
               getScope =
                 let m = Eval.do
-                  ( {_}: _.setScope ({x = 1;}) )
-                  ( {_}: _.getScope {} );
+                  ( {_}: _.set (EvalState ({x = 1;}) ))
+                  { state = {_}: _.get {}; }
+                  ( {_, state}: _.pure state.scope );
                 in expectRun {} m {x = 1;} {x = 1;};
 
               appendScope =
                 let m = Eval.do
-                  ( {_}: _.setScope ({x = 1;}) )
-                  ( {_}: _.appendScope ({y = 2;}) )
-                  ( {_}: _.getScope {} );
+                  ( {_}: _.set (EvalState ({x = 1;}) ))
+                  ( {_}: _.modify (s: s.fmap (scope: scope // {y = 2;})) )
+                  { state = {_}: _.get {}; }
+                  ( {_, state}: _.pure state.scope );
                 in expectRun {} m {x = 1; y = 2;} {x = 1; y = 2;};
 
-              overwriteScope =
+              overwriteScopeAppend =
                 let m = Eval.do
-                  ( {_}: _.setScope ({x = 1;}) )
-                  ( {_}: _.appendScope ({x = 2;}) )
-                  ( {_}: _.getScope {} );
+                  ( {_}: _.set (EvalState ({x = 1;}) ))
+                  ( {_}: _.modify (s: s.fmap (scope: scope // {x = 2;})) )
+                  { state = {_}: _.get {}; }
+                  ( {_, state}: _.pure state.scope );
                 in expectRun {} m {x = 2;} {x = 2;};
+
+              overwriteScopePrepend =
+                let m = Eval.do
+                  ( {_}: _.set (EvalState ({x = 1;}) ))
+                  ( {_}: _.modify (s: s.fmap (scope: {x = 2;} // scope)) )
+                  { state = {_}: _.get {}; }
+                  ( {_, state}: _.pure state.scope );
+                in expectRun {} m {x = 1;} {x = 1;};
 
               differentBlocks = {
 
@@ -759,9 +832,10 @@ rec {
                   let 
                     a = 
                       Eval.do 
-                        ( {_}: _.setScope ({x = 1;}) )
-                        ( {_}: _.appendScope ({y = 2;}) )
-                        ( {_}: _.getScope {} );
+                        ( {_}: _.set (EvalState ({x = 1;}) ))
+                        ( {_}: _.modify (s: s.fmap (scope: scope // {y = 2;})) )
+                        { state = {_}: _.get {}; }
+                        ( {_, state}: _.pure state.scope );
                     m = Eval.do a;
                   in expectRun {} m {x = 1; y = 2;} {x = 1; y = 2;};
 
@@ -769,37 +843,44 @@ rec {
                   let 
                     a = 
                       Eval.do 
-                        ( {_}: _.setScope ({x = 1;}) );
+                        ( {_}: _.set (EvalState ({x = 1;}) ))
+                        ( {_}: _.modify (s: s.fmap (scope: scope // {y = 2;})) )
+                        { state = {_}: _.get {}; }
+                        ( {_, state}: _.pure state.scope );
                     b = 
                       Eval.do 
-                        ( {_}: _.appendScope ({y = 2;}) )
-                        ( {_}: _.getScope {} );
+                        ( {_}: _.modify (s: s.fmap (scope: scope // {y = 2;})) )
+                        { state = {_}: _.get {}; }
+                        ( {_, state}: _.pure state.scope );
                     m = Eval.do a b;
                   in expectRun {} m {x = 1; y = 2;} {x = 1; y = 2;};
 
-                #appendScopeDifferentBlock =
-                #  let 
-                #    a = 
-                #      {_}: _.do 
-                #        ( {_}: _.setScope ({x = 1;}) )
-                #        ( {_}: _.appendScope ({y = 2;}) )
-                #        ( {_}: _.getScope {} );
-                #    m = Eval.do a;
-                #  in expectRun {} m {x = 1; y = 2;} {x = 1; y = 2;};
+                appendScopeDifferentBlock =
+                  let 
+                    a = 
+                      {_}: _.do 
+                        ( {_}: _.set (EvalState ({x = 1;}) ))
+                        ( {_}: _.modify (s: s.fmap (scope: scope // {y = 2;})) )
+                        { state = {_}: _.get {}; }
+                        ( {_, state}: _.pure state.scope );
+                    m = Eval.do a;
+                  in expectRun {} m {x = 1; y = 2;} {x = 1; y = 2;};
 
-                #appendScopeDifferentBlocks =
-                #  let 
-                #    a = {_}: _.do ( {_}: _.setScope ({x = 1;}) );
-                #    b = {_}: _.do ( {_}: _.appendScope ({y = 2;}) );
-                #    c = {_}: _.do ( {_}: _.getScope {} );
-                #    m = Eval.do a b c;
-                #  in expectRun {} m {x = 1; y = 2;} {x = 1; y = 2;};
+                appendScopeDifferentBlocks =
+                  let 
+                    a = {_}: _.do ( {_}: _.set (EvalState ({x = 1;}) ));
+                    b = {_}: _.do ( {_}: _.modify (s: s.fmap (scope: scope // {y = 2;})) );
+                    c = {_}: _.do 
+                      {state = {_}: _.get {};}
+                      ({_, state}: _.pure state.scope);
+                    m = Eval.do a b c;
+                  in expectRun {} m {x = 1; y = 2;} {x = 1; y = 2;};
 
                 appendScopeDifferentBlocksBindNoDo =
                   let 
-                    a = {_}: _.setScope ({x = 1;});
-                    b = {_}: _.appendScope ({y = 2;});
-                    c = {_}: _.getScope {};
+                    a = {_}: _.modify (s: s.fmap (const {x = 1;}));
+                    b = {_}: _.modify (s: s.fmap (scope: scope // {y = 2;}));
+                    c = {_}: (_.get {}).bind ({_, _a, ...}: _.pure _a.scope);
                     m = (((Eval.pure unit).bind a).bind b).bind c;
                   in expectRun {} m {x = 1; y = 2;} {x = 1; y = 2;};
               };
@@ -807,8 +888,8 @@ rec {
             };
               
             composes = 
-              let a = Eval.do ( {_}: _.appendScope {x = 1;});
-                  b = Eval.do ( {_}: _.appendScope {y = 2;});
+              let a = Eval.do ( {_}: _.modify (s: s.fmap (scope: scope // {x = 1;})) );
+                  b = Eval.do ( {_}: _.modify (s: s.fmap (scope: scope // {y = 2;})) );
               in {
                 scopeExists = expectRun {} a {x = 1;} unit;
 

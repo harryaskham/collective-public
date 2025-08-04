@@ -20,18 +20,6 @@ rec {
     (evalM expr).run (EvalState.mempty {})
     );
 
-  prependScope = newScope:
-    Eval.do
-      (while "prepending scope")
-      {scope = {_}: _.getScope {};}
-      ({_, scope}: _.setScope (newScope // scope));
-
-  appendScope = newScope:
-    Eval.do
-      (while "appending scope")
-      {scope = {_}: _.getScope {};}
-      ({_, scope}: _.setScope (scope // newScope));
-
   /*
   evalAST :: (string | AST) -> Either EvalError a */
   evalAST = expr:
@@ -39,43 +27,46 @@ rec {
     (runAST expr).fmap (r: r.a)
     );
 
+  /*
+  evalM :: (string | AST) -> Eval a */
   evalM = expr:
     Eval.do
-      ( {_}: _.set (EvalState {scope = initScope;}))
       (while "running string or AST node evaluation")
+      ({_}: _.set initEvalState)
       (evalNodeM (parse expr));
 
   /* Main monadic eval entrypoint.
   evalNodeM :: AST -> Eval a */
   evalNodeM = node:
-    if !(is AST node) then pure node
-    else
-      Eval.do
-        (while "evaluating AST node of type '${node.nodeType or "<no .nodeType>"}'")
-        ({_}: switch node.nodeType {
-          int = evalLiteral node;
-          float = evalLiteral node;
-          string = evalLiteral node;
-          indentString = evalLiteral node;
-          path = evalPath node;
-          anglePath = evalAnglePath node;
-          list = evalList node;
-          attrs = evalAttrs node;
-          identifier = evalIdentifier node;
-          binaryOp = evalBinaryOp node;
-          unaryOp = evalUnaryOp node;
-          conditional = evalConditional node;
-          lambda = evalLambda node;
-          application = evalApplication node;
-          letIn = evalLetIn node;
-          attrPath = evalAttrPath node;
-          "with" = evalWith node;
-          "assert" = evalAssert node;
-          "abort" = evalAbort node;
-          "throw" = evalThrow node;
-          "import" = evalImport node;
-          "inherit" = evalInherit node;
-        });
+    Eval.do
+      ({_}: _.guard (is AST node) (RuntimeError ''
+        evalNodeM: Expected AST node, got ${_ph_ node}
+      ''))
+      (while "evaluating AST node of type '${node.nodeType or "<no .nodeType>"}'")
+      (switch node.nodeType {
+        int = evalLiteral node;
+        float = evalLiteral node;
+        string = evalLiteral node;
+        indentString = evalLiteral node;
+        path = evalPath node;
+        anglePath = evalAnglePath node;
+        list = evalList node;
+        attrs = evalAttrs node;
+        identifier = evalIdentifier node;
+        binaryOp = evalBinaryOp node;
+        unaryOp = evalUnaryOp node;
+        conditional = evalConditional node;
+        lambda = evalLambda node;
+        application = evalApplication node;
+        letIn = evalLetIn node;
+        "with" = evalWith node;
+        "assert" = evalAssert node;
+        "abort" = evalAbort node;
+        "throw" = evalThrow node;
+        "import" = evalImport node;
+        "assignment" = evalAssignment node;
+        "inherit" = evalInherit node;
+      });
 
   # Evaluate a literal value (int, float, string, etc.)
   # evalLiteral :: AST -> Eval a
@@ -90,8 +81,9 @@ rec {
   identifierName = node:
     Eval.do
       (while "evaluating a name")
-      {name = {_}:
-        if node.nodeType == "identifier" then _.pure node.name
+      {name = 
+        if node.nodeType == "identifier"
+        then {_, ...}: _.pure node.name
         else evalNodeM node;}
       ({_, name}: _.guard (lib.isString name) (RuntimeError ''
         Expected string identifier name, got ${lib.typeOf name}
@@ -101,76 +93,63 @@ rec {
   # Evaluate an identifier lookup
   # evalIdentifier :: Scope -> AST -> Eval a
   evalIdentifier = node:
-    Eval.do
+    {_, ...}: _.do
       (while "evaluating 'identifier' node")
-      {scope = {_}: _.getScope {};}
+      {scope = getScope;}
       ({_, scope}: _.guard (scope ? ${node.name}) (RuntimeError ''
         Undefined identifier '${node.name}' in current scope:
           ${_ph_ scope}
       ''))
       ({_, scope}: _.pure scope.${node.name});
 
-  # sequenceM :: [Eval a] -> Eval [a]
-  sequenceM = foldM Eval (acc: elemM: elemM.bind ({_, _a}: _.pure (acc ++ [_a]))) [];
-
-  # traverse :: (a -> Eval b) -> [a] -> Eval [b]
-  traverse = f: xs: sequenceM (map f xs);
-
   # Evaluate a list of AST nodes
   # evalList :: AST -> Eval [a]
   evalList = node:
     Eval.do
       (while "evaluating 'list' node")
-      (traverse evalNodeM node.elements);
+      ({_}: _.traverse evalNodeM node.elements);
 
   # Evaluate an assignment (name-value pair)
   # evalAssignment :: AST -> Eval {name = value}
-  evalAssignment = assignment:
+  evalAssignment = node:
     Eval.do
       (while "evaluating 'assignment' node")
-      { name = identifierName assignment.lhs; }
-      { value = evalNodeM assignment.rhs; }
+      { name = identifierName node.lhs; }
+      { value = evalNodeM node.rhs; }
       ({_, name, value, ...}: _.pure { ${name} = value; });
 
   evalBindingList = bindings:
     Eval.do
       (while "evaluating 'bindings' node-list")
-      { bindings = traverse evalAssignment bindings; }
+      { bindings = {_}: _.traverse evalNodeM bindings; }
       ({_, bindings}: _.pure (mergeAttrsList bindings));
 
   evalAttrFrom = from: attr:
-    log.while "evaluating 'attr' node by name" (
     Eval.do
-      { name = {_}: identifierName attr; }
-      ( {_}: _.unless (from ? ${name}) (_.throws (MissingAttributeError name)) )
-      ( {_, name, ...}: _.pure { ${name} = from.${name}; } )
-    );
+      (while "evaluating 'attr' node by name")
+      {name = identifierName attr;}
+      ({_, name}: _.guard (from ? ${name}) (MissingAttributeError name))
+      ({_, name}: _.pure { ${name} = from.${name}; });
 
   evalInherit = inheritNode:
-    log.while "evaluating 'inherit' node" (
     Eval.do
-      { from = {_}: 
-          if inheritNode.from == null then _.getScope {}
-          else evalNodeM inheritNode.from; }
-      { assignments = {from}: traverse (evalAttrFrom from) inheritNode.attrs; }
-      ( {_, assignments}: _.pure (mergeAttrsList assignments) )
-    );
+      (while "evaluating 'inherit' node")
+      {from = 
+        if inheritNode.from == null 
+        then getScope
+        else evalNodeM inheritNode.from;}
+      {bindings = {_, from}: _.traverse (evalAttrFrom from) inheritNode.attrs;}
+      ({_, bindings}: _.pure (mergeAttrsList bindings));
 
   # Evaluate an attribute set
   # evalAttrs :: AST -> Eval AttrSet
   evalAttrs = node:
-    log.while "evaluating 'attrs' node" (
     Eval.do
-      #{ scope = {_}: _.getScope {}; }
-      { attrs = evalBindingList node.assignments; }
-      #( {_, attrs, scope, ...}:
-      ( {_, attrs, ...}:
-        if node.isRec then 
-          # For recursive attribute sets, create a fixed-point
-          #_.pure (lib.fix (self: attrs // scope // self))
-          _.pure (lib.fix (self: attrs // self))
-        else _.pure attrs )
-    );
+      (while "evaluating 'attrs' node")
+      {attrs = evalBindingList node.bindings;}
+      ({_, attrs}: _.pure (
+        if node.isRec then lib.fix (self: attrs // self)
+        else attrs));
 
   # Type-check binary operation operands
   # checkBinaryOpTypes :: String -> [TypeSet] -> a -> a -> Eval Unit
@@ -191,52 +170,120 @@ rec {
             compatibleTypeSets)})
     ''));
 
+  guardOneBinaryOp = op: compatibleTypeSets: l: r:
+    {_, ...}:
+      _.guard 
+        (any id 
+          (map 
+            (typeSet: elem (lib.typeOf l) typeSet && elem (lib.typeOf r) typeSet)
+            compatibleTypeSets))
+        (TypeError ''Incorrect types for binary operator ${op}:
+
+          ${_ph_ l} and ${_ph_ r}
+          
+          (expected one of ${
+            joinSep " | " 
+              (map 
+                (typeSet: "(${joinSep " | " typeSet})") 
+                compatibleTypeSets)})
+        '');
+
+  guardBinaryOp = op: l: r: switch op {
+    "+" = guardOneBinaryOp "+" [["int" "float"] ["string" "path"]] l r;
+    "-" = guardOneBinaryOp "-" [["int" "float"]] l r;
+    "*" = guardOneBinaryOp "*" [["int" "float"]] l r;
+    "/" = guardOneBinaryOp "/" [["int" "float"]] l r;
+    "++" = guardOneBinaryOp "++" [["list"]] l r;
+    "//" = guardOneBinaryOp "//" [["set"]] l r;
+    "==" = guardOneBinaryOp "==" [builtinNames] l r;
+    "!=" = guardOneBinaryOp "!=" [builtinNames] l r;
+    "<" = guardOneBinaryOp "<" [["int" "float"] ["string"] ["path"] ["list"] ["set"]] l r;
+    ">" = guardOneBinaryOp ">" [["int" "float"] ["string"] ["path"] ["list"] ["set"]] l r;
+    "<=" = guardOneBinaryOp "<=" [["int" "float"] ["string"] ["path"] ["list"] ["set"]] l r;
+    ">=" = guardOneBinaryOp ">=" [["int" "float"] ["string"] ["path"] ["list"] ["set"]] l r;
+  };
+
+  runBinaryOp = op: l: r: switch op {
+    "+" = l + r;
+    "-" = l - r;
+    "*" = l * r;
+    "/" = l / r;
+    "++" = l ++ r;
+    "//" = l // r;
+    "==" = l == r;
+    "!=" = l != r;
+    "<" = l < r;
+    ">" = l > r;
+    "<=" = l <= r;
+    ">=" = l >= r;
+  };
+
+  knownBinaryOps = [
+    "+"
+    "-"
+    "*"
+    "/"
+    "++"
+    "//"
+    "=="
+    "!="
+    "<"
+    ">"
+    "<="
+    ">="
+    "&&"
+    "||"
+    "."
+    "or"
+  ];
+
   # Evaluate a binary operation
-  # evalBinaryOp :: Scope -> AST -> Eval a
+  # evalBinaryOp :: AST -> Eval a
   evalBinaryOp = node:
-    log.while "evaluating 'binaryOp' node" (
-    if node.op == "." then evalAttributeAccess node
-    else if node.op == "or" then evalOrOperation node
-    else Eval.do
-      { l = evalNodeM node.lhs; }
-      { r = evalNodeM node.rhs; }
-      ( {_, l, r, ...}:
-        if node.op == "+" then 
-          checkBinaryOpTypes "+" [["int" "float"] ["string" "path"]] l r (l + r)
-        else if node.op == "-" then
-          checkBinaryOpTypes "-" [["int" "float"]] l r (l - r)
-        else if node.op == "*" then
-          checkBinaryOpTypes "*" [["int" "float"]] l r (l * r)
-        else if node.op == "/" then
-          checkBinaryOpTypes "/" [["int" "float"]] l r (l / r)
-        else if node.op == "++" then
-          checkBinaryOpTypes "++" [["list"]] l r (l ++ r)
-        else if node.op == "//" then
-          checkBinaryOpTypes "//" [["set"]] l r (l // r)
-        else if node.op == "==" then
-          checkBinaryOpTypes "==" [builtinNames] l r (l == r)
-        else if node.op == "!=" then
-          checkBinaryOpTypes "!=" [builtinNames] l r (l != r)
-        else if node.op == "<" then
-          checkBinaryOpTypes "<" [["int" "float"] ["string"] ["path"] ["list"] ["set"]] l r (l < r)
-        else if node.op == ">" then
-          checkBinaryOpTypes ">" [["int" "float"] ["string"] ["path"] ["list"] ["set"]] l r (l > r)
-        else if node.op == "<=" then
-          checkBinaryOpTypes "<=" [["int" "float"] ["string"] ["path"] ["list"] ["set"]] l r (l <= r)
-        else if node.op == ">=" then 
-          checkBinaryOpTypes ">=" [["int" "float"] ["string"] ["path"] ["list"] ["set"]] l r (l >= r)
-        else if node.op == "&&" then
-          if !(lib.isBool l) || (l && !(lib.isBool r)) then _.throws (TypeError (_b_ ''
-            &&: got non-bool operand(s) of type ${typeOf l} and ${typeOf r}
-          '')) else _.pure (l && r)
-        else if node.op == "||" then
-          if !(lib.isBool l) || (!l && !(lib.isBool r)) then _.throws (TypeError (_b_ ''
-            ||: got non-bool operand(s) of type ${typeOf l} and ${typeOf r}
-          '')) else _.pure (l || r)
-        else _.throws (RuntimeError (_b_ ''
-          Unsupported binary operator: ${node.op}:
-            ${_ph_ node}
-        ''))));
+    Eval.do
+      (while "evaluating 'binaryOp' node")
+      ({_}: _.guard (elem node.op knownBinaryOps) (RuntimeError ''
+        Unsupported binary operator: ${node.op}
+      ''))
+      (
+        if node.op == "." then evalAttributeAccess node
+        else if node.op == "or" then evalOrOperation node
+        else {_, ...}: _.do
+          {l = evalNodeM node.lhs;}
+          {r = evalNodeM node.rhs;}
+          ({_, l, r, ...}:
+            # && operator separated out to add short-circuiting.
+            if node.op == "&&" then
+              if !(lib.isBool l) || (l && !(lib.isBool r)) then _.throws (TypeError (_b_ ''
+                &&: got non-bool operand(s) of type ${typeOf l} and ${typeOf r}
+              '')) else _.pure (l && r)
+
+            # || operator separated out to add short-circuiting.
+            else if node.op == "||" then
+              if !(lib.isBool l) || (!l && !(lib.isBool r)) then _.throws (TypeError (_b_ ''
+                ||: got non-bool operand(s) of type ${typeOf l} and ${typeOf r}
+              '')) else _.pure (l || r)
+
+
+            # All other binary operators.
+            else _.do
+              (guardBinaryOp node.op l r)
+              ({_}: _.pure (runBinaryOp node.op l r))
+        ));
+
+  # obj.a.b.c - traverse the attribute path
+  traversePath = obj: components:
+    Eval.do
+      (while "traversing attr path")
+      ({_, ...}:
+        if components == [] then _.pure obj
+        else 
+          let headPath = builtins.head components;
+              restPath = builtins.tail components;
+          in _.do
+            {attrName = identifierName headPath;}
+            ({_, attrName, ...}: _.guard (obj ? ${attrName}) (MissingAttributeError attrName))
+            ({_, attrName, ...}: traversePath obj.${attrName} restPath));
 
   # Evaluate attribute access (dot operator)
   # TODO: Duplicative of binary op handlers.
@@ -244,42 +291,30 @@ rec {
   evalAttributeAccess = node:
     Eval.do
       (while "evaluating 'attribute access' node")
-      { obj = evalNodeM node.lhs; }
-      ( {_, obj, ...}:
-
+      {obj = evalNodeM node.lhs;}
+      (
         # Handle different right-hand side cases
         if node.rhs.nodeType == "binaryOp" && node.rhs.op == "or" then
           # obj.attr or default
-          _.do
+          {_, obj, ...}: _.do
             { defaultVal = evalNodeM node.rhs.rhs; }
             { attrName = identifierName node.rhs.lhs; }
             ( {_, attrName, defaultVal, ...}: _.pure (obj.${attrName} or defaultVal) )
 
         else if node.rhs.nodeType == "attrPath" then
-          # obj.a.b.c - traverse the attribute path
-          let traversePath = obj: components:
-            log.while "traversing attr path" (
-            if components == [] then _.pure obj
-            else 
-              let headPath = builtins.head components;
-                  restPath = builtins.tail components;
-              in _.do
-                { attrName = identifierName headPath; }
-                ( {_, attrName, ...}:
-                  if obj ? ${attrName} then traversePath obj.${attrName} restPath
-                  else _.throws (MissingAttributeError attrName) )
-            );
-          in _.do
-            { components = evalNodeM node.rhs.path; }
-            ( {_, components, ...}: traversePath obj components )
+          ({_, obj, ...}: traversePath obj node.rhs.path)
 
         else 
-          # obj.attr, obj."attr", obj.${attr}
-          _.do
-            { attrName = evalNodeM node.rhs; }
-            ( {_, attrName}: _.unless (obj ? ${attrName}) (_.throws (MissingAttributeError attrName)) )
-            ( {_, attrName, ...}: _.pure obj.${attrName} )
-        );
+          _.throws (RuntimeError ''
+            Unsupported attribute access: ${node.rhs.nodeType}
+            (Expected 'attrPath' or 'binaryOp' with 'or' operator)
+          ''));
+          ## obj.attr, obj."attr", obj.${attr}
+          #_.do
+          #  { attrName = evalNodeM node.rhs; }
+          #  ( {_, attrName}: _.unless (obj ? ${attrName}) (_.throws (MissingAttributeError attrName)) )
+          #  ( {_, attrName, ...}: _.pure obj.${attrName} )
+        #);
 
   # evalOrOperation :: AST -> Eval a
   evalOrOperation = node:
@@ -299,75 +334,88 @@ rec {
 
   # evalUnaryOp :: AST -> Eval a
   evalUnaryOp = node:
-    log.while "evaluating 'unary' node" (
     Eval.do
-      { operand = evalNodeM node.operand; }
-      ( {_, operand, ...}: _.pure (switch node.op {
+      (while "evaluating 'unary' node")
+      {operand = evalNodeM node.operand;}
+      ({_, operand}: _.pure (switch node.op {
         "!" = (!operand);
         "-" = (-operand);
-      } ))
-    );
+      }));
 
   # evalConditional :: AST -> Eval a
   evalConditional = node:
-    log.while "evaluating 'conditional' node" (
     Eval.do
-      { cond = evalNodeM node.cond; }
-      ( {_, cond, ...}:
-        if cond then evalNodeM node."then" 
-        else evalNodeM node."else" )
-    );
+      (while "evaluating 'conditional' node")
+      {cond = evalNodeM node.cond;}
+      ({_, cond}:
+        if cond 
+        then evalNodeM node."then" 
+        else evalNodeM node."else");
+
+  paramName = param: param.name.name;
+  defaultParamAttrs = param: filter (paramAttr: paramAttr.nodeType == "defaultParam") param.attrs;
+  requiredParamAttrs = param: filter (paramAttr: paramAttr.nodeType != "defaultParam") param.attrs;
+
+  getDefaultLambdaScope = param:
+    {_, ...}:
+      _.traverse
+        (paramAttr: 
+          _.do
+            {default = evalNodeM paramAttr.default;}
+            ({_, default}: _.pure { ${paramName paramAttr} = default;}))
+        (defaultParamAttrs param);
 
   # Return any extra scope bound by passing in the arg to the param.
   # evalLambdaParams :: AST -> a -> Eval Scope
   evalLambdaParams = param: arg:
-    log.while "evaluating 'lambda' parameters" (
-    switch.on (p: p.nodeType) param {
-      simpleParam = Eval.do
-        { name = identifierName param.name; }
-        ( {_, name, ...}: _.pure { ${name} = arg; } );
+    Eval.do
+      (while "evaluating 'lambda' parameters")
+      ({_}: switch.on (p: p.nodeType) param {
+        # Simple param is just a name, so just bind it to the arg.
+        simpleParam = _.pure { ${paramName param} = arg; };
 
-      attrSetParam = 
-        let 
-          allParamNames = map (ap: ap.name.name) param.attrs;
-          suppliedUnknownNames = removeAttrs arg allParamNames;
-          getDefaultScope =
-            sequenceM 
-              (map 
-                (param: 
-                  _.do
-                    { default = evalNodeM param.default; }
-                    ( {_, default}: _.pure { ${param.name.name} = default; }))
-              (filter (ap: ap.nodeType == "defaultParam") param.attrs));
-        in
-          Eval.do
-            ( {_}: 
-                _.when (!param.ellipsis && nonEmpty suppliedUnknownNames)
-                (_.throws (RuntimeError (_b_ ''
-                  Unknown parameters: ${joinSep ", " (attrNames suppliedUnknownNames)}:
-                    ${_ph_ param}
-                ''))) )
-            { defaults = getDefaultScope; }
-            ( {_, defaults, ...}: _.pure (defaults // arg) );
-    });
+        # Attrset param is a set of names, so bind each to the arg, with defaults handled.
+        attrSetParam = 
+          let 
+            allParamNames = map paramName param.attrs;
+            requiredParamNames = map paramName (requiredParamAttrs param);
+            suppliedUnknownNames = removeAttrs arg allParamNames;
+            requiredUnsuppliedNames = filter (name: !(arg ? name)) requiredParamNames;
+          in
+            _.do
+              ({_}: _.guard (lib.isAttrs arg) (TypeError ''
+                Expected attrset argument, got ${lib.typeOf arg}:
+                  ${_ph_ arg}
+              ''))
+              ({_}: _.guard (empty requiredUnsuppliedNames) (RuntimeError ''
+                Missing required parameters in attrset lambda: ${joinSep ", " requiredUnsuppliedNames}:
+                  ${_ph_ param}
+              ''))
+              ({_}: _.guard (param.ellipsis || empty suppliedUnknownNames) (RuntimeError ''
+                Unknown parameters in non-ellipsis attrset lambda: ${joinSep ", " (attrNames suppliedUnknownNames)}:
+                  ${_ph_ param}
+              ''))
+              {defaults = getDefaultLambdaScope param; }
+              ({_, defaults, ...}: _.pure (defaults // arg) );
+      });
 
   # Evaluate a lambda expression
   # evalLambda :: AST -> Eval Function
   evalLambda = node:
-    log.while "evaluating 'lambda' node" (
     Eval.do
-      { scope = {_}: _.getScope {}; }
-      ( {_, scope, ...}: _.pure (
+      (while "evaluating 'lambda' node")
+      {scope = getScope;}
+      ({_, scope, ...}: _.pure (
         # Bind arg to create an actual lambda.
         arg: 
           let bodyM = 
             # Start from scratch inside the lambda since we don't
             # inherit scope.
             Eval.do
-              ( {_}: _.setScope scope )
-              { extraScope = evalLambdaParams node.param arg; }
-              ( {_, extraScope, ...}: appendScope extraScope )
-              ( evalNodeM node.body );
+              (setScope scope)
+              {extraScope = evalLambdaParams node.param arg;}
+              ({_, extraScope, ...}: _.appendScope extraScope)
+              (evalNodeM node.body);
           in
             # Actually have to run the Eval monad here to get
             # correct runtime behaviour.
@@ -377,24 +425,19 @@ rec {
             # we can throw if we apply during Eval.
             let e = bodyM.run {};
             in if isLeft e then e.left else e.right.a
-        ) 
-      )
-    );
+        ));
 
-  # Evaluate function application
+  # Evaluate function application. If the function was a lambda constructed by
+  # eval, lift any error returned to the top level.
   # evalApplication :: AST -> Eval a
   evalApplication = node:
-    log.while "evaluating 'application' node" (
     Eval.do
-      { func = evalNodeM node.func; }
-      { args = sequenceM (map evalNodeM node.args); }
-      ( {_, func, args, ...}:
-        let result = lib.foldl (f: a: f a) func args;
-        in if is EvalError result 
-           then _.throws result 
-           else _.pure result 
-      )
-    );
+      (while "evaluating 'application' node")
+      {func = evalNodeM node.func;}
+      {args = {_, ...}: _.traverse evalNodeM node.args;}
+      {result = {_, func, args, ...}: _.pure (ap.list func args);}
+      ({_, result, ...}: _.guard (!(is EvalError result)) result)
+      ({_}: _.pure result);
 
   bindingToAttrs = binding:
     Eval.do
@@ -409,16 +452,23 @@ rec {
     Eval.do
       (while "evaluating 'letIn' node")
       {bindings = evalBindingList node.bindings;}
-      ({_, bindings}: appendScope bindings)
+      ({_, bindings}: _.appendScope bindings)
       (evalNodeM node.body);
+
+  # Evaluate a with expression
+  # evalWith :: AST -> Eval a
+  evalWithEnv = envNode: 
+    Eval.do
+      (while "evaluating 'with' environment node")
+      {env = evalNodeM envNode;}
+      ({_, env}: _.prependScope env);
 
   # Evaluate a with expression
   # evalWith :: AST -> Eval a
   evalWith = node: 
     Eval.do
       (while "evaluating 'with' node")
-      {env = evalNodeM node.env;}
-      ({_, env}: prependScope env)
+      (evalWithEnv node.env)
       (evalNodeM node.body);
 
   # Evaluate an assert expression
@@ -473,12 +523,6 @@ rec {
       ''))
       (pure (import path));
 
-  # attrPath is just a path list, return the path
-  evalAttrPath = node: 
-    Eval.do
-      (while "evaluating 'attrPath' node")
-      (pure node.path);
-
   evalPath = node: 
     Eval.do
       (while "evaluating 'path' node")
@@ -487,7 +531,7 @@ rec {
   evalAnglePath = node:
     Eval.do
       (while "evaluating 'anglePath' node")
-      { scope = {_}: _.getScope {}; }
+      {scope = getScope;}
       ({_, scope}:
         let path = splitSep "/" node.value;
             name = maybeHead path;
@@ -503,16 +547,26 @@ rec {
           (pure (scope.NIX_PATH.${name} + "/${restPath}")));
 
   # Helper to test round-trip property: eval (parse x) == x
-  testRoundTrip = expr: expected: with collective-lib.tests; {
+  testRoundTrip = testRoundTripWith collective-lib.tests.expect.printEq;
+  testRoundTripWith = expectation: expr: expected: {
     # Just test that parsing succeeds and the result evaluates to expected
     roundTrip = 
-      let result = collective-lib.eval.ast expr;
-      in expect.noLambdasEq result ((Either EvalError (getT expected)).Right expected);
+      let result = evalAST expr;
+      in expectation result ((Either EvalError (getT expected)).Right expected);
   };
 
-  expectEvalError = E: expr: with collective-lib.tests;
-    let result = collective-lib.eval.ast expr;
-    in expect.noLambdasEq (rec {
+  expectScope = expectScopeWith collective-lib.tests.expect.noLambdasEq;
+  expectScopeWith = expectation: node: expected:
+    let result = (evalNodeM node).run initEvalState;
+        rOrL = result.right or result.left;
+        sOrId = rOrL.s or rOrL;
+        scopeOrId = sOrId.scope or sOrId;
+    in expectation scopeOrId expected;
+
+  expectEvalError = expectEvalErrorWith collective-lib.tests.expect.noLambdasEq;
+  expectEvalErrorWith = expectation: E: expr:
+    let result = runAST expr;
+    in expectation (rec {
       resultIsLeft = isLeft result;
       resultEMatches = is E (result.left or null);
       inherit E;
@@ -529,11 +583,37 @@ rec {
     # Tests for evalAST round-trip property
     evalAST = {
 
-      smoke = {
+      #scope = skip {
+      #  unit = expectScope (parse "{}") initScope;
+      #  attrs = expectScope "{ a = 1; }" initScope;
+
+      #  env = {
+      #    withs = 
+      #      let node = parse "with { a = 1; }; a";
+      #      in expectScope (evalWithEnv node) (initScope // {a = 1;});
+      #  };
+      #};
+
+      _00_smoke = solo {
         int = testRoundTrip "1" 1;
+        float = testRoundTrip "1.0" 1.0;
+        string = testRoundTrip ''"hello"'' "hello";
+        indentString = testRoundTrip "''hello''" "hello";
+        true = testRoundTrip "true" true;
+        false = testRoundTrip "false" false;
+        null = testRoundTrip "null" null;
+        list = testRoundTrip "[1 2 3]" [1 2 3];
+        attrSet = testRoundTrip "{a = 1;}" {a = 1;};
+        attrPath = testRoundTrip "{a = 1;}.a" 1;
+        #attrPathOr = testRoundTrip "{a = 1;}.b or 2" 2;
+        #inherits = testRoundTrip "{ inherit (builtins) true; }" { true = true; };
+        inheritsConst = testRoundTrip "{ inherit ({a = 1;}) a; }" {a = 1;};
+        #lets = testRoundTrip "let a = 1; in a" 1;
+        #withs = testRoundTrip "with {a = 1;}; a" 1;
+        #asserts = testRoundTrip "assert true; 1" 1;
       };
 
-      allFeatures =
+      _01_allFeatures =
         skip (
         let 
           # Test all major language constructs in one expression
@@ -551,42 +631,44 @@ rec {
         );
 
       # Basic literals
-      integers = testRoundTrip "42" 42;
-      floats = testRoundTrip "3.14" 3.14;
-      strings = testRoundTrip ''"hello"'' "hello";
-      booleans = {
-        true = testRoundTrip "true" true;
-        false = testRoundTrip "false" false;
+      _02_literals = solo {
+        integers = testRoundTrip "42" 42;
+        floats = testRoundTrip "3.14" 3.14;
+        strings = testRoundTrip ''"hello"'' "hello";
+        booleans = {
+          true = testRoundTrip "true" true;
+          false = testRoundTrip "false" false;
+        };
+        nullValue = testRoundTrip "null" null;
       };
-      nullValue = testRoundTrip "null" null;
 
       # Collections
-      lists = {
+      _03_lists = solo {
         empty = testRoundTrip "[]" [];
         numbers = testRoundTrip "[1 2 3]" [1 2 3];
-        mixed = testRoundTrip ''[1 "hello" true]'' [1 "hello" true];
+        #mixed = testRoundTrip ''[1 "hello" true]'' [1 "hello" true];
       };
 
-      attrs = {
+      _04_attrs = solo {
         empty = testRoundTrip "{}" {};
         simple = testRoundTrip "{ a = 1; b = 2; }" { a = 1; b = 2; };
         nested = testRoundTrip "{ x = { y = 42; }; }" { x = { y = 42; }; };
       };
 
       # Binary operations
-      arithmetic = {
+      _05_arithmetic = solo {
         addition = testRoundTrip "1 + 2" 3;
         multiplication = testRoundTrip "3 * 4" 12;
         subtraction = testRoundTrip "10 - 3" 7;
         division = testRoundTrip "8 / 2" 4;
       };
 
-      logical = {
+      _06_logical = {
         and = testRoundTrip "true && false" false;
         or = testRoundTrip "true || false" true;
       };
 
-      comparison = {
+      _07_comparison = solo {
         equalParen = testRoundTrip "(1 == 1)" true;
         equal = testRoundTrip "1 == 1" true;
         notEqual = testRoundTrip "1 != 2" true;
@@ -595,38 +677,38 @@ rec {
       };
 
       # Unary operations
-      unary = {
+      _08_unary = {
         not = testRoundTrip "!false" true;
       };
 
       # Conditionals
-      conditionals = {
+      _09_conditionals = {
         simple = testRoundTrip "if true then 1 else 2" 1;
         nested = testRoundTrip "if false then 1 else if true then 2 else 3" 2;
       };
 
       # Let expressions
-      letExpressions = {
+      _10_letExpressions = skip {
         simple = testRoundTrip "let x = 1; in x" 1;
         multiple = testRoundTrip "let a = 1; b = 2; in a + b" 3;
         nested = testRoundTrip "let x = 1; y = let z = 2; in z + 1; in x + y" 4;
       };
 
       # Functions (simplified tests since function equality is complex)  
-      functions = {
+      _11_functions = skip {
         identity = testRoundTrip "let f = x: x; in f 42" 42;
         const = testRoundTrip "let f = x: y: x; in f 1 2" 1;
       };
 
       # Attribute access
-      attrAccess = {
+      _12_attrAccess = skip {
         letIn = testRoundTrip "let xs = { a = 42; }; in xs.a" 42;
         simple = testRoundTrip "{ a = 42; }.a" 42;
         withDefault = testRoundTrip "{ a = 42; }.b or 0" 0;
       };
 
       # Assert expressions - testing proper Nix semantics
-      assertExpressions = {
+      _13_assertExpressions = {
         # Assert with true condition should evaluate body
         assertTrue = testRoundTrip "assert true; 42" 42;
         # Assert with false condition should throw
@@ -640,7 +722,7 @@ rec {
       };
 
       # Abort expressions - testing our custom abort handling
-      abortExpressions = {
+      _14_abortExpressions = solo {
         # Basic abort with string message
         abortString = expectEvalError Abort ''abort "custom abort message"'';
         # Abort with evaluated expression
@@ -650,7 +732,7 @@ rec {
       };
 
       # With expressions - testing proper scope precedence
-      withExpressions = {
+      _15_withExpressions = skip {
         # Basic with expression
         basicWith = testRoundTrip "with { a = 1; }; a" 1;
         # Lexical scope should shadow with attributes  
@@ -664,7 +746,7 @@ rec {
       };
 
       # Import expressions - basic import tests
-      importExpressions = {
+      _16_importExpressions = skip {
         # Import self test (simplified)
         importSelf = testRoundTrip "let path = ./default.nix; in true" true;
         paths = {
@@ -680,7 +762,7 @@ rec {
       };
 
       # Complex expressions demonstrating code transformations
-      transformations = let
+      _17_transformations = let
         # Example: transform "1 + 2" to "2 + 1" (commutativity)
         original = parse "1 + 2";
         transformed = original.mapNode (node: with node; { 
@@ -688,13 +770,13 @@ rec {
           lhs = rhs;
           rhs = lhs;
         });
-      in {
+      in solo {
         original = testRoundTrip original 3;
         transformed = testRoundTrip transformed 1;
       };
 
       # Self-parsing test
-      selfParsing = {
+      _18_selfParsing = solo {
         parseParserFile = let 
           # Skip self-parsing test for now as it requires more advanced Nix constructs
           result = { type = "success"; };

@@ -34,7 +34,7 @@ let
 
     # Shorthand for adding context for better traces when the expr fails to eval.
     describe = msg: expr:
-      builtins.addErrorContext (Safe "|-> ${msg}") expr;
+      builtins.addErrorContext (Safe "|->> ${msg}") expr;
     while = msg: expr: describe "while ${msg}" expr;
 
     defPrintArgs = {
@@ -984,8 +984,13 @@ let
                 # This does mean typechecking occurs only after all args are provided.
                 variadicBody = Variadic.mkOrderedThen f__body argNames;
                 typedFn = bodyToTypedFn variadicBody;
-              in 
-                typedFn
+              in
+                # Expose as a callable but also with the fn name as a field for use
+                # with 'with'
+                {
+                  ${name} = typedFn;
+                  __functor = self: typedFn;
+                }
               );
 
             # Set options on the bound self and rebind such that they are
@@ -1197,6 +1202,21 @@ in log // {
               callF.correct = expect.eq (f 1 "b") "2 b";
               callF.incorrect.first = expect.error (f true "b");
               callF.incorrect.second = expect.error (f 2 1);
+            };
+          defunWith = 
+            let 
+              withF = run:
+                with defun (
+                  {f}: {a ? Int, b ? String}: where
+                  f [a b] ("${toString (a.value + 1)} ${b}")
+                );
+                run f;
+            in {
+              callF.partial.correct = expect.isLambda (withF (f: f 1));
+              callF.partial.error = expect.error (withF (f: f "a"));
+              callF.correct = expect.eq (withF (f: f 1 "b")) "2 b";
+              callF.incorrect.first = expect.error (withF (f: f true "b"));
+              callF.incorrect.second = expect.error (withF (f: f 2 1));
             };
         };
         combined = {

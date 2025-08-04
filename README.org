@@ -16,12 +16,19 @@ Bootstraps a type system separate from that used by Nix's modules.
 Enables a fun syntax for defining typed functions:
 
 #+BEGIN_SRC nix
-let f = defun ({f}: {a ? Int, b ? Literal 7}: where f [a b] (a.value + b.getLiteral{}));
-in {
+with defun (
+  {f}: {a ? Int, b ? Literal 7}: 
+  where f [a b] (a.value + b.getLiteral{})
+);
+{
   _0 = f 1 7;
   _1 = f 2.2 7;
   _2 = f 1 8;
-} == { 
+}
+#+END_SRC
+
+#+BEGIN_SRC nix
+{
   _0 = 8; 
   _1 = <type error on Float/Int>
   _2 = <type error on Literal>

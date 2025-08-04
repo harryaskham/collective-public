@@ -448,7 +448,7 @@ in rec {
           '') Status;
         msgs =
           mapAttrs
-            (statusName: _: joinLines (map (result: result.msg) byStatus.${statusName}))
+            (statusName: _: Safe (joinLines (map (result: result.msg) byStatus.${statusName})))
             Status;
         failedTestNamesBlock = joinLines (map (result: "FAIL: ${result.test.name}") byStatus.Failed);
 
@@ -458,7 +458,7 @@ in rec {
         msgs.Skipped
         (indent.blocks [headers.Passed msgs.Passed])
         (indent.blocks [headers.Failed failedTestNamesBlock])
-        #msgs.Failed
+        msgs.Failed
       ];
   };
 

@@ -26,7 +26,6 @@ let this = rec {
     "msg"
     "elements"
     "isRec"
-    "assignments"
     "from"
     "ellipsis"
     "attrs"
@@ -196,9 +195,9 @@ let this = rec {
     
     # Collections
     list = elements: AST "list" { inherit elements; };
-    attrs = assignments: isRec: AST "attrs" { inherit assignments; inherit isRec; };
+    attrs = bindings: isRec: AST "attrs" { inherit bindings; inherit isRec; };
     
-    # Assignments and bindings
+    # Bindings
     assignment = lhs: rhs: AST "assignment" { inherit lhs rhs; };
     inheritExpr = from: attrs: AST "inherit" { inherit from attrs; };
     
@@ -448,13 +447,13 @@ let this = rec {
     # Attribute sets  
     binding = mkParser "binding" (choice [assignment inheritParser]);
 
-    # For attribute sets: assignments inside braces
+    # For attribute sets: bindings inside braces
     bindings = mkParser "bindings" (
       many (
         bind binding (a: 
         pure a)));
 
-    # For let expressions: assignments without braces, terminated by 'in'
+    # For let expressions: bindings without braces, terminated by 'in'
     letBindings = mkParser "letBindings" (
       many (
         bind binding (a:
@@ -463,11 +462,11 @@ let this = rec {
     attrs = mkParser "attrs" (choice [
       # Recursive attribute sets (try first - more specific)  
       (bind recKeyword (_:
-        fmap (assignments: N.attrs assignments true)
+        fmap (bindings: N.attrs bindings true)
         (between (sym "{") (sym "}") bindings)))
 
       # Non-recursive attribute sets
-      (fmap (assignments: N.attrs assignments false)
+      (fmap (bindings: N.attrs bindings false)
         (between (sym "{") (sym "}") bindings))
     ]);
 
@@ -736,6 +735,8 @@ let this = rec {
               (withExpectedSrc "a = 1; " (N.assignment (withExpectedSrc "a" (N.identifier "a")) (withExpectedSrc "1" (N.int 1))))
               (withExpectedSrc "b = 2; " (N.assignment (withExpectedSrc "b" (N.identifier "b")) (withExpectedSrc "2" (N.int 2))))
             ] false));
+          inherits = expectSuccess "{ inherit a b; }" 
+            (N.inheritExpr (N.identifier "a") [N.identifier "b"]);
         };
 
         # Functions
