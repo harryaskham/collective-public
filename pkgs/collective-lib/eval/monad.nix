@@ -56,6 +56,7 @@ rec {
   };
 
   Either = E: A: assert checkTypes [E A]; rec {
+    inherit E A;
     __toString = self: "Either ${E} ${A}";
     __functor = self: x:
       assert that (is E x || is A x) ''Either: expected type ${E} or ${A} but got ${_p_ x}'';
@@ -444,7 +445,10 @@ rec {
 
       __functor = self:
         s: assert that (lib.isFunction s) ''Eval: expected lambda state but got ${_p_ s}'';
-        e: assert that (is E e) ''Eval: expected Either value ${E} but got ${_p_ e}'';
+        e: assert that (is E e) ''
+          Eval: expected Either value ${E} but got ${getT e}:
+            ${_pv_ e}
+        '';
 
         let this = {
           __type = Eval A;
@@ -466,7 +470,12 @@ rec {
 
           setState = s: Eval A s this.e;
           mapState = f: Eval A (f this.s) this.e;
-          mapEither = f: Eval A this.s (f this.e);
+          mapEither = f: 
+            let e = f this.e;
+            in e.case {
+              Left = e: Eval Unit this.s (E.Left e);
+              Right = a: Eval (getT a) this.s (E.Right a);
+            };
           liftEither = e: if is EvalError e then this.throws e else this.pure e;
 
           getScope = this.bind getScope;
@@ -518,7 +527,8 @@ rec {
           # catch :: (EvalError -> Eval A) -> Eval A
           catch = handler:
             if isLeft this.e then 
-              (this.mapEither (const (E.Right unit))).bind ({_}: handler {inherit _; _e = this.e.left;})
+              (this.mapEither (const (E.Right unit)))
+              .bind ({_, ...}: handler {inherit _; _e = this.e.left;})
             else this;
 
           # Returns (Either EvalError set)

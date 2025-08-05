@@ -318,21 +318,20 @@ rec {
             ({_, attrName, ...}: traversePath obj.${attrName} restPath));
 
   # Evaluate attribute access (dot operator)
-  # TODO: Duplicative of binary op handlers.
   # evalAttributeAccess :: AST -> Eval a
   evalAttributeAccess = node:
     Eval.do
       (while "evaluating 'attribute access' node")
       {obj = evalNodeM node.lhs;}
       (
-        # Handle different right-hand side cases
+        # obj.a or b
         if node.rhs.nodeType == "binaryOp" && node.rhs.op == "or" then
-          # obj.attr or default
           {_, obj, ...}: _.do
             { defaultVal = evalNodeM node.rhs.rhs; }
             { attrName = identifierName node.rhs.lhs; }
             ( {_, attrName, defaultVal, ...}: _.pure (obj.${attrName} or defaultVal) )
 
+        # obj.a
         else if node.rhs.nodeType == "attrPath" then
           ({_, obj, ...}: traversePath obj node.rhs.path)
 
@@ -350,19 +349,17 @@ rec {
 
   # evalOrOperation :: AST -> Eval a
   evalOrOperation = node:
-    Eval.do
-      (while "evaluating 'or' node")
-      ({_}: _.guard (node.lhs.nodeType == "binaryOp" && node.lhs.op == ".") (RuntimeError ''
-        Unsupported 'or' after non-select: ${node.lhs.nodeType} or ...
-      ''))
-      (evalNodeM node.lhs)
-      ({_}: _.catch ({_, _e}:
-        if MissingAttributeError.check _e then
-          # Left side failed with MissingAttributeError, use default
-          evalNodeM node.rhs
-        else
-          # Re-throw other types of errors
-          _.throws error));
+    let
+      accessor = Eval.do
+        (while "evaluating 'or' node")
+        ({_}: _.guard (node.lhs.nodeType == "binaryOp" && node.lhs.op == ".") (RuntimeError ''
+          Unsupported 'or' after non-select: ${node.lhs.nodeType} or ...
+        ''))
+        (evalNodeM node.lhs);
+    in accessor.catch ({_, _e}: _.do
+      (while "Handling missing attribute in 'or' node")
+      ({_}: _.guard (MissingAttributeError.check _e) _e)
+      (evalNodeM node.rhs));
 
   # evalUnaryOp :: AST -> Eval a
   evalUnaryOp = node:
@@ -615,16 +612,16 @@ rec {
     # Tests for evalAST round-trip property
     evalAST = {
 
-      #scope = skip {
-      #  unit = expectScope (parse "{}") initScope;
-      #  attrs = expectScope "{ a = 1; }" initScope;
+      scope = skip {
+        unit = expectScope (parse "{}") initScope;
+        attrs = expectScope "{ a = 1; }" initScope;
 
-      #  env = {
-      #    withs = 
-      #      let node = parse "with { a = 1; }; a";
-      #      in expectScope (evalWithEnv node) (initScope // {a = 1;});
-      #  };
-      #};
+        env = {
+          withs = 
+            let node = parse "with { a = 1; }; a";
+            in expectScope (evalWithEnv node) (initScope // {a = 1;});
+        };
+      };
 
       _00_smoke = solo {
         int = testRoundTrip "1" 1;
@@ -637,7 +634,7 @@ rec {
         list = testRoundTrip "[1 2 3]" [1 2 3];
         attrSet = testRoundTrip "{a = 1;}" {a = 1;};
         attrPath = testRoundTrip "{a = 1;}.a" 1;
-        #attrPathOr = testRoundTrip "{a = 1;}.b or 2" 2;
+        attrPathOr = testRoundTrip "{a = 1;}.b or 2" 2;
         #inherits = testRoundTrip "{ inherit (builtins) true; }" { true = true; };
         inheritsConst = testRoundTrip "{ inherit ({a = 1;}) a; }" {a = 1;};
         #lets = testRoundTrip "let a = 1; in a" 1;
