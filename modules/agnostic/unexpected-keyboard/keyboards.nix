@@ -488,21 +488,22 @@ with uklib;
         applyRighty = f: precompose [f (Variants.righty 2.0)];
 
       in 
-      # Emit the variants in order for switching back and forth
+
+      # Emit the variants in the order below.
       indexPrefixedAttrs [
-        { L = applyLefty id; }
-        { R = applyRighty id; }
-        { inherit C0Mods; }
-        { C0ModsL = applyLefty C0Mods; }
-        { C0ModsR = applyRighty C0Mods; }
-        { splitPE = mkPortraitSplit Mods.Empty; }
-        { splitPG = mkPortraitSplit Mods.Grid; }
-        { splitP0 = mkPortraitSplit (Mods.Col 0); }
-        { splitP5 = mkPortraitSplit (Mods.Col 5); }
-        { splitLE = mkLandscapeSplit Mods.Empty; }
-        { splitLG = mkLandscapeSplit Mods.Grid; }
-        { splitL0 = mkLandscapeSplit (Mods.Col 0); }
-        { splitL5 = mkLandscapeSplit (Mods.Col 5); }
+        { L = applyLefty id; } # Left-aligned one-handed layout.
+        { R = applyRighty id; } # Right-aligned one-handed layout.
+        { inherit C0Mods; } # Default layout with modifier keys in column 0.
+        { C0ModsL = applyLefty C0Mods; } # Left-aligned layout with modifier keys in column 0.
+        { C0ModsR = applyRighty C0Mods; } # Right-aligned layout with modifier keys in column 0.
+        { splitPE = mkPortraitSplit Mods.Empty; } # Portrait split layout with empty centre.
+        { splitPG = mkPortraitSplit Mods.Grid; } # Portrait split layout with modifier keys centre.
+        { splitP0 = mkPortraitSplit (Mods.Col 0); } # Portrait split layout with modifier keys in column 0.
+        { splitP5 = mkPortraitSplit (Mods.Col 5); } # Portrait split layout with modifier keys in column 5 and empty centre.
+        { splitLE = mkLandscapeSplit Mods.Empty; } # Landscape split layout with empty centre.
+        { splitLG = mkLandscapeSplit Mods.Grid; } # Landscape split layout with modifier keys centre.
+        { splitL0 = mkLandscapeSplit (Mods.Col 0); } # Landscape split layout with modifier keys in column 0.
+        { splitL5 = mkLandscapeSplit (Mods.Col 5); } # Landscape split layout with modifier keys in column 5 and empty centre.
       ];
 
     rows = with codes; let height = 0.65; in [{

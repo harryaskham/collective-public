@@ -395,7 +395,7 @@ rec {
 
       # Bind pure with {} initial state to convert do<M a> to M a
       action = this.bind ({_, _a}: _.pure _a);
-      inherit (this.action) mapState setState mapEither sq run while;
+      inherit (this.action) mapState setState mapEither sq run while catch;
       do = mkDo M this.action [];
       guard = cond: e: 
         if cond 
@@ -467,6 +467,7 @@ rec {
           setState = s: Eval A s this.e;
           mapState = f: Eval A (f this.s) this.e;
           mapEither = f: Eval A this.s (f this.e);
+          liftEither = e: if is EvalError e then this.throws e else this.pure e;
 
           getScope = this.bind getScope;
           setScope = newScope: this.bind (setScope newScope);
@@ -479,7 +480,7 @@ rec {
           fmap = f: Eval A this.s (this.e.fmap f);
           when = eval.monad.when;
           unless = eval.monad.unless;
-          while = msg: this.bind ({_}: log.while msg (_.pure unit));
+          while = msg: this.bind ({_}: (log.while msg (_.pure unit)));
           guard = cond: e: 
             if cond 
             then this.bind ({_}: _.pure unit) 

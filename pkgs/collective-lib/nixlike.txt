@@ -160,6 +160,14 @@ evalAttrs (parse "{ a = 1; }")
 </nix>
 
 <nix>
+(eval "rec { a = 1; b = a; }")
+</nix>
+
+<nix>
+fix (self: listToAttrs [{name = "a"; value = 1;} {name = "b"; value = self.a;}])
+</nix>
+
+<nix>
 eval.monad._tests.debug {}
 </nix>
 <nix>
@@ -180,6 +188,9 @@ log._tests.run {}
 </nix>
 <nix>
 parser._tests.debug {}
+</nix>
+<nix>
+eval._tests.debug {}
 </nix>
 <nix>
 eval._tests.debug {}

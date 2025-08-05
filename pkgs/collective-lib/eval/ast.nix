@@ -39,10 +39,11 @@ rec {
   evalNodeM :: AST -> Eval a */
   evalNodeM = node:
     Eval.do
+      (while "evaluating AST node of type '${node.nodeType or "<no .nodeType>"}'")
+      ({_}: if is EvalError node then _.liftEither node else _.pure unit)
       ({_}: _.guard (is AST node) (RuntimeError ''
         evalNodeM: Expected AST node, got ${_ph_ node}
       ''))
-      (while "evaluating AST node of type '${node.nodeType or "<no .nodeType>"}'")
       (switch node.nodeType {
         int = evalLiteral node;
         float = evalLiteral node;
@@ -78,6 +79,7 @@ rec {
   # Evaluate a name (identifier or string)
   # If identifier, get the name itself, not evaluate it.
   # This can then be used on LHS of assignments.
+  # Could also be a string or an interpolation.
   identifierName = node:
     Eval.do
       (while "evaluating a name")
@@ -110,26 +112,26 @@ rec {
       ({_}: _.traverse evalNodeM node.elements);
 
   # Evaluate an assignment (name-value pair)
-  # evalAssignment :: AST -> Eval {name = value}
+  # evalAssignment :: AST -> Eval {name, value}
   evalAssignment = node:
     Eval.do
       (while "evaluating 'assignment' node")
       { name = identifierName node.lhs; }
       { value = evalNodeM node.rhs; }
-      ({_, name, value, ...}: _.pure { ${name} = value; });
+      ({_, name, value}: _.pure { inherit name value; });
 
   evalBindingList = bindings:
     Eval.do
       (while "evaluating 'bindings' node-list")
-      { bindings = {_}: _.traverse evalNodeM bindings; }
-      ({_, bindings}: _.pure (mergeAttrsList bindings));
+      { attrsList = {_}: _.traverse evalNodeM bindings; }
+      ({_, attrsList}: _.pure (listToAttrs attrsList));
 
   evalAttrFrom = from: attr:
     Eval.do
       (while "evaluating 'attr' node by name")
       {name = identifierName attr;}
       ({_, name}: _.guard (from ? ${name}) (MissingAttributeError name))
-      ({_, name}: _.pure { ${name} = from.${name}; });
+      ({_, name}: _.pure { inherit name; value = from.${name}; });
 
   evalInherit = inheritNode:
     Eval.do
@@ -139,17 +141,36 @@ rec {
         then getScope
         else evalNodeM inheritNode.from;}
       {bindings = {_, from}: _.traverse (evalAttrFrom from) inheritNode.attrs;}
-      ({_, bindings}: _.pure (mergeAttrsList bindings));
+      ({_, bindings}: _.pure (listToAttrs bindings));
 
   # Evaluate an attribute set
   # evalAttrs :: AST -> Eval AttrSet
   evalAttrs = node:
     Eval.do
       (while "evaluating 'attrs' node")
-      {attrs = evalBindingList node.bindings;}
-      ({_, attrs}: _.pure (
-        if node.isRec then lib.fix (self: attrs // self)
-        else attrs));
+      (if node.isRec 
+      then evalRecBindingList 0 node.bindings
+      else evalBindingList node.bindings);
+
+  evalRecBindingList = i: bindings:
+    Eval.do
+      (while "evaluating 'bindings' node-list recursively, iteration ${toString i}")
+      {attrsList = {_, ...}: 
+        _.traverse 
+          (binding: (evalNodeM binding).catch ({_, _e}: _.pure {}))
+          bindings;}
+      {attrs = {_, attrsList, ...}: 
+        _.pure (listToAttrs (filter (attr: attr ? name && attr ? value) attrsList));}
+      ({_, attrs, ...}: 
+        if size bindings == size attrs then _.pure attrs
+        else if i < size bindings then evalRecBindingList (i + 1) bindings
+        else _.throws (RuntimeError ''
+          Recursive binding list evaluation failed to complete at iteration ${toString i}:
+            ${_ph_ bindings}
+
+          Attrs:
+            ${_ph_ attrs}
+        ''));
 
   # Type-check binary operation operands
   # checkBinaryOpTypes :: String -> [TypeSet] -> a -> a -> Eval Unit
@@ -451,7 +472,7 @@ rec {
   evalLetIn = node:
     Eval.do
       (while "evaluating 'letIn' node")
-      {bindings = evalBindingList node.bindings;}
+      {bindings = evalRecBindingList 0 node.bindings;}
       ({_, bindings}: _.appendScope bindings)
       (evalNodeM node.body);
 
