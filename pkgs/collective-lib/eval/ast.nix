@@ -112,20 +112,16 @@ rec {
       ({_}: _.traverse evalNodeM node.elements);
 
   # Evaluate an assignment (name-value pair)
-  # evalAssignment :: AST -> Eval {name, value}
+  # evalAssignment :: AST -> Eval [{name, value}]  
   evalAssignment = node:
     Eval.do
       (while "evaluating 'assignment' node")
       { name = identifierName node.lhs; }
       { value = evalNodeM node.rhs; }
-      ({_, name, value}: _.pure { inherit name value; });
+      ({_, name, value}: _.pure [{ inherit name value; }]);
 
-  evalBindingList = bindings:
-    Eval.do
-      (while "evaluating 'bindings' node-list")
-      { attrsList = {_}: _.traverse evalNodeM bindings; }
-      ({_, attrsList}: _.pure (listToAttrs attrsList));
-
+  # Evaluate an attribute from a source
+  # evalAttrFrom :: a -> AST -> Eval {name, value}  
   evalAttrFrom = from: attr:
     Eval.do
       (while "evaluating 'attr' node by name")
@@ -133,6 +129,8 @@ rec {
       ({_, name}: _.guard (from ? ${name}) (MissingAttributeError name))
       ({_, name}: _.pure { inherit name; value = from.${name}; });
 
+  # Evaluate an inherit expression, possibly with a source
+  # evalInherit :: AST -> Eval [{name, value}]
   evalInherit = inheritNode:
     Eval.do
       (while "evaluating 'inherit' node")
@@ -140,8 +138,21 @@ rec {
         if inheritNode.from == null 
         then getScope
         else evalNodeM inheritNode.from;}
-      {bindings = {_, from}: _.traverse (evalAttrFrom from) inheritNode.attrs;}
-      ({_, bindings}: _.pure (listToAttrs bindings));
+      ({_, from}: _.traverse (evalAttrFrom from) inheritNode.attrs);
+
+  # Evaluate an inherit expression
+  # evalBindingList :: AST -> Eval set
+  evalBindingList = bindings:
+    Eval.do
+      (while "evaluating 'bindings' node-list")
+      {attrsList = {_}: _.traverse evalNodeM bindings;}
+      {attrs = {_, attrsList}: _.pure (concat attrsList);}
+      ({_, attrs}: _.guard (all (attr: (attr ? name) && (attr ? value)) attrs) (RuntimeError ''
+        Recursive binding list evaluation produced invalid name/value pairs:
+          bindings: ${_ph_ bindings}
+          attrs: ${_ph_ attrs}
+      ''))
+      ({_, attrs, ...}: _.pure (listToAttrs attrs));
 
   # Evaluate an attribute set
   # evalAttrs :: AST -> Eval AttrSet
