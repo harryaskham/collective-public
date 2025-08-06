@@ -1211,7 +1211,7 @@ in {
       {
         services.unexpected-keyboard = mkMerge [
           (mkIf cfg.includeDefaultKeyboards {
-            keyboards = cfg.lib.defaultKeyboards;
+            keyboards = attrValues cfg.lib.defaultKeyboards;
           })
 
           (mkIf cfg.includeDefaultKeyValueAliases {
