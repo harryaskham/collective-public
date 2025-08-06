@@ -61,8 +61,9 @@ rec {
           with eval.monad;
           with Either EvalError "set";
           let f = fn.ast fnExpr;
-          in expect.eq (head (splitLines (toString (f 123))))
-            "EvalError.RuntimeError: Undefined identifier 'argXXX' in current scope:";
+          in expect.eq (take 2 (splitLines (toString (f 123))))
+            ["Left EvalError.RuntimeError:"
+             "  Undefined identifier 'argXXX' in current scope:"];
         withTransformation = 
           let f = fn.ast fnExpr;
           in expect.eq ((f.mapAST trans) 123) 124;

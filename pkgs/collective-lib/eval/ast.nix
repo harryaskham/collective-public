@@ -95,9 +95,9 @@ rec {
   # Evaluate an identifier lookup
   # evalIdentifier :: Scope -> AST -> Eval a
   evalIdentifier = node:
-    {_, ...}: _.do
+    Eval.do
       (while "evaluating 'identifier' node")
-      {scope = getScope;}
+      {scope = {_}: _.getScope;}
       ({_, scope}: _.guard (scope ? ${node.name}) (RuntimeError ''
         Undefined identifier '${node.name}' in current scope:
           ${_ph_ scope}
@@ -116,8 +116,8 @@ rec {
   evalAssignment = node:
     Eval.do
       (while "evaluating 'assignment' node")
-      { name = identifierName node.lhs; }
-      { value = evalNodeM node.rhs; }
+      {name = identifierName node.lhs;}
+      {value = evalNodeM node.rhs;}
       ({_, name, value}: _.pure [{ inherit name value; }]);
 
   # Evaluate an attribute from a source
@@ -136,7 +136,7 @@ rec {
       (while "evaluating 'inherit' node")
       {from = 
         if inheritNode.from == null 
-        then getScope
+        then {_}: _.getScope
         else evalNodeM inheritNode.from;}
       ({_, from}: _.traverse (evalAttrFrom from) inheritNode.attrs);
 
@@ -160,28 +160,31 @@ rec {
     Eval.do
       (while "evaluating 'attrs' node")
       (if node.isRec 
-      then evalRecBindingList 0 node.bindings
+      then evalRecBindingList node.bindings
       else evalBindingList node.bindings);
 
-  evalRecBindingList = i: bindings:
+  evalRecBindingList = evalRecBindingList_ 0;
+  evalRecBindingList_ = i: bindings:
     Eval.do
       (while "evaluating 'bindings' node-list recursively, iteration ${toString i}")
       {attrsList = {_, ...}: 
         _.traverse 
-          (binding: (evalNodeM binding).catch ({_, _e}: _.pure {}))
+          (binding: (evalNodeM binding).catch ({_, _e}: _.do
+            (while "Handling missing binding in recursive binding list")
+            ({_}: _.guard (MissingAttributeError.check _e) _e)
+            _.pure []))
           bindings;}
-      {attrs = {_, attrsList, ...}: 
-        _.pure (listToAttrs (filter (attr: attr ? name && attr ? value) attrsList));}
+      {attrs = {_, attrsList}: _.pure (listToAttrs (concat attrsList));}
+      ({_, ...}: _.guard (i <= size bindings) (RuntimeError ''
+        Recursive binding list evaluation failed to complete at iteration ${toString i}:
+          ${_ph_ bindings}
+
+        Attrs:
+          ${_ph_ attrs}
+      ''))
       ({_, attrs, ...}: 
         if size bindings == size attrs then _.pure attrs
-        else if i < size bindings then evalRecBindingList (i + 1) bindings
-        else _.throws (RuntimeError ''
-          Recursive binding list evaluation failed to complete at iteration ${toString i}:
-            ${_ph_ bindings}
-
-          Attrs:
-            ${_ph_ attrs}
-        ''));
+        else evalRecBindingList_ (i + 1) bindings);
 
   # Type-check binary operation operands
   # checkBinaryOpTypes :: String -> [TypeSet] -> a -> a -> Eval Unit
@@ -340,26 +343,19 @@ rec {
             Unsupported attribute access: ${node.rhs.nodeType}
             (Expected 'attrPath' or 'binaryOp' with 'or' operator)
           ''));
-          ## obj.attr, obj."attr", obj.${attr}
-          #_.do
-          #  { attrName = evalNodeM node.rhs; }
-          #  ( {_, attrName}: _.unless (obj ? ${attrName}) (_.throws (MissingAttributeError attrName)) )
-          #  ( {_, attrName, ...}: _.pure obj.${attrName} )
-        #);
 
   # evalOrOperation :: AST -> Eval a
   evalOrOperation = node:
-    let
-      accessor = Eval.do
-        (while "evaluating 'or' node")
-        ({_}: _.guard (node.lhs.nodeType == "binaryOp" && node.lhs.op == ".") (RuntimeError ''
-          Unsupported 'or' after non-select: ${node.lhs.nodeType} or ...
-        ''))
-        (evalNodeM node.lhs);
-    in accessor.catch ({_, _e}: _.do
-      (while "Handling missing attribute in 'or' node")
-      ({_}: _.guard (MissingAttributeError.check _e) _e)
-      (evalNodeM node.rhs));
+    (Eval.do
+      (while "evaluating 'or' node")
+      ({_}: _.guard (node.lhs.nodeType == "binaryOp" && node.lhs.op == ".") (RuntimeError ''
+        Unsupported 'or' after non-select: ${node.lhs.nodeType} or ...
+      ''))
+      (evalNodeM node.lhs))
+    .catch ({_, _e}: _.do
+        (while "Handling missing attribute in 'or' node")
+        ({_}: _.guard (MissingAttributeError.check _e) _e)
+        (evalNodeM node.rhs));
 
   # evalUnaryOp :: AST -> Eval a
   evalUnaryOp = node:
@@ -433,7 +429,7 @@ rec {
   evalLambda = node:
     Eval.do
       (while "evaluating 'lambda' node")
-      {scope = getScope;}
+      {scope = {_}: _.getScope;}
       ({_, scope, ...}: _.pure (
         # Bind arg to create an actual lambda.
         arg: 
@@ -441,7 +437,7 @@ rec {
             # Start from scratch inside the lambda since we don't
             # inherit scope.
             Eval.do
-              (setScope scope)
+              ({_}: _.setScope scope)
               {extraScope = evalLambdaParams node.param arg;}
               ({_, extraScope, ...}: _.appendScope extraScope)
               (evalNodeM node.body);
@@ -452,8 +448,12 @@ rec {
             # might be evaluated in Eval and later applied outside of the Eval monad.
             # However we return an unwrapped EvalError if one occurs which
             # we can throw if we apply during Eval.
-            let e = bodyM.run {};
-            in if isLeft e then e.left else e.right.a
+            let e = bodyM.run (EvalState.mempty {});
+            #in if isLeft e then e.left else e.right.a
+            in e.case {
+              Left = _: e;
+              Right = x: x.a;
+            }
         ));
 
   # Evaluate function application. If the function was a lambda constructed by
@@ -475,14 +475,14 @@ rec {
       ({_, lhs, rhs, ...}: _.pure { ${lhs} = rhs; });
 
   # Evaluate a let expression
-  # TODO: Recursive access
   # evalLetIn :: AST -> Eval a
   evalLetIn = node:
     Eval.do
       (while "evaluating 'letIn' node")
-      {bindings = evalRecBindingList 0 node.bindings;}
-      ({_, bindings}: _.appendScope bindings)
-      (evalNodeM node.body);
+      ({_}: _.saveScope (_.do
+        {bindings = evalRecBindingList node.bindings;}
+        ({_, bindings}: _.appendScope bindings)
+        (evalNodeM node.body)));
 
   # Evaluate a with expression
   # evalWith :: AST -> Eval a
@@ -497,8 +497,9 @@ rec {
   evalWith = node: 
     Eval.do
       (while "evaluating 'with' node")
-      (evalWithEnv node.env)
-      (evalNodeM node.body);
+      ({_}: _.saveScope (_.do
+        (evalWithEnv node.env)
+        (evalNodeM node.body)));
 
   # Evaluate an assert expression
   # evalAssert :: AST -> Eval a
@@ -560,7 +561,7 @@ rec {
   evalAnglePath = node:
     Eval.do
       (while "evaluating 'anglePath' node")
-      {scope = getScope;}
+      {scope = {_}: _.getScope;}
       ({_, scope}:
         let path = splitSep "/" node.value;
             name = maybeHead path;
@@ -586,11 +587,11 @@ rec {
 
   expectScope = expectScopeWith collective-lib.tests.expect.noLambdasEq;
   expectScopeWith = expectation: node: expected:
-    let result = (evalNodeM node).run initEvalState;
-        rOrL = result.right or result.left;
-        sOrId = rOrL.s or rOrL;
-        scopeOrId = sOrId.scope or sOrId;
-    in expectation scopeOrId expected;
+    let result = ((evalNodeM node).run (EvalState.mempty {})).case {
+      Left = e: e;
+      Right = x: x.s;
+    };
+    in expectation result expected;
 
   expectEvalError = expectEvalErrorWith collective-lib.tests.expect.noLambdasEq;
   expectEvalErrorWith = expectation: E: expr:
@@ -612,18 +613,22 @@ rec {
     # Tests for evalAST round-trip property
     evalAST = {
 
-      scope = skip {
-        unit = expectScope (parse "{}") initScope;
-        attrs = expectScope "{ a = 1; }" initScope;
+      _00_scope = skip {
+        unit = expectScope (parse "{}") {};
+        attrs = expectScope (parse "{ a = 1; }") {a = 1;};
 
         env = {
           withs = 
-            let node = parse "with { a = 1; }; a";
-            in expectScope (evalWithEnv node) (initScope // {a = 1;});
+            let node = (parse "with { a = 1; }; a");
+            in expectScope (evalWithEnv node.env) (initScope // {a = 1;});
         };
       };
 
-      _00_smoke = solo {
+      _000_failing = solo {
+        letIn = testRoundTrip "let a = 1; in a" 1;
+      };
+
+      _00_smoke = {
         int = testRoundTrip "1" 1;
         float = testRoundTrip "1.0" 1.0;
         string = testRoundTrip ''"hello"'' "hello";
@@ -637,7 +642,7 @@ rec {
         attrPathOr = testRoundTrip "{a = 1;}.b or 2" 2;
         #inherits = testRoundTrip "{ inherit (builtins) true; }" { true = true; };
         inheritsConst = testRoundTrip "{ inherit ({a = 1;}) a; }" {a = 1;};
-        #lets = testRoundTrip "let a = 1; in a" 1;
+        #letIn = testRoundTrip "let a = 1; in a" 1;
         #withs = testRoundTrip "with {a = 1;}; a" 1;
         #asserts = testRoundTrip "assert true; 1" 1;
       };
@@ -660,7 +665,7 @@ rec {
         );
 
       # Basic literals
-      _02_literals = solo {
+      _02_literals = {
         integers = testRoundTrip "42" 42;
         floats = testRoundTrip "3.14" 3.14;
         strings = testRoundTrip ''"hello"'' "hello";
@@ -672,20 +677,20 @@ rec {
       };
 
       # Collections
-      _03_lists = solo {
+      _03_lists = {
         empty = testRoundTrip "[]" [];
         numbers = testRoundTrip "[1 2 3]" [1 2 3];
         #mixed = testRoundTrip ''[1 "hello" true]'' [1 "hello" true];
       };
 
-      _04_attrs = solo {
+      _04_attrs = {
         empty = testRoundTrip "{}" {};
         simple = testRoundTrip "{ a = 1; b = 2; }" { a = 1; b = 2; };
         nested = testRoundTrip "{ x = { y = 42; }; }" { x = { y = 42; }; };
       };
 
       # Binary operations
-      _05_arithmetic = solo {
+      _05_arithmetic = {
         addition = testRoundTrip "1 + 2" 3;
         multiplication = testRoundTrip "3 * 4" 12;
         subtraction = testRoundTrip "10 - 3" 7;
@@ -697,7 +702,7 @@ rec {
         or = testRoundTrip "true || false" true;
       };
 
-      _07_comparison = solo {
+      _07_comparison = {
         equalParen = testRoundTrip "(1 == 1)" true;
         equal = testRoundTrip "1 == 1" true;
         notEqual = testRoundTrip "1 != 2" true;
@@ -751,7 +756,7 @@ rec {
       };
 
       # Abort expressions - testing our custom abort handling
-      _14_abortExpressions = solo {
+      _14_abortExpressions = {
         # Basic abort with string message
         abortString = expectEvalError Abort ''abort "custom abort message"'';
         # Abort with evaluated expression
@@ -799,13 +804,13 @@ rec {
           lhs = rhs;
           rhs = lhs;
         });
-      in solo {
+      in {
         original = testRoundTrip original 3;
         transformed = testRoundTrip transformed 1;
       };
 
       # Self-parsing test
-      _18_selfParsing = solo {
+      _18_selfParsing = {
         parseParserFile = let 
           # Skip self-parsing test for now as it requires more advanced Nix constructs
           result = { type = "success"; };

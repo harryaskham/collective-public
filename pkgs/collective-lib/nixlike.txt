@@ -156,7 +156,7 @@ eval ''(import <nixpkgs> {}).lib.genAttrs toString 10''
 
 <nix>
 with parser; with eval.ast;
-evalAttrs (parse "{ a = 1; }")
+(parse "{ a = 1; }")
 </nix>
 
 <nix>
@@ -171,7 +171,7 @@ fix (self: listToAttrs [{name = "a"; value = 1;} {name = "b"; value = self.a;}])
 </nix>
 
 <nix>
-eval.monad._tests.debug {}
+eval.ast._tests.run {}
 </nix>
 
 <nix>
@@ -180,6 +180,10 @@ eval._tests.run {}
 
 <nix>
 eval._tests.debug {}
+</nix>
+
+<nix>
+eval.fn._tests.debug {}
 </nix>
 <nix>
 eval.monad._tests.debug {}

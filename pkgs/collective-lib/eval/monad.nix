@@ -480,6 +480,7 @@ rec {
 
           getScope = this.bind getScope;
           setScope = newScope: this.bind (setScope newScope);
+          saveScope = f: this.bind (saveScope f);
           modifyScope = f: this.bind (modifyScope f);
           prependScope = newScope: this.bind (prependScope newScope);
           appendScope = newScope: this.bind (appendScope newScope);
@@ -489,7 +490,7 @@ rec {
           fmap = f: Eval A this.s (this.e.fmap f);
           when = eval.monad.when;
           unless = eval.monad.unless;
-          while = msg: this.bind ({_}: (log.while msg (_.pure unit)));
+          while = msg: log.while msg (void this);
           guard = cond: e: 
             if cond 
             then this.bind ({_}: _.pure unit) 
@@ -513,7 +514,7 @@ rec {
                   Eval.bind: non-Eval value returned of type ${getT mb}:
                     ${_ph_ mb}
                 '';
-                mb.mapState (s: compose s this.s);  # State should already be updated by the time we get here.
+                mb.mapState (s: compose s this.s);
             };
 
           sq = b: this.bind ({_}: b);
@@ -531,13 +532,21 @@ rec {
               .bind ({_, ...}: handler {inherit _; _e = this.e.left;})
             else this;
 
-          # Returns (Either EvalError set)
+          # Returns (Either EvalError { a :: A, s :: S })
           run = initialState: 
             this.e.fmap (a: { s = this.s initialState; inherit a; });
         };
         in this;
     };
   };
+
+  saveScope = f: {_, ...}:
+    _.do
+      (while "with scope")
+      {scope = {_}: _.getScope;}
+      {a = {_, ...} @ args: f args;}
+      ({_}: _.setScope scope)
+      ({_, a, ...}: _.pure a);
 
   setScope = newScope: {_, ...}:
     _.do
@@ -617,15 +626,13 @@ rec {
             fmapAfterCatch = catchAfterThrow.fmap (s: s + " then ...");
           };
           expectRun = s: a: s': a': 
-            with Either EvalError "set";
             expect.noLambdasEq
-              (a.run (EvalState s))
-              (Right { s = EvalState s'; a = a'; });
+              (a.run (EvalState s)).right
+              { s = EvalState s'; a = a'; };
           expectRunError = s: a: e: 
-            with Either EvalError "set";
             expect.noLambdasEq
-              (a.run (EvalState s))
-              (Left e);
+              (a.run (EvalState s)).left
+              e;
         in with EvalState; {
           __smoke = {
             isMonadOf.monad = expect.True (isMonadOf Eval (Eval.pure unit));
