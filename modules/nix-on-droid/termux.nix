@@ -45,11 +45,11 @@ in {
       build.activationAfter = 
         lib.concatMapAttrs 
           (dst: src: {
-            "copy-to-shared-dir__${src}__${dst}" = ''
+            "copy-to-shared-dir__${src}" = ''
               SRC=${toShellValue src}
-              DEST="${toShellValue cfg.sharedDir.path}/${toShellValue dst}"
+              DEST="${toShellValue cfg.sharedDir.path}/"
               echo "Copying $SRC to $DEST"
-              mkdir -p $(dirname "$DEST")
+              mkdir -p "${toShellValue cfg.sharedDir.path}"
               cp -Lr "$SRC" "$DEST"
             '';
           }) 
