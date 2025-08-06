@@ -255,7 +255,7 @@ let
           unused = selfAttrs [ "replaceText" "textAssist" "autofill" "removed" ];
 
           fork = 
-            let xs = selfAttrs [ "toggle_floating" ];
+            let xs = selfAttrs [ "toggle_floating" "toggle_persistence" ];
             in if cfg.enableFork then xs else mapAttrs (_: _: "removed") xs;
         };
 
