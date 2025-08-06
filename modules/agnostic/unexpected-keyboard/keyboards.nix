@@ -282,42 +282,44 @@ with uklib;
           _
 
                   c.j
-            sw."{"     se."}"
+            sw."{"       se."}"
           _
                         ne."'"
-                  c.k
-            sw."["     se."]"
+                    c.k
+            sw."["       se."]"
           _
-                        ne."\""
-                  c.l
-            sw.enter
+                         ne."\""
+                    c.l
+
+          _
+            nw.shift     ne.del
+                    c.bsp
+            "✲" sw.ctrl
         K;
       }
 
       {
         keys =
           K
-                  c.shift
-
-          _
-                       ne."|"
+                            ne."|"
                   c.z
-            sw."\\"    
+            sw."\\"
           _
-            nw.change_method
+            nw.change_method   ne.cut
                   c.x
-            sw.bwd     se.fwd
+            sw.bwd       se.fwd
           _
-
+                        ne.copy
                   c.c
-
+            sw.config   se.emoji
           _
-
+                      ne.paste
                   c.v
-
+                          se.pastePlain
           _
 
                   c.b
+
           _
                         ne."?"
                   c.n
@@ -331,34 +333,29 @@ with uklib;
                   c."."
             sw.","
           _
-            "xⁿ" nw.sup
-                  c.bsp
-            "xₙ" sw.sub
+                      n.up
+              w.left        e.right
+                      s.down
+          _
+                          ne.action
+                   c.enter
+
           K;
       }
 
       {
-        height = 0.95;
+        inherit height;
         keys =
-          K 1.7
-              "▤" nw.fn      "❖" ne.meta
-                      "✲" c.ctrl
-              "λ" sw.math    "ℕ" se._123
-          _ 1.1
-              nw.change_method   "⎘" ne.pastePlain
-                         "⌥" c.alt
-              sw.emoji           se.config
-          _ 4.4
-                       
+          K
+                      "❖" ne.meta
+                "✲" c.ctrl
+          _
+           "ℕ" nw._123    "▤" ne.fn
+                  "⌥" c.alt
+
+          _ 8
+
               w.cur_l  " " c.spc  e.cur_r
-                       
-          _ 1.1
-                       n.up
-              w.left         e.right
-                       s.down
-          _ 1.7
-                             ne.action
-                       c.enter
 
           K;
       }
@@ -366,13 +363,22 @@ with uklib;
     ];
   }
 
-  
+
+  (with codes.withAliases {
+    switch_to_base = "switch_to_layout_Code_QWERTY_Compact";
+    switch_to_C0Mods = "switch_to_layout_Code_QWERTY_Compact_C0Mods";
+    switch_to_splitPG = "switch_to_layout_Code_QWERTY_Compact_splitPG";
+    switch_to_splitLG = "switch_to_layout_Code_QWERTY_Compact_splitLG";
+  };
+
   {
     name = "Code QWERTY Compact";
     bottomRow = false;
     includeDefaultVariants = false;  # Added back manually as part of the ordered variants below.
-    variants = with codes; 
+    variants =
       let
+        addSwitchToBase = setKey 2 4 (K "⟲" nw.switch_to_base c.b K);
+
         clearEscAdjacent = precompose [
           (setKey 0 0 (K c.q ne."1" sw."!" K)) # Clears Q
           (setKey 0 1 (K c.w ne."2" sw."@" K)) # Clears W
@@ -387,7 +393,7 @@ with uklib;
 
         clearModsAndEsc = precompose [
           clearEscAdjacent
-          clearHomeRowMods
+          #clearHomeRowMods
         ];
 
         modCol = 
@@ -453,6 +459,7 @@ with uklib;
 
         mkSplit = {gap, paddingL, paddingR, mods} @ args:
           precompose [
+            addSwitchToBase
             withoutModRow
             (withSplitSpace args)
             (mods args)
@@ -462,6 +469,7 @@ with uklib;
         # Add mods down the left side and remove duplicates on the old column-0
         # Split layout with empty middle row for landscape mode.
         C0Mods = precompose [
+          addSwitchToBase
           (setKey 3 0 (K "❖" c.meta K))
           (swapKeys 3 0 3 1)  # alt-meta not meta-alt
           (updateKey 3 2 (addWidth 1)) # space fills width
@@ -484,8 +492,17 @@ with uklib;
         mkLandscapeSplit = mods: mkSplit (landscapeArgs // {mods = mods;});
         mkPortraitSplit = mods: mkSplit (portraitArgs // {mods = mods;});
 
-        applyLefty = f: precompose [f (Variants.lefty 2.0)];
-        applyRighty = f: precompose [f (Variants.righty 2.0)];
+        applyLefty = f: precompose [
+          addSwitchToBase
+          f 
+          (Variants.lefty 2.0)
+        ];
+
+        applyRighty = f: precompose [
+          addSwitchToBase
+          f 
+          (Variants.righty 2.0)
+        ];
 
       in 
 
@@ -506,7 +523,7 @@ with uklib;
         { splitL5 = mkLandscapeSplit (Mods.Col 5); } # Landscape split layout with modifier keys in column 5 and empty centre.
       ];
 
-    rows = with codes; let height = 0.65; in [{
+    rows = let height = 0.65; in [{
         inherit height;
         keys =
           K nw."`"      ne."1"
@@ -525,21 +542,21 @@ with uklib;
                   c.r
             sw."$"
           _
-                        ne."5"
+            "⌨" nw.toggle_floating  ne."5"
                   c.t
             sw."%"
           _
                         ne."6"
                   c.y
-            sw."^"
+            sw."^"      "⟷" se.switch_to_splitPG
           _
                         ne."7"
                   c.u
-            sw."&"
+            sw."&"      "⟺" se.switch_to_splitLG
           _
                         ne."8"
                   c.i
-            sw."*"
+            sw."*"      "⥺" se.switch_to_C0Mods
           _
                       ne."9"
                   c.o
@@ -662,5 +679,5 @@ with uklib;
       }
 
     ];
-  }
+  })
 ]

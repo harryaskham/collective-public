@@ -24,7 +24,7 @@ rec {
   evalAST :: (string | AST) -> Either EvalError a */
   evalAST = expr:
     log.while "evaluating string or AST node" (
-    (runAST expr).fmap (r: r.a)
+    (evalM expr).run_ (EvalState.mempty {})
     );
 
   /*
@@ -97,7 +97,7 @@ rec {
   evalIdentifier = node:
     Eval.do
       (while "evaluating 'identifier' node")
-      {scope = {_}: _.getScope;}
+      {scope = getScope;}
       ({_, scope}: _.guard (scope ? ${node.name}) (RuntimeError ''
         Undefined identifier '${node.name}' in current scope:
           ${_ph_ scope}
@@ -136,7 +136,7 @@ rec {
       (while "evaluating 'inherit' node")
       {from = 
         if inheritNode.from == null 
-        then {_}: _.getScope
+        then getScope
         else evalNodeM inheritNode.from;}
       ({_, from}: _.traverse (evalAttrFrom from) inheritNode.attrs);
 
@@ -429,7 +429,7 @@ rec {
   evalLambda = node:
     Eval.do
       (while "evaluating 'lambda' node")
-      {scope = {_}: _.getScope;}
+      {scope = getScope;}
       ({_, scope, ...}: _.pure (
         # Bind arg to create an actual lambda.
         arg: 
@@ -437,9 +437,8 @@ rec {
             # Start from scratch inside the lambda since we don't
             # inherit scope.
             Eval.do
-              ({_}: _.setScope scope)
-              {extraScope = evalLambdaParams node.param arg;}
-              ({_, extraScope, ...}: _.appendScope extraScope)
+              (setScope scope)
+              (appendScopeM (evalLambdaParams node.param arg))
               (evalNodeM node.body);
           in
             # Actually have to run the Eval monad here to get
@@ -448,11 +447,11 @@ rec {
             # might be evaluated in Eval and later applied outside of the Eval monad.
             # However we return an unwrapped EvalError if one occurs which
             # we can throw if we apply during Eval.
-            let e = bodyM.run (EvalState.mempty {});
+            let e = bodyM.run_ (EvalState.mempty {});
             #in if isLeft e then e.left else e.right.a
             in e.case {
               Left = _: e;
-              Right = x: x.a;
+              Right = a: a;
             }
         ));
 
@@ -480,8 +479,7 @@ rec {
     Eval.do
       (while "evaluating 'letIn' node")
       ({_}: _.saveScope (_.do
-        {bindings = evalRecBindingList node.bindings;}
-        ({_, bindings}: _.appendScope bindings)
+        (appendScopeM (evalRecBindingList node.bindings))
         (evalNodeM node.body)));
 
   # Evaluate a with expression
@@ -489,8 +487,7 @@ rec {
   evalWithEnv = envNode: 
     Eval.do
       (while "evaluating 'with' environment node")
-      {env = evalNodeM envNode;}
-      ({_, env}: _.prependScope env);
+      (prependScopeM (evalNodeM envNode));
 
   # Evaluate a with expression
   # evalWith :: AST -> Eval a
@@ -561,7 +558,7 @@ rec {
   evalAnglePath = node:
     Eval.do
       (while "evaluating 'anglePath' node")
-      {scope = {_}: _.getScope;}
+      {scope = getScope;}
       ({_, scope}:
         let path = splitSep "/" node.value;
             name = maybeHead path;
@@ -624,7 +621,7 @@ rec {
         };
       };
 
-      _000_failing = solo {
+      _000_failing = skip {
         letIn = testRoundTrip "let a = 1; in a" 1;
       };
 

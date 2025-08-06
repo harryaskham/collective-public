@@ -304,27 +304,6 @@ rec {
           }) self.__statements))}
       '';
 
-  #bindNormalised = M: this: bindings: a: statement:
-  #  let 
-  #    normalised = normaliseBindStatement M statement;
-  #    bm_ = a.bind ({_, _a}: normalised.f (bindings // { inherit _ _a; }));
-  #  in 
-  #    if isDo bm_ then bm_.__setInitM a else bm_;
-
-  #handleBindStatement = 
-  #  M: this: {bindings, m, canBind}: statement:
-  #  assert (assertIsDoStatement M statement);
-  #  let 
-  #    m' = bindNormalised M this bindings m statement;
-  #  in 
-  #    m'.bind ({_, _a}: _.pure {
-  #      bindings = bindings // optionalAttrs (normalised.bindName != null) {
-  #        ${normalised.bindName} = _a; 
-  #      };
-  #      m = m';
-  #      canBind = normalised.bindName == null;
-  #    });
-
   # Given a monad M, a state containing an M bindings and an M m monadic action,
   # and a statement of one of these forms:
   #
@@ -396,7 +375,7 @@ rec {
 
       # Bind pure with {} initial state to convert do<M a> to M a
       action = this.bind ({_, _a}: _.pure _a);
-      inherit (this.action) mapState setState mapEither sq run while catch;
+      inherit (this.action) mapState setState mapEither sq run run_ while catch;
       do = mkDo M this.action [];
       guard = cond: e: 
         if cond 
@@ -404,7 +383,6 @@ rec {
         else (this.throws e);
     };
     in this;
-
 
   pure = x: {_}: _.pure x;
   throws = e: {_}: _.throws e;
@@ -490,7 +468,7 @@ rec {
           fmap = f: Eval A this.s (this.e.fmap f);
           when = eval.monad.when;
           unless = eval.monad.unless;
-          while = msg: log.while msg (void this);
+          while = msg: let x = log.while msg (void this); in seq x x;
           guard = cond: e: 
             if cond 
             then this.bind ({_}: _.pure unit) 
@@ -535,6 +513,7 @@ rec {
           # Returns (Either EvalError { a :: A, s :: S })
           run = initialState: 
             this.e.fmap (a: { s = this.s initialState; inherit a; });
+          run_ = _: this.e;
         };
         in this;
     };
@@ -548,10 +527,10 @@ rec {
       ({_}: _.setScope scope)
       ({_, a, ...}: _.pure a);
 
-  setScope = newScope: {_, ...}:
+  setScope = scope: {_, ...}:
     _.do
       (while "setting scope")
-      (_.set (EvalState newScope));
+      (_.set (EvalState scope));
   
   modifyScope = f: {_, ...}:
     _.do
@@ -569,10 +548,22 @@ rec {
       (while "prepending scope")
       (modifyScope (scope: newScope // scope));
 
+  prependScopeM = newScopeM: {_, ...}:
+    _.do
+      (while "prepending monadic scope")
+      {newScope = newScopeM;}
+      ({_, newScope}: _.modifyScope (scope: newScope // scope));
+
   appendScope = newScope: {_, ...}:
     _.do
       (while "appending scope")
       (modifyScope (scope: scope // newScope));
+
+  appendScopeM = newScopeM: {_, ...}:
+    _.do
+      (while "appending monadic scope")
+      {newScope = newScopeM;}
+      ({_, newScope}: _.modifyScope (scope: scope // newScope));
 
   _tests = with tests;
     let
@@ -741,6 +732,10 @@ rec {
                   let m = Eval.do (setScope {x = 1;});
                   in expectRun {} m {x = 1;} unit;
 
+                setSet = 
+                  let m = Eval.do (setScope {x = 1;}) (setScope {y = 2;});
+                  in expectRun {} m {y = 2;} unit;
+
                 setModGet = 
                   let m = Eval.do
                     (setScope {x = 1;})
@@ -761,6 +756,26 @@ rec {
                       gets = Eval.do ({_, ...}: _.getScope);
                       m = Eval.do sets mods gets;
                   in expectRun {} m {x = 3; y = 2;} {x = 3; y = 2;};
+
+                useScope = 
+                  let 
+                    getClear = Eval.do
+                      {scope = getScope;}
+                      (setScope {cleared = true;})
+                      ({_, scope}: _.pure scope);
+
+                    xInc4 = Eval.do
+                      {scope = getScope;}
+                      ({_, scope}: _.modify (s: s.fmap (scope': scope' // {x = scope.x + 1;})))
+                      (modifyScope (scope: scope // {x = scope.x + 3;}));
+
+                    m = Eval.do
+                      ({_}: _.setScope {x = 1;})
+                      xInc4
+                      xInc4
+                      getClear;
+
+                  in expectRun {} m {cleared = true;} {x = 9;};
               };
 
               inferred =

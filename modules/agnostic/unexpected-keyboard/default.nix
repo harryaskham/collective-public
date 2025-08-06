@@ -218,8 +218,8 @@ let
 
     # # Keycode:
     # c_ kc [eventCode] -> <key e="[eventCode]" />
-    # e.g. e
-    codes =
+    codes = mkCodes {};
+    mkCodes = extraKeyValueAliases:
       let
         categories = rec {
           ascii =
@@ -276,7 +276,7 @@ let
         _ = {
           # A marker enabling detection of passing the _ into variadic functions.
           __shorthandMarker = true; #
-        } // allCodes // cfg.keyValueAliases;
+        } // allCodes // cfg.keyValueAliases // extraKeyValueAliases;
 
         # Is the given value '_'
         isShorthandMarker = x:
@@ -505,6 +505,33 @@ let
         w = mapAttrs (_: code: w_ (kv.k code)) _;
         nw = mapAttrs (_: code: nw_ (kv.k code)) _;
         ac = mapAttrs (_: code: ac_ (kv.k code)) _;
+
+        # Shorthand for making a new temporary key value with cardinal placers.
+        # e.g. with mkCardinal "switch_to_base" (kv.k "switch_to_layout_Code_QWERTY_Compact");
+        #      in K nw.switch_to_base c.b K;
+        mkCardinal = name: keyValue: {
+          c.${name} = c_ keyValue;
+          n.${name} = n_ keyValue;
+          ne.${name} = ne_ keyValue;
+          e.${name} = e_ keyValue;
+          se.${name} = se_ keyValue;
+          s.${name} = s_ keyValue;
+          sw.${name} = sw_ keyValue;
+          w.${name} = w_ keyValue;
+          nw.${name} = nw_ keyValue;
+          ac.${name} = ac_ keyValue;
+        };
+
+        # Add new keys into the codes set.
+        # e.g.
+        # with (codes.withAliases {
+        #   switch_to_base = kv.k "switch_to_layout_Code_QWERTY_Compact";
+        #   switch_to_C0Mods = kv.k "switch_to_layout_Code_QWERTY_Compact_C0Mods";
+        #   switch_to_splitPG = kv.k "switch_to_layout_Code_QWERTY_Compact_splitPG";
+        #   switch_to_splitLG = kv.k "switch_to_layout_Code_QWERTY_Compact_splitLG";
+        # });
+        # K nw.switch_to_base ne.switch_to_C0Mods K;
+        withAliases = aliases: mkCodes aliases;
 
         # Shorthand for placing arbitrary keyvalues at mapping locations.
         #
