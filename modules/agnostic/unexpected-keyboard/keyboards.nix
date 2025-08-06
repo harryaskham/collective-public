@@ -365,9 +365,11 @@ with uklib;
 
   (with codes.withAliases {
     switch_to_base = "switch_to_layout_Code_QWERTY_Compact";
-    switch_to_C0Mods = "switch_to_layout_Code_QWERTY_Compact_C0Mods";
-    switch_to_splitPG = "switch_to_layout_Code_QWERTY_Compact_splitPG";
-    switch_to_splitLG = "switch_to_layout_Code_QWERTY_Compact_splitLG";
+    switch_to_C0Mods = "switch_to_layout_Code_QWERTY_Compact_0_C0Mods";
+    switch_to_splitPG = "switch_to_layout_Code_QWERTY_Compact_1_splitPG";
+    switch_to_splitPE = "switch_to_layout_Code_QWERTY_Compact_2_splitPE";
+    switch_to_splitLG = "switch_to_layout_Code_QWERTY_Compact_3_splitLG";
+    switch_to_splitLE = "switch_to_layout_Code_QWERTY_Compact_4_splitLE";
   };
 
   {
@@ -507,19 +509,19 @@ with uklib;
 
       # Emit the variants in the order below.
       indexPrefixedAttrs [
-        { L = applyLefty id; } # Left-aligned one-handed layout.
-        { R = applyRighty id; } # Right-aligned one-handed layout.
+        #{ L = applyLefty id; } # Left-aligned one-handed layout.
+        #{ R = applyRighty id; } # Right-aligned one-handed layout.
         { inherit C0Mods; } # Default layout with modifier keys in column 0.
-        { C0ModsL = applyLefty C0Mods; } # Left-aligned layout with modifier keys in column 0.
-        { C0ModsR = applyRighty C0Mods; } # Right-aligned layout with modifier keys in column 0.
+        #{ C0ModsL = applyLefty C0Mods; } # Left-aligned layout with modifier keys in column 0.
+        #{ C0ModsR = applyRighty C0Mods; } # Right-aligned layout with modifier keys in column 0.
         { splitPE = mkPortraitSplit Mods.Empty; } # Portrait split layout with empty centre.
         { splitPG = mkPortraitSplit Mods.Grid; } # Portrait split layout with modifier keys centre.
-        { splitP0 = mkPortraitSplit (Mods.Col 0); } # Portrait split layout with modifier keys in column 0.
-        { splitP5 = mkPortraitSplit (Mods.Col 5); } # Portrait split layout with modifier keys in column 5 and empty centre.
+        #{ splitP0 = mkPortraitSplit (Mods.Col 0); } # Portrait split layout with modifier keys in column 0.
+        #{ splitP5 = mkPortraitSplit (Mods.Col 5); } # Portrait split layout with modifier keys in column 5 and empty centre.
         { splitLE = mkLandscapeSplit Mods.Empty; } # Landscape split layout with empty centre.
         { splitLG = mkLandscapeSplit Mods.Grid; } # Landscape split layout with modifier keys centre.
-        { splitL0 = mkLandscapeSplit (Mods.Col 0); } # Landscape split layout with modifier keys in column 0.
-        { splitL5 = mkLandscapeSplit (Mods.Col 5); } # Landscape split layout with modifier keys in column 5 and empty centre.
+        #{ splitL0 = mkLandscapeSplit (Mods.Col 0); } # Landscape split layout with modifier keys in column 0.
+        #{ splitL5 = mkLandscapeSplit (Mods.Col 5); } # Landscape split layout with modifier keys in column 5 and empty centre.
       ];
 
     rows = map (row: row // {height = 0.65;}) [{
