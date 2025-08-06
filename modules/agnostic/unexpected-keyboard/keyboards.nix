@@ -427,10 +427,9 @@ with uklib;
           ];
 
           withSplitSpace = {gap, paddingL, paddingR, ...} @ args:
-            let width = gap - paddingL - paddingR;
-            in precompose [
+            precompose [
               (updateKey 2 5 (addShift paddingR))
-              (insertKey 2 5 (K width paddingL w.cur_l  " " c.spc  e.cur_r K))
+              (insertKey 2 5 (K gap paddingL w.cur_l  " " c.spc  e.cur_r K))
             ];
 
           withoutModRow = (deleteRow 3);
@@ -438,9 +437,9 @@ with uklib;
           # Add modifier keys to split layouts and handle padding the split if necessary
           # Use as 'mod' arguments to mkSplit
           Mods = {
-            Empty = {gap, ...}: precompose [
-              (updateKey 0 5 (addShift gap))
-              (updateKey 1 5 (addShift gap))
+            Empty = {gap, paddingL, paddingR, ...}: precompose [
+              (updateKey 0 5 (addShift (gap + paddingL + paddingR)))
+              (updateKey 1 5 (addShift (gap + paddingL + paddingR)))
             ];
 
             Col = colI: {gap, ...}: precompose [
