@@ -344,7 +344,6 @@ with uklib;
       }
 
       {
-        inherit height;
         keys =
           K
                       "❖" ne.meta
@@ -523,161 +522,155 @@ with uklib;
         { splitL5 = mkLandscapeSplit (Mods.Col 5); } # Landscape split layout with modifier keys in column 5 and empty centre.
       ];
 
-    rows = let height = 0.65; in [{
-        inherit height;
-        keys =
-          K nw."`"      ne."1"
-                  c.q
-            sw."~"      "⎋" se.esc
-          _
-            nw."!"      ne."2"
-                  c.w
-            sw."@"
-          _
-                        ne."3"
-                  c.e
-            sw."#"
-          _
-            nw."£"      ne."4"
-                  c.r
-            sw."$"
-          _
-            "⌨" nw.toggle_floating  ne."5"
-                  c.t
-            sw."%"
-          _
-                        ne."6"
-                  c.y
-            sw."^"      "⟷" se.switch_to_splitPG
-          _
-                        ne."7"
-                  c.u
-            sw."&"      "⟺" se.switch_to_splitLG
-          _
-                        ne."8"
-                  c.i
-            sw."*"      "⥺" se.switch_to_C0Mods
-          _
-                      ne."9"
-                  c.o
-            sw."("     se.")"
-          _
-                        ne."0"
-                  c.p
+    rows = map (row: row // {height = 0.65;}) [{
+      keys =
+        K nw."`"      ne."1"
+                c.q
+          sw."~"      "⎋" se.esc
+        _
+          nw."!"      ne."2"
+                c.w
+          sw."@"
+        _
+                      ne."3"
+                c.e
+          sw."#"
+        _
+          nw."£"      ne."4"
+                c.r
+          sw."$"
+        _
+          "⌨" nw.toggle_floating  ne."5"
+                c.t
+          sw."%"
+        _
+                      ne."6"
+                c.y
+          sw."^"      "⟷" se.switch_to_splitPG
+        _
+                      ne."7"
+                c.u
+          sw."&"      "⟺" se.switch_to_splitLG
+        _
+                      ne."8"
+                c.i
+          sw."*"      "⥺" se.switch_to_C0Mods
+        _
+                    ne."9"
+                c.o
+          sw."("     se.")"
+        _
+                      ne."0"
+                c.p
 
-          K;
-      }
-
-      {
-        inherit height;
-        keys =
-          K
-            nw.tab     ne.shift
-                  c.a
-                      "✲" se.ctrl
-          _
-
-                  c.s
-                        "⌥" se.alt
-          _
-
-                  c.d
-                        "❖" se.meta
-          _
-
-                  c.f
-                        "▤" se.fn
-
-          _
-                        ne."-"
-                  c.g
-            sw."_"
-          _
-                        ne."="
-                  c.h
-            sw."+"
-          _
-
-                  c.j
-            sw."{"       se."}"
-          _
-                        ne."'"
-                    c.k
-            sw."["       se."]"
-          _
-                         ne."\""
-                    c.l
-
-          _
-            nw.shift     ne.del
-                    c.bsp
-            "✲" sw.ctrl
         K;
-      }
+    }
 
-      {
-        inherit height;
-        keys =
-          K
-                            ne."|"
-                  c.z
-            sw."\\"
-          _
-            nw.change_method   ne.cut
-                  c.x
-            sw.bwd       se.fwd
-          _
-                        ne.copy
-                  c.c
-            sw.config   se.emoji
-          _
-                      ne.paste
-                  c.v
-                          se.pastePlain
-          _
+    {
+      keys =
+        K
+          nw.tab     ne.shift
+                c.a
+                    "✲" se.ctrl
+        _
 
-                  c.b
+                c.s
+                      "⌥" se.alt
+        _
 
-          _
-                        ne."?"
-                  c.n
-            sw."/"
-          _
-                        ne.":"
-                  c.m
-            sw."<"      se.">"
-          _
-                        ne.";"
-                  c."."
-            sw.","
-          _
-                      n.up
-              w.left        e.right
-                      s.down
-          _
-                          ne.action
-                   c.enter
+                c.d
+                      "❖" se.meta
+        _
 
-          K;
-      }
+                c.f
+                      "▤" se.fn
 
-      {
-        inherit height;
-        keys =
-          K
-                      "❖" ne.meta
-                "✲" c.ctrl
-          _
-           "ℕ" nw._123    "▤" ne.fn
-                  "⌥" c.alt
+        _
+                      ne."-"
+                c.g
+          sw."_"
+        _
+                      ne."="
+                c.h
+          sw."+"
+        _
 
-          _ 8
+                c.j
+          sw."{"       se."}"
+        _
+                      ne."'"
+                  c.k
+          sw."["       se."]"
+        _
+                        ne."\""
+                  c.l
 
-              w.cur_l  " " c.spc  e.cur_r
+        _
+          nw.shift     ne.del
+                  c.bsp
+          "✲" sw.ctrl
+      K;
+    }
 
-          K;
-      }
+    {
+      keys =
+        K
+                          ne."|"
+                c.z
+          sw."\\"
+        _
+          nw.change_method   ne.cut
+                c.x
+          sw.bwd       se.fwd
+        _
+                      ne.copy
+                c.c
+          sw.config   se.emoji
+        _
+                    ne.paste
+                c.v
+                        se.pastePlain
+        _
 
-    ];
+                c.b
+
+        _
+                      ne."?"
+                c.n
+          sw."/"
+        _
+                      ne.":"
+                c.m
+          sw."<"      se.">"
+        _
+                      ne.";"
+                c."."
+          sw.","
+        _
+                    n.up
+            w.left        e.right
+                    s.down
+        _
+                        ne.action
+                  c.enter
+
+        K;
+    }
+
+    {
+      keys =
+        K
+                    "❖" ne.meta
+              "✲" c.ctrl
+        _
+          "ℕ" nw._123    "▤" ne.fn
+                "⌥" c.alt
+
+        _ 8
+
+            w.cur_l  " " c.spc  e.cur_r
+
+        K;
+    }];
   })
 ]
