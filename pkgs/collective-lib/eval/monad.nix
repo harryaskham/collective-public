@@ -522,15 +522,13 @@ rec {
 
   saveScope = f: {_, ...}:
     _.do
-      (while "with scope")
       {prev = {_}: _.getScope;}
-      {m = {_, ...} @ args:
-         let r = f args;
-         in if isDo r || isMonadValue r then
-              r.bind ({_, _a}: _.do ({_}: _.setScope prev) ({_}: _.pure _a))
-            else _.do ({_}: _.setScope prev) ({_}: _.pure r);
-      }
-      ({_, m}: _.pure m);
+      {res = {_, ...} @ args: f args;}
+      ({_, prev, res}:
+        assert that (isMonadOf Eval res) ''
+          saveScope: expected Eval monadic action but got ${getT res}
+        '';
+        res.bind ({_, _a}: _.do ({_}: _.setScope prev) ({_}: _.pure _a)));
 
 
   setScope = scope: {_, ...}:
