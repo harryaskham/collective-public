@@ -523,10 +523,12 @@ rec {
   saveScope = f: {_, ...}:
     _.do
       (while "with scope")
-      {scope = {_}: _.getScope;}
-      {a = {_, ...} @ args: f args;}
-      ({_}: _.setScope scope)
-      ({_, a, ...}: _.pure a);
+      {prev = {_}: _.getScope;}
+      {res = {_, ...} @ args: f args;}
+      ({_, prev, res}:
+        let m = if isDo res then res.action else res;
+        in m.bind ({_, _a}: _.do ({_}: _.setScope prev) ({_}: _.pure _a)));
+
 
   setScope = scope: {_, ...}:
     _.do
