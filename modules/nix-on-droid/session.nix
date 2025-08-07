@@ -39,7 +39,7 @@ in {
   config = (mkIf cfg.enable (mkMerge [
 
     {
-      agnostic.shell.init = mkBefore ''
+      shell.init = mkBefore ''
         mkdir -p /tmp/nix-on-droid-session-start
       '';
     }
@@ -63,7 +63,7 @@ in {
         fi
       '';
 
-      agnostic.shell.init = ''
+      shell.init = ''
         nohup bash "${actionScriptPath name}" > /tmp/nix-on-droid-session-start/${name}.out 2>&1 &
       '';
     })))
