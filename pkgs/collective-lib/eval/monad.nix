@@ -524,10 +524,13 @@ rec {
     _.do
       (while "with scope")
       {prev = {_}: _.getScope;}
-      {res = {_, ...} @ args: f args;}
-      ({_, prev, res}:
-        let m = if isDo res then res.action else res;
-        in m.bind ({_, _a}: _.do ({_}: _.setScope prev) ({_}: _.pure _a)));
+      {m = {_, ...} @ args:
+         let r = f args;
+         in if isDo r || isMonadValue r then
+              r.bind ({_, _a}: _.do ({_}: _.setScope prev) ({_}: _.pure _a))
+            else _.do ({_}: _.setScope prev) ({_}: _.pure r);
+      }
+      ({_, m}: _.pure m);
 
 
   setScope = scope: {_, ...}:
