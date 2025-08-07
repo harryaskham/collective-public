@@ -115,7 +115,7 @@ in rec {
     elem = {
       __functor = self: self.on lib.typeOf;
       on = getElemType: dict: 
-        dispatch.on (x: if empty x then "empty" else getElemType (elems.head x)) dict;
+        dispatch.on (x: if safeEmpty x then "empty" else getElemType (elems.head x)) dict;
     };
   };
 

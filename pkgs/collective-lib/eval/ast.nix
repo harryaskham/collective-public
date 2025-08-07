@@ -146,7 +146,7 @@ rec {
     Eval.do
       (while "evaluating 'bindings' node-list")
       {attrsList = {_}: _.traverse evalNodeM bindings;}
-      {attrs = {_, attrsList}: _.pure (concat attrsList);}
+      {attrs = {_, attrsList}: _.pure (concatLists attrsList);}
       ({_, attrs}: _.guard (all (attr: (attr ? name) && (attr ? value)) attrs) (RuntimeError ''
         Recursive binding list evaluation produced invalid name/value pairs:
           bindings: ${_ph_ bindings}
@@ -174,7 +174,7 @@ rec {
             ({_}: _.guard (MissingAttributeError.check _e) _e)
             _.pure []))
           bindings;}
-      {attrs = {_, attrsList}: _.pure (listToAttrs (concat attrsList));}
+      {attrs = {_, attrsList}: _.pure (listToAttrs (concatLists attrsList));}
       ({_, ...}: _.guard (i <= size bindings) (RuntimeError ''
         Recursive binding list evaluation failed to complete at iteration ${toString i}:
           ${_ph_ bindings}
