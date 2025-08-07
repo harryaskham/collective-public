@@ -321,7 +321,7 @@ rec {
     in 
       (acc.m.bind ({_, _a}: 
         let mb_ = normalised.f (acc.bindings // { inherit _ _a; });
-            mb = if isDo mb_ then mb_.__setInitM _ else mb_;
+                         mb = if isDo mb_ then mb_.__setInitM acc.m else mb_;
         in 
           mb.bind ({_, _a}: _.pure {
             bindings = acc.bindings // optionalAttrs (normalised.bindName != null) {
@@ -375,8 +375,19 @@ rec {
 
       # Bind pure with {} initial state to convert do<M a> to M a
       action = this.bind ({_, _a}: _.pure _a);
-      inherit (this.action) mapState setState mapEither sq run run_ while catch;
-      do = mkDo M this.action [];
+
+      # Lazily forward core monad ops by transforming the initial monadic value,
+      # to avoid forcing evaluation of this.action during statement construction.
+      mapState = f: mkDo M (this.__initM.mapState f) this.__statements;
+      setState = s: mkDo M (this.__initM.setState s) this.__statements;
+      mapEither = f: mkDo M (this.__initM.mapEither f) this.__statements;
+      sq = b: mkDo M (this.__initM.sq b) this.__statements;
+      run = initialState: this.action.run initialState;
+      run_ = _: this.action.run_ {};
+      while = msg: mkDo M (this.__initM.while msg) this.__statements;
+      catch = handler: mkDo M (this.__initM.catch handler) this.__statements;
+
+      do = mkDo M this.__initM [];
       guard = cond: e: 
         if cond 
         then this.bind ({_}: _.pure unit) 
@@ -468,7 +479,7 @@ rec {
           fmap = f: Eval A this.s (this.e.fmap f);
           when = eval.monad.when;
           unless = eval.monad.unless;
-          while = msg: let x = log.while msg (void this); in seq x x;
+          while = msg: Eval.pure unit;
           guard = cond: e: 
             if cond 
             then this.bind ({_}: _.pure unit) 
@@ -523,9 +534,14 @@ rec {
     _.do
       (while "with scope")
       {scope = {_}: _.getScope;}
-      {a = {_, ...} @ args: f args;}
-      ({_}: _.setScope scope)
-      ({_, a, ...}: _.pure a);
+      {res = {_, ...} @ args: f args;}
+      ({_, res}:
+        let m = if isDo res then res.action else res;
+        in m.bind ({_, _a}:
+          _.do
+            ({_}: _.setScope scope)
+            ({_}: _.pure _a)
+        ));
 
   setScope = scope: {_, ...}:
     _.do
