@@ -60,9 +60,12 @@ in rec {
   # Apply a function to a value with the arguments flipped.
   flap = a: f: ap f a;
 
-  # Flipped map.
+  # Flipped maps.
   for = flip map;
   ifor = flip imap0;
+  forAttrs = flip mapAttrs;
+  forAttrsToList = flip mapAttrsToList;
+  concatForAttrs = flip concatMapAttrs;
 
   # Return a value iff a condition is met, otherwise return null
   when = cond: a: if cond then a else null;

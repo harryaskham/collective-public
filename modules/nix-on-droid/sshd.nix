@@ -105,6 +105,15 @@ in {
           $DRY_RUN_CMD ${sshd-start}/bin/${sshd-start-bin}
         fi
       '';
+
+      session.actions.sshd = {
+        checkRunning = ''
+          ${pkgs.procps}/bin/ps -a | ${pkgs.toybox}/bin/grep sshd
+        '';
+        start = ''
+          ${sshd-start}/bin/${sshd-start-bin}
+        '';
+      };
     }
   ]);
 }

@@ -562,7 +562,7 @@ with uklib;
                   c.o
             sw."("     se.")"
           _
-            nw.toggle_persistence   ne."0"
+            "∞" nw.toggle_persistence   ne."0"
                   c.p
 
           K;
