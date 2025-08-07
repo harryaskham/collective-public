@@ -2,11 +2,10 @@
 
 CONTAINER=nix-container
 
-function install-docker() {
-  if ! which docker; then
-    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
-    sudo sh /tmp/get-docker.sh
-    sudo service docker start
+function install-nix() {
+  if ! which nix; then
+    sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --no-daemon
+    . /home/ubuntu/.nix-profile/etc/profile.d/nix.sh
   fi
 }
 
@@ -85,14 +84,7 @@ function run-expr() {
   run-in-nix-eval "$EXPR" 
 }
 
-if [[ "$IN_DOCKER" == 1 ]]; then
-  run-expr "$@"
-elif [[ "$(hostname)" == "cursor" ]]; then
-  install-docker
-  start-container
-  run-in-container "$0 $@"
-else
-  run-expr "$@"
+if [[ "$(hostname)" == "cursor" ]]; then
+  install-nix
 fi
-  
-
+run-expr "$@"
