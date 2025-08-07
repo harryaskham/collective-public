@@ -36,16 +36,10 @@ in {
     };
   };
 
-  config = (mkIf cfg.enable (mkMerge [
+  config = (mkIf cfg.enable {
 
-    {
-      shell.init = mkBefore ''
-        mkdir -p /tmp/nix-on-droid-session-start
-      '';
-    }
-    
-    (mkMerge (concatForAttrs cfg.actions (name: action: {
-      agnostic.environment.etc.${actionScriptName name}.text = _b_ ''
+    agnostic.environment.etc = concatForAttrs cfg.actions (name: action: {
+      ${actionScriptName name}.text = _b_ ''
         #!${pkgs.bash}/bin/bash
         
         function check_running() {
@@ -62,14 +56,13 @@ in {
           fi
         fi
       '';
+    });
 
-      shell.init = ''
+    shell.init = ''
+      mkdir -p /tmp/nix-on-droid-session-start
+      ${_h_ (_ls_ (forAttrsToList cfg.actions (name: action: _b_ ''
         nohup bash "${actionScriptPath name}" > /tmp/nix-on-droid-session-start/${name}.out 2>&1 &
-      '';
-    })))
-
-  ]));
-
+      '')))}
+    '';
+  });
 }
-
-

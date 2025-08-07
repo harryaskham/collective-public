@@ -542,9 +542,9 @@ with uklib;
                   c.r
             sw."$"
           _
-            "⌨" nw.toggle_floating  ne."5"
+                        ne."5"
                   c.t
-            sw."%"
+            sw."%"      "⌨" se.toggle_floating 
           _
                         ne."6"
                   c.y
@@ -621,13 +621,13 @@ with uklib;
                   c.z
             sw."\\"
           _
-            nw.change_method   ne.cut
+                         ne.cut
                   c.x
             sw.bwd       se.fwd
           _
                         ne.copy
                   c.c
-            sw.config   se.emoji
+            sw.config   
           _
                       ne.paste
                   c.v
