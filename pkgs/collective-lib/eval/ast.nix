@@ -479,9 +479,10 @@ rec {
 
   # Evaluate a with expression
   # evalWith :: AST -> Eval a
-  evalWithEnv = envNode: 
-    {_, ...}: _.do
-      ({_}: _.prependScopeM (evalNodeM envNode));
+  evalWithEnv = envNode:
+    Eval.do
+      {env = evalNodeM envNode;}
+      ({_, env}: _.prependScope env);
 
   # Evaluate a with expression
   # evalWith :: AST -> Eval a
