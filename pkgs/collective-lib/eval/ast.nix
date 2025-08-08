@@ -90,10 +90,13 @@ rec {
   # Evaluate an identifier lookup
   # evalIdentifier :: Scope -> AST -> Eval a
   evalIdentifier = node:
-    Eval.do
+    if node.name == "true" then Eval.pure true
+    else if node.name == "false" then Eval.pure false
+    else if node.name == "null" then Eval.pure null
+    else Eval.do
       (while "evaluating 'identifier' node")
       {scope = getScope;}
-      ({_, scope}: _.guard (scope ? ${node.name}) (RuntimeError ''
+      ({_, scope}: _.guard (builtins.hasAttr node.name scope) (RuntimeError ''
         Undefined identifier '${node.name}' in current scope:
           ${_ph_ scope}
       ''))
@@ -121,7 +124,7 @@ rec {
     Eval.do
       (while "evaluating 'attr' node by name")
       {name = identifierName attr;}
-      ({_, name}: _.guard (from ? ${name}) (MissingAttributeError name))
+      ({_, name}: _.guard (builtins.hasAttr name from) (MissingAttributeError name))
       ({_, name}: _.pure { inherit name; value = from.${name}; });
 
   # Evaluate an inherit expression, possibly with a source
@@ -312,7 +315,7 @@ rec {
               restPath = builtins.tail components;
           in _.do
             {attrName = identifierName headPath;}
-            ({_, attrName, ...}: _.guard (obj ? ${attrName}) (MissingAttributeError attrName))
+            ({_, attrName, ...}: _.guard (builtins.hasAttr attrName obj) (MissingAttributeError attrName))
             ({_, attrName, ...}: traversePath obj.${attrName} restPath));
 
   # Evaluate attribute access (dot operator)
@@ -561,7 +564,7 @@ rec {
           ({_}: _.guard (scope ? NIX_PATH) (NixPathError ''
             No NIX_PATH found in scope when resolving ${node.value}.
           ''))
-          ({_}: _.guard (scope.NIX_PATH ? ${name}) (NixPathError ''
+          ({_}: _.guard (builtins.hasAttr name scope.NIX_PATH) (NixPathError ''
             ${name} not found in NIX_PATH when resolving ${node.value}.
           ''))
           (pure (scope.NIX_PATH.${name} + "/${restPath}")));

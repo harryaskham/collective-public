@@ -255,28 +255,11 @@ in rec {
          else
            mkActual "PASS" null;
 
-    msg = assign "msg" {
-      ${Status.Skipped} = "SKIP: ${test.name}";
-      ${Status.Passed} = "PASS: ${test.name}";
-      ${Status.Failed} = joinLines [
-        (indent.block ''
-          FAIL: ${test.name}
-
-          Expected:
-            ${indent.here (indent.blocks [
-                (log.vprintUnsafe test.rawExpected)
-                (optionalString (test.compare != null) (indent.lines [
-                  "Comparing on:"
-                  (with log.prints; put test.rawExpected _raw ___)
-                ]))
-            ])}
-
-          Actual:
-            ${indent.here (try (toString actual) (_: "<error>"))}
-        '')
-        ""
-      ];
-    }.${status};
+         msg = assign "msg" {
+       ${Status.Skipped} = "SKIP: ${test.name}";
+       ${Status.Passed} = "PASS: ${test.name}";
+       ${Status.Failed} = "FAIL: ${test.name}";
+     }.${status};
   };
   in 
     traceTestSummary testResult;
@@ -437,24 +420,18 @@ in rec {
           Passed = counts.run;
           Failed = counts.run;
         };
-        headers = mapAttrs (statusName: _:
-          optionalString (counts.${statusName} > 0) ''
-            ${toString (counts.${statusName})} of ${toString allCounts.${statusName}} tests ${verbs.${statusName}}
-          '') Status;
-                 msgs =
-           mapAttrs
-             (statusName: _: Safe (joinOptionalsSep "\n" (map (result: result.msg) byStatus.${statusName})))
-             Status;
-        failedTestNamesBlock = joinLines (map (result: "FAIL: ${result.test.name}") byStatus.Failed);
-
-      in indent.blocksSep "\n\n==========\n\n" [
-        header
-        headers.Skipped
-        msgs.Skipped
-        (indent.blocks [headers.Passed msgs.Passed])
-        (indent.blocks [headers.Failed failedTestNamesBlock])
-        msgs.Failed
-      ];
+                 headers = mapAttrs (statusName: _:
+           optionalString (counts.${statusName} > 0) ''
+             ${toString (counts.${statusName})} of ${toString allCounts.${statusName}} tests ${verbs.${statusName}}
+           '') Status;
+         failedTestNamesBlock = joinLines (map (result: "FAIL: ${result.test.name}") byStatus.Failed);
+ 
+       in indent.blocksSep "\n\n==========\n\n" [
+         header
+         headers.Skipped
+         (indent.blocks [headers.Passed])
+         (indent.blocks [headers.Failed failedTestNamesBlock])
+       ];
   };
 
   removeTests = xs: removeAttrs xs ["_tests"];
