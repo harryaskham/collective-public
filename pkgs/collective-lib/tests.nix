@@ -266,21 +266,21 @@ in rec {
     msg = assign "msg" {
       ${Status.Skipped} = "SKIP: ${test.name}";
       ${Status.Passed} = "PASS: ${test.name}";
-      ${Status.Failed} = joinLines [
+      ${Status.Failed} = _ls_ [
         (indent.block ''
           FAIL: ${test.name}
 
           Expected:
             ${indent.here (indent.blocks [
-                (log.vprintUnsafe test.rawExpected)
-                (optionalString (test.compare != null) (indent.lines [
+                (log.vprintD 2 test.rawExpected)
+                (optionalString (test.compare != null) (_ls_ [
                   "Comparing on:"
-                  (with log.prints; put test.rawExpected _raw ___)
+                  (with log.prints; put test.expected _raw ___)
                 ]))
             ])}
 
           Actual:
-            ${indent.here (try (toString actual) (_: "<error>"))}
+            ${_h_ (try (log.vprintD 2 actual) (_: "<error>"))}
         '')
         ""
       ];
@@ -459,10 +459,10 @@ in rec {
         header
         headers.Skipped
         msgs.Skipped
-        #(indent.blocks [headers.Passed msgs.Passed])
+        (indent.blocks [headers.Passed msgs.Passed])
         (indent.blocks [headers.Passed])
         (indent.blocks [headers.Failed failedTestNamesBlock])
-        #msgs.Failed
+        msgs.Failed
       ];
   };
 
