@@ -472,10 +472,9 @@ rec {
   # evalLetIn :: AST -> Eval a
   evalLetIn = node:
     Eval.do
-      {prev = {_}: _.getScope;}
-      (appendScopeM (evalRecBindingList node.bindings))
-      {val = evalNodeM node.body;}
-      ({_, prev, val}: _.do ({_}: _.setScope prev) ({_}: _.pure val));
+      ({_}: _.saveScope (_.do
+        (prependScopeM (evalRecBindingList node.bindings))
+        (evalNodeM node.body)));
 
   # Evaluate a with expression
   # evalWith :: AST -> Eval a
@@ -488,10 +487,9 @@ rec {
   # evalWith :: AST -> Eval a
   evalWith = node: 
     Eval.do
-      {prev = {_}: _.getScope;}
-      (evalWithEnv node.env)
-      {val = evalNodeM node.body;}
-      ({_, prev, val}: _.do ({_}: _.setScope prev) ({_}: _.pure val));
+      ({_}: _.saveScope (_.do
+        (evalWithEnv node.env)
+        (evalNodeM node.body)));
 
   # Evaluate an assert expression
   # evalAssert :: AST -> Eval a
@@ -569,7 +567,7 @@ rec {
           (pure (scope.NIX_PATH.${name} + "/${restPath}")));
 
   # Helper to test round-trip property: eval (parse x) == x
-  testRoundTrip = testRoundTripWith collective-lib.tests.expect.noLambdasEq;
+  testRoundTrip = testRoundTripWith collective-lib.tests.expect.printEq;
   testRoundTripWith = expectation: expr: expected: {
     # Just test that parsing succeeds and the result evaluates to expected
     roundTrip = 

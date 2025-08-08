@@ -469,7 +469,7 @@ rec {
           fmap = f: Eval A this.s (this.e.fmap f);
           when = eval.monad.when;
           unless = eval.monad.unless;
-          while = msg: let x = log.while msg (void this); in seq x x;
+          while = msg: Eval.pure unit;
           guard = cond: e: 
             if cond 
             then this.bind ({_}: _.pure unit) 
