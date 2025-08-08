@@ -269,16 +269,17 @@ in rec {
       actual =
         let mkActual = msg: result: {
               inherit status evalStatus result;
-              __toString = _:
-                if result == null then msg
-                else indent.block ''
-                  ${msg}: ${indent.here (log.print result)}
-                  ${optionalString (status == Status.Failed) ''
-                  Diff:
-                    ${indent.here (log.vprint (diffShort test.expected result))}
-                  ''}
-                '';
-            };
+                             __toString = _:
+                 if result == null then msg
+                 else indent.block ''
+                   ${msg}: ${indent.here (log.vprintD 2 result)}
+                 '';
+               # Disabled detailed diff output for performance during test runs:
+               # ${optionalString (status == Status.Failed) ''
+               # Diff:
+               #   ${indent.here (log.vprint (diffShort test.expected result))}
+               # ''}
+             };
        in
         if test.skip
           then mkActual "SKIP" null
@@ -491,21 +492,21 @@ in rec {
           optionalString (counts.${statusName} > 0) ''
             ${toString (counts.${statusName})} of ${toString allCounts.${statusName}} tests ${verbs.${statusName}}
           '') Status;
-        msgs =
-          mapAttrs
-            (statusName: _: Safe (joinLines (map (result: result.msg) byStatus.${statusName})))
-            Status;
-        failedTestNamesBlock = joinLines (map (result: "FAIL: ${result.test.name}") byStatus.Failed);
-
-      in indent.blocksSep "\n\n==========\n\n" [
-        header
-        headers.Skipped
-        msgs.Skipped
-        #(indent.blocks [headers.Passed msgs.Passed])
-        #(indent.blocks [headers.Passed])
-        #(indent.blocks [headers.Failed failedTestNamesBlock])
-        #msgs.Failed
-      ];
+                 # Disabled verbose per-status messages while debugging stack overflows
+         # msgs =
+         #   mapAttrs
+         #     (statusName: _: Safe (joinLines (map (result: result.msg) byStatus.${statusName})))
+         #     Status;
+         failedTestNamesBlock = joinLines (map (result: "FAIL: ${result.test.name}") byStatus.Failed);
+ 
+       in indent.blocksSep "\n\n==========\n\n" [
+         header
+         headers.Skipped
+         #msgs.Skipped
+         headers.Passed
+         (indent.blocks [headers.Failed failedTestNamesBlock])
+         #msgs.Failed
+       ];
   };
 
   removeTests = xs: removeAttrs xs ["_tests"];
