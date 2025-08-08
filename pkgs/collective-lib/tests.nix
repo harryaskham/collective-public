@@ -230,12 +230,15 @@ in rec {
               inherit status evalStatus result;
               __toString = _:
                 if result == null then msg
+                #else indent.block ''
+                #  ${msg}: ${indent.here (log.print result)}
+                #  ${optionalString (status == Status.Failed) ''
+                #  Diff:
+                #    ${indent.here (log.vprint (diffShort test.expected result))}
+                #  ''}
+                #'';
                 else indent.block ''
-                  ${msg}: ${indent.here (log.print result)}
-                  ${optionalString (status == Status.Failed) ''
-                  Diff:
-                    ${indent.here (log.vprint (diffShort test.expected result))}
-                  ''}
+                  ${msg}: ${indent.here (log.vprintD 2 result)}
                 '';
             };
        in
@@ -456,9 +459,10 @@ in rec {
         header
         headers.Skipped
         msgs.Skipped
-        (indent.blocks [headers.Passed msgs.Passed])
+        #(indent.blocks [headers.Passed msgs.Passed])
+        (indent.blocks [headers.Passed])
         (indent.blocks [headers.Failed failedTestNamesBlock])
-        msgs.Failed
+        #msgs.Failed
       ];
   };
 
