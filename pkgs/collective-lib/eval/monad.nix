@@ -376,7 +376,7 @@ rec {
       # Bind pure with {} initial state to convert do<M a> to M a
              action = this.bind ({_, _a}: _.pure _a);
        inherit (this.action) mapState setState mapEither sq run run_ catch;
-       while = msg: mkDo M this.__initM (this.__statements ++ [ ({_}: let _ = log.while msg true; in _.pure unit) ]);
+       while = msg: let x = log.while msg (void this); in seq x x;
 
        do = mkDo M this.action [];
        guard = cond: e: 
