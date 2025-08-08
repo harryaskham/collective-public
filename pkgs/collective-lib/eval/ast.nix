@@ -15,23 +15,18 @@ rec {
   Exposed as eval.eval.ast (and eval.eval) in default.nix for use as just "eval"
  
   runAST :: (string | AST) -> Either EvalError {a :: a, s :: EvalState} */
-  runAST = expr: 
-    log.while "running string or AST node evaluation" (
-    (evalM expr).run (EvalState.mempty {})
-    );
+  runAST = expr:
+    (evalM expr).run (EvalState.mempty {});
 
   /*
   evalAST :: (string | AST) -> Either EvalError a */
   evalAST = expr:
-    log.while "evaluating string or AST node" (
-    (evalM expr).run_ (EvalState.mempty {})
-    );
+    (evalM expr).run_ (EvalState.mempty {});
 
   /*
   evalM :: (string | AST) -> Eval a */
   evalM = expr:
     Eval.do
-      (while "running string or AST node evaluation")
       ({_}: _.set initEvalState)
       (evalNodeM (parse expr));
 
@@ -477,9 +472,10 @@ rec {
   # evalLetIn :: AST -> Eval a
   evalLetIn = node:
     Eval.do
-      ({_}: _.saveScope (_.do
-        (appendScopeM (evalRecBindingList node.bindings))
-        (evalNodeM node.body)));
+      {prev = getScope;}
+      (appendScopeM (evalRecBindingList node.bindings))
+      {val = evalNodeM node.body;}
+      ({_, prev, val}: _.do (setScope prev) (pure val));
 
   # Evaluate a with expression
   # evalWith :: AST -> Eval a
@@ -491,9 +487,10 @@ rec {
   # evalWith :: AST -> Eval a
   evalWith = node: 
     Eval.do
-      ({_}: _.saveScope (_.do
-        (evalWithEnv node.env)
-        (evalNodeM node.body)));
+      {prev = getScope;}
+      (evalWithEnv node.env)
+      {val = evalNodeM node.body;}
+      ({_, prev, val}: _.do (setScope prev) (pure val));
 
   # Evaluate an assert expression
   # evalAssert :: AST -> Eval a
@@ -571,7 +568,7 @@ rec {
           (pure (scope.NIX_PATH.${name} + "/${restPath}")));
 
   # Helper to test round-trip property: eval (parse x) == x
-  testRoundTrip = testRoundTripWith collective-lib.tests.expect.printEq;
+  testRoundTrip = testRoundTripWith collective-lib.tests.expect.noLambdasEq;
   testRoundTripWith = expectation: expr: expected: {
     # Just test that parsing succeeds and the result evaluates to expected
     roundTrip = 

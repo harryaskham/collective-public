@@ -487,13 +487,14 @@ rec {
             this.e.case {
               Left = _: this;
               Right = a:
-                let normalised = normaliseBindStatement Eval statement;
-                    mb = normalised.f {_ = this; _a = a;};
-                in assert that (isMonadOf Eval mb) ''
-                  Eval.bind: non-Eval value returned of type ${getT mb}:
-                    ${_ph_ mb}
-                '';
-                mb.mapState (s: compose s this.s);
+                                                  let normalised = normaliseBindStatement Eval statement;
+                      mb0 = normalised.f {_ = this; _a = a;};
+                      mb = if isDo mb0 then (mb0.__setInitM this).action else mb0;
+                 in assert that (isMonadOf Eval mb) ''
+                   Eval.bind: non-Eval value returned of type ${getT mb}:
+                     ${_ph_ mb}
+                 '';
+                 mb.mapState (s: compose s this.s);
             };
 
           sq = b: this.bind ({_}: b);
@@ -528,7 +529,8 @@ rec {
         assert that (isMonadOf Eval res) ''
           saveScope: expected Eval monadic action but got ${getT res}
         '';
-        res.bind ({_, _a}: _.do ({_}: _.setScope prev) ({_}: _.pure _a)));
+        let res' = if isDo res then res.__setInitM _ else res;
+        in res'.bind ({_, _a}: _.do ({_}: _.setScope prev) ({_}: _.pure _a)));
 
 
   setScope = scope: {_, ...}:
