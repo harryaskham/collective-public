@@ -475,6 +475,7 @@ rec {
   # evalLetIn :: AST -> Eval a
   evalLetIn = node:
     Eval.do
+      (while "evaluating 'letIn' node")
       ({_}: _.saveScope (_.do
         (prependScopeM (evalRecBindingList node.bindings))
         (evalNodeM node.body)));
@@ -483,6 +484,7 @@ rec {
   # evalWith :: AST -> Eval a
   evalWithEnv = envNode:
     Eval.do
+      (while "evaluating 'with' environment node")
       {env = evalNodeM envNode;}
       ({_, env}: _.prependScope env);
 
@@ -490,6 +492,7 @@ rec {
   # evalWith :: AST -> Eval a
   evalWith = node: 
     Eval.do
+      (while "evaluating 'with' node")
       ({_}: _.saveScope (_.do
         (evalWithEnv node.env)
         (evalNodeM node.body)));
