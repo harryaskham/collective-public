@@ -529,16 +529,16 @@ in rec {
   _tests = with collective-lib.tests; suite {
     functionArgs = {
       getArgs.opt = expect.noLambdasEq (getArgs testData.f.opt) [
-        {name = "b"; hasDefault = false; pos = {name = "b"; file = "functions.nix"; line = 7; column = 14; __toString = expect.anyLambda;};}
-        {name = "a"; hasDefault = true; pos = {name = "a"; file = "functions.nix"; line = 7; column = 17; __toString = expect.anyLambda;};}
+        {name = "b"; hasDefault = false; pos = {__isPos = true; name = "b"; file = "functions.nix"; line = 7; column = 14; __toString = expect.anyLambda;};}
+        {name = "a"; hasDefault = true; pos = {__isPos = true; name = "a"; file = "functions.nix"; line = 7; column = 17; __toString = expect.anyLambda;};}
         ];
       getArgs.req = expect.noLambdasEq (getArgs testData.f.req) [
-        {name = "b"; hasDefault = true; pos = {name = "b"; file = "functions.nix"; line = 8; column = 14; __toString = expect.anyLambda;};}
-        {name = "a"; hasDefault = true; pos = {name = "a"; file = "functions.nix"; line = 8; column = 21; __toString = expect.anyLambda;};}
+        {name = "b"; hasDefault = true; pos = {__isPos = true; name = "b"; file = "functions.nix"; line = 8; column = 14; __toString = expect.anyLambda;};}
+        {name = "a"; hasDefault = true; pos = {__isPos = true; name = "a"; file = "functions.nix"; line = 8; column = 21; __toString = expect.anyLambda;};}
         ];
       getArgs.cb = expect.noLambdasEq (getArgs testData.f.cb) [
-        {name = "b"; hasDefault = true; pos = {name = "b"; file = "functions.nix"; line = 9; column = 13; __toString = expect.anyLambda;};}
-        {name = "a"; hasDefault = true; pos = {name = "a"; file = "functions.nix"; line = 9; column = 20; __toString = expect.anyLambda;};}
+        {name = "b"; hasDefault = true; pos = {__isPos = true; name = "b"; file = "functions.nix"; line = 9; column = 13; __toString = expect.anyLambda;};}
+        {name = "a"; hasDefault = true; pos = {__isPos = true; name = "a"; file = "functions.nix"; line = 9; column = 20; __toString = expect.anyLambda;};}
         ];
       getOptionalArgDefaultValues =
         expect.eq
@@ -926,6 +926,16 @@ in rec {
           };
         };
 
+      };
+
+      pointerEqual = {
+        simple = expect.eq (pointerEqual 123 123) true;
+        lambda = let f = x: x; in expect.eq (pointerEqual f f) true;
+        lambdaNonEqual = let f = x: x; g = x: x + 1; in expect.eq (pointerEqual f g) false;
+        set = expect.eq (pointerEqual {a = 1; b = 2;} {a = 1; b = 2;}) true;
+        list = expect.eq (pointerEqual [1 2 3] [1 2 3]) true;
+        setWithLambda = expect.eq (pointerEqual {a = 1; b = 2;} {a = 1; b = (x: x);}) false;
+        listWithLambda = expect.eq (pointerEqual [1 2 3] [1 2 (x: x)]) false;
       };
 
     };

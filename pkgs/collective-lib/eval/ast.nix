@@ -15,23 +15,18 @@ rec {
   Exposed as eval.eval.ast (and eval.eval) in default.nix for use as just "eval"
  
   runAST :: (string | AST) -> Either EvalError {a :: a, s :: EvalState} */
-  runAST = expr: 
-    log.while "running string or AST node evaluation" (
-    (evalM expr).run (EvalState.mempty {})
-    );
+  runAST = expr:
+    (evalM expr).run (EvalState.mempty {});
 
   /*
   evalAST :: (string | AST) -> Either EvalError a */
   evalAST = expr:
-    log.while "evaluating string or AST node" (
-    (evalM expr).run_ (EvalState.mempty {})
-    );
+    (evalM expr).run_ (EvalState.mempty {});
 
   /*
   evalM :: (string | AST) -> Eval a */
   evalM = expr:
     Eval.do
-      (while "running string or AST node evaluation")
       ({_}: _.set initEvalState)
       (evalNodeM (parse expr));
 
@@ -95,10 +90,13 @@ rec {
   # Evaluate an identifier lookup
   # evalIdentifier :: Scope -> AST -> Eval a
   evalIdentifier = node:
-    Eval.do
+    if node.name == "true" then Eval.pure true
+    else if node.name == "false" then Eval.pure false
+    else if node.name == "null" then Eval.pure null
+    else Eval.do
       (while "evaluating 'identifier' node")
       {scope = getScope;}
-      ({_, scope}: _.guard (scope ? ${node.name}) (RuntimeError ''
+      ({_, scope}: _.guard (builtins.hasAttr node.name scope) (RuntimeError ''
         Undefined identifier '${node.name}' in current scope:
           ${_ph_ scope}
       ''))
@@ -126,7 +124,7 @@ rec {
     Eval.do
       (while "evaluating 'attr' node by name")
       {name = identifierName attr;}
-      ({_, name}: _.guard (from ? ${name}) (MissingAttributeError name))
+      ({_, name}: _.guard (builtins.hasAttr name from) (MissingAttributeError name))
       ({_, name}: _.pure { inherit name; value = from.${name}; });
 
   # Evaluate an inherit expression, possibly with a source
@@ -317,7 +315,7 @@ rec {
               restPath = builtins.tail components;
           in _.do
             {attrName = identifierName headPath;}
-            ({_, attrName, ...}: _.guard (obj ? ${attrName}) (MissingAttributeError attrName))
+            ({_, attrName, ...}: _.guard (builtins.hasAttr attrName obj) (MissingAttributeError attrName))
             ({_, attrName, ...}: traversePath obj.${attrName} restPath));
 
   # Evaluate attribute access (dot operator)
@@ -479,15 +477,16 @@ rec {
     Eval.do
       (while "evaluating 'letIn' node")
       ({_}: _.saveScope (_.do
-        (appendScopeM (evalRecBindingList node.bindings))
+        (prependScopeM (evalRecBindingList node.bindings))
         (evalNodeM node.body)));
 
   # Evaluate a with expression
   # evalWith :: AST -> Eval a
-  evalWithEnv = envNode: 
+  evalWithEnv = envNode:
     Eval.do
       (while "evaluating 'with' environment node")
-      (prependScopeM (evalNodeM envNode));
+      {env = evalNodeM envNode;}
+      ({_, env}: _.prependScope env);
 
   # Evaluate a with expression
   # evalWith :: AST -> Eval a
@@ -568,21 +567,22 @@ rec {
           ({_}: _.guard (scope ? NIX_PATH) (NixPathError ''
             No NIX_PATH found in scope when resolving ${node.value}.
           ''))
-          ({_}: _.guard (scope.NIX_PATH ? ${name}) (NixPathError ''
+          ({_}: _.guard (builtins.hasAttr name scope.NIX_PATH) (NixPathError ''
             ${name} not found in NIX_PATH when resolving ${node.value}.
           ''))
           (pure (scope.NIX_PATH.${name} + "/${restPath}")));
 
   # Helper to test round-trip property: eval (parse x) == x
-  testRoundTrip = testRoundTripWith collective-lib.tests.expect.printEq;
+  testRoundTrip = testRoundTripWith collective-lib.tests.expect.eq;
   testRoundTripWith = expectation: expr: expected: {
     # Just test that parsing succeeds and the result evaluates to expected
-    roundTrip = 
+    roundTrip =
       let result = evalAST expr;
-      in expectation result ((Either EvalError (getT expected)).Right expected);
+          value = result.case { Left = e: e; Right = a: a; };
+      in expectation value expected;
   };
 
-  expectScope = expectScopeWith collective-lib.tests.expect.noLambdasEq;
+  expectScope = expectScopeWith collective-lib.tests.expect.eq;
   expectScopeWith = expectation: node: expected:
     let result = ((evalNodeM node).run (EvalState.mempty {})).case {
       Left = e: e;
@@ -590,7 +590,7 @@ rec {
     };
     in expectation result expected;
 
-  expectEvalError = expectEvalErrorWith collective-lib.tests.expect.noLambdasEq;
+  expectEvalError = expectEvalErrorWith collective-lib.tests.expect.eq;
   expectEvalErrorWith = expectation: E: expr:
     let result = runAST expr;
     in expectation (rec {

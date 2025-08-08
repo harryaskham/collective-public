@@ -4,14 +4,13 @@ with collective-lib.typed;
 rec {
   checkTypes = Ts: 
     assert (all (x: x == true) (
-      strict (
         map 
           (T: assert that (T ? check || isbuiltinName T) ''
             Type argument does not have a check method and is not a builtin type name:
               ${_ph_ T}
           ''; 
           true)
-          Ts)));
+          Ts));
     true;
 
   assertIs = T: a:
@@ -321,7 +320,7 @@ rec {
     in 
       (acc.m.bind ({_, _a}: 
         let mb_ = normalised.f (acc.bindings // { inherit _ _a; });
-            mb = if isDo mb_ then mb_.__setInitM _ else mb_;
+                         mb = if isDo mb_ then mb_.__setInitM acc.m else mb_;
         in 
           mb.bind ({_, _a}: _.pure {
             bindings = acc.bindings // optionalAttrs (normalised.bindName != null) {
@@ -374,13 +373,15 @@ rec {
             (handleBindStatement M _a statement).bind ({_, _a}: _a.m));
 
       # Bind pure with {} initial state to convert do<M a> to M a
-      action = this.bind ({_, _a}: _.pure _a);
-      inherit (this.action) mapState setState mapEither sq run run_ while catch;
-      do = mkDo M this.action [];
-      guard = cond: e: 
-        if cond 
-        then this.bind ({_}: _.pure unit) 
-        else (this.throws e);
+             action = this.bind ({_, _a}: _.pure _a);
+       inherit (this.action) mapState setState mapEither sq run run_ catch;
+       while = msg: let x = log.while msg this; in x;
+
+       do = mkDo M this.action [];
+       guard = cond: e: 
+         if cond 
+         then this.bind ({_}: _.pure unit) 
+         else (this.throws e);
     };
     in this;
 
@@ -467,12 +468,12 @@ rec {
           pure = x: this.bind (Eval.pure x);
           fmap = f: Eval A this.s (this.e.fmap f);
           when = eval.monad.when;
-          unless = eval.monad.unless;
-          while = msg: let x = log.while msg (void this); in seq x x;
-          guard = cond: e: 
-            if cond 
-            then this.bind ({_}: _.pure unit) 
-            else (this.throws e);
+                     unless = eval.monad.unless;
+           while = msg: let x = log.while msg (void this); in seq x x;
+           guard = cond: e: 
+             if cond 
+             then this.bind ({_}: _.pure unit) 
+             else (this.throws e);
 
           foldM = foldM Eval;
 
@@ -486,13 +487,14 @@ rec {
             this.e.case {
               Left = _: this;
               Right = a:
-                let normalised = normaliseBindStatement Eval statement;
-                    mb = normalised.f {_ = this; _a = a;};
-                in assert that (isMonadOf Eval mb) ''
-                  Eval.bind: non-Eval value returned of type ${getT mb}:
-                    ${_ph_ mb}
-                '';
-                mb.mapState (s: compose s this.s);
+                                                  let normalised = normaliseBindStatement Eval statement;
+                      mb0 = normalised.f {_ = this; _a = a;};
+                      mb = if isDo mb0 then (mb0.__setInitM this).action else mb0;
+                 in assert that (isMonadOf Eval mb) ''
+                   Eval.bind: non-Eval value returned of type ${getT mb}:
+                     ${_ph_ mb}
+                 '';
+                 mb.mapState (s: compose s this.s);
             };
 
           sq = b: this.bind ({_}: b);
@@ -521,11 +523,15 @@ rec {
 
   saveScope = f: {_, ...}:
     _.do
-      (while "with scope")
-      {scope = {_}: _.getScope;}
-      {a = {_, ...} @ args: f args;}
-      ({_}: _.setScope scope)
-      ({_, a, ...}: _.pure a);
+      {prev = {_}: _.getScope;}
+      {res = {_, ...} @ args: f args;}
+      ({_, prev, res}:
+        assert that (isMonadOf Eval res) ''
+          saveScope: expected Eval monadic action but got ${getT res}
+        '';
+        let res' = if isDo res then res.__setInitM _ else res;
+        in res'.bind ({_, _a}: _.do ({_}: _.setScope prev) ({_}: _.pure _a)));
+
 
   setScope = scope: {_, ...}:
     _.do
