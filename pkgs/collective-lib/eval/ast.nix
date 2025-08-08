@@ -573,7 +573,7 @@ rec {
           (pure (scope.NIX_PATH.${name} + "/${restPath}")));
 
   # Helper to test round-trip property: eval (parse x) == x
-  testRoundTrip = testRoundTripWith collective-lib.tests.expect.printEq;
+  testRoundTrip = testRoundTripWith collective-lib.tests.expect.eq;
   testRoundTripWith = expectation: expr: expected: {
     # Just test that parsing succeeds and the result evaluates to expected
     roundTrip =
@@ -582,7 +582,7 @@ rec {
       in expectation value expected;
   };
 
-  expectScope = expectScopeWith collective-lib.tests.expect.noLambdasEq;
+  expectScope = expectScopeWith collective-lib.tests.expect.eq;
   expectScopeWith = expectation: node: expected:
     let result = ((evalNodeM node).run (EvalState.mempty {})).case {
       Left = e: e;
@@ -590,7 +590,7 @@ rec {
     };
     in expectation result expected;
 
-  expectEvalError = expectEvalErrorWith collective-lib.tests.expect.noLambdasEq;
+  expectEvalError = expectEvalErrorWith collective-lib.tests.expect.eq;
   expectEvalErrorWith = expectation: E: expr:
     let result = runAST expr;
     in expectation (rec {

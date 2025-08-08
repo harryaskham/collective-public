@@ -4,14 +4,13 @@ with collective-lib.typed;
 rec {
   checkTypes = Ts: 
     assert (all (x: x == true) (
-      strict (
         map 
           (T: assert that (T ? check || isbuiltinName T) ''
             Type argument does not have a check method and is not a builtin type name:
               ${_ph_ T}
           ''; 
           true)
-          Ts)));
+          Ts));
     true;
 
   assertIs = T: a:
@@ -376,7 +375,7 @@ rec {
       # Bind pure with {} initial state to convert do<M a> to M a
              action = this.bind ({_, _a}: _.pure _a);
        inherit (this.action) mapState setState mapEither sq run run_ catch;
-       while = msg: let x = log.while msg (void this); in seq x x;
+       while = msg: let x = log.while msg this; in x;
 
        do = mkDo M this.action [];
        guard = cond: e: 

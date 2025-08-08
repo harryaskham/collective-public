@@ -83,6 +83,35 @@ in rec {
 
       in go 0 this;
 
+    PointerLambdas = this:
+      let
+        mkEq = this: {
+          __this = this;
+          __eq = pointerEqual this;
+        };
+        maxD = 10;
+        go = d: this:
+          if d >= maxD then { __PointerLambdas_maxDepth = true; }
+          else
+            if typeOf this == "lambda" then mkEq this
+
+            else if typeOf this == "set" then
+              concatMapAttrs
+                (k: v:
+                  if k == "__toString" && isFunction v
+                  then { __toString__NoLambdas = mkEq v; }
+                  else if k == "__show" && isFunction v
+                  then { __show__NoLambdas = mkEq v; }
+                  else { ${k} = go (d + 1) v; })
+                this
+
+            else if typeOf this == "list" then
+              map (go (d + 1)) this
+
+            else this;
+
+      in go 0 this;
+
     # Compare test outputs only on their canonical stringified form.
     Print = this: log.vprintUnsafe this;
   };
@@ -139,6 +168,16 @@ in rec {
     eqWith = compareWith: expr: expected:
       True (compareWith expr expected);
 
+    pointerEq = eqWith pointerEqual;
+
+    eqOnWith = compare: compareWith: expr: expected:
+      with log.trace;
+      with msg (_b_ "eqOnWith: raw expr: ${_pvh_ expr}");
+      with msg (_b_ "eqOnWith: raw expected: ${_pvh_ expected}");
+      with msg (_b_ "eqOnWith: compare: ${_pvh_ (compare expr)}");
+      with msg (_b_ "eqOnWith: compare expected: ${_pvh_ (compare expected)}");
+      True (compareWith (compare expr) (compare expected));
+
     printEq = eqOn Compare.Print;
 
     stringEq = eqOn Compare.String;
@@ -148,6 +187,8 @@ in rec {
     fieldsEq = eqOn Compare.Fields;
 
     noLambdasEq = eqOn Compare.NoLambdas;
+
+    pointerLambdasEq = eqOnWith Compare.PointerLambdas (a: b: emptyDiff (diffShortWithEq a b));
 
     valueEq = eqOn (this: 
       assert assertMsg (this ? value) (indent.block ''
@@ -230,15 +271,12 @@ in rec {
               inherit status evalStatus result;
               __toString = _:
                 if result == null then msg
-                #else indent.block ''
-                #  ${msg}: ${indent.here (log.print result)}
-                #  ${optionalString (status == Status.Failed) ''
-                #  Diff:
-                #    ${indent.here (log.vprint (diffShort test.expected result))}
-                #  ''}
-                #'';
                 else indent.block ''
-                  ${msg}: ${indent.here (log.vprintD 2 result)}
+                  ${msg}: ${indent.here (log.print result)}
+                  ${optionalString (status == Status.Failed) ''
+                  Diff:
+                    ${indent.here (log.vprint (diffShort test.expected result))}
+                  ''}
                 '';
             };
        in
@@ -272,7 +310,7 @@ in rec {
 
           Expected:
             ${indent.here (indent.blocks [
-                (log.vprintD 2 test.rawExpected)
+                (log.vprintD 5 test.rawExpected)
                 (optionalString (test.compare != null) (_ls_ [
                   "Comparing on:"
                   (with log.prints; put test.expected _raw ___)
@@ -280,7 +318,7 @@ in rec {
             ])}
 
           Actual:
-            ${_h_ (try (log.vprintD 2 actual) (_: "<error>"))}
+            ${_h_ (try (_ph_ actual) (_: "<error>"))}
         '')
         ""
       ];
@@ -333,14 +371,18 @@ in rec {
 
         # The expression to evaluate, optionally under a comparison function.
         # Can't thunkify here - this is the "expr" literally passed to runTests.
-        expr = if compare == null then rawExpr else compare rawExpr;
+        expr = 
+          if compare != null then compare rawExpr
+          else rawExpr;
 
         # The raw expected expression to compare with as defined in the test.
         rawExpected = test.expected;
 
         # The expected expression to compare with, optionally under a comparison function.
         # Can't thunkify here - this is the "expected" literally passed to runTests.
-        expected = if compare == null then rawExpected else compare rawExpected;
+        expected = 
+          if compare != null then compare rawExpected
+          else rawExpected;
 
         # Iff true, skip this test and do not treat as failure.
         skip = test.skip or false;
@@ -459,10 +501,10 @@ in rec {
         header
         headers.Skipped
         msgs.Skipped
-        (indent.blocks [headers.Passed msgs.Passed])
-        (indent.blocks [headers.Passed])
-        (indent.blocks [headers.Failed failedTestNamesBlock])
-        msgs.Failed
+        #(indent.blocks [headers.Passed msgs.Passed])
+        #(indent.blocks [headers.Passed])
+        #(indent.blocks [headers.Failed failedTestNamesBlock])
+        #msgs.Failed
       ];
   };
 
@@ -495,4 +537,29 @@ in rec {
 
   withMergedSuites = modules:
     modules // { _tests = mergeModuleSuites modules; };
+
+  # Test the test lib
+  __testf = x: x;
+  _tests = suite {
+    lambdaEquality =
+      let
+        a = { c = 3; d = { f = __testf; }; };
+        b = { c = 3; d = { f = __testf; }; }; # Pointer-equal lambda
+      in {
+        regularEq = expect.eq a b;
+        noLambdasEq = expect.noLambdasEq a b;
+        #pointerEqDeep = expect.pointerEq a.d.f b.d.f;
+        pointerLambdaTransform = 
+          expect.noLambdasEq
+            (Compare.PointerLambdas a)
+            { c = 3; d = { f = { __this = a.d.f; __eq = x: x; }; }; };
+        #pointerLambdaTransformEq = 
+        #  expect.eq
+        #    (diffShortWithEq
+        #      (Compare.PointerLambdas a)
+        #      (Compare.PointerLambdas b))
+        #    {};
+        #pointerLambdasEq = expect.pointerLambdasEq a b;
+      };
+  };
 }
