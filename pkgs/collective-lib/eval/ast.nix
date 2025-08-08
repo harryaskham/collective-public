@@ -570,9 +570,10 @@ rec {
   testRoundTrip = testRoundTripWith collective-lib.tests.expect.printEq;
   testRoundTripWith = expectation: expr: expected: {
     # Just test that parsing succeeds and the result evaluates to expected
-    roundTrip = 
+    roundTrip =
       let result = evalAST expr;
-      in expectation result ((Either EvalError (getT expected)).Right expected);
+          value = result.case { Left = e: e; Right = a: a; };
+      in expectation value expected;
   };
 
   expectScope = expectScopeWith collective-lib.tests.expect.noLambdasEq;

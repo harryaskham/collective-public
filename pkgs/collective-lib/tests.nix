@@ -230,15 +230,11 @@ in rec {
               inherit status evalStatus result;
               __toString = _:
                 if result == null then msg
-                else indent.block ''
-                  ${msg}: ${indent.here (log.print result)}
-                  ${optionalString (status == Status.Failed) ''
-                  Diff:
-                    ${indent.here (log.vprint (diffShort test.expected result))}
-                  ''}
-                '';
-            };
-       in
+                                 else indent.block ''
+                   ${msg}: ${indent.here (log.vprintD 2 result)}
+                 '';
+             };
+        in
         if test.skip
           then mkActual "SKIP" null
 
@@ -251,14 +247,13 @@ in rec {
                   results;
             in mkActual "ERROR" errorResult
 
-        else if status == Status.Failed
-          then
-            let failedResult = assert (size results) == 1; head results;
-
-            in mkActual "FAIL" failedResult.result
-
-        else
-          mkActual "PASS" null;
+                 else if status == Status.Failed
+           then
+             let failedResult = assert (size results) == 1; head results;
+             in mkActual "FAIL" failedResult.result
+ 
+         else
+           mkActual "PASS" null;
 
     msg = assign "msg" {
       ${Status.Skipped} = "SKIP: ${test.name}";
@@ -446,10 +441,10 @@ in rec {
           optionalString (counts.${statusName} > 0) ''
             ${toString (counts.${statusName})} of ${toString allCounts.${statusName}} tests ${verbs.${statusName}}
           '') Status;
-        msgs =
-          mapAttrs
-            (statusName: _: Safe (joinLines (map (result: result.msg) byStatus.${statusName})))
-            Status;
+                 msgs =
+           mapAttrs
+             (statusName: _: Safe (joinOptionalsSep "\n" (map (result: result.msg) byStatus.${statusName})))
+             Status;
         failedTestNamesBlock = joinLines (map (result: "FAIL: ${result.test.name}") byStatus.Failed);
 
       in indent.blocksSep "\n\n==========\n\n" [
