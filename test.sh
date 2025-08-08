@@ -31,7 +31,7 @@ let
   };
 in
   with collective-lib;
-  lib.traceSeq ($@) {}
+  ($@)
 EOF
 }
 
