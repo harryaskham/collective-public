@@ -472,25 +472,25 @@ rec {
   # evalLetIn :: AST -> Eval a
   evalLetIn = node:
     Eval.do
-      {prev = getScope;}
+      {prev = {_}: _.getScope;}
       (appendScopeM (evalRecBindingList node.bindings))
       {val = evalNodeM node.body;}
-      ({_, prev, val}: _.do (setScope prev) (pure val));
+      ({_, prev, val}: _.do ({_}: _.setScope prev) ({_}: _.pure val));
 
   # Evaluate a with expression
   # evalWith :: AST -> Eval a
   evalWithEnv = envNode: 
-    Eval.do
-      (prependScopeM (evalNodeM envNode));
+    {_, ...}: _.do
+      ({_}: _.prependScopeM (evalNodeM envNode));
 
   # Evaluate a with expression
   # evalWith :: AST -> Eval a
   evalWith = node: 
     Eval.do
-      {prev = getScope;}
+      {prev = {_}: _.getScope;}
       (evalWithEnv node.env)
       {val = evalNodeM node.body;}
-      ({_, prev, val}: _.do (setScope prev) (pure val));
+      ({_, prev, val}: _.do ({_}: _.setScope prev) ({_}: _.pure val));
 
   # Evaluate an assert expression
   # evalAssert :: AST -> Eval a
