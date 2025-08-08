@@ -230,11 +230,15 @@ in rec {
               inherit status evalStatus result;
               __toString = _:
                 if result == null then msg
-                                 else indent.block ''
-                   ${msg}: ${indent.here (log.vprintD 2 result)}
-                 '';
-             };
-        in
+                else indent.block ''
+                  ${msg}: ${indent.here (log.print result)}
+                  ${optionalString (status == Status.Failed) ''
+                  Diff:
+                    ${indent.here (log.vprint (diffShort test.expected result))}
+                  ''}
+                '';
+            };
+       in
         if test.skip
           then mkActual "SKIP" null
 
@@ -247,19 +251,37 @@ in rec {
                   results;
             in mkActual "ERROR" errorResult
 
-                 else if status == Status.Failed
-           then
-             let failedResult = assert (size results) == 1; head results;
-             in mkActual "FAIL" failedResult.result
- 
-         else
-           mkActual "PASS" null;
+        else if status == Status.Failed
+          then
+            let failedResult = assert (size results) == 1; head results;
 
-         msg = assign "msg" {
-       ${Status.Skipped} = "SKIP: ${test.name}";
-       ${Status.Passed} = "PASS: ${test.name}";
-       ${Status.Failed} = "FAIL: ${test.name}";
-     }.${status};
+            in mkActual "FAIL" failedResult.result
+
+        else
+          mkActual "PASS" null;
+
+    msg = assign "msg" {
+      ${Status.Skipped} = "SKIP: ${test.name}";
+      ${Status.Passed} = "PASS: ${test.name}";
+      ${Status.Failed} = joinLines [
+        (indent.block ''
+          FAIL: ${test.name}
+
+          Expected:
+            ${indent.here (indent.blocks [
+                (log.vprintUnsafe test.rawExpected)
+                (optionalString (test.compare != null) (indent.lines [
+                  "Comparing on:"
+                  (with log.prints; put test.rawExpected _raw ___)
+                ]))
+            ])}
+
+          Actual:
+            ${indent.here (try (toString actual) (_: "<error>"))}
+        '')
+        ""
+      ];
+    }.${status};
   };
   in 
     traceTestSummary testResult;
@@ -420,18 +442,24 @@ in rec {
           Passed = counts.run;
           Failed = counts.run;
         };
-                 headers = mapAttrs (statusName: _:
-           optionalString (counts.${statusName} > 0) ''
-             ${toString (counts.${statusName})} of ${toString allCounts.${statusName}} tests ${verbs.${statusName}}
-           '') Status;
-         failedTestNamesBlock = joinLines (map (result: "FAIL: ${result.test.name}") byStatus.Failed);
- 
-       in indent.blocksSep "\n\n==========\n\n" [
-         header
-         headers.Skipped
-         (indent.blocks [headers.Passed])
-         (indent.blocks [headers.Failed failedTestNamesBlock])
-       ];
+        headers = mapAttrs (statusName: _:
+          optionalString (counts.${statusName} > 0) ''
+            ${toString (counts.${statusName})} of ${toString allCounts.${statusName}} tests ${verbs.${statusName}}
+          '') Status;
+        msgs =
+          mapAttrs
+            (statusName: _: Safe (joinLines (map (result: result.msg) byStatus.${statusName})))
+            Status;
+        failedTestNamesBlock = joinLines (map (result: "FAIL: ${result.test.name}") byStatus.Failed);
+
+      in indent.blocksSep "\n\n==========\n\n" [
+        header
+        headers.Skipped
+        msgs.Skipped
+        (indent.blocks [headers.Passed msgs.Passed])
+        (indent.blocks [headers.Failed failedTestNamesBlock])
+        msgs.Failed
+      ];
   };
 
   removeTests = xs: removeAttrs xs ["_tests"];
