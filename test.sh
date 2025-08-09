@@ -45,7 +45,7 @@ spawn nix repl --show-trace
 expect "nix-repl> "
 send "$@\r" 
 expect "nix-repl> "
-send ""
+send "\004"
 interact
 EOF
 )
@@ -57,6 +57,10 @@ function run-expr() {
   EXPR=$(wrap-nix-expr "$RAW_EXPR")
   echo "Running in nix repl:" >&2
   echo "$EXPR" >&2
+  # Enable quiet mode for AST suite to avoid heavy formatting recursion
+  if [[ "$RAW_EXPR" == *"eval.ast._tests.run"* ]]; then
+    export QUIET_TESTS=1
+  fi
   run-in-nix-eval "$EXPR" 
 }
 

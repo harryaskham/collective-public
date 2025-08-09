@@ -492,20 +492,13 @@ in rec {
         headers = mapAttrs (statusName: _: "") Status;
         failedTestNamesBlock = joinLines (map (result: "FAIL: ${result.test.name}") byStatus.Failed);
         quiet = (builtins.getEnv "QUIET_TESTS") == "1";
-             in if quiet then (
-         let
-           p = n: k: "${k}: ${toString n}";
-           failedNames = map (result: "FAIL: ${result.test.name}") byStatus.Failed;
-           lines = [
-             (p counts.all "Total")
-             (p (counts.Passed or 0) "Passed")
-             (p (counts.Failed or 0) "Failed")
-             (p (counts.Skipped or 0) "Skipped")
-           ]
-           ++ (if (counts.Failed or 0) > 0 then ["Failed tests:"] else [])
-           ++ failedNames;
-         in builtins.concatStringsSep "\n" lines
-       ) else (
+             in if quiet then {
+        total = counts.all;
+        passed = counts.Passed or 0;
+        failed = counts.Failed or 0;
+        skipped = counts.Skipped or 0;
+        failedNames = map (result: result.test.name) byStatus.Failed;
+      } else (
          indent.blocksSep "\n\n==========\n\n" [
            header
            headers.Skipped
