@@ -214,15 +214,30 @@ functions._tests.run {}
 parser.parsec
 </nix>
 <nix>
-eval._tests.debug {}
+eval.ast._tests.run {}
+</nix>
+<nix>
+minimum []
+</nix>
+<nix>
+tests._tests.run {}
+</nix>
+<nix>
+functions._tests.run {}
+</nix>
+<nix>
+errors._tests.run {}
 </nix>
 <nix>
 attrsets._tests.debug {}
 </nix>
 
 <nix>
-with parser;
-toString (parse "a: b: { x = c: 123; }")
+empty true
+</nix>
+
+<nix>
+(parser.parse "{a = 1;}")
 </nix>
 
 

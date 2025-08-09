@@ -1,4 +1,5 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; },
+{ lib ? import <nixpkgs/lib>,
+  collective-lib ? import ./. { inherit lib; },
   nix-parsec,
   ...
 }:
@@ -863,7 +864,7 @@ let this = rec {
 
     readTests = {
       fileFromAttrPath = let
-        result = read.fileFromAttrPath [ "__testData" "deeper" "anExpr" ] ./default.nix { inherit pkgs lib collective-lib nix-parsec; };
+        result = read.fileFromAttrPath [ "__testData" "deeper" "anExpr" ] ./default.nix { inherit lib collective-lib nix-parsec; };
       in expect.eq (builtins.typeOf result) "string";
     };
 

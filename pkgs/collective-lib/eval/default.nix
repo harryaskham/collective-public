@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
+{ lib ? import <nixpkgs/lib>, collective-lib ? import ./. { inherit lib; }, ... }:
 
 # TODO:
 # - Dynamic derivations should let eval-in-eval occur without requiring nested nix build:
@@ -8,7 +8,7 @@
 # Writes the string out to a file in the store by a derivation, and then
 # imports that file.
 let
-  args = { inherit pkgs lib collective-lib; };
+  args = { inherit lib collective-lib; };
   modules = {
     ast = import ./ast.nix args;
     monad = import ./monad.nix args;

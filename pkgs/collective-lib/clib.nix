@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
+{ lib ? import <nixpkgs/lib>, collective-lib ? import ./. { inherit lib; }, ... }:
 
 with lib;
 with collective-lib;
@@ -64,7 +64,7 @@ rec {
 
   trunc = d: x: let e = pow 10 d; in x - ((x * e - round (x * e)) / e);
   round = x: 
-    let f = builtins.floor x;
+    let f = builtins.floor (x + 0.0);
         d = x - f;
     in if d >= 0.5 then f + 1 else f;
 

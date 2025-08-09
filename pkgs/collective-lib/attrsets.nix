@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
+{ lib ? import <nixpkgs/lib>, collective-lib ? import ./. { inherit lib; }, ... }:
 
 with lib;
 
@@ -282,6 +282,15 @@ let
     indexPrefixedAttrs = compose mergeSolos indexPrefixed;
 
     # Diff two attrsets, returning any divergent keys and their values.
+    # Respects an __eq attribute on each, which must be symetrically equal if present.
+    diffWithEq = a: b:
+      if (a ? __eq) && (b ? __eq)
+        then if (a.__eq b.__this) && (b.__eq a.__this)
+        then { __equal = a.__this; }
+        else { __unequal = { inherit a b; }; }
+      else diff a b;
+
+    # Diff two attrsets, returning any divergent keys and their values.
     diff = a: b:
       if isList a && isList b
         then
@@ -313,7 +322,15 @@ let
       else if a == b then { __equal = a; }
       else { __unequal = { inherit a b; }; };
 
+    # Diff two attrsets, returning any divergent keys and their values.
     diffShort = a: b: deepFilter (x: !(x ? __equal)) (diff a b);
+    diffShortWithEq = a: b: deepFilter (x: !(x ? __equal)) (diffWithEq a b);
+
+    # Whether a diff is empty i.e. two objects were equal.
+    emptyDiff = dispatch.def (_: false) {
+      set = d: all emptyDiff (attrValues d);
+      list = all emptyDiff;
+    };
 
     TerseAttrs = xs: {
       __functor = self: _: xs;

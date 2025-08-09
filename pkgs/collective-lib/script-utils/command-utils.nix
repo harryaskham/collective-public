@@ -1,14 +1,14 @@
-{ config, lib, pkgs, collective-lib, ansi-utils, log-utils, script-types, ... }:
+{ lib, collective-lib, script-utils, ... }:
 
 with lib;
 with lib.strings;
 with collective-lib.strings;
-with ansi-utils;
-with log-utils;
-with script-types;
+with script-utils.ansi-utils;
+with script-utils.log-utils;
+with script-utils.script-types;
 
 let
-  log = log-utils.log.shell;
+  log = script-utils.log-utils.log.shell;
 in rec {
   # Build a script package with a name and a summary
   mkCommandRoot = name: summary: {

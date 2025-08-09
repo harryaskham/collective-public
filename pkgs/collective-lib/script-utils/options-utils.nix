@@ -1,13 +1,13 @@
-{ lib, collective-lib, ansi-utils, log-utils, ... }:
+{ lib, collective-lib, script-utils, ... }:
 
 with lib;
 with lib.strings;
 with collective-lib.strings;
-with ansi-utils;
-with log-utils;
+with script-utils.ansi-utils;
+with script-utils.log-utils;
 
 let
-  log = log-utils.log.shell;
+  log = script-utils.log-utils.log.shell;
 in rec {
   defaultOpts = args: {
     PRINT_SUMMARY = {
