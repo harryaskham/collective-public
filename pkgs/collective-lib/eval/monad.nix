@@ -467,13 +467,14 @@ rec {
           do = statement: mkDo Eval this [] statement;
           pure = x: this.bind (Eval.pure x);
           fmap = f: Eval A this.s (this.e.fmap f);
-          when = eval.monad.when;
+                     when = eval.monad.when;
                      unless = eval.monad.unless;
-           while = msg: let x = log.while msg (void this); in seq x x;
-           guard = cond: e: 
-             if cond 
-             then this.bind ({_}: _.pure unit) 
-             else (this.throws e);
+            # while logs without changing state or forcing the action
+            while = msg: let _ = log.while msg true; in this;
+            guard = cond: e: 
+              if cond 
+              then this.bind ({_}: _.pure unit) 
+              else (this.throws e);
 
           foldM = foldM Eval;
 
