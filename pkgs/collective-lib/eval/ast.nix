@@ -610,7 +610,7 @@ rec {
     # Tests for evalAST round-trip property
     evalAST = {
 
-      _00_scope = skip {
+      _00_scope = { 
         unit = expectScope (parse "{}") {};
         attrs = expectScope (parse "{ a = 1; }") {a = 1;};
 
@@ -621,7 +621,7 @@ rec {
         };
       };
 
-      _000_failing = skip {
+      _000_failing = { 
         letIn = testRoundTrip "let a = 1; in a" 1;
       };
 
@@ -719,20 +719,20 @@ rec {
       };
 
       # Let expressions
-      _10_letExpressions = skip {
+      _10_letExpressions = { 
         simple = testRoundTrip "let x = 1; in x" 1;
         multiple = testRoundTrip "let a = 1; b = 2; in a + b" 3;
         nested = testRoundTrip "let x = 1; y = let z = 2; in z + 1; in x + y" 4;
       };
 
       # Functions (simplified tests since function equality is complex)  
-      _11_functions = skip {
+      _11_functions = { 
         identity = testRoundTrip "let f = x: x; in f 42" 42;
         const = testRoundTrip "let f = x: y: x; in f 1 2" 1;
       };
 
       # Attribute access
-      _12_attrAccess = skip {
+      _12_attrAccess = { 
         letIn = testRoundTrip "let xs = { a = 42; }; in xs.a" 42;
         simple = testRoundTrip "{ a = 42; }.a" 42;
         withDefault = testRoundTrip "{ a = 42; }.b or 0" 0;
@@ -763,7 +763,7 @@ rec {
       };
 
       # With expressions - testing proper scope precedence
-      _15_withExpressions = skip {
+      _15_withExpressions = { 
         # Basic with expression
         basicWith = testRoundTrip "with { a = 1; }; a" 1;
         # Lexical scope should shadow with attributes  
@@ -777,7 +777,7 @@ rec {
       };
 
       # Import expressions - basic import tests
-      _16_importExpressions = skip {
+      _16_importExpressions = { 
         # Import self test (simplified)
         importSelf = testRoundTrip "let path = ./default.nix; in true" true;
         paths = {
