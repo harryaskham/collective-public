@@ -479,43 +479,33 @@ in rec {
     run_ = runner: tests:
       {}:  # Thunk the tests to avoid strict execution.
       let
-        results = mapAttrsToList (_: runner) tests;
-        byStatus =
-          mapAttrs (statusK: statusV: filter (r: r.status == statusV) results) Status;
-        counts =
-          (mapAttrs (status: results: length results) byStatus)
-          // { all = size tests;
-               run = counts.all - counts.Skipped;
-             };
+        # Evaluate each test minimally to a small record with name and status only
+        evalStatusOnly = testName: test: let r = runner test; in {
+          name = test.name;
+          status = r.status;
+        };
+        minimalResults = mapAttrsToList evalStatusOnly tests;
+        byStatus = mapAttrs (_: s: filter (r: r.status == s) minimalResults) Status;
+        skippedCount = length byStatus.Skipped;
+        counts = {
+          Skipped = skippedCount;
+          Passed = length byStatus.Passed;
+          Failed = length byStatus.Failed;
+          all = size tests;
+          run = (size tests) - skippedCount;
+        };
+        failedTestNames = map (r: r.name) byStatus.Failed;
         header = ''
           Running ${toString counts.all} tests
         '';
-        # disabled detailed verb summaries during suite runs
         verbs = mapAttrs (statusName: _: toLower statusName) Status;
-        allCounts = {
-          Skipped = counts.all;
-          Passed = counts.run;
-          Failed = counts.run;
-        };
-        # disabled per-status counts block
-        headers = mapAttrs (statusName: _: "") Status;
-        failedTestNamesBlock = joinLines (map (result: "FAIL: ${result.test.name}") byStatus.Failed);
+        allCounts = { Skipped = counts.all; Passed = counts.run; Failed = counts.run; };
+        headers = mapAttrs (_: _: "") Status;
+        failedTestNamesBlock = joinLines (map (n: "FAIL: ${n}") failedTestNames);
         quiet = (builtins.getEnv "QUIET_TESTS") == "1";
-             in if quiet then {
-        total = counts.all;
-        passed = counts.Passed or 0;
-        failed = counts.Failed or 0;
-        skipped = counts.Skipped or 0;
-        failedNames = map (result: result.test.name) byStatus.Failed;
-      } else (
-         indent.blocksSep "\n\n==========\n\n" [
-           header
-           headers.Skipped
-           #msgs.Skipped
-           headers.Passed
-           (indent.blocks [headers.Failed failedTestNamesBlock])
-           #msgs.Failed
-         ]);
+      in if quiet then {
+        total = counts.all; passed = counts.Passed or 0; failed = counts.Failed or 0; skipped = counts.Skipped or 0; failedNames = failedTestNames; }
+      else indent.blocksSep "\n\n==========\n\n" [ header headers.Skipped headers.Passed (indent.blocks [headers.Failed failedTestNamesBlock]) ];
   };
 
   removeTests = xs: removeAttrs xs ["_tests"];
