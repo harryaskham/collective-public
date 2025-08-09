@@ -237,7 +237,7 @@ in rec {
 
 
   runOneTest = test: results_:
-    with (log.v 1).test test.name results_ ___;
+    # disabled verbose per-test tracing during suite runs
     let testResult = rec {
       inherit test;
       evalStatus =
@@ -479,19 +479,18 @@ in rec {
           // { all = size tests;
                run = counts.all - counts.Skipped;
              };
-        header = ''
-          Running ${toString counts.all} tests
-        '';
-        verbs = mapAttrs (statusName: _: toLower statusName) Status;
-        allCounts = {
-          Skipped = counts.all;
-          Passed = counts.run;
-          Failed = counts.run;
-        };
-        headers = mapAttrs (statusName: _:
-          optionalString (counts.${statusName} > 0) ''
-            ${toString (counts.${statusName})} of ${toString allCounts.${statusName}} tests ${verbs.${statusName}}
-          '') Status;
+                 header = ''
+           Running ${toString counts.all} tests
+         '';
+         # disabled detailed verb summaries during suite runs
+         verbs = mapAttrs (statusName: _: toLower statusName) Status;
+         allCounts = {
+           Skipped = counts.all;
+           Passed = counts.run;
+           Failed = counts.run;
+         };
+                 # disabled per-status counts block
+         headers = mapAttrs (statusName: _: "") Status;
                  # Disabled verbose per-status messages while debugging stack overflows
          # msgs =
          #   mapAttrs
