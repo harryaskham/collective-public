@@ -376,7 +376,7 @@ rec {
               action = this.bind ({_, _a}: _.pure _a);
        inherit (this.action) mapState setState mapEither sq run run_ catch;
        # while logs without expanding or forcing the do-block
-       while = msg: let _ = log.while msg true; in M.pure unit;
+       while = msg: let _ = log.while msg true; in this;
  
         do = mkDo M this.action [];
         guard = cond: e: 
@@ -470,8 +470,8 @@ rec {
           fmap = f: Eval A this.s (this.e.fmap f);
                      when = eval.monad.when;
                      unless = eval.monad.unless;
-                         # while logs without changing state or forcing the action
-                           while = msg: let _ = log.while msg true; in (Eval.pure unit) // { __noState = true; };
+                                       # while logs without changing state or forcing the action
+              while = msg: let _ = log.while msg true; in this;
               guard = cond: e: 
                 if cond 
                 then this.bind ({_}: _.pure unit) 
