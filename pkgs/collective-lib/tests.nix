@@ -479,12 +479,14 @@ in rec {
     run_ = runner: tests:
       {}:  # Thunk the tests to avoid strict execution.
       let
-        # Evaluate each test minimally to a small record with name and status only
-        evalStatusOnly = testName: test: let r = runner test; in {
-          name = test.name;
-          status = r.status;
-        };
-        minimalResults = mapAttrsToList evalStatusOnly tests;
+        # Compute minimal status from test fields without running heavy harness
+        minimalStatus = test:
+          if test.skip or false then Status.Skipped else
+          let cmp = test.compare or (x: x);
+              left = cmp test.expr;
+              right = cmp test.expected;
+          in if left == right then Status.Passed else Status.Failed;
+        minimalResults = mapAttrsToList (_: test: { name = test.name; status = minimalStatus test; }) tests;
         byStatus = mapAttrs (_: s: filter (r: r.status == s) minimalResults) Status;
         skippedCount = length byStatus.Skipped;
         counts = {
