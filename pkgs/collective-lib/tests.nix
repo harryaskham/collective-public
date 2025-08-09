@@ -477,37 +477,20 @@ in rec {
     run = run_ (test: test.run) (tests {});
     debug = run_ (test: test.debug) (tests {});
     run_ = runner: tests:
-      {}:  # Thunk the tests to avoid strict execution.
+      {}:
       let
-        # Compute minimal status from test fields without running heavy harness
-        minimalStatus = test:
-          if test.skip or false then Status.Skipped else
-          let cmp = test.compare or (x: x);
-              left = cmp test.expr;
-              right = cmp test.expected;
-          in if left == right then Status.Passed else Status.Failed;
-        minimalResults = mapAttrsToList (_: test: { name = test.name; status = minimalStatus test; }) tests;
-        byStatus = mapAttrs (_: s: filter (r: r.status == s) minimalResults) Status;
-        skippedCount = length byStatus.Skipped;
-        counts = {
-          Skipped = skippedCount;
-          Passed = length byStatus.Passed;
-          Failed = length byStatus.Failed;
-          all = size tests;
-          run = (size tests) - skippedCount;
-        };
-        failedTestNames = map (r: r.name) byStatus.Failed;
-        header = ''
-          Running ${toString counts.all} tests
-        '';
-        verbs = mapAttrs (statusName: _: toLower statusName) Status;
-        allCounts = { Skipped = counts.all; Passed = counts.run; Failed = counts.run; };
-        headers = mapAttrs (_: _: "") Status;
-        failedTestNamesBlock = joinLines (map (n: "FAIL: ${n}") failedTestNames);
-        quiet = (builtins.getEnv "QUIET_TESTS") == "1";
-      in if quiet then {
-        total = counts.all; passed = counts.Passed or 0; failed = counts.Failed or 0; skipped = counts.Skipped or 0; failedNames = failedTestNames; }
-      else indent.blocksSep "\n\n==========\n\n" [ header headers.Skipped headers.Passed (indent.blocks [headers.Failed failedTestNamesBlock]) ];
+        results = mapAttrsToList (_: test: runner test) tests;
+        isStatus = s: r: r.status == s;
+        failed = filter (isStatus Status.Failed) results;
+        passed = filter (isStatus Status.Passed) results;
+        skipped = filter (isStatus Status.Skipped) results;
+      in {
+        total = size tests;
+        passed = length passed;
+        failed = length failed;
+        skipped = length skipped;
+        failedNames = map (r: r.test.name) failed;
+      };
   };
 
   removeTests = xs: removeAttrs xs ["_tests"];
