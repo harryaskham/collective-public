@@ -393,7 +393,7 @@ in rec {
 
         # Run the test under tryEval, treating eval failure as test failure
         # Strict needed in order to catch eval errors
-        run = evalOneTest (expr: builtins.tryEval (strict expr)) (test_ // { mode = "run"; });
+                 run = evalOneTest (expr: builtins.tryEval expr) (test_ // { mode = "run"; });
 
         # Run the test propagating eval errors that mask real failures
         # Strict needed in order to catch eval errors
@@ -401,7 +401,7 @@ in rec {
           # Still tryEval if the test expects error, otherwise we false-positive flag
           # these errors.
           let maybeTry = if isTryEvalFailure rawExpected then builtins.tryEval else id;
-          in evalOneTest (expr: maybeTry (strict expr)) (test_ // { mode = "debug"; });
+          in evalOneTest (expr: maybeTry expr) (test_ // { mode = "debug"; });
       };
     in test_;
 

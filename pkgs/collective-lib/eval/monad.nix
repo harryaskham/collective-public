@@ -372,13 +372,14 @@ rec {
             '');
             (handleBindStatement M _a statement).bind ({_, _a}: _a.m));
 
-      # Bind pure with {} initial state to convert do<M a> to M a
-             action = this.bind ({_, _a}: _.pure _a);
+             # Bind pure with {} initial state to convert do<M a> to M a
+              action = this.bind ({_, _a}: _.pure _a);
        inherit (this.action) mapState setState mapEither sq run run_ catch;
-       while = msg: let x = log.while msg this; in x;
-
-       do = mkDo M this.action [];
-       guard = cond: e: 
+       # while logs without expanding or forcing the do-block
+       while = msg: let _ = log.while msg true; in M.pure unit;
+ 
+        do = mkDo M this.action [];
+        guard = cond: e: 
          if cond 
          then this.bind ({_}: _.pure unit) 
          else (this.throws e);
@@ -469,12 +470,12 @@ rec {
           fmap = f: Eval A this.s (this.e.fmap f);
                      when = eval.monad.when;
                      unless = eval.monad.unless;
-            # while logs without changing state or forcing the action
-            while = msg: let _ = log.while msg true; in this;
-            guard = cond: e: 
-              if cond 
-              then this.bind ({_}: _.pure unit) 
-              else (this.throws e);
+                         # while logs without changing state or forcing the action
+                           while = msg: let _ = log.while msg true; in (Eval.pure unit) // { __noState = true; };
+              guard = cond: e: 
+                if cond 
+                then this.bind ({_}: _.pure unit) 
+                else (this.throws e);
 
           foldM = foldM Eval;
 
@@ -522,53 +523,53 @@ rec {
     };
   };
 
-  saveScope = f: {_, ...}:
-    _.do
+  saveScope = fOrM: {_, ...}:
+    Eval.do
       {prev = {_}: _.getScope;}
-      {res = {_, ...} @ args: f args;}
-      ({_, prev, res}:
-        assert that (isMonadOf Eval res) ''
-          saveScope: expected Eval monadic action but got ${getT res}
+      {mb0 = if isFunction fOrM then fOrM {_ = _;} else fOrM;}
+      ({_, prev}:
+        assert that (isMonadOf Eval mb0 || isDo mb0) ''
+          saveScope: expected Eval monadic action or do-block but got ${getT mb0}
         '';
-        let res' = if isDo res then res.__setInitM _ else res;
-        in res'.bind ({_, _a}: _.do ({_}: _.setScope prev) ({_}: _.pure _a)));
+        let mb = if isDo mb0 then (mb0.__setInitM (Eval.pure unit)).action else mb0;
+        in mb.bind ({_, _a}: Eval.do ({_}: _.setScope prev) ({_}: _.pure _a)));
 
 
   setScope = scope: {_, ...}:
     _.do
-      (while "setting scope")
+      # (while "setting scope")
       (_.set (EvalState scope));
   
   modifyScope = f: {_, ...}:
     _.do
-      (while "modifying scope")
+      # (while "modifying scope")
       ({_}: _.modify (s: s.fmap f));
 
   getScope = {_, ...}:
     _.do
-      (while "getting scope")
+      # (while "getting scope")
       {state = {_}: _.get {};}
       ({_, state}: _.pure state.scope);
 
   prependScope = newScope: {_, ...}:
     _.do
-      (while "prepending scope")
+      # (while "prepending scope")
       (modifyScope (scope: newScope // scope));
 
   prependScopeM = newScopeM: {_, ...}:
     _.do
-      (while "prepending monadic scope")
+      # (while "prepending monadic scope")
       {newScope = newScopeM;}
       ({_, newScope}: _.modifyScope (scope: newScope // scope));
 
   appendScope = newScope: {_, ...}:
     _.do
-      (while "appending scope")
+      # (while "appending scope")
       (modifyScope (scope: scope // newScope));
 
   appendScopeM = newScopeM: {_, ...}:
     _.do
-      (while "appending monadic scope")
+      # (while "appending monadic scope")
       {newScope = newScopeM;}
       ({_, newScope}: _.modifyScope (scope: scope // newScope));
 
