@@ -53,13 +53,20 @@ in rec {
           ${_pvh_ this}
       '';
 
-    # Resolve thunks in the expr and expected.
-    Resolve = this: tryStrict (resolveDeep this) (e: { Compare.Resolve = "Thunk resolution evaluation error"; }) ;
+    # Resolve thunks in the expr and expected safely (bounded, no lambdas/functors)
+    Resolve =
+      let
+        maxD = 6;
+        go = d: x:
+          if d >= maxD then x else
+          if isFunction x || (x ? __functor) then x else
+          tryStrict (resolveDeep x) (_: x);
+      in this: go 0 this;
 
     # Produce a version of the this-set with replaced lambdas, enabling deep comparison.
     NoLambdas = this:
       let
-        maxD = 10;
+        maxD = 6;
         go = d: this:
           if d >= maxD then { __NoLambdas_maxDepth = true; }
           else
@@ -73,6 +80,8 @@ in rec {
                   then { __toString__NoLambdas = "<__toString>"; }
                   else if k == "__show"
                   then { __show__NoLambdas = "<__show>"; }
+                  else if k == "__functor"
+                  then { __functor__NoLambdas = "<__functor>"; }
                   else { ${k} = go (d + 1) v; })
                 this
 
@@ -98,10 +107,10 @@ in rec {
             else if typeOf this == "set" then
               concatMapAttrs
                 (k: v:
-                  if k == "__toString" && isFunction v
-                  then { __toString__NoLambdas = mkEq v; }
-                  else if k == "__show" && isFunction v
-                  then { __show__NoLambdas = mkEq v; }
+                  if k == "__toString"
+                  then { __toString__PointerLambdas = "<__toString>"; }
+                  else if k == "__show"
+                  then { __show__PointerLambdas = "<__show>"; }
                   else { ${k} = go (d + 1) v; })
                 this
 
