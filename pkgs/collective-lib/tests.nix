@@ -325,7 +325,7 @@ in rec {
     }.${status};
   };
   in 
-    traceTestSummary testResult;
+    let quiet = (builtins.getEnv "QUIET_TESTS") == "1"; in (if quiet then testResult else traceTestSummary testResult);
 
   # Run the given test as a singleton test suite, formatting its results.
   evalOneTest = evalFn: test:
@@ -478,33 +478,42 @@ in rec {
           // { all = size tests;
                run = counts.all - counts.Skipped;
              };
-                 header = ''
-           Running ${toString counts.all} tests
-         '';
-         # disabled detailed verb summaries during suite runs
-         verbs = mapAttrs (statusName: _: toLower statusName) Status;
-         allCounts = {
-           Skipped = counts.all;
-           Passed = counts.run;
-           Failed = counts.run;
-         };
-                 # disabled per-status counts block
-         headers = mapAttrs (statusName: _: "") Status;
-                 # Disabled verbose per-status messages while debugging stack overflows
-         # msgs =
-         #   mapAttrs
-         #     (statusName: _: Safe (joinLines (map (result: result.msg) byStatus.${statusName})))
-         #     Status;
-         failedTestNamesBlock = joinLines (map (result: "FAIL: ${result.test.name}") byStatus.Failed);
- 
-       in indent.blocksSep "\n\n==========\n\n" [
-         header
-         headers.Skipped
-         #msgs.Skipped
-         headers.Passed
-         (indent.blocks [headers.Failed failedTestNamesBlock])
-         #msgs.Failed
-       ];
+        header = ''
+          Running ${toString counts.all} tests
+        '';
+        # disabled detailed verb summaries during suite runs
+        verbs = mapAttrs (statusName: _: toLower statusName) Status;
+        allCounts = {
+          Skipped = counts.all;
+          Passed = counts.run;
+          Failed = counts.run;
+        };
+        # disabled per-status counts block
+        headers = mapAttrs (statusName: _: "") Status;
+        failedTestNamesBlock = joinLines (map (result: "FAIL: ${result.test.name}") byStatus.Failed);
+        quiet = (builtins.getEnv "QUIET_TESTS") == "1";
+             in if quiet then (
+         let
+           p = n: k: "${k}: ${toString n}";
+           failedNames = map (result: "FAIL: ${result.test.name}") byStatus.Failed;
+           lines = [
+             (p counts.all "Total")
+             (p (counts.Passed or 0) "Passed")
+             (p (counts.Failed or 0) "Failed")
+             (p (counts.Skipped or 0) "Skipped")
+           ]
+           ++ (if (counts.Failed or 0) > 0 then ["Failed tests:"] else [])
+           ++ failedNames;
+         in builtins.concatStringsSep "\n" lines
+       ) else (
+         indent.blocksSep "\n\n==========\n\n" [
+           header
+           headers.Skipped
+           #msgs.Skipped
+           headers.Passed
+           (indent.blocks [headers.Failed failedTestNamesBlock])
+           #msgs.Failed
+         ]);
   };
 
   removeTests = xs: removeAttrs xs ["_tests"];
