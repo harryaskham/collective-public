@@ -1,14 +1,14 @@
-{ config, lib, pkgs, collective-lib, ansi-utils, log-utils, usage-utils, options-utils, main-utils, ... }:
+{ lib, pkgs, collective-lib, script-utils, ... }:
 
 with lib;
 with lib.strings;
 with collective-lib.strings;
 with collective-lib.functions;
-with ansi-utils;
-with log-utils;
-with usage-utils;
-with options-utils;
-with main-utils;
+with script-utils.ansi-utils;
+with script-utils.log-utils;
+with script-utils.usage-utils;
+with script-utils.options-utils;
+with script-utils.main-utils;
 
 rec {
   # Build a script attrset into the set of derivations it produces.

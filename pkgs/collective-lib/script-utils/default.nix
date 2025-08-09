@@ -1,29 +1,22 @@
 { pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ../. { inherit lib; }, ... }:
 
 let
-  # TODO: Remove override once this is no longer very slow.
-  overrideToShellValue = collective-lib.typelib.toShellValueUnsafe;
+  args = {
+    inherit pkgs lib collective-lib script-utils;
+    # TODO: Remove override once this is no longer very slow.
+    overrideToShellValue = collective-lib.typelib.toShellValueUnsafe;
+  };
 
-  modules = rec {
-    ansi-utils = pkgs.callPackage ./ansi-utils.nix {
-      inherit collective-lib;
-      inherit overrideToShellValue;
-    };
-    log-utils = pkgs.callPackage ./log-utils.nix {
-      inherit collective-lib ansi-utils;
-      inherit overrideToShellValue;
-      enableTypedTests = false;
-    };
-    main-utils = pkgs.callPackage ./main-utils.nix { inherit collective-lib ansi-utils log-utils; };
-    options-utils = pkgs.callPackage ./options-utils.nix { inherit collective-lib ansi-utils log-utils; };
-    usage-utils = pkgs.callPackage ./usage-utils.nix {
-      inherit collective-lib ansi-utils log-utils;
-      inherit overrideToShellValue;
-    };
-    script-types = pkgs.callPackage ./script-types.nix { inherit collective-lib ansi-utils log-utils usage-utils options-utils main-utils; };
-    command-utils = pkgs.callPackage ./command-utils.nix { inherit collective-lib ansi-utils log-utils usage-utils script-types; };
+  script-utils = rec {
+    ansi-utils = import ./ansi-utils.nix args;
+    log-utils = import ./log-utils.nix args // { enableTypedTests = false; };
+    main-utils = import ./main-utils.nix args;
+    options-utils = import ./options-utils.nix args;
+    usage-utils = import ./usage-utils.nix args;
+    script-types = import ./script-types.nix args;
+    command-utils = import ./command-utils.nix args;
   };
 in
-  modules // {
-    _tests = collective-lib.tests.mergeSuites modules;
+  script-utils // {
+    _tests = collective-lib.tests.mergeSuites script-utils;
   }

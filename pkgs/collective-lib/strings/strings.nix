@@ -1,5 +1,4 @@
-{ pkgs ? import <nixpkgs> {},
-  lib ? pkgs.lib,
+{ lib ? import <nixpkgs/lib>,
   collective-lib ? import ./. { inherit lib; },
   tildePath ? builtins.getEnv "HOME",
   ... 

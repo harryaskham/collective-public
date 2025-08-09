@@ -1,5 +1,5 @@
-{ pkgs ? import <nixpkgs> {},
-  lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; },
+{ lib ? import <nixpkgs/lib>,
+  collective-lib ? import ./. { inherit lib; },
   # Collate overrides into a single optional attrset, or allow per-option overrides.
   traceOpts ? null,
   # Default trace level, 0 = all (log.trace), 1 = vtrace, 2+ = custom
@@ -184,7 +184,7 @@ let
         if args.cycles.cycle != null then
           "<LOOP: ${joinSep "." (map toString args.cycles.cycle.segment)}>"
         else if printSafely then
-          maybeStrict (errors.try (printBlock (maybeStrict x)) (_: "<eval error>"))
+          maybeStrict (printBlock (Safe x))
         else
           maybeStrict (printBlock x);
 

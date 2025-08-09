@@ -1,7 +1,7 @@
 {
   lib,
   collective-lib,
-  ansi-utils,
+  script-utils,
   # If set, skip the typesystem for faster log generation.
   # TODO: Remove when TS is sufficiently fast.
   overrideToShellValue ? null,
@@ -20,7 +20,7 @@ in
 with typed;  # Replace 'lib' entirely
 with lists;
 with functions;
-with ansi-utils;
+with script-utils.ansi-utils;
 with ansi;
 
 rec {
@@ -403,11 +403,11 @@ rec {
     with collective-lib.tests;
     let
       log-utils = import ./log-utils.nix {
-        inherit lib collective-lib ansi-utils;
+        inherit lib collective-lib script-utils;
       };
 
       log-utils-override = import ./log-utils.nix {
-        inherit lib collective-lib ansi-utils;
+        inherit lib collective-lib script-utils;
         overrideToShellValue = toShellValueUnsafe;
       };
 

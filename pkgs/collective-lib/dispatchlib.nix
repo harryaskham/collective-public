@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
+{ lib ? import <nixpkgs/lib>, collective-lib ? import ./. { inherit lib; }, ... }:
 
 # Use the rebinds throughout s.t. this module by default does not check for
 # type errors.
@@ -55,19 +55,35 @@ in rec {
     # => [ [ "name" "value" ]
     #      [ "b" 2 ]
     #      { unknown = { name = "c"; value = 3; } } ]
+    #
+    # Note: we don't use log.print here as this makes use of dispatch.
+    # Not an issue but causes pain when debugging dispatch printing.
     def = {
       __functor = self: self.on lib.typeOf;
       on = getTypeF: defaultF: dict: x:
-        let f = dict.${getTypeF x} or defaultF;
-        in 
-        assert that (isFunction f) ''
-          dispatch.def.on: got non-function for type ${getTypeF x}:
-            ${_ph_ f}
+        let
+          key = getTypeF x;
+          f = dict.${key} or defaultF;
+          ctx = ''
+            dispatch keys:
+              ${joinSep ", " (attrNames dict)}
 
-          for dict:
-            ${_ph_ dict}
-        '';
-        f x;
+            value:
+              ${typed.safeToString x}
+
+            key:
+              ${typed.safeToString key}
+          '';
+        in 
+          assert assertMsg (isString key) ''
+            dispatch.def.on: Got non-string 'on' key:
+            ${ctx}
+          '';
+          assert assertMsg (isFunction f) ''
+            dispatch.def.on: got non-function in dispatch dict:
+            ${ctx}
+          '';
+          f x;
     };
 
     # Make a polymorphic function from the given type-to-value attrs
@@ -85,10 +101,10 @@ in rec {
     # let f = dispatch.on (x: x.name or "") { a = x: x.value; };
     # in f { name = "b"; value = 1; } => throws error
     on = getType: dict: x:
-      let defaultF = throw ''
+      let defaultF = _: throw ''
         Unsupported type ${getType x} in polymorphic dispatch.
         Expected: ${joinSep ", " (attrNames dict)}
-        Got ${getType x} of value: ${log.print x}
+        Got ${getType x} of value: ${tryOr (log.print x) "<eval error>"}
       '';
       in dispatch.def.on getType defaultF dict x;
 
@@ -115,7 +131,16 @@ in rec {
     elem = {
       __functor = self: self.on lib.typeOf;
       on = getElemType: dict: 
-        dispatch.on (x: if empty x then "empty" else getElemType (elems.head x)) dict;
+        dispatch.on 
+          (x: 
+            let h = maybeHead x;
+            in assert that (h != null) ''
+              dispatch.elem.on: Cannot dispatch on elem type of empty collection:
+                dict:
+                  ${joinSep ", " (attrNames dict)}
+            ''; 
+            getElemType h)
+          dict;
     };
   };
 

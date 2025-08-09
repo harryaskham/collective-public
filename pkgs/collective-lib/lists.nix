@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
+{ lib ? import <nixpkgs/lib>, collective-lib ? import ./. { inherit lib; }, ... }:
 
 with collective-lib.collections;
 with collective-lib.dispatchlib;
@@ -52,11 +52,12 @@ in rec {
     take pos xs ++ drop (pos + 1) xs;
 
   # Polymorphic concat for [[a]] and [{_=a}]
-  concat = dispatch.elem {
-    empty = id;
-    list = concatLists;
-    set = mergeAttrsList;
-  };
+  concat = xs:
+    if empty xs then xs
+    else dispatch.elem {
+      list = concatLists;
+      set = mergeAttrsList;
+    } xs;
 
   # Fold centraliser.
   # Merges with other modules that define fold functions.

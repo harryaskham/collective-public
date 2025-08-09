@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
+{ lib ? import <nixpkgs/lib>, collective-lib ? import ./. { inherit lib; }, ... }:
 
 with collective-lib.attrsets;
 with collective-lib.collections;
@@ -221,7 +221,6 @@ in rec {
 
   traceTestSummary = testResult:
     with log.trace;
-    with collective-lib.script-utils.ansi-utils;
     let test = testResult.test;
         # TODO: unicode syms
         status = with Status; switch testResult.status {
@@ -230,7 +229,7 @@ in rec {
           ${Failed} = "FAIL";
         };
     in
-    assert over (with ansi; _b_ ''
+    assert over (_b_ ''
       ${status} | ${test.name}
     '');
     testResult;
