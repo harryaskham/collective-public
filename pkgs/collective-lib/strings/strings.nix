@@ -1,5 +1,4 @@
-{ pkgs ? import <nixpkgs> {},
-  lib ? pkgs.lib,
+{ lib ? import <nixpkgs/lib>,
   collective-lib ? import ./. { inherit lib; },
   tildePath ? builtins.getEnv "HOME",
   ... 
@@ -426,7 +425,8 @@ in rec {
   # context stored on strings, which carries lists of store paths.
   # If a string from this Context lib is used in a derivation, it may cause
   # issues.
-  Safe = x: errors.try (log.describe "while evaluating Safe expr" x) (_: ''<eval failed>'');
+  #Safe = x: errors.try (log.describe "while evaluating Safe expr" x) (_: ''<eval failed>'');
+  Safe = x: errors.try x (_: ''<eval failed>'');
   Context = rec {
 
     # Create a fake derivation we can use to manipulate string context.

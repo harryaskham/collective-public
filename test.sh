@@ -1,35 +1,10 @@
 #!/usr/bin/env bash
 
-CONTAINER=nix-container
-
-function install-docker() {
-  if ! which docker; then
-    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
-    sudo sh /tmp/get-docker.sh
-    sudo service docker start
+function maybe-install-nix() {
+  if ! which nix; then
+    sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --no-daemon
+    . /home/ubuntu/.nix-profile/etc/profile.d/nix.sh
   fi
-}
-
-function start-container() {
-  sudo docker run -it -d \
-    --name $CONTAINER \
-    --mount type=bind,src=/workspace,dst=/workspace \
-    --mount type=bind,src=/tmp,dst=/tmphost \
-    nixos/nix 2>/dev/null
-
-  sudo docker start $CONTAINER 2>/dev/null
-}
-
-function run-in-container() {
-  sudo docker exec -it $CONTAINER \
-    nix-shell -p expect tmux --command "$(cat << EOF
-export IN_DOCKER=1 \
-&& cd /workspace \
-&& tmux new -A -s agent \; set-buffer "(($@ 2>&1) | tee /tmphost/agentout.txt);tmux detach
-" \; paste-buffer
-EOF
-)"
-  cat /tmp/agentout.txt
 }
 
 function get-raw-nix-expr() {
@@ -56,7 +31,7 @@ let
   };
 in
   with collective-lib;
-  lib.traceSeq ($@) {}
+  ($@)
 EOF
 }
 
@@ -85,14 +60,7 @@ function run-expr() {
   run-in-nix-eval "$EXPR" 
 }
 
-if [[ "$IN_DOCKER" == 1 ]]; then
-  run-expr "$@"
-elif [[ "$(hostname)" == "cursor" ]]; then
-  install-docker
-  start-container
-  run-in-container "$0 $@"
-else
-  run-expr "$@"
+if [[ "$(hostname)" == "cursor" ]]; then
+  maybe-install-nix
 fi
-  
-
+run-expr "$@"

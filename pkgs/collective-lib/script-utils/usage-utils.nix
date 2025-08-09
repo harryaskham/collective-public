@@ -1,4 +1,4 @@
-{ lib, collective-lib, ansi-utils, log-utils,
+{ lib, collective-lib, script-utils,
   overrideToShellValue ? null,
   ... }:
 
@@ -12,8 +12,8 @@ in
 with lib;
 with lib.strings;
 with collective-lib.strings;
-with ansi-utils;
-with log-utils;
+with script-utils.ansi-utils;
+with script-utils.log-utils;
 
 let
   atom = ansi.atom;

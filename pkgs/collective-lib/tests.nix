@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
+{ lib ? import <nixpkgs/lib>, collective-lib ? import ./. { inherit lib; }, ... }:
 
 with collective-lib.attrsets;
 with collective-lib.collections;
@@ -83,6 +83,35 @@ in rec {
 
       in go 0 this;
 
+    PointerLambdas = this:
+      let
+        mkEq = this: {
+          __this = this;
+          __eq = pointerEqual this;
+        };
+        maxD = 10;
+        go = d: this:
+          if d >= maxD then { __PointerLambdas_maxDepth = true; }
+          else
+            if typeOf this == "lambda" then mkEq this
+
+            else if typeOf this == "set" then
+              concatMapAttrs
+                (k: v:
+                  if k == "__toString" && isFunction v
+                  then { __toString__NoLambdas = mkEq v; }
+                  else if k == "__show" && isFunction v
+                  then { __show__NoLambdas = mkEq v; }
+                  else { ${k} = go (d + 1) v; })
+                this
+
+            else if typeOf this == "list" then
+              map (go (d + 1)) this
+
+            else this;
+
+      in go 0 this;
+
     # Compare test outputs only on their canonical stringified form.
     Print = this: log.vprintUnsafe this;
   };
@@ -139,6 +168,16 @@ in rec {
     eqWith = compareWith: expr: expected:
       True (compareWith expr expected);
 
+    pointerEq = eqWith pointerEqual;
+
+    eqOnWith = compare: compareWith: expr: expected:
+      with log.trace;
+      with msg (_b_ "eqOnWith: raw expr: ${_pvh_ expr}");
+      with msg (_b_ "eqOnWith: raw expected: ${_pvh_ expected}");
+      with msg (_b_ "eqOnWith: compare: ${_pvh_ (compare expr)}");
+      with msg (_b_ "eqOnWith: compare expected: ${_pvh_ (compare expected)}");
+      True (compareWith (compare expr) (compare expected));
+
     printEq = eqOn Compare.Print;
 
     stringEq = eqOn Compare.String;
@@ -148,6 +187,8 @@ in rec {
     fieldsEq = eqOn Compare.Fields;
 
     noLambdasEq = eqOn Compare.NoLambdas;
+
+    pointerLambdasEq = eqOnWith Compare.PointerLambdas (a: b: emptyDiff (diffShortWithEq a b));
 
     valueEq = eqOn (this: 
       assert assertMsg (this ? value) (indent.block ''
@@ -180,7 +221,6 @@ in rec {
 
   traceTestSummary = testResult:
     with log.trace;
-    with collective-lib.script-utils.ansi-utils;
     let test = testResult.test;
         # TODO: unicode syms
         status = with Status; switch testResult.status {
@@ -189,14 +229,14 @@ in rec {
           ${Failed} = "FAIL";
         };
     in
-    assert over (with ansi; _b_ ''
+    assert over (_b_ ''
       ${status} | ${test.name}
     '');
     testResult;
 
 
   runOneTest = test: results_:
-    with (log.v 1).test test.name results_ ___;
+    # disabled verbose per-test tracing during suite runs
     let testResult = rec {
       inherit test;
       evalStatus =
@@ -227,17 +267,17 @@ in rec {
         else Status.Failed;  # Failure due to mismatch
       actual =
         let mkActual = msg: result: {
-              inherit status evalStatus result;
-              __toString = _:
-                if result == null then msg
-                else indent.block ''
-                  ${msg}: ${indent.here (log.print result)}
-                  ${optionalString (status == Status.Failed) ''
-                  Diff:
-                    ${indent.here (log.vprint (diffShort test.expected result))}
-                  ''}
-                '';
-            };
+          inherit status evalStatus result;
+          __toString = _:
+            if result == null then msg
+            else indent.block ''
+              ${msg}: ${indent.here (log.vprintD 2 result)}
+              ${optionalString (status == Status.Failed) ''
+                Diff:
+                  ${indent.here (log.vprint (diffShort test.expected result))}
+              ''}
+            '';
+        };
        in
         if test.skip
           then mkActual "SKIP" null
@@ -263,21 +303,21 @@ in rec {
     msg = assign "msg" {
       ${Status.Skipped} = "SKIP: ${test.name}";
       ${Status.Passed} = "PASS: ${test.name}";
-      ${Status.Failed} = joinLines [
+      ${Status.Failed} = _ls_ [
         (indent.block ''
           FAIL: ${test.name}
 
           Expected:
             ${indent.here (indent.blocks [
-                (log.vprintUnsafe test.rawExpected)
-                (optionalString (test.compare != null) (indent.lines [
+                (log.vprintD 5 test.rawExpected)
+                (optionalString (test.compare != null) (_ls_ [
                   "Comparing on:"
-                  (with log.prints; put test.rawExpected _raw ___)
+                  (with log.prints; put test.expected _raw ___)
                 ]))
             ])}
 
           Actual:
-            ${indent.here (try (toString actual) (_: "<error>"))}
+            ${_h_ (try (_ph_ actual) (_: "<error>"))}
         '')
         ""
       ];
@@ -330,14 +370,18 @@ in rec {
 
         # The expression to evaluate, optionally under a comparison function.
         # Can't thunkify here - this is the "expr" literally passed to runTests.
-        expr = if compare == null then rawExpr else compare rawExpr;
+        expr = 
+          if compare != null then compare rawExpr
+          else rawExpr;
 
         # The raw expected expression to compare with as defined in the test.
         rawExpected = test.expected;
 
         # The expected expression to compare with, optionally under a comparison function.
         # Can't thunkify here - this is the "expected" literally passed to runTests.
-        expected = if compare == null then rawExpected else compare rawExpected;
+        expected = 
+          if compare != null then compare rawExpected
+          else rawExpected;
 
         # Iff true, skip this test and do not treat as failure.
         skip = test.skip or false;
@@ -347,7 +391,7 @@ in rec {
 
         # Run the test under tryEval, treating eval failure as test failure
         # Strict needed in order to catch eval errors
-        run = evalOneTest (expr: builtins.tryEval (strict expr)) (test_ // { mode = "run"; });
+                 run = evalOneTest (expr: builtins.tryEval expr) (test_ // { mode = "run"; });
 
         # Run the test propagating eval errors that mask real failures
         # Strict needed in order to catch eval errors
@@ -355,7 +399,7 @@ in rec {
           # Still tryEval if the test expects error, otherwise we false-positive flag
           # these errors.
           let maybeTry = if isTryEvalFailure rawExpected then builtins.tryEval else id;
-          in evalOneTest (expr: maybeTry (strict expr)) (test_ // { mode = "debug"; });
+          in evalOneTest (expr: maybeTry expr) (test_ // { mode = "debug"; });
       };
     in test_;
 
@@ -433,9 +477,9 @@ in rec {
           // { all = size tests;
                run = counts.all - counts.Skipped;
              };
-        header = ''
-          Running ${toString counts.all} tests
-        '';
+       header = ''
+         Running ${toString counts.all} tests
+       '';
         verbs = mapAttrs (statusName: _: toLower statusName) Status;
         allCounts = {
           Skipped = counts.all;
@@ -444,7 +488,8 @@ in rec {
         };
         headers = mapAttrs (statusName: _:
           optionalString (counts.${statusName} > 0) ''
-            ${toString (counts.${statusName})} of ${toString allCounts.${statusName}} tests ${verbs.${statusName}}
+            ${toString (counts.${statusName})} of ${toString allCounts.${statusName}} tests ${v
+erbs.${statusName}}
           '') Status;
         msgs =
           mapAttrs
@@ -460,6 +505,7 @@ in rec {
         (indent.blocks [headers.Failed failedTestNamesBlock])
         msgs.Failed
       ];
+
   };
 
   removeTests = xs: removeAttrs xs ["_tests"];
@@ -491,4 +537,29 @@ in rec {
 
   withMergedSuites = modules:
     modules // { _tests = mergeModuleSuites modules; };
+
+  # Test the test lib
+  __testf = x: x;
+  _tests = suite {
+    lambdaEquality =
+      let
+        a = { c = 3; d = { f = __testf; }; };
+        b = { c = 3; d = { f = __testf; }; }; # Pointer-equal lambda
+      in {
+        regularEq = expect.eq a b;
+        noLambdasEq = expect.noLambdasEq a b;
+        #pointerEqDeep = expect.pointerEq a.d.f b.d.f;
+        pointerLambdaTransform = 
+          expect.noLambdasEq
+            (Compare.PointerLambdas a)
+            { c = 3; d = { f = { __this = a.d.f; __eq = x: x; }; }; };
+        #pointerLambdaTransformEq = 
+        #  expect.eq
+        #    (diffShortWithEq
+        #      (Compare.PointerLambdas a)
+        #      (Compare.PointerLambdas b))
+        #    {};
+        #pointerLambdasEq = expect.pointerLambdasEq a b;
+      };
+  };
 }

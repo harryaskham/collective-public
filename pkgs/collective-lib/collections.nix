@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, collective-lib ? import ./. { inherit lib; }, ... }:
+{ lib ? import <nixpkgs/lib>, collective-lib ? import ./. { inherit lib; }, ... }:
 
 # TODO: Move other polymorphic collection functions here e.g. size.
 
@@ -69,7 +69,7 @@ in rec {
       path = s: s == [];
     };
     check = x_: 
-      let x = collection.check x; in
+      assert assertMsg (isCollection x) "empty.check: Got non-collection ${typeOf x}"; 
       assert assertMsg (empty x) "empty.check: Got non-empty ${typeOf x}"; 
       x;
   };
@@ -78,7 +78,7 @@ in rec {
   nonEmpty = {
     __functor = self: x: !(empty x);
     check = x_: 
-      let x = collection.check x_; in
+      assert assertMsg (isCollection x) "nonEmpty.check: Got non-collection ${typeOf x}"; 
       assert assertMsg (nonEmpty x) "nonEmpty.check: Got empty ${typeOf x}"; 
       x;
   };

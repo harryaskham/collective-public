@@ -1,6 +1,5 @@
-{ pkgs ? import <nixpkgs> {},
+{ lib ? import <nixpkgs/lib>,
   collective-lib ? import ./. { inherit lib; },
-  lib ? pkgs.lib,
   ... }:
 
 with lib.strings;
@@ -548,6 +547,17 @@ let
         x ? __toString || x ? outPath || elem (lib.typeOf x) [
           "string" "path" "list" "int" "float" "bool" "null"
         ];
+
+      catchableToString = x:
+        if hasToString x then toString x
+        else _throw_ ''
+          catchableToString: Attempted to toString value of type ${lib.typeOf x}:
+            x = ${_ph_ x}
+        '';
+
+      safeToString = x:
+        if hasToString x then toString x
+        else "<toString of ${lib.typeOf x}>";
 
       withoutToString = x: removeAttrs x ["__toString" "outPath"];
 

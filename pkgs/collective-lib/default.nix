@@ -1,9 +1,9 @@
-{ pkgs ? import <nixpkgs> {},
-  lib ? pkgs.lib,
+{ 
+  lib ? import <nixpkgs/lib>,
   traceOpts ? null,
   # Passed from the flake, but set here for local importing.
   inputs ? {
-    # via 
+    nixpkgs = import <nixpkgs>;
     # nix eval --raw .#inputs.nix-parsec.outPath 2>/dev/null
     nix-parsec = import /nix/store/nlawm43dvjgaz5q9bj45vwk6a3rfddbn-source;
   },
@@ -122,7 +122,7 @@ let
     };
 
   baseModules =
-    let args = { inherit pkgs lib collective-lib; };
+    let args = { inherit lib collective-lib; };
     in {
       attrsets = import ./attrsets.nix args;
       binding = import ./binding.nix args;
@@ -144,7 +144,7 @@ let
       inherit modulelib;
       parser = import ./parser (args // { inherit (inputs) nix-parsec; });
       rebinds = import ./rebinds.nix args;
-      script-utils = import ./script-utils args;
+      script-utils = import ./script-utils (args // { pkgs = inputs.nixpkgs {}; });
       strings = import ./strings args;
       syntax = import ./syntax.nix args;
       tests = import ./tests.nix args;

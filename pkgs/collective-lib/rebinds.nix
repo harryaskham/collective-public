@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> {}, lib ? pkgs.lib, ... }:
+{ lib ? import <nixpkgs/lib>, ... }:
 # DO NOT IMPORT COLLECTIVE-LIB HERE.
 
 # Top-level lib rebinds.
