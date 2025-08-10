@@ -530,6 +530,9 @@ in rec {
       _tests = mergeModuleSuites (mapAttrs (_: getTestsFromTestableModule) maybeTestableModules);
     };
 
+  evalTestableModule = module:
+    (getTestsFromTestableModule module)._evalModule;
+
   mergeModuleSuites = modules:
     mergeSuites (mapAttrs (_: testModule) modules);
 

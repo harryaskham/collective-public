@@ -9,6 +9,7 @@ with uklib;
     {
       # <keyboard name="QWERTY (US)" script="latin">
       name = "QWERTY (US)";
+      bottomRow = true;
       includeDefaultVariants = false;
       rows = with codes; [
         # <row>
