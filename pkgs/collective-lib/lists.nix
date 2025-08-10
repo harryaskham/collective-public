@@ -59,6 +59,16 @@ in rec {
       set = mergeAttrsList;
     } xs;
 
+  dropWhile = pred: xs:
+    if empty xs then xs
+    else let s = snoc xs; in if pred s.head then dropWhile pred s.tail
+    else xs;
+
+  takeWhile = pred: xs:
+    if empty xs then xs
+    else let s = snoc xs; in if pred s.head then [s.head] ++ takeWhile pred s.tail
+    else [];
+
   # Fold centraliser.
   # Merges with other modules that define fold functions.
   # A fold variant spec must have __mkF to produce a binary foldl or foldr f function

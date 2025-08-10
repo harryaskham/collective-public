@@ -178,13 +178,24 @@ in rec {
       (setIndent 0 s);
 
   # Remove the surrounding newlines from a string
+  # Note: Tvix can't handle multiline regex. Falling back to non-regex here.
+  # trimNewlines =
+  #   let chars = "\r\n";
+  #       regex = "[${chars}]*(.*[^${chars}])[${chars}]*";
+  #   in s: firstMatchOr "" regex s;
   trimNewlines =
-    let chars = "\r\n";
-        regex = "[${chars}]*(.*[^${chars}])[${chars}]*";
-    in s: firstMatchOr "" regex s;
+    precompose [
+      splitLines
+      trimNewlinesList
+      joinLines
+    ];
 
   # Remove the surrounding newlines from a list of lines
-  trimNewlinesList = lines: splitLines (trimNewlines (joinLines lines));
+  trimNewlinesList = #lines: splitLines (trimNewlines (joinLines lines));
+    precompose [
+      (dropWhile (l: l == ""))
+      (takeWhile (l: l != ""))
+    ];
 
   # Format a block trimmed and zero-indented for later re-indentation
   # Handles any markers left in the text by embedded to-indent blocks.
