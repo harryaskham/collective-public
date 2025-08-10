@@ -171,13 +171,11 @@ rec {
             _.pure []))
           bindings;}
       {attrs = {_, attrsList}: _.pure (listToAttrs (concat attrsList));}
-      ({_, ...}: _.guard (i <= size bindings) (RuntimeError ''
-        Recursive binding list evaluation failed to complete at iteration ${toString i}:
-          ${_ph_ bindings}
-
-        Attrs:
-          ${_ph_ attrs}
-      ''))
+      ({_, ...}: 
+        let maxI = (size bindings) + 4; in
+        _.guard (i < maxI) (RuntimeError ''
+          Recursive binding list failed to converge within ${toString maxI} iterations
+        ''))
       ({_, attrs, ...}: 
         if size bindings == size attrs then _.pure attrs
         else evalRecBindingList_ (i + 1) bindings);

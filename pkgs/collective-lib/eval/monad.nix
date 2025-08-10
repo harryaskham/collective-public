@@ -531,7 +531,7 @@ rec {
         assert that (isMonadOf Eval mb0 || isDo mb0) ''
           saveScope: expected Eval monadic action or do-block but got ${getT mb0}
         '';
-        let mb = if isDo mb0 then (mb0.__setInitM (Eval.pure unit)).action else mb0;
+        let mb = if isDo mb0 then (mb0.__setInitM _).action else mb0;
         in mb.bind ({_, _a}: Eval.do ({_}: _.setScope prev) ({_}: _.pure _a)));
 
 
