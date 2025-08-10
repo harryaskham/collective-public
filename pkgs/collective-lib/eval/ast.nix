@@ -55,7 +55,7 @@ rec {
         conditional = evalConditional node;
         lambda = evalLambda node;
         application = evalApplication node;
-        letIn = evalLetIn node;
+        letIn = Eval.do (while "dispatching letIn") (evalLetIn node);
         "with" = evalWith node;
         "assert" = evalAssert node;
         "abort" = evalAbort node;
@@ -94,6 +94,7 @@ rec {
     Eval.do
       (while "evaluating 'identifier' node")
       {scope = getScope;}
+      (while "identifier: got scope")
       ({_, scope}: _.guard (builtins.hasAttr node.name scope) (RuntimeError ''
         Undefined identifier '${node.name}' in current scope:
           ${_ph_ scope}
@@ -141,7 +142,9 @@ rec {
   evalBindingList = bindings:
     Eval.do
       (while "evaluating 'bindings' node-list")
+      (while "evalBindingList: before traverse")
       {attrsList = {_}: _.traverse evalNodeM bindings;}
+      (while "evalBindingList: after traverse")
       {attrs = {_, attrsList}: _.pure (concat attrsList);}
       ({_, attrs}: _.guard (all (attr: (attr ? name) && (attr ? value)) attrs) (RuntimeError ''
         Recursive binding list evaluation produced invalid name/value pairs:
