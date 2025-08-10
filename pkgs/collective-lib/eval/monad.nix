@@ -537,39 +537,39 @@ rec {
 
   setScope = scope: {_, ...}:
     _.do
-      # (while "setting scope")
+      (while "setting scope")
       (_.set (EvalState scope));
   
   modifyScope = f: {_, ...}:
     _.do
-      # (while "modifying scope")
+      (while "modifying scope")
       ({_}: _.modify (s: s.fmap f));
 
   getScope = {_, ...}:
     _.do
-      # (while "getting scope")
+      (while "getting scope")
       {state = {_}: _.get {};}
       ({_, state}: _.pure state.scope);
 
   prependScope = newScope: {_, ...}:
     _.do
-      # (while "prepending scope")
+      (while "prepending scope")
       (modifyScope (scope: newScope // scope));
 
   prependScopeM = newScopeM: {_, ...}:
     _.do
-      # (while "prepending monadic scope")
+      (while "prepending monadic scope")
       {newScope = newScopeM;}
       ({_, newScope}: _.modifyScope (scope: newScope // scope));
 
   appendScope = newScope: {_, ...}:
     _.do
-      # (while "appending scope")
+      (while "appending scope")
       (modifyScope (scope: scope // newScope));
 
   appendScopeM = newScopeM: {_, ...}:
     _.do
-      # (while "appending monadic scope")
+      (while "appending monadic scope")
       {newScope = newScopeM;}
       ({_, newScope}: _.modifyScope (scope: scope // newScope));
 

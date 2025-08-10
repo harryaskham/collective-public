@@ -608,7 +608,7 @@ rec {
     evalAST = {
 
       _00_scope = { 
-        unit = expectScope (parse "{}") {};
+        unit = expectScope (parse "{}");
         attrs = expectScope (parse "{ a = 1; }") {a = 1;};
 
         env = {
@@ -622,7 +622,7 @@ rec {
         letIn = testRoundTrip "let a = 1; in a" 1;
       };
 
-      _00_smoke = {
+      _00_smoke = (solo {
         int = testRoundTrip "1" 1;
         float = testRoundTrip "1.0" 1.0;
         string = testRoundTrip ''"hello"'' "hello";
@@ -639,7 +639,7 @@ rec {
         #letIn = testRoundTrip "let a = 1; in a" 1;
         #withs = testRoundTrip "with {a = 1;}; a" 1;
         #asserts = testRoundTrip "assert true; 1" 1;
-      };
+      });
 
       _01_allFeatures =
         skip (
