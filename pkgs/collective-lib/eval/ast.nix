@@ -473,7 +473,7 @@ rec {
     Eval.do
       (while "evaluating 'letIn' node")
       {prev = {_}: _.getScope;}
-      {newScope = evalRecBindingList node.bindings;}
+      {newScope = evalBindingList node.bindings;}
       (while "letIn: evaluated bindings")
       {val = {_, newScope}: _.do
         ({_}: _.prependScope newScope)
