@@ -472,9 +472,15 @@ rec {
   evalLetIn = node:
     Eval.do
       (while "evaluating 'letIn' node")
-      ({_}: _.saveScope (_.do
-        (prependScopeM (evalRecBindingList node.bindings))
-        (evalNodeM node.body)));
+      {prev = {_}: _.getScope;}
+      {newScope = evalRecBindingList node.bindings;}
+      (while "letIn: evaluated bindings")
+      {val = {_, newScope}: _.do
+        ({_}: _.prependScope newScope)
+        (evalNodeM node.body);
+      }
+      ({_, prev}: _.setScope prev)
+      ({_, val}: _.pure val);
 
   # Evaluate a with expression
   # evalWith :: AST -> Eval a
