@@ -622,7 +622,7 @@ rec {
         letIn = testRoundTrip "let a = 1; in a" 1;
       };
 
-      _00_smoke = (solo {
+      _00_smoke = {
         int = testRoundTrip "1" 1;
         float = testRoundTrip "1.0" 1.0;
         string = testRoundTrip ''"hello"'' "hello";
@@ -639,8 +639,8 @@ rec {
         #letIn = testRoundTrip "let a = 1; in a" 1;
         #withs = testRoundTrip "with {a = 1;}; a" 1;
         #asserts = testRoundTrip "assert true; 1" 1;
-      });
-
+      };
+ 
       _01_allFeatures =
         skip (
         let 
@@ -657,7 +657,7 @@ rec {
           '';
         in testRoundTrip expr 5
         );
-
+ 
       # Basic literals
       _02_literals = {
         integers = testRoundTrip "42" 42;
@@ -669,20 +669,20 @@ rec {
         };
         nullValue = testRoundTrip "null" null;
       };
-
+ 
       # Collections
       _03_lists = {
         empty = testRoundTrip "[]" [];
         numbers = testRoundTrip "[1 2 3]" [1 2 3];
         #mixed = testRoundTrip ''[1 "hello" true]'' [1 "hello" true];
       };
-
+ 
       _04_attrs = {
         empty = testRoundTrip "{}" {};
         simple = testRoundTrip "{ a = 1; b = 2; }" { a = 1; b = 2; };
         nested = testRoundTrip "{ x = { y = 42; }; }" { x = { y = 42; }; };
       };
-
+ 
       # Binary operations
       _05_arithmetic = {
         addition = testRoundTrip "1 + 2" 3;
@@ -690,7 +690,7 @@ rec {
         subtraction = testRoundTrip "10 - 3" 7;
         division = testRoundTrip "8 / 2" 4;
       };
-
+ 
       _06_logical = {
         and = testRoundTrip "true && false" false;
         or = testRoundTrip "true || false" true;
@@ -714,14 +714,14 @@ rec {
         simple = testRoundTrip "if true then 1 else 2" 1;
         nested = testRoundTrip "if false then 1 else if true then 2 else 3" 2;
       };
-
+ 
       # Let expressions
-      _10_letExpressions = { 
+      _10_letExpressions = (solo { 
         simple = testRoundTrip "let x = 1; in x" 1;
         multiple = testRoundTrip "let a = 1; b = 2; in a + b" 3;
         nested = testRoundTrip "let x = 1; y = let z = 2; in z + 1; in x + y" 4;
-      };
-
+      });
+ 
       # Functions (simplified tests since function equality is complex)  
       _11_functions = { 
         identity = testRoundTrip "let f = x: x; in f 42" 42;
