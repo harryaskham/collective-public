@@ -608,7 +608,7 @@ rec {
     evalAST = {
 
       _00_scope = { 
-        unit = expectScope (parse "{}");
+        unit = expectScope (parse "{}") {};
         attrs = expectScope (parse "{ a = 1; }") {a = 1;};
 
         env = {
