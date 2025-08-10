@@ -16,17 +16,18 @@ rec {
  
   runAST :: (string | AST) -> Either EvalError {a :: a, s :: EvalState} */
   runAST = expr:
-    (evalM expr).run (EvalState.mempty {});
+    ((evalM expr).while "running runAST").run (EvalState.mempty {});
 
   /*
   evalAST :: (string | AST) -> Either EvalError a */
   evalAST = expr:
-    (evalM expr).run_ (EvalState.mempty {});
+    ((evalM expr).while "running evalAST").run_ (EvalState.mempty {});
 
   /*
   evalM :: (string | AST) -> Eval a */
   evalM = expr:
     Eval.do
+      (while "running evalM")
       ({_}: _.set initEvalState)
       (evalNodeM (parse expr));
 
