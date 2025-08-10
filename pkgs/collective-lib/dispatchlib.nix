@@ -131,9 +131,6 @@ in rec {
     elem = {
       __functor = self: self.on lib.typeOf;
       on = getElemType: dict: 
-<<<<<<< HEAD
-        dispatch.on (x: if safeEmpty x then "empty" else getElemType (elems.head x)) dict;
-=======
         dispatch.on 
           (x: 
             let h = maybeHead x;
@@ -144,7 +141,6 @@ in rec {
             ''; 
             getElemType h)
           dict;
->>>>>>> 51e4daa02577ef4e3e3b59d1b58a1836d4f7b14c
     };
   };
 
