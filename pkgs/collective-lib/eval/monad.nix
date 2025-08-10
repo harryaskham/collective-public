@@ -374,10 +374,17 @@ rec {
 
              # Bind pure with {} initial state to convert do<M a> to M a
               action = this.bind ({_, _a}: _.pure _a);
-       inherit (this.action) mapState setState mapEither sq run run_ catch;
+       # Lazily forward methods to the underlying action to avoid eager evaluation
+       mapState = f: this.action.mapState f;
+       setState = s: this.action.setState s;
+       mapEither = f: this.action.mapEither f;
+       sq = b: this.action.sq b;
+       run = initialState: this.action.run initialState;
+       run_ = s: this.action.run_ s;
+       catch = handler: this.action.catch handler;
        # while logs without expanding or forcing the do-block
        while = msg: let _ = log.while msg true; in this;
- 
+
         do = mkDo M this.action [];
         guard = cond: e: 
          if cond 
