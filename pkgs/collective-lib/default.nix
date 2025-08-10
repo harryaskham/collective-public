@@ -1,4 +1,5 @@
-{ 
+{
+  pkgs ? import <nixpkgs> {},
   lib ? import <nixpkgs/lib>,
   traceOpts ? null,
   # Passed from the flake, but set here for local importing.
@@ -145,7 +146,7 @@ let
       inherit modulelib;
       parser = import ./parser (args // { inherit (inputs) nix-parsec; });
       rebinds = import ./rebinds.nix args;
-      script-utils = import ./script-utils (args // { pkgs = inputs.nixpkgs {}; });
+      script-utils = import ./script-utils (args // { inherit pkgs; });
       strings = import ./strings args;
       syntax = import ./syntax.nix args;
       tests = import ./tests.nix args;
