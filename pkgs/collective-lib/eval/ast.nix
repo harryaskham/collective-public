@@ -90,10 +90,7 @@ rec {
   # Evaluate an identifier lookup
   # evalIdentifier :: Scope -> AST -> Eval a
   evalIdentifier = node:
-    if node.name == "true" then Eval.pure true
-    else if node.name == "false" then Eval.pure false
-    else if node.name == "null" then Eval.pure null
-    else Eval.do
+    Eval.do
       (while "evaluating 'identifier' node")
       {scope = getScope;}
       ({_, scope}: _.guard (builtins.hasAttr node.name scope) (RuntimeError ''
