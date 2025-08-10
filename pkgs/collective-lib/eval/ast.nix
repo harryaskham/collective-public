@@ -717,11 +717,11 @@ rec {
       };
  
       # Let expressions
-      _10_letExpressions = (solo { 
-        simple = testRoundTrip "let x = 1; in x" 1;
+      _10_letExpressions = { 
+        simple = solo (testRoundTrip "let x = 1; in x" 1);
         multiple = testRoundTrip "let a = 1; b = 2; in a + b" 3;
         nested = testRoundTrip "let x = 1; y = let z = 2; in z + 1; in x + y" 4;
-      });
+      };
  
       # Functions (simplified tests since function equality is complex)  
       _11_functions = { 
