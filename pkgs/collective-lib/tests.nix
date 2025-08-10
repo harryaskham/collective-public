@@ -171,11 +171,10 @@ in rec {
     pointerEq = eqWith pointerEqual;
 
     eqOnWith = compare: compareWith: expr: expected:
-      with log.trace;
-      with msg (_b_ "eqOnWith: raw expr: ${_pvh_ expr}");
-      with msg (_b_ "eqOnWith: raw expected: ${_pvh_ expected}");
-      with msg (_b_ "eqOnWith: compare: ${_pvh_ (compare expr)}");
-      with msg (_b_ "eqOnWith: compare expected: ${_pvh_ (compare expected)}");
+      with log.trace.msg (_b_ "eqOnWith: raw expr: ${_pvh_ expr}");
+      with log.trace.msg (_b_ "eqOnWith: raw expected: ${_pvh_ expected}");
+      with log.trace.msg (_b_ "eqOnWith: compare: ${_pvh_ (compare expr)}");
+      with log.trace.msg (_b_ "eqOnWith: compare expected: ${_pvh_ (compare expected)}");
       True (compareWith (compare expr) (compare expected));
 
     printEq = eqOn Compare.Print;
@@ -300,7 +299,7 @@ in rec {
         else
           mkActual "PASS" null;
 
-    msg = assign "msg" {
+    msg = {
       ${Status.Skipped} = "SKIP: ${test.name}";
       ${Status.Passed} = "PASS: ${test.name}";
       ${Status.Failed} = _ls_ [
@@ -488,8 +487,7 @@ in rec {
         };
         headers = mapAttrs (statusName: _:
           optionalString (counts.${statusName} > 0) ''
-            ${toString (counts.${statusName})} of ${toString allCounts.${statusName}} tests ${v
-erbs.${statusName}}
+            ${toString (counts.${statusName})} of ${toString allCounts.${statusName}} tests ${verbs.${statusName}}
           '') Status;
         msgs =
           mapAttrs
