@@ -1008,7 +1008,7 @@ let
       };
       includeDefaultVariants = mkOption {
         type = types.bool;
-        default = true;
+        default = false;
         description = ''
           Whether to include the default variants.
         '';
@@ -1032,7 +1032,7 @@ let
       };
       bottomRow = mkOption {
         type = types.bool;
-        default = true;
+        default = false;
         description = "Whether or not to include a default bottom row.";
       };
       embeddedNumberRow = mkOption {
@@ -1259,37 +1259,43 @@ in {
 })
 
 (with collective-lib; with typed; with typed.tests;
-let 
-  fakeModule =
+rec {
+  _evalModule = config: (evalModules {
+    specialArgs = { inherit lib typed; testableModule = lib.const; };
+    modules = [
+      # Dep stubs
+      ({...}: {
+        options.agnostic.environment.etc = mkOption { type = types.attrs; default = {}; };
+      })
+
+      # Self
+      (getModuleFromTestableModule ./.)
+
+      # Usage
+      config
+    ];
+  }).config;
+
+  mkConfig = includeDefaultKeyboards: keyboards:
     {...}: {
-      options.agnostic.environment.etc = mkOption { type = types.attrs; default = {}; };
-    };
-  mkConfigModule = includeDefaultKeyboards: keyboards:
-    {...}: { 
       services.unexpected-keyboard = {
         enable = true;
         inherit keyboards includeDefaultKeyboards;
       };
     };
-  mkConfig = configModule:
-    let evaluated = evalModules {
-      specialArgs = { inherit lib typed; testableModule = lib.const; };
-      modules = [ fakeModule (getModuleFromTestableModule ./.) configModule ];
-    };
-    in evaluated.config;
-in {
+
   _tests = with typed.tests; suite {
     empty = 
-      let config = mkConfig (mkConfigModule false []);
+      let config = _evalModule (mkConfig false []);
       in {
         layouts = expect.eq (config.services.unexpected-keyboard.layouts) {};
         etc = expect.eq (config.agnostic.environment.etc) {};
       };
     defaults = 
-      let config = mkConfig (mkConfigModule true []);
+      let config = _evalModule (mkConfig true []);
       in with config.services.unexpected-keyboard.lib; {
-        etc.size = expect.eq (size config.agnostic.environment.etc) 10;
-        layouts.size = expect.eq (size config.services.unexpected-keyboard.layouts) 10;
+        etc.size = expect.eq (size config.agnostic.environment.etc) 8;
+        layouts.size = expect.eq (size config.services.unexpected-keyboard.layouts) 8;
         layouts.golden = 
           expect.eq config.services.unexpected-keyboard.layouts."QWERTY (US)".xmlSource
           "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\n<keyboard\n  bottom_row=\"true\"\n  embedded_number_row=\"false\"\n  locale_extra_keys=\"false\"\n  name=\"QWERTY (US)\"\n  numpad_script=\"latin\"\n  script=\"latin\"\n  >\n  \n  <row height=\"1.0\">\n    <key c=\"q\" ne=\"1\" se=\"loc esc\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"w\" ne=\"2\" nw=\"~\" shift=\"0.0\" sw=\"@\" width=\"1.0\" />\n    <key c=\"e\" ne=\"3\" nw=\"!\" se=\"loc €\" shift=\"0.0\" sw=\"#\" width=\"1.0\" />\n    <key c=\"r\" ne=\"4\" shift=\"0.0\" sw=\"$\" width=\"1.0\" />\n    <key c=\"t\" ne=\"5\" shift=\"0.0\" sw=\"%\" width=\"1.0\" />\n    <key c=\"y\" ne=\"6\" shift=\"0.0\" sw=\"^\" width=\"1.0\" />\n    <key c=\"u\" ne=\"7\" shift=\"0.0\" sw=\"&amp;\" width=\"1.0\" />\n    <key c=\"i\" ne=\"8\" shift=\"0.0\" sw=\"*\" width=\"1.0\" />\n    <key c=\"o\" ne=\"9\" se=\")\" shift=\"0.0\" sw=\"(\" width=\"1.0\" />\n    <key c=\"p\" ne=\"0\" shift=\"0.0\" width=\"1.0\" />\n  </row>\n  \n  <row height=\"1.0\">\n    <key c=\"a\" ne=\"`\" shift=\"0.5\" width=\"1.0\" />\n    <key c=\"s\" ne=\"loc §\" shift=\"0.0\" sw=\"loc ß\" width=\"1.0\" />\n    <key c=\"d\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"f\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"g\" ne=\"-\" shift=\"0.0\" sw=\"_\" width=\"1.0\" />\n    <key c=\"h\" ne=\"=\" shift=\"0.0\" sw=\"+\" width=\"1.0\" />\n    <key c=\"j\" se=\"}\" shift=\"0.0\" sw=\"{\" width=\"1.0\" />\n    <key c=\"k\" se=\"]\" shift=\"0.0\" sw=\"[\" width=\"1.0\" />\n    <key c=\"l\" ne=\"|\" shift=\"0.0\" sw=\"\\\" width=\"1.0\" />\n  </row>\n  \n  <row height=\"1.0\">\n    <key c=\"shift\" ne=\"loc capslock\" shift=\"0.0\" width=\"1.5\" />\n    <key c=\"z\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"x\" ne=\"†\" shift=\"0.0\" width=\"1.0\" />\n    <key c=\"c\" ne=\"&lt;\" shift=\"0.0\" sw=\".\" width=\"1.0\" />\n    <key c=\"v\" ne=\"&gt;\" shift=\"0.0\" sw=\",\" width=\"1.0\" />\n    <key c=\"b\" ne=\"?\" shift=\"0.0\" sw=\"/\" width=\"1.0\" />\n    <key c=\"n\" ne=\":\" shift=\"0.0\" sw=\";\" width=\"1.0\" />\n    <key c=\"m\" ne=\"&quot;\" shift=\"0.0\" sw=\"'\" width=\"1.0\" />\n    <key c=\"backspace\" ne=\"delete\" shift=\"0.0\" width=\"1.5\" />\n  </row>\n\n</keyboard>";
