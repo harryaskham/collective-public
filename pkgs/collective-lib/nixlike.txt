@@ -229,6 +229,9 @@ functions._tests.run {}
 errors._tests.run {}
 </nix>
 <nix>
+strings._tests.run {}
+</nix>
+<nix>
 attrsets._tests.debug {}
 </nix>
 
@@ -242,7 +245,7 @@ empty true
 
 
 <nix>
-(tests.testModule (import ../../modules/agnostic/unexpected-keyboard)).debug {}
+(tests.testModule (import ../../modules/agnostic/unexpected-keyboard)).runResults {}
 </nix>
 
 <nix>

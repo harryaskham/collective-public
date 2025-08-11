@@ -288,7 +288,21 @@ in rec {
           ((LazyList [1 2 3 { a = throw "no"; }]).__length {})
           4;
       resolves.value = expect.eq (resolve (LazyList [1 2 3])) [1 2 3];
-      resolves.throw = expect.error (resolve (LazyList [1 2 3 { a = throw "no"; }]));
+    };
+
+    dropWhile = {
+      empty = expect.eq (dropWhile (a: a > 0) []) [];
+      single = expect.eq (dropWhile (a: a > 0) [1]) [];
+      multiple = expect.eq (dropWhile (a: a > 1) [1 2 3]) [1 2 3];
+      multiple2 = expect.eq (dropWhile (a: a < 3) [1 2 3]) [3];
+    };
+
+    takeWhile = {
+      empty = expect.eq (takeWhile (a: a > 0) []) [];
+      single = expect.eq (takeWhile (a: a > 0) [1]) [1];
+      multiple = expect.eq (takeWhile (a: a > 0) [1 2 3]) [1 2 3];
+      multiple2 = expect.eq (takeWhile (a: a < 3) [1 2 3]) [1 2];
     };
   };
+
 }

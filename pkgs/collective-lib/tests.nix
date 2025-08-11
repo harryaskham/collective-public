@@ -293,7 +293,6 @@ in rec {
         else if status == Status.Failed
           then
             let failedResult = assert (size results) == 1; head results;
-
             in mkActual "FAIL" failedResult.result
 
         else
@@ -303,7 +302,7 @@ in rec {
       ${Status.Skipped} = "SKIP: ${test.name}";
       ${Status.Passed} = "PASS: ${test.name}";
       ${Status.Failed} = _ls_ [
-        (indent.block ''
+        (''
           FAIL: ${test.name}
 
           Expected:
@@ -461,10 +460,13 @@ in rec {
         (testName: test: 
           {}: f { ${testName} = test; })
         (tests {});
-    runOne = overOne (run_ (test: test.run {}));
-    debugOne = overOne (run_ (test: test.debug {}));
+    runOne = overOne (run_ (test: test.run));
+    debugOne = overOne (run_ (test: test.debug));
     run = run_ (test: test.run) (tests {});
     debug = run_ (test: test.debug) (tests {});
+    runResults =
+      {}:  # Thunk the tests to avoid strict execution.
+      mapAttrsToList (_: test: test.run.test) (tests {});
     run_ = runner: tests:
       {}:  # Thunk the tests to avoid strict execution.
       let
@@ -491,7 +493,7 @@ in rec {
           '') Status;
         msgs =
           mapAttrs
-            (statusName: _: Safe (joinLines (map (result: result.msg) byStatus.${statusName})))
+            (statusName: _: joinLines (map (result: result.msg) byStatus.${statusName}))
             Status;
         failedTestNamesBlock = joinLines (map (result: "FAIL: ${result.test.name}") byStatus.Failed);
 

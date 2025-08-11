@@ -54,6 +54,13 @@ suite {
     };
   };
 
+  trimNewlines = {
+    empty = expect.eq (trimNewlines "") "";
+    single = expect.eq (trimNewlines "a") "a";
+    multiple = expect.eq (trimNewlines "a\nb\nc") "a\nb\nc";
+    surround = expect.eq (trimNewlines "\n\na\nb\nc\n\n") "a\nb\nc";
+  };
+
   codeBlock = {
     embedded = {
       expr =
@@ -89,6 +96,13 @@ suite {
               3 ]
       '';
     };
+    lines = expect.eq (codeBlockLines [
+      ""
+      "line1"
+      "line2"
+      "line3"
+      ""
+    ]) "line1\nline2\nline3";
   };
 
   pluralise = {
