@@ -127,7 +127,7 @@ let
       args = { inherit lib collective-lib; };
       reflect =
         if inputs ? nix-reflect
-        then inputs.nix-reflect.reflectLib.${pkgs.system}
+        then inputs.nix-reflect.lib.${pkgs.system}
         else import ../../flakes/nix-reflect/lib (args // {
           inherit (inputs) nix-parsec;
         });
