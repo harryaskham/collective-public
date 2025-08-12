@@ -123,7 +123,14 @@ let
     };
 
   baseModules =
-    let args = { inherit lib collective-lib; };
+    let
+      args = { inherit lib collective-lib; };
+      reflect =
+        if inputs ? nix-reflect
+        then inputs.nix-reflect.reflectLib.${pkgs.system}
+        else import ../../flakes/nix-reflect/lib (args // {
+          inherit (inputs) nix-parsec;
+        });
     in {
       attrsets = import ./attrsets.nix args;
       binding = import ./binding.nix args;
@@ -131,12 +138,13 @@ let
       collections = import ./collections.nix args;
       colors = import ./colors.nix args;
       data = import ./data.nix args;
-      debuglib = import ./debuglib.nix args;
+      inherit (reflect) debuglib;
       disk = import ./disk.nix args;
       dispatchlib = import ./dispatchlib.nix args;
       display = import ./display.nix args;
       errors = import ./errors.nix args;
-      eval = import ./eval args;
+      inherit (reflect) eval;
+      #eval = import ./eval args;
       ext = import ./ext args;
       fan = import ./fan.nix args;
       font = import ./font.nix args;
@@ -144,8 +152,10 @@ let
       lists = import ./lists.nix args;
       log = import ./log.nix (args // { inherit traceOpts; });
       inherit modulelib;
-      parser = import ./parser (args // { inherit (inputs) nix-parsec; });
+      #parser = import ./parser (args // { inherit (inputs) nix-parsec; });
+      inherit (reflect) parser;
       rebinds = import ./rebinds.nix args;
+      inherit reflect;
       script-utils = import ./script-utils (args // { inherit pkgs; });
       strings = import ./strings args;
       syntax = import ./syntax.nix args;
