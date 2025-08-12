@@ -165,12 +165,10 @@ rec {
       else evalBindingList node.bindings);
 
   # Evaluate a binding without failing on missing names.
-  # TODO: Why does this need explicit state passing in?
   # evalRecBinding :: AST -> Eval [{name, value}]
-  evalRecBinding = stateBefore: binding:
+  evalRecBinding = binding:
     (Eval.do
       (while "evaluating 'binding' node for recursive bindings")
-      (set stateBefore)
       (evalNodeM binding))
     .catch ({_, _e}: _.do
       (while "Handling missing binding in recursive binding list")
@@ -181,12 +179,11 @@ rec {
   evalRecBindingList_ = i: bindings:
     Eval.do
       (while "evaluating 'bindings' node-list recursively, iteration ${toString i}")
-      {stateBefore = get;}
-      {attrsList = {_, stateBefore}: _.traverse (evalRecBinding stateBefore) bindings;}
+      {state = get;}
+      {attrsList = traverse evalRecBinding bindings;}
       {attrs = {_, attrsList}: _.pure (listToAttrs (concatLists attrsList));}
-      ({_, attrs, stateBefore, ...}: _.set (EvalState (stateBefore.scope // attrs)))
-      {stateAfter = get;}
-      ({_, attrsList, attrs, stateBefore, stateAfter, ...}: _.guard (i <= size bindings) (RuntimeError ''
+      ({_, attrs, state, ...}: _.set (EvalState (attrs // state.scope)))
+      ({_, attrsList, attrs, state, ...}: _.guard (i <= size bindings) (RuntimeError ''
         Recursive binding list evaluation failed to complete at iteration ${toString i}:
           ${_ph_ bindings}
 
@@ -196,11 +193,8 @@ rec {
         attrs:
           ${_ph_ attrs}
 
-        stateBefore:
-          ${_ph_ stateBefore}
-
-        stateAfter:
-          ${_ph_ stateAfter}
+        state:
+          ${_ph_ state}
       ''))
       ({_, attrs, ...}: 
         if size bindings == size attrs then _.pure attrs

@@ -312,7 +312,8 @@ rec {
     in 
       (acc.m.bind ({_, _a}: 
         let mb_ = normalised.f (acc.bindings // { inherit _ _a; });
-            mb = if isDo mb_ then mb_.__setInitM _ else mb_;
+            #mb = if isDo mb_ then mb_.__setInitM _ else mb_;
+            mb = if isDo mb_ then mb_.__setInitM acc.m else mb_;
         in 
           mb.bind ({_, _a}: _.pure {
             bindings = acc.bindings // optionalAttrs (normalised.bindName != null) {
