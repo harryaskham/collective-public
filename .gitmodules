@@ -1,0 +1,3 @@
+[submodule "flakes/nix-reflect"]
+	path = flakes/nix-reflect
+	url = https://github.com/harryaskham/nix-reflect
