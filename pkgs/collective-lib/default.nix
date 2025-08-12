@@ -128,7 +128,12 @@ let
       reflect =
         if inputs ? nix-reflect
         then inputs.nix-reflect.lib.${pkgs.system}
+        # Support local usage.
         else import ../../flakes/nix-reflect/lib (args // {
+          inherit pkgs;
+          inputs = inputs // {
+            collective-public.packages.${pkgs.system}.collective-lib = collective-lib;
+          };
           inherit (inputs) nix-parsec;
         });
     in {
