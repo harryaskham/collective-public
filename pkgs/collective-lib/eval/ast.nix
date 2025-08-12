@@ -709,7 +709,7 @@ rec {
       };
 
       # Let expressions
-      _10_letExpressions = skip {
+      _10_letExpressions = {
         simple = testRoundTrip "let x = 1; in x" 1;
         multiple = testRoundTrip "let a = 1; b = 2; in a + b" 3;
         nested = testRoundTrip "let x = 1; y = let z = 2; in z + 1; in x + y" 4;
@@ -753,7 +753,7 @@ rec {
       };
 
       # With expressions - testing proper scope precedence
-      _15_withExpressions = skip {
+      _15_withExpressions = {
         # Basic with expression
         basicWith = testRoundTrip "with { a = 1; }; a" 1;
         # Lexical scope should shadow with attributes  
