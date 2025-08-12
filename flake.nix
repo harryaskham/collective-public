@@ -4,9 +4,9 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
 
-    nix-parsec = {
-      url = "github:nprindle/nix-parsec";
-    };
+    nix-parsec.url = "github:nprindle/nix-parsec";
+
+    nix-reflect.url = "github:harryaskham/nix-reflect";
   };
 
   outputs = {
