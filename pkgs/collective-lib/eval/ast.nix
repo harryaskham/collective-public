@@ -14,24 +14,26 @@ rec {
   Exposed as eval.eval.ast (and eval.eval) in default.nix for use as just "eval"
  
   runAST :: (string | AST) -> Either EvalError {a :: a, s :: EvalState} */
-  runAST = expr: 
-    log.while "running string or AST node evaluation" (
-    (evalM expr).run (EvalState.mempty {})
-    );
+  runAST = expr:
+    (Eval.do
+      (while "running string or AST node evaluation")
+      (evalM expr))
+    .run (EvalState.mempty {});
 
   /*
   evalAST :: (string | AST) -> Either EvalError a */
   evalAST = expr:
-    log.while "evaluating string or AST node" (
-    (evalM expr).run_ (EvalState.mempty {})
-    );
+    (Eval.do
+      (while "evaluating string or AST node")
+      (evalM expr))
+    .run_ (EvalState.mempty {});
 
   /*
   evalM :: (string | AST) -> Eval a */
   evalM = expr:
     Eval.do
       (while "running string or AST node evaluation")
-      ({_}: _.set initEvalState)
+      (set initEvalState)
       (evalNodeM (parse expr));
 
   /* Main monadic eval entrypoint.
@@ -96,19 +98,19 @@ rec {
   evalIdentifier = node:
     Eval.do
       (while "evaluating 'identifier' node")
-      {scope = getScope;}
-      ({_, scope}: _.guard (scope ? ${node.name}) (RuntimeError ''
+      {state = get;}
+      ({_, state}: _.guard (hasAttr node.name state.scope) (UnknownIdentifierError ''
         Undefined identifier '${node.name}' in current scope:
-          ${_ph_ scope}
+          ${_ph_ state.scope}
       ''))
-      ({_, scope}: _.pure scope.${node.name});
+      ({_, state}: _.pure state.scope.${node.name});
 
   # Evaluate a list of AST nodes
   # evalList :: AST -> Eval [a]
   evalList = node:
     Eval.do
       (while "evaluating 'list' node")
-      ({_}: _.traverse evalNodeM node.elements);
+      (traverse evalNodeM node.elements);
 
   # Evaluate an assignment (name-value pair)
   # evalAssignment :: AST -> Eval [{name, value}]  
@@ -125,7 +127,7 @@ rec {
     Eval.do
       (while "evaluating 'attr' node by name")
       {name = identifierName attr;}
-      ({_, name}: _.guard (from ? ${name}) (MissingAttributeError name))
+      ({_, name}: _.guard (hasAttr name from) (MissingAttributeError name))
       ({_, name}: _.pure { inherit name; value = from.${name}; });
 
   # Evaluate an inherit expression, possibly with a source
@@ -144,9 +146,9 @@ rec {
   evalBindingList = bindings:
     Eval.do
       (while "evaluating 'bindings' node-list")
-      {attrsList = {_}: _.traverse evalNodeM bindings;}
+      {attrsList = traverse evalNodeM bindings;}
       {attrs = {_, attrsList}: _.pure (concatLists attrsList);}
-      ({_, attrs}: _.guard (all (attr: (attr ? name) && (attr ? value)) attrs) (RuntimeError ''
+      ({_, attrs}: _.guard (all (attr: (hasAttr "name" attr) && (hasAttr "value" attr)) attrs) (RuntimeError ''
         Recursive binding list evaluation produced invalid name/value pairs:
           bindings: ${_ph_ bindings}
           attrs: ${_ph_ attrs}
@@ -162,24 +164,43 @@ rec {
       then evalRecBindingList node.bindings
       else evalBindingList node.bindings);
 
-  evalRecBindingList = evalRecBindingList_ 0;
+  # Evaluate a binding without failing on missing names.
+  # TODO: Why does this need explicit state passing in?
+  # evalRecBinding :: AST -> Eval [{name, value}]
+  evalRecBinding = stateBefore: binding:
+    (Eval.do
+      (while "evaluating 'binding' node for recursive bindings")
+      (set stateBefore)
+      (evalNodeM binding))
+    .catch ({_, _e}: _.do
+      (while "Handling missing binding in recursive binding list")
+      ({_}: _.guard (UnknownIdentifierError.check _e) _e)
+      ({_}: _.pure []));
+
+  evalRecBindingList = bindings: Eval.do (evalRecBindingList_ 0 bindings);
   evalRecBindingList_ = i: bindings:
     Eval.do
       (while "evaluating 'bindings' node-list recursively, iteration ${toString i}")
-      {attrsList = {_, ...}: 
-        _.traverse 
-          (binding: (evalNodeM binding).catch ({_, _e}: _.do
-            (while "Handling missing binding in recursive binding list")
-            ({_}: _.guard (MissingAttributeError.check _e) _e)
-            _.pure []))
-          bindings;}
+      {stateBefore = get;}
+      {attrsList = {_, stateBefore}: _.traverse (evalRecBinding stateBefore) bindings;}
       {attrs = {_, attrsList}: _.pure (listToAttrs (concatLists attrsList));}
-      ({_, ...}: _.guard (i <= size bindings) (RuntimeError ''
+      ({_, attrs, stateBefore, ...}: _.set (EvalState (stateBefore.scope // attrs)))
+      {stateAfter = get;}
+      ({_, attrsList, attrs, stateBefore, stateAfter, ...}: _.guard (i <= size bindings) (RuntimeError ''
         Recursive binding list evaluation failed to complete at iteration ${toString i}:
           ${_ph_ bindings}
 
-        Attrs:
+        attrsList (this iteration):
+          ${_ph_ attrsList}
+
+        attrs:
           ${_ph_ attrs}
+
+        stateBefore:
+          ${_ph_ stateBefore}
+
+        stateAfter:
+          ${_ph_ stateAfter}
       ''))
       ({_, attrs, ...}: 
         if size bindings == size attrs then _.pure attrs
@@ -316,7 +337,7 @@ rec {
               restPath = builtins.tail components;
           in _.do
             {attrName = identifierName headPath;}
-            ({_, attrName, ...}: _.guard (obj ? ${attrName}) (MissingAttributeError attrName))
+            ({_, attrName, ...}: _.guard (hasAttr attrName obj) (MissingAttributeError attrName))
             ({_, attrName, ...}: traversePath obj.${attrName} restPath));
 
   # Evaluate attribute access (dot operator)
@@ -381,13 +402,12 @@ rec {
   requiredParamAttrs = param: filter (paramAttr: paramAttr.nodeType != "defaultParam") param.attrs;
 
   getDefaultLambdaScope = param:
-    {_, ...}:
-      _.traverse
-        (paramAttr: 
-          _.do
-            {default = evalNodeM paramAttr.default;}
-            ({_, default}: _.pure { ${paramName paramAttr} = default;}))
-        (defaultParamAttrs param);
+    traverse
+      (paramAttr: 
+        Eval.do
+          {default = evalNodeM paramAttr.default;}
+          ({_, default}: _.pure { ${paramName paramAttr} = default;}))
+      (defaultParamAttrs param);
 
   # Return any extra scope bound by passing in the arg to the param.
   # evalLambdaParams :: AST -> a -> Eval Scope
@@ -404,7 +424,7 @@ rec {
             allParamNames = map paramName param.attrs;
             requiredParamNames = map paramName (requiredParamAttrs param);
             suppliedUnknownNames = removeAttrs arg allParamNames;
-            requiredUnsuppliedNames = filter (name: !(arg ? name)) requiredParamNames;
+            requiredUnsuppliedNames = filter (name: !(hasAttr name arg)) requiredParamNames;
           in
             _.do
               ({_}: _.guard (lib.isAttrs arg) (TypeError ''
@@ -428,15 +448,14 @@ rec {
   evalLambda = node:
     Eval.do
       (while "evaluating 'lambda' node")
-      {scope = getScope;}
-      ({_, scope, ...}: _.pure (
+      {state = get;}
+      ({_, state, ...}: _.pure (
         # Bind arg to create an actual lambda.
         arg: 
           let bodyM = 
             # Start from scratch inside the lambda since we don't
             # inherit scope.
             Eval.do
-              (setScope scope)
               (appendScopeM (evalLambdaParams node.param arg))
               (evalNodeM node.body);
           in
@@ -446,7 +465,7 @@ rec {
             # might be evaluated in Eval and later applied outside of the Eval monad.
             # However we return an unwrapped EvalError if one occurs which
             # we can throw if we apply during Eval.
-            let e = bodyM.run_ (EvalState.mempty {});
+            let e = bodyM.run_ state;
             #in if isLeft e then e.left else e.right.a
             in e.case {
               Left = _: e;
@@ -461,7 +480,7 @@ rec {
     Eval.do
       (while "evaluating 'application' node")
       {func = evalNodeM node.func;}
-      {args = {_, ...}: _.traverse evalNodeM node.args;}
+      {args = traverse evalNodeM node.args;}
       {result = {_, func, args, ...}: _.pure (ap.list func args);}
       ({_, result, ...}: _.guard (!(is EvalError result)) result)
       ({_}: _.pure result);
@@ -477,24 +496,25 @@ rec {
   evalLetIn = node:
     Eval.do
       (while "evaluating 'letIn' node")
-      ({_}: _.saveScope (_.do
-        (appendScopeM (evalRecBindingList node.bindings))
+      (saveScope ({_}: _.do
+        {state = get;}
+        {bindings = evalRecBindingList node.bindings;}
+        ({_, state, bindings, ...}: _.set (EvalState (state.scope // bindings)))
         (evalNodeM node.body)));
-
-  # Evaluate a with expression
-  # evalWith :: AST -> Eval a
-  evalWithEnv = envNode: 
-    Eval.do
-      (while "evaluating 'with' environment node")
-      (prependScopeM (evalNodeM envNode));
 
   # Evaluate a with expression
   # evalWith :: AST -> Eval a
   evalWith = node: 
     Eval.do
       (while "evaluating 'with' node")
-      ({_}: _.saveScope (_.do
-        (evalWithEnv node.env)
+      (saveScope ({_}: _.do
+        {state = get;}
+        {env = evalNodeM node.env;}
+        ({_, env, ...}: _.guard (lib.isAttrs env) (TypeError ''
+          with: got non-attrset environment of type ${typeOf env}:
+            ${_ph_ env}
+        ''))
+        ({_, state, env, ...}: _.set (EvalState (env // state.scope)))
         (evalNodeM node.body)));
 
   # Evaluate an assert expression
@@ -564,10 +584,10 @@ rec {
             rest = maybeTail path;
             restPath = joinSep "/" (def [] rest);
         in Eval.do
-          ({_}: _.guard (scope ? NIX_PATH) (NixPathError ''
+          ({_}: _.guard (hasAttr "NIX_PATH" scope) (NixPathError ''
             No NIX_PATH found in scope when resolving ${node.value}.
           ''))
-          ({_}: _.guard (scope.NIX_PATH ? ${name}) (NixPathError ''
+          ({_}: _.guard (hasAttr name scope.NIX_PATH) (NixPathError ''
             ${name} not found in NIX_PATH when resolving ${node.value}.
           ''))
           (pure (scope.NIX_PATH.${name} + "/${restPath}")));
@@ -580,14 +600,6 @@ rec {
       let result = evalAST expr;
       in expectation result ((Either EvalError (getT expected)).Right expected);
   };
-
-  expectScope = expectScopeWith collective-lib.tests.expect.noLambdasEq;
-  expectScopeWith = expectation: node: expected:
-    let result = ((evalNodeM node).run (EvalState.mempty {})).case {
-      Left = e: e;
-      Right = x: x.s;
-    };
-    in expectation result expected;
 
   expectEvalError = expectEvalErrorWith collective-lib.tests.expect.noLambdasEq;
   expectEvalErrorWith = expectation: E: expr:
@@ -609,21 +621,6 @@ rec {
     # Tests for evalAST round-trip property
     evalAST = {
 
-      _00_scope = skip {
-        unit = expectScope (parse "{}") {};
-        attrs = expectScope (parse "{ a = 1; }") {a = 1;};
-
-        env = {
-          withs = 
-            let node = (parse "with { a = 1; }; a");
-            in expectScope (evalWithEnv node.env) (initScope // {a = 1;});
-        };
-      };
-
-      _000_failing = skip {
-        letIn = testRoundTrip "let a = 1; in a" 1;
-      };
-
       _00_smoke = {
         int = testRoundTrip "1" 1;
         float = testRoundTrip "1.0" 1.0;
@@ -636,11 +633,11 @@ rec {
         attrSet = testRoundTrip "{a = 1;}" {a = 1;};
         attrPath = testRoundTrip "{a = 1;}.a" 1;
         attrPathOr = testRoundTrip "{a = 1;}.b or 2" 2;
-        #inherits = testRoundTrip "{ inherit (builtins) true; }" { true = true; };
         inheritsConst = testRoundTrip "{ inherit ({a = 1;}) a; }" {a = 1;};
-        #letIn = testRoundTrip "let a = 1; in a" 1;
-        #withs = testRoundTrip "with {a = 1;}; a" 1;
-        #asserts = testRoundTrip "assert true; 1" 1;
+        recAttrSetNoRecursion = testRoundTrip "rec { a = 1; }" {a = 1;};
+        recAttrSetRecursion = testRoundTrip "rec { a = 1; b = a; }" {a = 1; b = 1;};
+        letIn = testRoundTrip "let a = 1; in a" 1;
+        withs = testRoundTrip "with {a = 1;}; a" 1;
       };
 
       _01_allFeatures =
