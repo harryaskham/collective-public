@@ -82,6 +82,16 @@ in {
           # Run in Termux (manually or via Tasker shortcut)
           # Starts X11 server and switches to NOD in order to launch desktop.
 
+          if ! [ -x "$(command -v termux-x11)" ]; then
+            echo "Installing termux-x11-nightly"
+            pkg i x11-repo && pkg i termux-x11-nightly
+          fi
+
+          if ! [ -x "$(command -v pulseaudio)" ]; then
+            echo "Installing pulseaudio"
+            pkg i pulseaudio
+          fi
+
           echo "Acquiring wake-lock"
           termux-wake-lock
 
@@ -89,7 +99,15 @@ in {
           (sleep 3; am start --user 0 -n com.termux.nix/com.termux.app.TermuxActivity) &
 
           echo "Starting PulseAudio server"
-          LD_PRELOAD=/system/lib64/libskcodec.so pulseaudio \
+          WITH_LD_PRELOAD="$LD_PRELOAD"
+          if [ -f /system/lib64/libskcodec.so ]; then
+            echo "Using skcodec for PulseAudio"
+            WITH_LD_PRELOAD="/system/lib64/libskcodec.so"
+          else
+            echo "No skcodec found, using default PulseAudio"
+          fi
+
+          LD_PRELOAD="$WITH_LD_PRELOAD" pulseaudio \
             --start \
             --exit-idle-time=-1 \
             --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1"
