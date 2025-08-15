@@ -641,11 +641,11 @@
         "nixpkgs": "nixpkgs_14"
       },
       "locked": {
-        "lastModified": 1755225965,
-        "narHash": "sha256-Z+tNdwc8yYams9TJN7i8nPfHpLTmIK+P/tTdu/a91UE=",
+        "lastModified": 1755296235,
+        "narHash": "sha256-dUBuJtgYbbaVrlRyywdVzqeQsEXE/EWLB8pvpgv4WuI=",
         "owner": "harryaskham",
         "repo": "nix-reflect",
-        "rev": "85361b9507c4330b4cbe28a721773505281a181d",
+        "rev": "7cd35e15c5e2aed9a1c70582a89d532509521083",
         "type": "github"
       },
       "original": {
