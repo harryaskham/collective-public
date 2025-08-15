@@ -152,7 +152,7 @@ let
       dispatchlib = import ./dispatchlib.nix args;
       display = import ./display.nix args;
       errors = import ./errors.nix args;
-      ext = import ./ext args;
+      ext = import ./ext;
       fan = import ./fan.nix args;
       font = import ./font.nix args;
       functions = import ./functions.nix args;
