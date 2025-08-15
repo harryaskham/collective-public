@@ -425,7 +425,8 @@ rec {
           __isEval = true;
           __toString = self: _b_ "Eval ${A} (${_ph_ self.e})";
           inherit S E A s e;
-          strictState = true;
+
+          strictState = false;
 
           # modify :: (EvalState -> EvalState) -> Eval A -> Eval {}
           modify = f: 
