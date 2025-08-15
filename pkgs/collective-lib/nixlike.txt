@@ -240,12 +240,16 @@ empty true
 </nix>
 
 <nix>
+(import ./collective-public/pkgs/collective-lib/ext.nix).wasm.typed
+</nix>
+
+<nix>
 (parser.parse "{a = 1;}")
 </nix>
 
 
 <nix>
-(tests.testModule (import ../../modules/agnostic/unexpected-keyboard)).runResults {}
+(tests.testModule (import ../../modules/agnostic/unexpected-keyboard)).run {}
 </nix>
 
 <nix>
