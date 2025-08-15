@@ -132,7 +132,10 @@ let
         else import ../../flakes/nix-reflect/lib (args // {
           inherit pkgs;
           inputs = inputs // {
-            collective-public.packages.${pkgs.system}.collective-lib = collective-lib;
+            collective-public = {
+              lib = { "${pkgs.system}" = collective-lib; };
+              packages = { "${pkgs.system}" = { collective-lib = collective-lib; }; };
+            };
           };
           inherit (inputs) nix-parsec;
         });
@@ -151,7 +154,7 @@ let
       dispatchlib = import ./dispatchlib.nix args;
       display = import ./display.nix args;
       errors = import ./errors.nix args;
-      ext = import ./ext args;
+             ext = import ./ext.nix;
       fan = import ./fan.nix args;
       font = import ./font.nix args;
       functions = import ./functions.nix args;

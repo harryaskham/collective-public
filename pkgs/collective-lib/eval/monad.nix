@@ -425,21 +425,32 @@ rec {
           __isEval = true;
           __toString = self: _b_ "Eval ${A} (${_ph_ self.e})";
           inherit S E A s e;
+          s_ = s (S.mempty {});
 
           # modify :: (EvalState -> EvalState) -> Eval A -> Eval {}
-          modify = f: 
+          modify = f:
             if isLeft this.e then this else
-            void (this.mapState (compose f));
+            let
+              s' = compose f this.s;
+              this' = (Eval A s' this.e) // { s_ = f this.s_; };
+            in
+              void this';
 
-          set = state: 
+          set = state:
             if isLeft this.e then this else
-            void (this.setState (const state));
+            let
+              this' = (Eval A (const state) this.e) // { s_ = state; };
+            in
+              void this';
 
           # Thunked to avoid infinite nesting - (m.get {}) is an (Eval EvalState)
-          get = {_, ...}: _.pure (this.s (S.mempty {}));
+          get = {_, ...}: _.pure this.s_;
 
-          setState = s: Eval A s this.e;
-          mapState = f: Eval A (f this.s) this.e;
+          setState = s:
+            (Eval A s this.e) // { s_ = s (S.mempty {}); };
+          mapState = f:
+            let s' = (f this.s);
+            in (Eval A s' this.e) // { s_ = s' (S.mempty {}); };
           mapEither = f: 
             let e = f this.e;
             in e.case {
@@ -480,17 +491,22 @@ rec {
           # traverse :: (a -> Eval b) -> [a] -> Eval [b]
           traverse = f: xs: this.sequenceM (map f xs);
 
-          bind = statement: 
+          bind = statement:
             this.e.case {
               Left = _: this;
               Right = a:
-                let normalised = normaliseBindStatement Eval statement;
-                    mb = normalised.f {_ = this; _a = a;};
-                in assert that (isMonadOf Eval mb) ''
-                  Eval.bind: non-Eval value returned of type ${getT mb}:
-                    ${_ph_ mb}
-                '';
-                mb.mapState (s: compose s this.s);
+                let
+                  normalised = normaliseBindStatement Eval statement;
+                  mb = normalised.f {_ = this; _a = a;};
+                in
+                  assert that (isMonadOf Eval mb) ''
+                    Eval.bind: non-Eval value returned of type ${getT mb}:
+                      ${_ph_ mb}
+                  '';
+                  let
+                    sCombined = compose mb.s this.s;
+                    sCombinedCached = mb.s this.s_;
+                  in (Eval mb.A sCombined mb.e) // { s_ = sCombinedCached; };
             };
 
           sq = b: this.bind ({_}: b);
