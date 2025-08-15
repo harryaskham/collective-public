@@ -133,6 +133,7 @@ let
           inherit pkgs;
           inputs = inputs // {
             collective-public.packages.${pkgs.system}.collective-lib = collective-lib;
+            collective-public.lib.${pkgs.system} = collective-lib;
           };
           inherit (inputs) nix-parsec;
         });

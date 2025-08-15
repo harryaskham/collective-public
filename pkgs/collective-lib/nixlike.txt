@@ -240,7 +240,7 @@ empty true
 </nix>
 
 <nix>
-(import ./collective-public/pkgs/collective-lib/ext.nix).wasm.typed
+(import ./ext.nix).wasm.typed
 </nix>
 
 <nix>
