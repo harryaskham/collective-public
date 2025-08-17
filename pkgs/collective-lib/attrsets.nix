@@ -46,7 +46,7 @@ let
                 let path' = path ++ [(toString i)];
                 in if deep
                    then go (path' ++ [(toString i)]) x
-                   else [{${pathToString path'} = v;}]))
+                   else {${pathToString path'} = v;}))
               xs;
       };
       in go [];
