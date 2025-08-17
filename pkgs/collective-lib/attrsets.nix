@@ -384,6 +384,26 @@ let
             a-b-d-e = 456;
           };
         };
+        sepDeep = {
+          expr = flattenSepDeep "-" {
+            a = {
+              b = [
+                {
+                  c = 123;
+                }
+                {
+                  d = {
+                    e = 456;
+                  };
+                }
+              ];
+            };
+          };
+          expected = {
+            a-b-0-c = 123;
+            a-b-1-d-e = 456;
+          };
+        };
       };
 
       swap = {
