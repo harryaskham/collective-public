@@ -27,16 +27,16 @@ let
     # - deep: If true, traverse into lists too.
     # - filter: a predicate from path, key and value to use to filter sets.
     # - stop: a predicate from path, key and value to true iff we should not traverse in.
-    flattenWith = { pathToString ? (joinSep "."), deep ? false, filter ? (_: _: _: true), stop ? (_: _: _: false) } @ params:
-      let go = path: dispatch.def (v: {${params.pathToString path'} = v;}) {
+    flattenWith = { pathToString ? (joinSep "."), deep ? false, filterFn ? (_: _: _: true), stop ? (_: _: _: false) }:
+      let go = path: dispatch.def (v: {${pathToString path'} = v;}) {
         set = xs_:
-          let xs = filterAttrs (params.filter path) xs_;
+          let xs = filterAttrs (filterFn path) xs_;
           in
             concatMapAttrs
               (k: v:
                 let path' = path ++ [k];
-                in if (params ? stop && params.stop path' k v)
-                  then {${params.pathToString path'} = v;}
+                in if stop path' k v
+                  then {${pathToString path'} = v;}
                   else go path' v)
               xs;
         list = xs:
@@ -44,9 +44,9 @@ let
             (imap0
               (i: x:
                 let path' = path ++ [(toString i)];
-                in if params.deep or false
+                in if deep
                    then go (path' ++ [(toString i)]) x
-                   else [{${params.pathToString path'} = v;}]))
+                   else [{${pathToString path'} = v;}]))
               xs;
       };
       in go [];
@@ -57,7 +57,6 @@ let
     };
 
     flattenSepDeep = sep: flattenWith {
-      f = path: _: _: joinSep sep path;
       deep = true;
     };
 
