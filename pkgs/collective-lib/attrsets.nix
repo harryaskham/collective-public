@@ -36,7 +36,7 @@ let
               (k: v:
                 let path' = path ++ [k];
                 in if (params ? stop && params.stop path' k v)
-                  then {${params.pathToString path'} = v;};
+                  then {${params.pathToString path'} = v;}
                   else go path' v)
               xs;
         list = xs:
