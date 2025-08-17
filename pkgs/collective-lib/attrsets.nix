@@ -24,20 +24,29 @@ let
 
     # Flatten an attribute with params
     # - f: a function from path and value to key.
+    # - deep (optional): If true, traverse into lists too.
     # - stop (optional): a predicate from path and value to true iff we should not traverse in.
     flattenWith = params:
       let go = path:
             concatMapAttrs
               (k: v:
                 let path' = path ++ [k];
-                in if isAttrs v && !(params ? stop && params.stop path' k v)
+                in
+                  if isAttrs v && !(params ? stop && params.stop path' k v)
                   then go path' v
+                  else if isList v && (params.deep or false)
+                  then mergeAttrsList (imap0 (i: x: go (path' ++ [(toString i)] x) v))
                   else {${params.f path' k v} = v;});
       in go [];
 
     # Flatten an attribute set separating keys in the path with the given separator.
     flattenSep = sep: flattenWith {
       f = path: _: _: joinSep sep path;
+    };
+
+    flattenSepDeep = sep: flattenWith {
+      f = path: _: _: joinSep sep path;
+      deep = true;
     };
 
     # Flatten tests with __ separator and avoiding expr/expected.
