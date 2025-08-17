@@ -198,7 +198,13 @@ with parser;
 parse (builtins.readFile ../../flakes/nix-reflect/examples/oneline.nix)
 </nix>
 <nix>
+attrsets._tests.run {}
+</nix>
+<nix>
 parser._tests.run {}
+</nix>
+<nix>
+eval.monad._tests.debug {}
 </nix>
 <nix>
 eval.ast._tests.run {}
