@@ -37,7 +37,7 @@ parser._tests.run {}
 </nix>
 
 <nix>
-parser.parse ''{a = id} . a 1''
+parser.parse ''{a = 1;}.a''
 </nix>
 
 <nix>
@@ -94,6 +94,9 @@ eval._tests.run {}
 eval._tests.debug {}
 </nix>
 <nix>
+<nix>
+eval.ast._tests.run {}
+</nix>
 parser._tests.debug {}
 </nix>
 <nix>
@@ -155,8 +158,7 @@ eval ''(import <nixpkgs> {}).lib.genAttrs toString 10''
 </nix>
 
 <nix>
-with parser; with eval.ast;
-(parse "{ a = 1; }")
+eval "let a = 1; in let b = 2; in [a b]"
 </nix>
 
 <nix>
@@ -187,6 +189,25 @@ eval.fn._tests.debug {}
 </nix>
 <nix>
 eval.monad._tests.debug {}
+</nix>
+<nix>
+eval.monad._tests.run {}
+</nix>
+<nix>
+with parser;
+parse (builtins.readFile ../../flakes/nix-reflect/examples/oneline.nix)
+</nix>
+<nix>
+parser._tests.run {}
+</nix>
+<nix>
+eval.ast._tests.run {}
+</nix>
+<nix>
+eval.ast._tests.debug {}
+</nix>
+<nix>
+eval "{a = 1;}.b or 2"
 </nix>
 <nix>
 with eval.monad;
@@ -240,10 +261,6 @@ empty true
 </nix>
 
 <nix>
-(import ./ext.nix).wasm.typed
-</nix>
-
-<nix>
 (parser.parse "{a = 1;}")
 </nix>
 
@@ -290,6 +307,9 @@ eval.monad._tests.debug {}
 </nix>
 <nix>
 strings._tests.run {}
+</nix>
+<nix>
+lists._tests.run {}
 </nix>
 <nix>
 functions._tests.run {}

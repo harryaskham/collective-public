@@ -4,7 +4,6 @@
   traceOpts ? null,
   # Passed from the flake, but set here for local importing.
   inputs ? {
-    nixpkgs = import <nixpkgs>;
     # nix eval --raw .#inputs.nix-parsec.outPath 2>/dev/null
     nix-parsec = import /nix/store/nlawm43dvjgaz5q9bj45vwk6a3rfddbn-source;
   },
@@ -134,8 +133,8 @@ let
           inputs = inputs // {
             collective-public.packages.${pkgs.system}.collective-lib = collective-lib;
             collective-public.lib.${pkgs.system} = collective-lib;
+            nix-parsec.lib = inputs.nix-parsec;
           };
-          inherit (inputs) nix-parsec;
         });
     in {
       # Reexpose split-out reflection library.
