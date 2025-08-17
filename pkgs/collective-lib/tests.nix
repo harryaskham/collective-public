@@ -144,6 +144,11 @@ in rec {
       value = false;
     };
 
+    fail = msg: {
+      expr = msg;
+      expected = "<expect.fail>";
+    };
+
     error = expr: { inherit expr; expected = failure; };
     lazyError = expr: {
       expr = NamedThunk "lazyError.expr" expr;
