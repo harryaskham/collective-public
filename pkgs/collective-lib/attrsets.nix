@@ -45,9 +45,9 @@ let
               (i: x:
                 let path' = path ++ [(toString i)];
                 in if params.deep or false
-                   then go (path' ++ [(toString i)]) x)
+                   then go (path' ++ [(toString i)]) x
                    else [{${params.pathToString path'} = v;}]))
-              xs);
+              xs;
       };
       in go [];
 
