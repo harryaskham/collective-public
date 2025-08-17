@@ -28,7 +28,7 @@ let
     # - filter: a predicate from path, key and value to use to filter sets.
     # - stop: a predicate from path, key and value to true iff we should not traverse in.
     flattenWith = { pathToString ? (joinSep "."), deep ? false, filterFn ? (_: _: _: true), stop ? (_: _: _: false) }:
-      let go = path: dispatch.def (v: {${pathToString path'} = v;}) {
+      let go = path: dispatch.def (v: {${pathToString path} = v;}) {
         set = xs_:
           let xs = filterAttrs (filterFn path) xs_;
           in
