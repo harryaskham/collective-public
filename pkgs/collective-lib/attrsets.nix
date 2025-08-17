@@ -31,15 +31,23 @@ let
       let go = path: dispatch.def (v: {${params.pathToString path'} = v;}) {
         set = xs_:
           let xs = if params ? filter then filterAttrs (params.filter path) xs_ else xs_;
-          in concatMapAttrs (k: v:
-            let path' = path ++ [k];
-            in if (params ? stop && params.stop path' k v) then {${params.pathToString path'} = v;};
-               else go path' v) xs;
+          in
+            concatMapAttrs
+              (k: v:
+                let path' = path ++ [k];
+                in if (params ? stop && params.stop path' k v)
+                  then {${params.pathToString path'} = v;};
+                  else go path' v)
+              xs;
         list = xs:
-          mergeAttrsList (imap0 (i: x:
-            let path' = path ++ [(toString i)];
-            in if params.deep or false then go (path' ++ [(toString i)]) x) xs
-               else {${params.pathToString path'} = v;}) xs;
+          mergeAttrsList
+            (imap0
+              (i: x:
+                let path' = path ++ [(toString i)];
+                in if params.deep or false
+                   then go (path' ++ [(toString i)]) x)
+                   else [{${params.pathToString path'} = v;}]))
+              xs);
       };
       in go [];
 
