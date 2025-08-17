@@ -25,14 +25,16 @@ let
     # Flatten an attribute with params
     # - f: a function from path and value to key.
     # - deep (optional): If true, traverse into lists too.
-    # - stop (optional): a predicate from path and value to true iff we should not traverse in.
+    # - filter (optional): a predicate from path, key and value to use to filter sets.
+    # - stop (optional): a predicate from path, key and value to true iff we should not traverse in.
     flattenWith = params:
       let go = path:
             concatMapAttrs
               (k:
                 let path' = path ++ [k];
                 in dispatch.def (v: {${params.f path' k v} = v;}) {
-                  set = v:
+                  set = v_:
+                    let v = if params ? filter then params.filter path k v_ else v_; in
                     if !(params ? stop && params.stop path' k v)
                     then go path' v
                     else {${params.f path' k v} = v;};
