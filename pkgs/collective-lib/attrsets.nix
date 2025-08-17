@@ -35,7 +35,7 @@ let
                   if isAttrs v && !(params ? stop && params.stop path' k v)
                   then go path' v
                   else if isList v && (params.deep or false)
-                  then mergeAttrsList (imap0 (i: x: go (path' ++ [(toString i)] x) v))
+                  then mergeAttrsList (imap0 (i: x: go (path' ++ [(toString i)] x)) v)
                   else {${params.f path' k v} = v;});
       in go [];
 
