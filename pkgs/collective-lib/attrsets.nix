@@ -23,31 +23,29 @@ let
     selfAttrs = keyByF id;
 
     # Flatten an attribute with params
-    # - f: a function from path and value to key.
+    # - pathToString: a function from path and value to key.
     # - deep (optional): If true, traverse into lists too.
     # - filter (optional): a predicate from path, key and value to use to filter sets.
     # - stop (optional): a predicate from path, key and value to true iff we should not traverse in.
     flattenWith = params:
-      let go = path:
-            concatMapAttrs
-              (k:
-                let path' = path ++ [k];
-                in dispatch.def (v: {${params.f path' k v} = v;}) {
-                  set = v_:
-                    let v = if params ? filter then params.filter path k v_ else v_; in
-                    if !(params ? stop && params.stop path' k v)
-                    then go path' v
-                    else {${params.f path' k v} = v;};
-                  list = v:
-                    if params.deep or false
-                    then mergeAttrsList (imap0 (i: x: go (path' ++ [(toString i)]) x) v)
-                    else {${params.f path' k v} = v;};
-                });
+      let go = path: dispatch.def (v: {${params.pathToString path'} = v;}) {
+        set = xs_:
+          let xs = if params ? filter then filterAttrs (params.filter path) xs_ else xs_;
+          in concatMapAttrs (k: v:
+            let path' = path ++ [k];
+            in if (params ? stop && params.stop path' k v) then {${params.pathToString path'} = v;};
+               else go path' v) xs;
+        list = xs:
+          mergeAttrsList (imap0 (i: x:
+            let path' = path ++ [(toString i)];
+            in if params.deep or false then go (path' ++ [(toString i)]) x) xs
+               else {${params.pathToString path'} = v;}) xs;
+      };
       in go [];
 
     # Flatten an attribute set separating keys in the path with the given separator.
     flattenSep = sep: flattenWith {
-      f = path: _: _: joinSep sep path;
+      pathToString = joinSep sep;
     };
 
     flattenSepDeep = sep: flattenWith {
