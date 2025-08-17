@@ -37,7 +37,8 @@ let
                 let path' = path ++ [k];
                 in if stop path' k v
                   then {${pathToString path'} = v;}
-                  else go path' v)
+                  else if filterFn path k v then go path' v
+                  else {})
               xs;
         list = xs:
           mergeAttrsList
