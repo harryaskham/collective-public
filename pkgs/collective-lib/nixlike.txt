@@ -95,7 +95,7 @@ eval._tests.debug {}
 </nix>
 <nix>
 <nix>
-eval.ast._tests.run {}
+eval.ast._tests.debug {}
 </nix>
 parser._tests.debug {}
 </nix>
