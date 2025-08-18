@@ -320,7 +320,7 @@ let
       else if isList a && isList b
         then
           (zipListsWith
-            (a: b: diff a b)
+            (a: b: diff_ maxDepth (depth + 1) a b)
             a
             b)
           ++ (if length a < length b
@@ -339,7 +339,9 @@ let
                 };
               }
               else
-                diff
+                diff_
+                  maxDepth
+                  (depth + 1)
                   (elemAt values 0)
                   (elemAt values 1))
             [a b])
