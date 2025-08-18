@@ -197,13 +197,13 @@ with codes.withAliases {
               c.i
         sw."*"      "⥺" se.switch_to_C0Mods
       _
-                  ne."9"
+        "⛶" nw.floating_move  ne."9"
               c.o
         sw."("     se.")"
       _
         "∞" nw.toggle_persistence   ne."0"
               c.p
-
+        "⇙" sw.floating_resize  "➟" se.floating_passthrough
       K;
   }
 
