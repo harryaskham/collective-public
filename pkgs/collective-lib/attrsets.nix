@@ -29,25 +29,23 @@ let
     # - stop: a predicate from path, key and value to true iff we should not traverse in.
     flattenWith = { pathToString ? (joinSep "."), deep ? false, filterFn ? (_: _: _: true), stop ? (_: _: _: false) }:
       let go = path: dispatch.def (v: {${pathToString path} = v;}) {
-        set = xs_:
-          let xs = filterAttrs (filterFn path) xs_;
-          in
-            concatMapAttrs
-              (k: v:
-                let path' = path ++ [k];
-                in if !(filterFn path' k v) then {}
-                   else if stop path' k v then {${pathToString path'} = v;}
-                   else go path' v)
-              xs;
+        set = xs:
+          concatMapAttrs
+            (k: v:
+              let path' = path ++ [k];
+              in if !(filterFn path' k v) then {}
+                  else if stop path' k v then {${pathToString path'} = v;}
+                  else go path' v)
+            xs;
         list = xs:
-          mergeAttrsList
-            (imap0
-              (i: x:
-                let path' = path ++ [(toString i)];
-                in if deep
-                   then go (path' ++ [(toString i)]) x
-                   else {${pathToString path'} = v;})
-              xs);
+          if deep then
+            mergeAttrsList
+              (imap0
+                (i: x:
+                  let path' = path ++ [(toString i)];
+                  in go path' x)
+                xs)
+            else {${pathToString path} = xs;};
       };
       in go [];
 
@@ -67,7 +65,7 @@ let
 
     # Flatten tests with __ separator and avoiding expr/expected.
     flattenTests = flattenWith {
-      f = path: _: _: "test-${joinSep "__" path}";
+      pathToString = path: "test-${joinSep "__" path}";
       stop = _: _: v: isAttrs v && v ? expr && v ? expected;
     };
 
