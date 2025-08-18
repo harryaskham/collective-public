@@ -52,8 +52,8 @@ with codes.withAliases {
         _ 1 paddingL "✲" c.ctrl "❖" sw.meta "⌥" ne.alt "▤" nw.fn
         K;
 
-      modGridR = { gap, paddingL, paddingR, ...}:
-        let centralGap = gap - 2 - paddingL - paddingR;
+      modGridR = { gap, ...}:
+        let centralGap = gap - 2;
         in 
           K 1 centralGap n.up w.left e.right s.down
           _ 1 centralGap c.shift
@@ -183,7 +183,7 @@ with codes.withAliases {
       _
                     ne."5"
               c.t
-        sw."%"      "⌨" se.toggle_floating 
+        sw."%"      "⇹" se.fill_width
       _
                     ne."6"
               c.y
@@ -212,7 +212,7 @@ with codes.withAliases {
       K
         nw.tab     ne.shift
               c.a
-                  "✲" se.ctrl
+        "⇤" sw.snap_left  "✲" se.ctrl
       _
 
               c.s
@@ -249,7 +249,7 @@ with codes.withAliases {
       _
         nw.shift     ne.del
                 c.bsp
-        "✲" sw.ctrl
+        "✲" sw.ctrl  "⇥" se.snap_right
     K;
   }
 
@@ -258,7 +258,7 @@ with codes.withAliases {
       K
                         ne."|"
               c.z
-        sw."\\"
+        sw."\\"       se.
       _
                       ne.cut
               c.x
@@ -266,7 +266,7 @@ with codes.withAliases {
       _
                     ne.copy
               c.c
-        sw.config   
+        sw.config  se.toggle_floating_docked 
       _
                   ne.paste
               c.v

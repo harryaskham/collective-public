@@ -257,10 +257,14 @@ let
           fork = 
             let xs = selfAttrs [ 
               "toggle_floating"
+              "toggle_floating_docked"
               "toggle_persistence"
               "floating_move"
               "floating_resize"
               "floating_enable_passthrough"
+              "snap_left"
+              "snap_right"
+              "fill_width"
             ];
             in if cfg.enableFork then xs else mapAttrs (_: _: "removed") xs;
         };
