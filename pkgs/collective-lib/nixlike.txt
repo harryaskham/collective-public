@@ -194,8 +194,10 @@ eval.monad._tests.debug {}
 eval.monad._tests.run {}
 </nix>
 <nix>
-with parser;
-toString (parse (builtins.readFile ../../flakes/nix-reflect/examples/expr.nix))
+(eval (builtins.readFile ../../flakes/nix-reflect/examples/expr.nix))
+</nix>
+<nix>
+(eval "1")
 </nix>
 <nix>
 attrsets._tests.run {}
@@ -277,7 +279,10 @@ empty true
 </nix>
 
 <nix>
-parser.parse "let a = rec { x = 1 + 1; y = x + 1; }; in a.x + a.y"
+eval "5"
+</nix>
+<nix>
+eval "let a = rec { x = 1 + 1; y = x + 1; }; in a.x + a.y"
 </nix>
 
 
