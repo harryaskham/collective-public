@@ -266,7 +266,7 @@ with codes.withAliases {
       _
                     ne.copy
               c.c
-        sw.config  se.toggle_floating_docked 
+        sw.config  #se.toggle_floating_docked 
       _
                   ne.paste
               c.v
