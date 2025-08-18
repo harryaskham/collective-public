@@ -258,7 +258,7 @@ with codes.withAliases {
       K
                         ne."|"
               c.z
-        sw."\\"       se.
+        sw."\\"       
       _
                       ne.cut
               c.x
