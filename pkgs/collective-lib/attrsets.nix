@@ -56,7 +56,12 @@ let
       pathToString = joinSep sep;
     };
 
+    flattenDeep = sep: flattenWith {
+      deep = true;
+    };
+
     flattenSepDeep = sep: flattenWith {
+      pathToString = joinSep sep;
       deep = true;
     };
 
