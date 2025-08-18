@@ -35,7 +35,7 @@ let
             concatMapAttrs
               (k: v:
                 let path' = path ++ [k];
-                in if !(filterFn path k v) then {}
+                in if !(filterFn path' k v) then {}
                    else if stop path' k v then {${pathToString path'} = v;}
                    else go path' v)
               xs;
