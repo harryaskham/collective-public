@@ -23,10 +23,10 @@ let
   collective-lib = import ./pkgs/collective-lib {
     inherit pkgs lib;
     traceOpts = {
-      traceLevel = 0;
-      enablePartialTrace = false;
-      enableVerboseTrace = false;
-      enableShortTrace = false;
+      traceLevel = ${CLTV_TRACE_LEVEL:-0};
+      enablePartialTrace = ${CLTV_PARTIAL_TRACE:-false};
+      enableVerboseTrace = ${CLTV_VERBOSE_TRACE:-false};
+      enableShortTrace = ${CLTV_SHORT_TRACE:-false};
     };
   };
 in
