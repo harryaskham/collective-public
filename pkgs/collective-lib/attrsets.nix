@@ -35,10 +35,9 @@ let
             concatMapAttrs
               (k: v:
                 let path' = path ++ [k];
-                in if stop path' k v
-                  then {${pathToString path'} = v;}
-                  else if filterFn path k v then go path' v
-                  else {})
+                in if !(filterFn path k v) then {}
+                   else if stop path' k v then {${pathToString path'} = v;}
+                   else go path' v)
               xs;
         list = xs:
           mergeAttrsList
