@@ -6,7 +6,10 @@
 
     nix-parsec.url = "github:nprindle/nix-parsec";
 
-    nix-reflect.url = "github:harryaskham/nix-reflect";
+    nix-reflect = {
+      url = "github:harryaskham/nix-reflect";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
