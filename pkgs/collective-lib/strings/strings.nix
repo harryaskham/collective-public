@@ -469,4 +469,12 @@ in rec {
       };
     };
   };
+
+  to4CharHexString = i:
+    let h = toHexString i;
+        pad0 = 4 - stringLength h;
+    in "${lib.strings.replicate pad0 "0"}${h}";
+
+  toAsciiChar = i: 
+    builtins.fromJSON ''"\u${to4CharHexString (i + 1)}"'';
 }

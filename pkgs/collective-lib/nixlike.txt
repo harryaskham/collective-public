@@ -204,6 +204,9 @@ attrsets._tests.run {}
 parser._tests.run {}
 </nix>
 <nix>
+parser.parse ''"hello\n\1world"''
+</nix>
+<nix>
 eval.monad._tests.debug {}
 </nix>
 <nix>
