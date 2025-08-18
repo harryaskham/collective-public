@@ -276,12 +276,11 @@ in rec {
             if result == null then msg
             else indent.block ''
               ${msg}: ${indent.here (log.vprintD 2 result)}
+              ${optionalString (status == Status.Failed) ''
+                Diff:
+                  ${_pvh_ (diffShort_ 10 test.expected result)}
+              ''}
             '';
-            #  ${optionalString (status == Status.Failed) ''
-            #    Diff:
-            #      ${_pvh_ (diffShort_ 1 test.expected result)}
-            #  ''}
-            #'';
         };
        in
         if test.skip

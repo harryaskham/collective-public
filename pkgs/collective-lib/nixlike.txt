@@ -195,10 +195,17 @@ eval.monad._tests.run {}
 </nix>
 <nix>
 with parser;
-parse (builtins.readFile ../../flakes/nix-reflect/examples/oneline.nix)
+toString (parse (builtins.readFile ../../flakes/nix-reflect/examples/expr.nix))
 </nix>
 <nix>
 attrsets._tests.run {}
+</nix>
+<nix>
+"${"
+</nix>
+<nix>
+with parser;
+parse "''a'''b''"
 </nix>
 <nix>
 parser._tests.run {}
@@ -229,7 +236,7 @@ log._tests.run {}
 parser._tests.debug {}
 </nix>
 <nix>
-eval._tests.debug {}
+eval.ast._tests.debug {}
 </nix>
 <nix>
 eval._tests.debug {}

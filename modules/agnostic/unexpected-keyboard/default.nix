@@ -9,7 +9,7 @@ with typed;
 let
   # Library for building layouts exposed as services.unexpected-keyboard.lib.
   mkLib = cfg: rec {
-    defaultKeyboards = import ./keyboards.nix {
+    defaultKeyboards = import ./keyboards {
       inherit typed; uklib = cfg.lib;
     };
 
@@ -255,7 +255,13 @@ let
           unused = selfAttrs [ "replaceText" "textAssist" "autofill" "removed" ];
 
           fork = 
-            let xs = selfAttrs [ "toggle_floating" "toggle_persistence" ];
+            let xs = selfAttrs [ 
+              "toggle_floating"
+              "toggle_persistence"
+              "floating_move"
+              "floating_resize"
+              "floating_passthrough"
+            ];
             in if cfg.enableFork then xs else mapAttrs (_: _: "removed") xs;
         };
 
@@ -1086,14 +1092,14 @@ in {
       default = [];
       description = ''
         The Unexpected Keyboard layouts to generate.
-        Place your layout definitions here. See ./keyboards.nix for examples.
+        Place your layout definitions here. See ./keyboards for examples.
       '';
     };
     includeDefaultKeyboards = mkOption {
       type = types.bool;
       default = true;
       description = ''
-        If true, include the default keyboards from ./keyboards.nix.
+        If true, include the default keyboards from ./keyboards.
       '';
     };
     keyboardsWithVariants = mkOption {
