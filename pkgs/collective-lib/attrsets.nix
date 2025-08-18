@@ -314,8 +314,10 @@ let
       else diff a b;
 
     # Diff two attrsets, returning any divergent keys and their values.
-    diff = a: b:
-      if isList a && isList b
+    diff = diff_ 20 0;
+    diff_ = maxDepth: depth: a: b:
+      if depth == maxDepth then { __maxDepth = true; }
+      else if isList a && isList b
         then
           (zipListsWith
             (a: b: diff a b)
@@ -346,7 +348,9 @@ let
       else { __unequal = { inherit a b; }; };
 
     # Diff two attrsets, returning any divergent keys and their values.
-    diffShort = a: b: deepFilter (x: !(x ? __equal)) (diff a b);
+    diffShort_ = maxDepth: a: b: deepFilter (x: !(x ? __equal)) (diff_ maxDepth 0 a b);
+    diffShort = diffShort_ 20;
+
     diffShortWithEq = a: b: deepFilter (x: !(x ? __equal)) (diffWithEq a b);
 
     # Whether a diff is empty i.e. two objects were equal.
