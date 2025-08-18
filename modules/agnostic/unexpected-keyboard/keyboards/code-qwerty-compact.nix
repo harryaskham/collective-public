@@ -203,7 +203,7 @@ with codes.withAliases {
       _
         "∞" nw.toggle_persistence   ne."0"
               c.p
-        "⇙" sw.floating_resize  "➟" se.floating_passthrough
+        "⇙" sw.floating_resize  "➟" se.floating_enable_passthrough
       K;
   }
 

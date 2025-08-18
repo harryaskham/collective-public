@@ -260,7 +260,7 @@ let
               "toggle_persistence"
               "floating_move"
               "floating_resize"
-              "floating_passthrough"
+              "floating_enable_passthrough"
             ];
             in if cfg.enableFork then xs else mapAttrs (_: _: "removed") xs;
         };
