@@ -515,20 +515,25 @@ in rec {
 
   removeTests = xs: removeAttrs xs ["_tests"];
 
+  isTestableModule = module:
+    lib.isFunction module
+    && !(module ? __functor)
+    && ((builtins.functionArgs module) ? testableModule);
+
   testModule = module: 
     (getTestsFromTestableModule module)._tests or emptySuite;
 
   getModuleFromTestableModule = module:
     if (isString module || isPath module) 
     then (getModuleFromTestableModule (import module))
-    else if (isFunction module && ((builtins.functionArgs module) ? testableModule))
+    else if isTestableModule module
     then module { testableModule = lib.const; inherit lib collective-lib; }
     else module;
 
   getTestsFromTestableModule = module:
     if (isString module || isPath module)
     then (getTestsFromTestableModule (import module))
-    else if (isFunction module && ((builtins.functionArgs module) ? testableModule))
+    else if isTestableModule module
     then module { testableModule = flip lib.const; inherit lib collective-lib; }
     else module;
 

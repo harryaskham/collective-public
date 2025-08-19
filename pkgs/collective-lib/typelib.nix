@@ -1,11 +1,15 @@
-{ lib ? import <nixpkgs/lib>,
+{ 
+  pkgs ? import <nixpkgs>,
+  lib ? pkgs.lib,
   collective-lib ? import ./. { inherit lib; },
-  ... }:
+  ... 
+}:
+
+with collective-lib.nix-reflect.debuglib;
 
 with lib.strings;
 with collective-lib.collections;
 with collective-lib.clib;
-with collective-lib.debuglib;
 with collective-lib.attrsets;
 with collective-lib.functions;
 with collective-lib.lists;

@@ -1,6 +1,4 @@
-{ lib ? import <nixpkgs/lib>, collective-lib ? import ./. { inherit lib; }, ... }:
-
-# Predictable location for test data.
+# Predictable non-moving source location for test data.
 let 
   testData = {
     f = {
@@ -12,11 +10,19 @@ let
   };
 in
 
+{ 
+  pkgs ? import <nixpkgs>,
+  lib ? pkgs.lib,
+  collective-lib ? import ./. { inherit lib; },
+  ... 
+}:
+
+with collective-lib.nix-reflect.debuglib;
+
 with lib;
 with collective-lib.attrsets;
 with collective-lib.collections;
 with collective-lib.dispatchlib;
-with collective-lib.debuglib;
 with collective-lib.errors;
 with collective-lib.lists;
 with collective-lib.strings;

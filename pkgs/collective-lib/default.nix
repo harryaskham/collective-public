@@ -2,15 +2,19 @@
   pkgs ? import <nixpkgs> {},
   lib ? import <nixpkgs/lib>,
   traceOpts ? null,
-  # Passed from the flake, but set here for local importing.
-  inputs ? {
-    # nix eval --raw .#inputs.nix-parsec.outPath 2>/dev/null
-    nix-parsec = import /nix/store/nlawm43dvjgaz5q9bj45vwk6a3rfddbn-source;
-  },
+  inputs ? {},
   ... 
 }:
 
+lib.fix (self:
 let
+  nix-reflect = inputs.nix-reflect or { 
+    lib.${pkgs.system} = import ../../flakes/nix-reflect/lib {
+      inherit pkgs lib;
+      inputs.collective-public.lib.${pkgs.system} = self;
+    };
+  };
+
   # Functions required for building the collective-lib.
   # Can't put this inside e.g. lists/attrsets otherwise it gets merged into itself here.
   modulelib = import ./modulelib.nix { inherit lib; };
@@ -47,7 +51,6 @@ let
           clib
           collections
           data
-          debuglib
           dispatchlib
           errors
           functions
@@ -124,23 +127,7 @@ let
   baseModules =
     let
       args = { inherit lib collective-lib; };
-      reflect =
-        if inputs ? nix-reflect
-        then inputs.nix-reflect.lib.${pkgs.system}
-        # Support local usage.
-        else import ../../flakes/nix-reflect/lib (args // {
-          inherit pkgs;
-          inputs = inputs // {
-            collective-public.packages.${pkgs.system}.collective-lib = collective-lib;
-            collective-public.lib.${pkgs.system} = collective-lib;
-            nix-parsec.lib = inputs.nix-parsec;
-          };
-        });
     in {
-      # Reexpose split-out reflection library.
-      inherit reflect;
-      inherit (reflect) debuglib parser eval;
-
       attrsets = import ./attrsets.nix args;
       binding = import ./binding.nix args;
       clib = import ./clib.nix args;
@@ -159,6 +146,7 @@ let
       log = import ./log.nix (args // { inherit traceOpts; });
       inherit modulelib;
       rebinds = import ./rebinds.nix args;
+      nix-reflect = nix-reflect.lib.${pkgs.system};
       script-utils = import ./script-utils (args // { inherit pkgs; });
       strings = import ./strings args;
       syntax = import ./syntax.nix args;
@@ -194,3 +182,4 @@ in
 
   #collective-lib-from-drv
   collective-lib
+)

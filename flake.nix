@@ -29,7 +29,14 @@
         in {
           lib = collective-lib;
           packages = import ./pkgs { inherit pkgs inputs; };
-          devShells = { default = pkgs.mkShell {}; };
+          devShells = rec { 
+            default = test;
+            test = pkgs.mkShell (rec {
+              shellHook = ''
+                source ./scripts/eval.sh
+              '';
+            });
+          };
           inherit testedModules;
           modules = 
             with collective-lib.typed;

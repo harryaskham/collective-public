@@ -2,7 +2,7 @@
 
 rec {
   # Public subset of the Collective base library.
-  collective-lib = import ./collective-lib { inherit pkgs; inherit (pkgs) lib; inherit inputs; };
+  collective-lib = import ./collective-lib { inherit pkgs inputs; inherit (pkgs) lib; };
 
   # Namespaced python packages.
   collective-pythonPackages = import ./pythonPackages { inherit pkgs; };
