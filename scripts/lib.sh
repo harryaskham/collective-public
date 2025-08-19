@@ -1,5 +1,18 @@
 #!/usr/bin/env bash
 
+function maybe-install-nix() {
+  if ! which nix; then
+    sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --no-daemon
+    . /home/ubuntu/.nix-profile/etc/profile.d/nix.sh
+  fi
+}
+
+function maybe-bootstrap-cursor-agent() {
+  if [[ "$(hostname)" == "cursor" ]]; then
+    maybe-install-nix
+  fi
+}
+
 function wrap-nix-expr() {
   cat << EOF
 let
@@ -71,5 +84,13 @@ function run-tests() {
     eval-expr "collective-lib._tests.run {}" --raw
   else
     eval-expr "collective-lib.$1._tests.run {}" --raw
+  fi
+}
+
+function debug-tests() {
+  if [[ -z "$1" ]]; then
+    eval-expr "collective-lib._tests.debug {}" --raw
+  else
+    eval-expr "collective-lib.$1._tests.debug {}" --raw
   fi
 }

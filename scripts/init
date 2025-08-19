@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+source $COLLECTIVE_PUBLIC_DIR/scripts/lib.sh
+maybe-bootstrap-cursor-agent

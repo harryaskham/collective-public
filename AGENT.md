@@ -236,10 +236,17 @@ mkDefaultScriptPackage {
 
 ## Testing
 
-- Quick run of library tests (from this directory):
+- Quick run of library tests (from this directory, with direnv picking up the correct PATH):
 ```bash
-./test.sh
+# Run all tests
+run-tests
 ```
+
+```bash
+# Run one library's tests
+run-tests functions
+```
+- There is also `debug-tests` which will allow Nix errors to propagate and kill the test, allowing for deeper insight into failure but aborting the other tests.
 - The library also exposes test suites under `collective-lib._tests` and `collective-lib._testsUntyped`.
 
 ## Notes on visibility
