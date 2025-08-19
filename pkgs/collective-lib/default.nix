@@ -81,6 +81,9 @@ let
 
       noTests = mkCollectiveLib false baseModules;
 
+      withTraceOpts = traceOpts:
+        import ./. { inherit pkgs lib inputs traceOpts; };
+
       # Keep a reference to the original base so that we can still access it unmerged.
       base = if withTests then baseModules else removeAttrs baseModules [ "_tests" ];
 
