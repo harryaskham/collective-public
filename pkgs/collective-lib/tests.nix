@@ -275,7 +275,7 @@ in rec {
           __toString = _:
             if result == null then msg
             else indent.block ''
-              ${msg}: ${indent.here (log.vprintD 2 result)}
+              ${msg}: ${indent.here (log.vprintD 5 result)}
               ${optionalString (status == Status.Failed) ''
                 Diff:
                   ${_pvh_ (
