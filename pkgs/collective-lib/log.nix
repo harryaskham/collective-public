@@ -4,7 +4,7 @@
   traceOpts ? null,
   # Default trace level, 0 = all (log.trace), 1 = vtrace, 2+ = custom
   # Null to disable.
-  traceLevel ? traceOpts.traceLevel or 0,
+  traceLevel ? traceOpts.traceLevel or 3,
   # If true, trace not only on start and return, but also on accruing all intermediate values.
   # Duplicative but enables tracing of calls that never reach their return value.
   enablePartialTrace ? traceOpts.enablePartialTrace or false,
