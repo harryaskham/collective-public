@@ -350,7 +350,7 @@ let
       else { __unequal = { inherit a b; }; };
 
     # Diff two attrsets, returning any divergent keys and their values.
-    diffShort_ = maxDepth: a: b: deepFilter (x: !(x ? __equal)) (diff_ maxDepth 0 a b);
+    diffShort_ = maxDepth: a: b: deepFilter (x: x != {} && !(x ? __equal)) (diff_ maxDepth 0 a b);
     diffShort = diffShort_ 20;
 
     diffShortWithEq = a: b: deepFilter (x: !(x ? __equal)) (diffWithEq a b);
