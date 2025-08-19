@@ -278,7 +278,15 @@ in rec {
               ${msg}: ${indent.here (log.vprintD 2 result)}
               ${optionalString (status == Status.Failed) ''
                 Diff:
-                  ${_pvh_ (diffShort_ 10 test.expected result)}
+                  ${_pvh_ (
+                    diffShort_
+                      {
+                        maxDepth = 10;
+                        aLabel = "expected";
+                        bLabel = "actual";
+                      }
+                      test.expected result
+                  )}
               ''}
             '';
         };

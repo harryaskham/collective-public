@@ -314,19 +314,25 @@ let
       else diff a b;
 
     # Diff two attrsets, returning any divergent keys and their values.
-    diff = diff_ 20 0;
-    diff_ = maxDepth: depth: a: b:
+    diff = diff_ {};
+    diff_ = {
+      maxDepth ? 20,
+      depth ? 0,
+      aLabel ? "first",
+      bLabel ? "second",
+      allLambdasEqual ? false
+    }: a: b:
       if depth == maxDepth then { __maxDepth = true; }
       else if isList a && isList b
         then
           (zipListsWith
-            (a: b: diff_ maxDepth (depth + 1) a b)
+            (a: b: diff_ { inherit maxDepth aLabel bLabel; depth = depth + 1; } a b)
             a
             b)
           ++ (if length a < length b
-              then map (x: { missing_in_a = x; }) (drop (length a) b)
+              then map (x: { "missing_in_${aLabel}" = x; }) (drop (length a) b)
               else if length b > length a
-              then map (x: { missing_in_b = x; }) (drop (length b) a)
+              then map (x: { "missing_in_${bLabel}" = x; }) (drop (length b) a)
               else [])
       else if isAttrs a && isAttrs b
         then
@@ -340,18 +346,21 @@ let
               }
               else
                 diff_
-                  maxDepth
-                  (depth + 1)
+                  { inherit maxDepth aLabel bLabel; depth = depth + 1; }
                   (elemAt values 0)
                   (elemAt values 1))
             [a b])
-      else if isFunction a && isFunction b then { __unequal = "<lambda>"; }
+      else if isFunction a && isFunction b then
+        if allLambdasEqual
+        then { __equal = "<both lambda>"; }
+        else { __unequal = "<uncomparable lambda>"; }
       else if a == b then { __equal = a; }
-      else { __unequal = { inherit a b; }; };
+      else { __unequal = { ${aLabel} = a; ${bLabel} = b; }; };
 
     # Diff two attrsets, returning any divergent keys and their values.
-    diffShort_ = maxDepth: a: b: deepFilter (x: x != {} && !(x ? __equal)) (diff_ maxDepth 0 a b);
-    diffShort = diffShort_ 20;
+    diffShort_ = params: a: b:
+      deepFilter (x: x != {} && !(x ? __equal)) (diff_ params a b);
+    diffShort = diffShort_ {};
 
     diffShortWithEq = a: b: deepFilter (x: !(x ? __equal)) (diffWithEq a b);
 

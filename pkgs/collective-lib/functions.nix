@@ -535,16 +535,16 @@ in rec {
   _tests = with collective-lib.tests; suite {
     functionArgs = {
       getArgs.opt = expect.noLambdasEq (getArgs testData.f.opt) [
-        {name = "b"; hasDefault = false; pos = {__isPos = true; name = "b"; file = "functions.nix"; line = 7; column = 14; __toString = expect.anyLambda;};}
-        {name = "a"; hasDefault = true; pos = {__isPos = true; name = "a"; file = "functions.nix"; line = 7; column = 17; __toString = expect.anyLambda;};}
+        {name = "b"; hasDefault = false; pos = {__isPos = true; name = "b"; file = "functions.nix"; line = 5; column = 14; __toString = expect.anyLambda;};}
+        {name = "a"; hasDefault = true; pos = {__isPos = true; name = "a"; file = "functions.nix"; line = 5; column = 17; __toString = expect.anyLambda;};}
         ];
       getArgs.req = expect.noLambdasEq (getArgs testData.f.req) [
-        {name = "b"; hasDefault = true; pos = {__isPos = true; name = "b"; file = "functions.nix"; line = 8; column = 14; __toString = expect.anyLambda;};}
-        {name = "a"; hasDefault = true; pos = {__isPos = true; name = "a"; file = "functions.nix"; line = 8; column = 21; __toString = expect.anyLambda;};}
+        {name = "b"; hasDefault = true; pos = {__isPos = true; name = "b"; file = "functions.nix"; line = 6; column = 14; __toString = expect.anyLambda;};}
+        {name = "a"; hasDefault = true; pos = {__isPos = true; name = "a"; file = "functions.nix"; line = 6; column = 21; __toString = expect.anyLambda;};}
         ];
       getArgs.cb = expect.noLambdasEq (getArgs testData.f.cb) [
-        {name = "b"; hasDefault = true; pos = {__isPos = true; name = "b"; file = "functions.nix"; line = 9; column = 13; __toString = expect.anyLambda;};}
-        {name = "a"; hasDefault = true; pos = {__isPos = true; name = "a"; file = "functions.nix"; line = 9; column = 20; __toString = expect.anyLambda;};}
+        {name = "b"; hasDefault = true; pos = {__isPos = true; name = "b"; file = "functions.nix"; line = 7; column = 13; __toString = expect.anyLambda;};}
+        {name = "a"; hasDefault = true; pos = {__isPos = true; name = "a"; file = "functions.nix"; line = 7; column = 20; __toString = expect.anyLambda;};}
         ];
       getOptionalArgDefaultValues =
         expect.eq
