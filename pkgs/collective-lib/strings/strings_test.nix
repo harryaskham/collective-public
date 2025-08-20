@@ -1,6 +1,6 @@
 { lib ? import <nixpkgs/lib>,
   collective-lib ? import ./. { inherit lib; }, 
-  strings ? import ./strings.nix { inherit lib collective-lib; tildePath = /home/test; },
+  strings ? import ./strings.nix { inherit lib collective-lib; tildePath = /home/test; pwdPath = /tmp/pwd; },
   ... }:
 
 with strings;
@@ -144,7 +144,7 @@ suite {
   stringToPath = {
     tilde = expect.eq (stringToPath "~") /home/test;
     tildeWithPath = expect.eq (stringToPath "~/a/b") /home/test/a/b;
-    dot = expect.eq (stringToPath "./a/b/c") ./a/b/c;
+    dot = expect.eq (stringToPath "./a/b/c") /tmp/pwd/a/b/c;
     slash = expect.eq (stringToPath "/a/b/c") /a/b/c;
   };
 }

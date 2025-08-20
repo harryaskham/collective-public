@@ -1,6 +1,7 @@
 { lib ? import <nixpkgs/lib>,
   collective-lib ? import ./. { inherit lib; },
   tildePath ? builtins.getEnv "HOME",
+  pwdPath ? ./.,
   ... 
 }:
 
@@ -412,11 +413,11 @@ in rec {
   # If the string starts with a tilde, use the tildePath.
   # If the string starts with a slash, use the root directory.
   # Otherwise, use the builtins.toPath function.
-  stringToPath = stringToPath_ ./.;
-  stringToPath_ = pwd: p:
+  stringToPath = stringToPath_ pwdPath tildePath;
+  stringToPath_ = pwd: home: p:
     if hasPrefix "." p then pwd + (removePrefix "." p)
     else if hasPrefix "/" p then /. + (removePrefix "/" p)
-    else if hasPrefix "~" p then tildePath + removePrefix "~" p
+    else if hasPrefix "~" p then home + removePrefix "~" p
     else builtins.toPath p;
 
   # NOTE: This doesn't work unless we have a derivation per string;
