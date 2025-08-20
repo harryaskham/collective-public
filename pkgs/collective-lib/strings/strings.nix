@@ -406,13 +406,15 @@ in rec {
       then ''"${replaceStrings [ ''"'' ] [ ''\"'' ] string}"''
       else string;
 
+
   # Convert a string to a path.
+  # If the string starts with a dot, use the given pwd.
   # If the string starts with a tilde, use the tildePath.
-  # If the string starts with a dot, use the current directory.
   # If the string starts with a slash, use the root directory.
   # Otherwise, use the builtins.toPath function.
-  stringToPath = p:
-    if hasPrefix "." p then ./. + (removePrefix "." p)
+  stringToPath = stringToPath_ ./.;
+  stringToPath_ = pwd: p:
+    if hasPrefix "." p then pwd + (removePrefix "." p)
     else if hasPrefix "/" p then /. + (removePrefix "/" p)
     else if hasPrefix "~" p then tildePath + removePrefix "~" p
     else builtins.toPath p;

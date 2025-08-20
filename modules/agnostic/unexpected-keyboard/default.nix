@@ -262,6 +262,7 @@ let
               "floating_move"
               "floating_resize"
               "floating_enable_passthrough"
+              "floating_disable_passthrough"
               "snap_left"
               "snap_right"
               "fill_width"
