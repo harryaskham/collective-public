@@ -171,15 +171,15 @@ with codes.withAliases {
       _
         nw."!"      ne."2"
               c.w
-        sw."@"
+        sw."@"      "⌖" se.center_both
       _
                     ne."3"
               c.e
-        sw."#"
+        sw."#"      "⏛" se.center_vertical
       _
         nw."£"      ne."4"
               c.r
-        sw."$"
+        sw."$"      "⎅" se.center_horizontal
       _
                     ne."5"
               c.t
