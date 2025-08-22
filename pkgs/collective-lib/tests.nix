@@ -7,6 +7,7 @@ with collective-lib.errors;
 with collective-lib.functions;
 with collective-lib.lists;
 with collective-lib.log;
+with collective-lib.script-utils;
 with collective-lib.strings;
 with collective-lib.syntax;
 with lib;
@@ -14,6 +15,14 @@ with lib;
 # Nicer interface to runtests
 let
   log = collective-lib.log;
+  ansi = ansi-utils.ansi;
+  atom = log-utils.ansi.atom;
+
+  msgSKIP = with ansi; style [fg.grey] "SKIP";
+  msgPASS = with ansi; style [fg.green] "PASS";
+  msgFAIL = with ansi; style [fg.red] "FAIL";
+  msgERROR = with ansi; style [fg.magenta] "ERROR";
+
   inherit (collective-lib.typelib) cast isCastError hasToString isFunctionNotFunctor;
 in rec {
 
@@ -228,9 +237,9 @@ in rec {
     let test = testResult.test;
         # TODO: unicode syms
         status = with Status; switch testResult.status {
-          ${Skipped} = "SKIP";
-          ${Passed} = "PASS";
-          ${Failed} = "FAIL";
+          ${Skipped} = msgSKIP;
+          ${Passed} = msgPASS;
+          ${Failed} = msgFAIL;
         };
     in
     assert over (_b_ ''
@@ -292,7 +301,7 @@ in rec {
         };
        in
         if test.skip
-          then mkActual "SKIP" null
+          then mkActual msgSKIP null
 
         else if evalStatus == EvalStatus.Error
           then
@@ -301,22 +310,22 @@ in rec {
                   assert assertMsg (isTryEvalFailure results)
                     "Eval error handled without being a tryEval failure: ${log.vprintDUnsafe 3 results}";
                   results;
-            in mkActual "ERROR" errorResult
+            in mkActual msgERROR errorResult
 
         else if status == Status.Failed
           then
             let failedResult = assert (size results) == 1; head results;
-            in mkActual "FAIL" failedResult.result
+            in mkActual msgFAIL failedResult.result
 
         else
-          mkActual "PASS" null;
+          mkActual msgPASS null;
 
     msg = {
-      ${Status.Skipped} = "SKIP: ${test.name}";
-      ${Status.Passed} = "PASS: ${test.name}";
+      ${Status.Skipped} = "${msgSKIP}: ${test.name}";
+      ${Status.Passed} = "${msgPASS}: ${test.name}";
       ${Status.Failed} = _ls_ [
         (''
-          FAIL: ${test.name}
+          ${msgFAIL}: ${test.name}
 
           Expected:
             ${indent.here (indent.blocks [

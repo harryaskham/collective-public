@@ -81,16 +81,16 @@ function eval-expr() {
 
 function run-tests() {
   if [[ -z "$1" ]]; then
-    eval-expr "collective-lib._tests.run {}" --raw
+    printf "$(eval-expr "collective-lib._tests.run {}" --raw 2>&1)"
   else
-    eval-expr "collective-lib.$1._tests.run {}" --raw
+    printf "$(eval-expr "collective-lib.$1._tests.run {}" --raw 2>&1)"
   fi
 }
 
 function debug-tests() {
   if [[ -z "$1" ]]; then
-    eval-expr "collective-lib._tests.debug {}" --raw
+    printf "$(eval-expr "collective-lib._tests.debug {}" --raw 2>&1)"
   else
-    eval-expr "collective-lib.$1._tests.debug {}" --raw
+    printf "$(eval-expr "collective-lib.$1._tests.debug {}" --raw 2>&1)"
   fi
 }
