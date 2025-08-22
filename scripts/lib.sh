@@ -79,18 +79,28 @@ function eval-expr() {
   esac
 }
 
+function color() {
+  while read -r line ; do
+    printf "$line\n"
+  done
+}
+
+function eval-test-expr() {
+  eval-expr "$1" --raw 2>&1 | grep -v "^trace:" | color
+}
+
 function run-tests() {
   if [[ -z "$1" ]]; then
-    printf "$(eval-expr "collective-lib._tests.run {}" --raw 2>&1)"
+    eval-test-expr "collective-lib._tests.run {}"
   else
-    printf "$(eval-expr "collective-lib.$1._tests.run {}" --raw 2>&1)"
+    eval-test-expr "collective-lib.$1._tests.run {}"
   fi
 }
 
 function debug-tests() {
   if [[ -z "$1" ]]; then
-    printf "$(eval-expr "collective-lib._tests.debug {}" --raw 2>&1)"
+    eval-test-expr "collective-lib._tests.debug {}"
   else
-    printf "$(eval-expr "collective-lib.$1._tests.debug {}" --raw 2>&1)"
+    eval-test-expr "collective-lib.$1._tests.debug {}"
   fi
 }
