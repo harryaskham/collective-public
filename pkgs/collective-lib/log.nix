@@ -343,9 +343,8 @@ let
           # 123
           msg = showId;
 
-          maybeShow = dispatch.def self.show {
-            lambda = id;
-          };
+          maybeShow = dispatch.def self.show {lambda = id;};
+          maybeShowN = dispatch.def self.showN {lambda = id;};
 
           # For use with assert for low-paren tracing
           # e.g.
@@ -357,7 +356,7 @@ let
               self.showN
               {
                 lambda = f: f;
-                list = fs: composeMany (map maybeShow fs);
+                list = fs: composeMany (map maybeShowN fs);
               };
 
           over =
