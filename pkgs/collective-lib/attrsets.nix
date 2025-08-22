@@ -360,7 +360,13 @@ let
     # Diff two attrsets, returning any divergent keys and their values.
     # Lambda-diffs only shown if they are causing diff failure.
     diffShortNoLambdas_ = params: a: b:
-      deepFilter (x: x != {} && !(builtins.isFunction x) && x != "<lambda>" && !(x ? __equal)) (diff_ params a b);
+      deepFilter (x: 
+        x != {} 
+        && !(builtins.isFunction x) 
+        && x != "<lambda>" 
+        && x != "<__toString>" 
+        && x != {__lambda = true;}
+        && !(x ? __equal)) (diff_ params a b);
     diffShort_ = params: a: b:
       let dsnl = diffShortNoLambdas_ params a b;
           ds = deepFilter (x: x != {} && !(x ? __equal)) (diff_ params a b);
