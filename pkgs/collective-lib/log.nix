@@ -258,6 +258,7 @@ let
       # Configurable
       __enableTrace = self: traceLevel != null && self.__atLevel <= traceLevel;
       __atLevel = atLevel;
+      __withNewline = false;
       __traceFn = self: builtins.trace;
 
       __trace = self: a:
@@ -271,7 +272,7 @@ let
             if enableVerboseTrace
             then printWith (args: args // prints.using.depth (3 + 3 * traceLevel))
             else log.show;
-          traceHeader = "start_trace(${toString self.__atLevel}): ";
+          traceHeader = "start_trace(${toString self.__atLevel}): ${optionalString self.__withNewline "\n"}";
           traceFooter = "\ntrace: end_trace";
         in "${traceHeader}${printFn self.__x}${traceFooter}";
 
@@ -320,15 +321,17 @@ let
           # log.trace.show [ 456 { a = 2; }] 123
           # -> trace: [ 456 { a = 2; }]
           # 123
-          show = xOrTraceAtF: a:
+          show = show_ false;
+          showN = show_ true;
+          show_ = withNewline: xOrTraceAtF: a:
             if !enableTrace then a else
 
             if isTraceAt xOrTraceAtF
-              then let f = xOrTraceAtF; in f a
+              then let f = xOrTraceAtF; in (f // {__withNewline = withNewline;}) a
             else if typelib.isFunctionNotFunctor xOrTraceAtF
               then let f = xOrTraceAtF; in f a
             else
-              let x = xOrTraceAtF; in TraceAt level x a;
+              let x = xOrTraceAtF; in (TraceAt level x // { __withNewline = withNewline; }) a;
 
           # log.trace.over (showId 123)
           # -> trace: 123
