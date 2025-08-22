@@ -358,8 +358,13 @@ let
       else { __unequal = { ${aLabel} = a; ${bLabel} = b; }; };
 
     # Diff two attrsets, returning any divergent keys and their values.
+    # Lambda-diffs only shown if they are causing diff failure.
+    diffShortNoLambdas_ = params: a: b:
+      deepFilter (x: x != {} && x != "<lambda>" && !(x ? __equal)) (diff_ params a b);
     diffShort_ = params: a: b:
-      deepFilter (x: x != {} && !(x ? __equal)) (diff_ params a b);
+      let dsnl = diffShortNoLambdas_ params a b;
+          ds = deepFilter (x: x != {} && !(x ? __equal)) (diff_ params a b);
+      in if dsnl == {} then ds else dsnl;
     diffShort = diffShort_ {};
 
     diffShortWithEq = a: b: deepFilter (x: !(x ? __equal)) (diffWithEq a b);

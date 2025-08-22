@@ -80,6 +80,7 @@ function eval-expr() {
 }
 
 function color() {
+  IFS=''
   while read -r line ; do
     printf "$line\n"
   done
