@@ -153,6 +153,7 @@ ${eof}
       action = { style = [bold fg.brightblue]; };
       actionGreen = { style = [bold fg.green]; };
       actionRed = { style = [bold fg.red]; };
+      testName = { style = [bold fg.white]; };
     };
 
     # Shorthand for making atoms e.g. ${ansi.atom.cmd "cmdname"}

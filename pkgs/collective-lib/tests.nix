@@ -16,12 +16,12 @@ with lib;
 let
   log = collective-lib.log;
   ansi = ansi-utils.ansi;
-  atom = log-utils.ansi.atom;
+  atom = ansi.atom;
 
-  msgSKIP = with ansi; style [fg.grey] "SKIP";
-  msgPASS = with ansi; style [fg.green] "PASS";
-  msgFAIL = with ansi; style [fg.red] "FAIL";
-  msgERROR = with ansi; style [fg.magenta] "ERROR";
+  msgSKIP = with ansi; style [fg.grey bold] "SKIP";
+  msgPASS = with ansi; style [fg.green bold] "PASS";
+  msgFAIL = with ansi; style [fg.red bold] "FAIL";
+  msgERROR = with ansi; style [fg.magenta bold] "ERROR";
 
   inherit (collective-lib.typelib) cast isCastError hasToString isFunctionNotFunctor;
 in rec {
@@ -286,7 +286,7 @@ in rec {
             else indent.block ''
               ${msg}: ${indent.here (log.vprintD 5 result)}
               ${optionalString (status == Status.Failed) ''
-                Diff:
+                ${with ansi; style [fg.yellow bold] "Diff"}:
                   ${_pvh_ (
                     diffShort_
                       {
@@ -321,13 +321,13 @@ in rec {
           mkActual msgPASS null;
 
     msg = {
-      ${Status.Skipped} = "${msgSKIP}: ${test.name}";
-      ${Status.Passed} = "${msgPASS}: ${test.name}";
+      ${Status.Skipped} = "${msgSKIP}: ${atom.testName test.name}";
+      ${Status.Passed} = "${msgPASS}: ${atom.testName test.name}";
       ${Status.Failed} = _ls_ [
         (''
-          ${msgFAIL}: ${test.name}
+          ${msgFAIL}: ${atom.testName test.name}
 
-          Expected:
+          ${atom.h1 "Expected"}
             ${indent.here (indent.blocks [
                 (log.vprintD 5 test.rawExpected)
                 (optionalString (test.compare != null) (_ls_ [
@@ -336,7 +336,7 @@ in rec {
                 ]))
             ])}
 
-          Actual:
+          ${atom.h1 "Actual"}
             ${_h_ (try (_ph_ actual) (_: "<error>"))}
         '')
         ""
@@ -519,7 +519,7 @@ in rec {
             Status;
         failedTestNamesBlock = joinLines (map (result: "FAIL: ${result.test.name}") byStatus.Failed);
 
-      in indent.blocksSep "\n\n==========\n\n" [
+      in indent.blocksSep "\n\n${with ansi; style [bold fg.brightblack] "========================"}\n\n" [
         header
         headers.Skipped
         msgs.Skipped
