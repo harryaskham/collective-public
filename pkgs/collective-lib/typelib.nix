@@ -611,7 +611,7 @@ let
       # return an instance of Type i.e. Int, which otherwise would pass the isFunction check
       # and fail to terminate the variadic call.
       isFunctor = x: lib.isAttrs x && x ? __functor;
-      isFunctionNotFunctor = x: lib.isFunction x && !isFunctor x;
+      isFunctionNotFunctor = x: builtins.isFunction x && !isFunctor x;
     };
 
     # TODO: Cast types for CastError CastSuccess via Either
