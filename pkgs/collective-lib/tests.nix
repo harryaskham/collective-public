@@ -243,7 +243,7 @@ in rec {
         };
     in
     assert over (_b_ ''
-      ${status} | ${test.name}
+      ${status} | ${atom.testName test.name}
     '');
     testResult;
 
