@@ -86,7 +86,10 @@ function color() {
 }
 
 function eval-test-expr() {
-  eval-expr "$1" --raw 2>&1 | grep -v "^trace:" | color
+  eval-expr "$1" --raw 2>&1 \
+    | sed "s/trace: start_trace(\(.\+\)): /\\\\e[90m[\\1] \\\\e[0m/" \
+    | grep -v "^trace: end_trace$" \
+    | color
 }
 
 function run-tests() {

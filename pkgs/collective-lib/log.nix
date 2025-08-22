@@ -12,8 +12,6 @@
   enableVerboseTrace ? traceOpts.enableVerboseTrace or false,
   # If true, trace short values at levels 0+.
   enableShortTrace ? traceOpts.enableShortTrace or false,
-  # Print trace header only at or above this level.
-  minTraceHeaderLevel ? traceOpts.minTraceHeaderLevel or 1,
   ...
 }:
 
@@ -272,8 +270,8 @@ let
           printFn =
             if enableVerboseTrace
             then printWith (args: args // prints.using.depth (3 + 3 * traceLevel))
-            else log.print;
-          traceHeader = if self.__atLevel >= minTraceHeaderLevel then "\n\n[log.trace(${toString self.__atLevel}).show]\n" else "start_trace\n";
+            else log.show;
+          traceHeader = "start_trace(${toString self.__atLevel}): ";
           traceFooter = "\ntrace: end_trace";
         in "${traceHeader}${printFn self.__x}${traceFooter}";
 
