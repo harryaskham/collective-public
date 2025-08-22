@@ -353,7 +353,7 @@ let
           # with log.trace; assert over {a = 123;}; expr
           overNoAssert =
             dispatch.def
-              self.showN
+              self.show
               {
                 lambda = f: f;
                 list = fs: composeMany (map maybeShowN fs);
