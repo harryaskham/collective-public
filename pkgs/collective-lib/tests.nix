@@ -329,15 +329,16 @@ in rec {
 
           ${atom.h1 "Expected"}
             ${indent.here (indent.blocks [
-                (log.vprintD 5 test.rawExpected)
-                (optionalString (test.compare != null) (_ls_ [
+              (log.vprintD 5 test.rawExpected)
+              (optionalString (test.compare != null)
+                (with ansi; style [fg.brightblack italic] (_ls_ [
                   "Comparing on:"
                   (with log.prints; put test.expected _raw ___)
-                ]))
+                ])))
             ])}
 
           ${atom.h1 "Actual"}
-            ${_h_ (try (_ph_ actual) (_: "<error>"))}
+            ${_h_ (try (_ph_ actual) (_: "<actual: eval error>"))}
         '')
         ""
       ];

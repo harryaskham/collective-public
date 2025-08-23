@@ -38,7 +38,7 @@ let
     while = msg: expr: describe "while ${msg}" expr;
 
     defPrintArgs = {
-      # If true, all conversions happen under tryEval
+      # If true, all conversions happen under tryEval and cycles are detected.
       printSafely = true;
       # If true, print under deepseq
       printStrictly = false;
@@ -72,6 +72,50 @@ let
       };
     };
 
+    # Like removeAttrs but for paths that can contain list indices
+    removePathDeep = path: x:
+      let ht = maybeSnoc path;
+      in if ht == null then x
+      else flip dispatch ht.head {
+        int = i:
+          assert that (isList x) ''
+            removePathDeep: path component ${toString i} is an integer but x is not a list
+          '';
+          if ht.tail == [] then setAt i { __cyclePruned = true; } x
+          else updateAt i (removePathDeep ht.tail) x;
+        string = k:
+          assert that (isAttrs x) ''
+            removePathDeep: path component ${toString k} is a string but x is not an attrset
+          '';
+          if ht.tail == [] then x // { ${k} = { __cyclePruned = true; }; }
+          else x // { ${k} = removePathDeep ht.tail x.${k}; };
+      };
+
+    # Remove the cycles from a value.
+    pruneCycles = x: typed.fold (x: c: removePathDeep c.before x) x (detectCycles x);
+
+    # Independent cycle detector
+    detectCycles = x:
+      let 
+        args = { 
+          depth = 0;
+          maxDepth = 20;
+          cycles = {
+            minLength = 5;
+            maxLength = 10;
+            revPath = [];
+            cycle = null;
+          };
+        };
+        go = args: x:
+          if (args.cycles.cycle != null) then [args.cycles.cycle]
+          else if args.depth == args.maxDepth then []
+          else concat (dispatch.def (const []) {
+            set = mapAttrsToList (k: go (descend k args));
+            list = imap0 (i: go (descend i args));
+          } x);
+      in go args x;
+
     descend = key: args: args // rec {
       depth = args.depth + 1;
       cycles =
@@ -95,8 +139,11 @@ let
             else go args.cycles.minLength;
           cycle' =
             if args.cycles.cycle == null && detectedCycle != null
-            then { path = reverseList revPath';
-                   segment = detectedCycle; }
+            then rec {
+              path = reverseList revPath';
+              segment = reverseList detectedCycle;
+              before = take (length path - length segment) path;
+            }
             else null;
         in
           args.cycles // rec {
@@ -184,7 +231,7 @@ let
         if args.cycles.cycle != null then
           "<LOOP: ${joinSep "." (map toString args.cycles.cycle.segment)}>"
         else if printSafely then
-          maybeStrict (printBlock (Safe x))
+          maybeStrict (printBlock (Safe (pruneCycles x)))
         else
           maybeStrict (printBlock x);
 
@@ -221,6 +268,7 @@ let
         filter = f: { attrsFilter = f; };
       };
       _safe = using.safe;
+      _unsafe = using.unsafe;
       _raw = using.raw;
       _strict = using.strict;
       _lazy = using.lazy;
@@ -1046,45 +1094,103 @@ let
 
 in log // {
   _tests = with collective-lib.tests; suite {
+    pruneCycles = with log; {
+      trueCycle._000 = 
+        expect.eq 
+          (pruneCycles (let a = [a]; in a))
+          [[[[[{ __cyclePruned = true; }]]]]];
+      trueCycle.long = 
+        expect.eq 
+          (pruneCycles (let a = { a = { b = { c = {d = {e = {f = {g = a;};};};};};};}; in a))
+          { a = { b = { c = {d = {e = {f = {g = { __cyclePruned = true; };};};};};};};};
+    };
+
+    detectCycles = with log; {
+      trueCycle._000 = 
+        expect.eq 
+          (detectCycles (let a = [a]; in a))
+          [{
+            path = [0 0 0 0 0 0 0 0 0 0];
+            segment = [0 0 0 0 0];
+            before = [0 0 0 0 0];
+          }];
+      trueCycle._000Offset = 
+        expect.eq 
+          (detectCycles ([7 [7 7 [7 7 7 (let a = [a]; in a)]]]))
+          [{
+            path = [1 2 3 0 0 0 0 0 0 0 0 0 0];
+            segment = [0 0 0 0 0];
+            before = [1 2 3 0 0 0 0 0];
+          }];
+      trueCycle.long = 
+        expect.eq 
+          (detectCycles (let a = { a = { b = { c = {d = {e = {f = {g = a;};};};};};};}; in a))
+          [{
+            path = [ "a" "b" "c" "d" "e" "f" "g" "a" "b" "c" "d" "e" "f" "g" ];
+            segment = [ "a" "b" "c" "d" "e" "f" "g" ]; 
+            before = [ "a" "b" "c" "d" "e" "f" "g" ]; 
+          }];
+      trueCycle.longOffset = 
+        expect.eq 
+          (detectCycles (let a = { a = { b = { c = {d = {e = {f = {g = a;};};};};};};}; in {z = a;}))
+          [{
+            path = [ "z" "a" "b" "c" "d" "e" "f" "g" "a" "b" "c" "d" "e" "f" "g" ];
+            segment = [ "a" "b" "c" "d" "e" "f" "g" ]; 
+            before = [ "z" "a" "b" "c" "d" "e" "f" "g" ]; 
+          }];
+      trueCycle.max = 
+        expect.eq 
+          (detectCycles (let a = { a = { b = { c = {d = {e = {f = {g = {h = {i = {j =  a;};};};};};};};};};}; in a))
+          [{
+            path = [ "a" "b" "c" "d" "e" "f" "g" "h" "i" "j" "a" "b" "c" "d" "e" "f" "g" "h" "i" "j" ];
+            segment = [ "a" "b" "c" "d" "e" "f" "g" "h" "i" "j" ]; 
+            before = [ "a" "b" "c" "d" "e" "f" "g" "h" "i" "j" ]; 
+          }];
+      trueCycle.tooLong = 
+        expect.eq 
+          (detectCycles (let a = { a = { b = { c = {d = {e = {f = {g = {h = {i = {j = { k = a;};};};};};};};};};};}; in a))
+          [];
+    };
+    
     print = {
       string = expect.eq (log.print "abc") ''"abc"'';
       int = expect.eq (log.print 123) ''123'';
-      cycles.none = expect.eq (with log.prints; put { a = 123; } _line ___) "{ a = 123; }";
+      cycles.none = expect.eq (with log.prints; put { a = 123; } _line _unsafe ___) "{ a = 123; }";
       cycles.tooShort =
         expect.eq
           (with log.prints;
-            put { a = { a = { a = { a = { a = { a = { a = { a = { a = 123; }; }; }; }; }; }; }; }; } _line ___)
+            put { a = { a = { a = { a = { a = { a = { a = { a = { a = 123; }; }; }; }; }; }; }; }; } _line _unsafe ___)
           "{ a = { a = { a = { a = { a = { a = { a = { a = { a = 123; }; }; }; }; }; }; }; }; }";
       cycles.falsePositive =
         expect.eq
           (with log.prints;
-            put { a = { a = { a = { a = { a = { a = { a = { a = { a = {a = 123; }; }; }; }; }; }; }; }; }; } _line ___)
+            put { a = { a = { a = { a = { a = { a = { a = { a = { a = {a = 123; }; }; }; }; }; }; }; }; }; } _line _unsafe ___)
           "{ a = { a = { a = { a = { a = { a = { a = { a = { a = { a = <LOOP: a.a.a.a.a>; }; }; }; }; }; }; }; }; }; }";
       cycles.trueCycle.aaa =
         expect.eq
-          (with log.prints; put (let a = { a = { a = a; }; }; in a) _line ___)
+          (with log.prints; put (let a = { a = { a = a; }; }; in a) _line _unsafe ___)
           "{ a = { a = { a = { a = { a = { a = { a = { a = { a = { a = <LOOP: a.a.a.a.a>; }; }; }; }; }; }; }; }; }; }";
       cycles.trueCycle.aba =
         expect.eq
-          (with log.prints; put rec { a = { b = { a = a; }; }; } _line ___)
-          "{ a = { b = { a = { b = { a = { b = { a = { b = { a = { b = { a = { b = <LOOP: b.a.b.a.b.a>; }; }; }; }; }; }; }; }; }; }; }; }";
+          (with log.prints; put rec { a = { b = { a = a; }; }; } _line _unsafe ___)
+          "{ a = { b = { a = { b = { a = { b = { a = { b = { a = { b = { a = { b = <LOOP: a.b.a.b.a.b>; }; }; }; }; }; }; }; }; }; }; }; }";
       cycles.trueCycle._000 =
         expect.eq
-          (with log.prints; put (let a = [a]; in a) _line ___)
+          (with log.prints; put (let a = [a]; in a) _line _unsafe ___)
           "[ [ [ [ [ [ [ [ [ [ <LOOP: 0.0.0.0.0> ] ] ] ] ] ] ] ] ] ]";
       cycles.trueCycle.a1b2 =
         expect.eq
-          (with log.prints; put rec { a = [ 0 { b = [ 0 1 a ]; } ]; } _line ___)
-          "{ a = [ 0 { b = [ 0 1 [ 0 { b = [ 0 1 [ 0 { b = [ 0 1 [ 0 { b = [ 0 1 <LOOP: 2.b.1.2.b.1> ]; } ] ]; } ] ]; } ] ]; } ]; }";
+          (with log.prints; put rec { a = [ 0 { b = [ 0 1 a ]; } ]; } _line _unsafe ___)
+          "{ a = [ 0 { b = [ 0 1 [ 0 { b = [ 0 1 [ 0 { b = [ 0 1 [ 0 { b = [ 0 1 <LOOP: 1.b.2.1.b.2> ]; } ] ]; } ] ]; } ] ]; } ]; }";
       cycles.trueCycle.max =
         expect.eq
           (with log.prints;
-            put (let a = { a = { b = { c = {d = {e = {f = {g = {h = {i = {j =  a;};};};};};};};};};}; in a)  _line ___)
-          "{ a = { b = { c = { d = { e = { f = { g = { h = { i = { j = { a = { b = { c = { d = { e = { f = { g = { h = { i = { j = <LOOP: j.i.h.g.f.e.d.c.b.a>; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }";
+            put (let a = { a = { b = { c = {d = {e = {f = {g = {h = {i = {j =  a;};};};};};};};};};}; in a)  _line _unsafe ___)
+          "{ a = { b = { c = { d = { e = { f = { g = { h = { i = { j = { a = { b = { c = { d = { e = { f = { g = { h = { i = { j = <LOOP: a.b.c.d.e.f.g.h.i.j>; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }";
       cycles.trueCycle.tooLong =
         expect.eq
           (with log.prints;
-            put (let a = { a = { b = { c = {d = {e = {f = {g = {h = {i = {j = {k = a;};};};};};};};};};};}; in a)  _line ___)
+            put (let a = { a = { b = { c = {d = {e = {f = {g = {h = {i = {j = {k = a;};};};};};};};};};};}; in a)  _line _unsafe ___)
           # Undetected; falls back to ellipsis-at-20
           "{ a = { b = { c = { d = { e = { f = { g = { h = { i = { j = { k = { a = { b = { c = { d = { e = { f = { g = { h = { i = ...; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }; }";
     };
