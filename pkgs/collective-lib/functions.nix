@@ -444,10 +444,10 @@ in rec {
     # Compose, passing to g whenever a non-partial function is reached. If f
     # returns a functor, then the functor continues being applied until a pure non-functor
     # value is reached.
-    compose = compose_ (x: !(isFunction x));
+    compose = compose_ (x: !(builtins.isFunction x || typelib.isFunctor x));
 
     # Like compose, but if f returns a functor, it is treated as a value.
-    composeFunctorsAreAttrs = compose_ (x: typelib.isFunctor x || !(isFunction x));
+    composeFunctorsAreAttrs = compose_ (x: !(builtins.isFunction x));
   };
 
   # Exhaust a function and do something with its first non-function curried output.
