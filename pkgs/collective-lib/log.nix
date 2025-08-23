@@ -92,7 +92,13 @@ let
       };
 
     # Remove the cycles from a value.
-    pruneCycles = x: typed.fold (x: c: removePathDeep c.before x) x (detectCycles x);
+    pruneCycles = x: 
+      let go = i: x:
+        assert that (i < 10) "pruneCycles did not complete in 10 iterations";
+        let cycles = detectCycles x;
+        in if cycles == [] then x
+        else go (i + 1) (removePathDeep (head cycles).before x);
+      in go 0 x;
 
     # Independent cycle detector
     detectCycles = x:
