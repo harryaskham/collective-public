@@ -339,7 +339,7 @@ in rec {
           header = atom.h1 "Expected";
           borderStyles = [fg.brightblack];
           body = _b_ ''
-            ${_pd_ 2 test.rawExpected}
+            ${_pv_ test.rawExpected}
             ${optionalString
                 (test.compare != null) 
                 (with ansi; box { 
