@@ -92,7 +92,7 @@ in rec {
 
             else this;
 
-      in go 0 (pruneCycles this);
+      in go 0 this;
 
     PointerLambdas = this:
       let
