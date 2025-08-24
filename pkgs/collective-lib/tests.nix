@@ -285,11 +285,11 @@ in rec {
           inherit status evalStatus result;
           __toString = _:
             if result == null then msg
-            else _b_ ''
+            else ''
               ${with ansi; box { 
                 header = atom.h1 "Actual";
                 borderStyles = [fg.brightblack];
-                body = ''
+                body = _b_ ''
                   ${_p_ result}
                   ${optionalString (status == Status.Failed) (box {
                       header = style_ [fg.yellow bold] "Diff";
@@ -338,8 +338,8 @@ in rec {
         ${_h_ (with ansi; box { 
           header = atom.h1 "Expected";
           borderStyles = [fg.brightblack];
-          body = ''
-            ${_p_ test.rawExpected}
+          body = _b_ ''
+            ${_pd_ 2 test.rawExpected}
             ${optionalString
                 (test.compare != null) 
                 (with ansi; box { 
@@ -352,7 +352,7 @@ in rec {
                 })}
           '';
         })}
-        ${_ph_ actual}
+        ${_h_ actual}
       '';
     }.${status};
   };
