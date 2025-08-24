@@ -7,6 +7,7 @@
 
 with lib;
 with lib.strings;
+with collective-lib.dispatchlib;
 with collective-lib.lists;
 with collective-lib.functions;
 with collective-lib.syntax;
@@ -140,6 +141,15 @@ in rec {
     let res = match regex s;
      in if (res == null) then def else (head res);
 
+  safeMatchResults = dispatch {
+    null = _: [];
+    list = xs: concat.lists (map safeMatchResults xs);
+    string = s: [s];
+  };
+
+  safeMatch = regex: s:
+    safeMatchResults (builtins.match regex s);
+
   # Get the first regex match or null if none.
   maybeFirstMatch = firstMatchOr null;
 
@@ -147,6 +157,9 @@ in rec {
   numMatches = regex: s:
     let res = match regex s;
      in if (res == null) then 0 else length res;
+
+  matchLines = regex: s: concat.lists (mapLines (match regex) s);
+  safeMatchLines = regex: s: concat.lists (mapLines (safeMatch regex) s);
 
   # Regex match as a bool function
   # Iff we have any matches, even if no capture groups, return true
@@ -480,4 +493,17 @@ in rec {
 
   toAsciiChar = i: 
     builtins.fromJSON ''"\u${to4CharHexString (i + 1)}"'';
+
+  # Pad a given string with spaces until it is at least n characters long
+  pad = { width, align ? "left", ignoreANSI ? true }: s:
+    let len = stringLength (if ignoreANSI then typed.script-utils.ansi-utils.ansi.stripANSI s else s);
+        paddingSize = max 0 (width - len);
+        padding = typed.replicate paddingSize " ";
+        halfPaddingL = typed.replicate (builtins.floor (paddingSize / 2.0)) " ";
+        halfPaddingR = typed.replicate (builtins.ceil (paddingSize / 2.0)) " ";
+    in switch align {
+      left = "${s}${padding}";
+      right = "${padding}${s}";
+      center = "${halfPaddingL}${s}${halfPaddingR}";
+    };
 }

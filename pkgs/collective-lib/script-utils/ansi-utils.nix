@@ -9,12 +9,16 @@ let
     else collective-lib.typelib.toShellValueUnsafe;
 in
 
+with collective-lib.collections;
+with collective-lib.syntax;
 with lib;
 with lib.strings;
+with collective-lib.lists;
 with collective-lib.strings;
 with collective-lib.functions;
 
 let
+  log = collective-lib.log;
   typed = collective-lib.typed;
 in rec {
   # Utilities for echoing styled text
@@ -65,10 +69,163 @@ in rec {
     underline = "4";
     reset = "0";
     code = styles: if (styles == []) then "" else ''\e[${concatStringsSep ";" styles}m'';
-    end = code [reset];
+    end = code [reset reset];
     style = styles: text:
       if styles == [] then text
       else ''${code styles}${text}${end}'';
+    style_ = styles: text:
+      if styles == [] then text
+      else ''${code styles}${text}'';
+    style' = styles: text: "${end}${style styles text}";
+
+    escapeANSI = replaceStrings ["\\"] ["\\\\"];
+    stripANSI = text:
+      let 
+        c = ''.*(\\e\[[0-9;]+m).*'';
+        r = match c text;
+      in 
+        if r == null then text
+        else stripANSI (replaceStrings r [""] text);
+
+    boxes = {
+      single = {
+        vLine = "│";
+        hLine = "─";
+        hMidLine = "─";
+        kneeSW = "└";
+        kneeSE = "┘";
+        kneeNW = "┌";
+        kneeNE = "┐";
+        teeL = "├";
+        teeR = "┤";
+      };
+      heavy = {
+        vLine = "┃";
+        hLine = "━";
+        hMidLine = "━";
+        kneeSW = "┗";
+        kneeSE = "┛";
+        kneeNW = "┏";
+        kneeNE = "┓";
+        teeL = "┣";
+        teeR = "┫";
+      };
+      double = {
+        vLine = "║";
+        hLine = "═";
+        hMidLine = "─";
+        kneeSW = "╚";
+        kneeSE = "╝";
+        kneeNW = "╔";
+        kneeNE = "╗";
+        teeL = "╠";
+        teeR = "╣";
+      };
+    };
+
+    zeros = {
+      top = 0;
+      bottom = 0;
+      left = 0;
+      right = 0;
+    };
+
+    ones = {
+      top = 1;
+      bottom = 1;
+      left = 1;
+      right = 1;
+    };
+
+    box = { 
+      styles ? [fg.brightwhite],
+      borderStyles ? [fg.brightblack],
+      header ? null,
+      border ? boxes.heavy,
+      showBorder ? true,
+      showDivider ? true,
+      padding ? {
+        top = 1;
+        bottom = if showBorder then 1 else 0;
+        left = 1;
+        right = 1;
+      },
+      margin ? {
+        top = 1;
+        bottom = 0;
+        left = 1;
+        right = 1;
+      },
+      body ? "",
+      align ? "left"
+    }: 
+      let
+        headerBlock = _b_ header;
+        unstyledHeaderBlock = stripANSI headerBlock;
+        unstyledHeaderLines = splitLines unstyledHeaderBlock;
+        headerLines = splitLines headerBlock;
+
+        bodyBlock = _b_ body;
+        unstyledBodyBlock = stripANSI bodyBlock;
+        unstyledLines = splitLines unstyledBodyBlock;
+        lines = splitLines bodyBlock;
+
+        contentWidth = maximum (map size (unstyledLines ++ (optionals (header != null) unstyledHeaderLines)));
+        innerWidth = contentWidth + padding.left + padding.right;
+        borderedWidth = innerWidth + 2;
+        outerWidth = borderedWidth + margin.left + margin.right;
+
+        vBorder = style' (styles ++ borderStyles) (if showBorder then border.vLine else " ");
+        hBorder = hLine: kneeW: kneeE:
+          style' (styles ++ borderStyles) "${kneeW}${typed.replicate innerWidth hLine}${kneeE}";
+        hBorderTop = 
+          if showBorder then hBorder border.hLine border.kneeNW border.kneeNE
+          else hBorder " " " " " ";
+        hBorderMid =
+          if showBorder then hBorder border.hMidLine border.teeL border.teeR
+          else hBorder " " " " " ";
+        hBorderBottom =
+          if showBorder then hBorder border.hLine border.kneeSW border.kneeSE
+          else hBorder " " " " " ";
+        lineLeft = "${leftMargin}${vBorder}${leftPadding}";
+        lineRight = "${rightPadding}${vBorder}${rightMargin}";
+
+        mkLine = s: join [
+          lineLeft
+          (style' styles (pad { width = contentWidth; inherit align;} s))
+          lineRight
+        ];
+
+        leftMargin = "${spaces margin.left}";
+        rightMargin = "${end}${spaces margin.right}";
+
+        topMargin = typed.replicate margin.top [(spaces outerWidth)];
+        bottomMargin = typed.replicate margin.bottom [(spaces outerWidth)];
+
+        topBorder = "${leftMargin}${hBorderTop}${rightMargin}";
+        midBorder = "${leftMargin}${hBorderMid}${rightMargin}";
+        bottomBorder = "${leftMargin}${hBorderBottom}${rightMargin}";
+
+        topPadding = typed.replicate padding.top [(mkLine "")];
+        bottomPadding = typed.replicate padding.bottom [(mkLine "")];
+        leftPadding = "${style' styles (spaces padding.left)}";
+        rightPadding = "${style' styles (spaces padding.right)}";
+
+        content = joinLines (map mkLine lines);
+
+        maybeHeaderLines =
+          if header == null then []
+          else (map mkLine headerLines) ++ (if showDivider then [midBorder] else []);
+      in joinLines (
+        topMargin
+        ++ [topBorder]
+        ++ maybeHeaderLines
+        ++ topPadding
+        ++ [content]
+        ++ bottomPadding
+        ++ [bottomBorder]
+        ++ bottomMargin
+      );
 
     echoWith = arg:
       let heredoc = arg.heredoc or true;
@@ -160,5 +317,53 @@ ${eof}
     atom = mapAttrs (_: atomAttrs: style atomAttrs.style) atoms // {
       addressPort = address: port: "${atom.address address}${style [underline] ":"}${atom.port (toString port)}";
     };
+  };
+
+  _tests = with typed.tests; suite {
+    styles = with ansi; 
+      let 
+        expectANSI = actualWith: exWithout: exWith: expect.eq (rec {
+          styled = actualWith;
+          escaped = escapeANSI actualWith;
+          stripped = stripANSI actualWith;
+          strippedEscaped = escapeANSI (stripANSI actualWith);
+        }) {
+          styled = exWith;
+          escaped = escapeANSI exWith;
+          stripped = exWithout;
+          strippedEscaped = exWithout;
+        };
+      in
+        {
+          _00_simple =
+            expectANSI
+              (style [fg.red] "test")
+              "test"
+              ''\e[31mtest\e[0m'';
+          _01_backToBack =
+            expectANSI
+              "${(style [fg.red] "red")}${style [fg.blue] "blue"}"
+              "redblue"
+              ''\e[31mred\e[0m\e[34mblue\e[0m'';
+          _02_nested =
+            expectANSI
+              (_b_ ''
+                outer
+                ${style [bg.black] (_b_ ''
+                  inner
+                  ${style_ [fg.blue] "nested"}
+                '')}
+              '')
+              (_b_ ''
+                outer
+                inner
+                nested
+              '')
+              (_b_ ''
+                outer
+                \e[40minner
+                \e[34mnested\e[0m
+              '');
+        };
   };
 }

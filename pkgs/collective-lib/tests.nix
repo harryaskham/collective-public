@@ -285,21 +285,28 @@ in rec {
           inherit status evalStatus result;
           __toString = _:
             if result == null then msg
-            else indent.block ''
-              ${msg}: ${indent.here (log.vprintD 5 result)}
-              ${optionalString (status == Status.Failed) ''
-                ${with ansi; style [fg.yellow bold] "Diff"}:
-                  ${_pvh_ (
-                    diffShort_
-                      {
-                        maxDepth = 10;
-                        aLabel = "expected";
-                        bLabel = "actual";
-                      }
-                      test.expected result
-                  )}
-              ''}
-            '';
+            else _b_ ''
+              ${with ansi; box { 
+                header = atom.h1 "Actual";
+                borderStyles = [fg.brightblack];
+                body = ''
+                  ${_p_ result}
+                  ${optionalString (status == Status.Failed) (box {
+                      header = style_ [fg.yellow bold] "Diff";
+                      styles = [bg.black italic];
+                      showBorder = false;
+                      showDivider = false;
+                      body = _p_ (
+                        diffShort_ {
+                          maxDepth = 10;
+                          aLabel = "expected";
+                          bLabel = "actual";
+                        }
+                        test.expected result);
+                      })}
+                 '';
+                }}
+              '';
         };
        in
         if test.skip
@@ -325,25 +332,28 @@ in rec {
     msg = {
       ${Status.Skipped} = "${msgSKIP}: ${atom.testName test.name}";
       ${Status.Passed} = "${msgPASS}: ${atom.testName test.name}";
-      ${Status.Failed} = _ls_ [
-        (''
-          ${msgFAIL}: ${atom.testName test.name}
+      ${Status.Failed} = _b_ ''
+        ${msgFAIL}: ${atom.testName test.name}
 
-          ${atom.h1 "Expected"}
-            ${indent.here (indent.blocks [
-              (log.vprintD 5 test.rawExpected)
-              (optionalString (test.compare != null)
-                (with ansi; style [fg.brightblack italic] (_ls_ [
-                  "Comparing on:"
-                  (with log.prints; put test.expected _raw ___)
-                ])))
-            ])}
-
-          ${atom.h1 "Actual"}
-            ${_h_ (try (_ph_ actual) (_: "<actual: eval error>"))}
-        '')
-        ""
-      ];
+        ${_h_ (with ansi; box { 
+          header = atom.h1 "Expected";
+          borderStyles = [fg.brightblack];
+          body = ''
+            ${_p_ test.rawExpected}
+            ${optionalString
+                (test.compare != null) 
+                (with ansi; box { 
+                  header = style_ [fg.yellow bold] "Comparing on";
+                  styles = [bg.black italic];
+                  showBorder = false;
+                  showDivider = false;
+                  #styles = [fg.brightblack bg.black];
+                  body = _p_ test.expected;
+                })}
+          '';
+        })}
+        ${_ph_ actual}
+      '';
     }.${status};
   };
   in 
@@ -414,7 +424,7 @@ in rec {
 
         # Run the test under tryEval, treating eval failure as test failure
         # Strict needed in order to catch eval errors
-                 run = evalOneTest (expr: builtins.tryEval expr) (test_ // { mode = "run"; });
+        run = evalOneTest (expr: builtins.tryEval expr) (test_ // { mode = "run"; });
 
         # Run the test propagating eval errors that mask real failures
         # Strict needed in order to catch eval errors

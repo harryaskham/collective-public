@@ -5,6 +5,7 @@ with collective-lib.dispatchlib;
 with collective-lib.functions;
 with collective-lib.attrsets;
 with collective-lib.rebinds;
+with collective-lib.strings;
 with {
   inherit (lib)
   const
@@ -51,13 +52,23 @@ in rec {
   deleteAt = pos: xs:
     take pos xs ++ drop (pos + 1) xs;
 
-  # Polymorphic concat for [[a]] and [{_=a}]
-  concat = xs:
-    if empty xs then xs
-    else dispatch.elem {
-      list = concatLists;
-      set = mergeAttrsList;
-    } xs;
+  # Polymorphic concat for [""], [[a]] and [{_=a}]
+  concat = lib.fix (this: {
+    def = ifEmpty: xs:
+      if safeEmpty xs then ifEmpty
+      else dispatch.elem {
+        list = concatLists;
+        set = mergeAttrsList;
+        string = join;
+      } xs;
+
+    lists = xs: this.def [] xs;
+    sets = xs: this.def {} xs;
+    strings = xs: this.def "" xs;
+
+    # Default to returning self if empty.
+    __functor = self: xs: this.def xs xs;
+  });
 
   dropWhile = pred: xs:
     if empty xs then xs
@@ -251,13 +262,14 @@ in rec {
     };
 
     concat = {
-      listOfLists = {
-        expr = concat [[1 2] [3 4] [5]];
-        expected = [1 2 3 4 5];
-      };
-      listOfSets = {
-        expr = concat [{a=1;}{b=2;c=3;}{d=4;}];
-        expected = { a=1; b=2; c=3; d=4; };
+      listOfLists = expect.eq (concat [[1 2] [3 4] [5]]) [1 2 3 4 5];
+      listOfSets = expect.eq (concat [{a=1;}{b=2;c=3;}{d=4;}]) { a=1; b=2; c=3; d=4; };
+      listOfStrings = expect.eq (concat ["a" "b" "c"]) "abc";
+      empty = {
+        lists = expect.eq (concat.lists []) [];
+        sets = expect.eq (concat.sets []) {};
+        strings = expect.eq (concat.strings []) "";
+        functor = expect.eq (concat []) [];
       };
     };
     LazyList = {

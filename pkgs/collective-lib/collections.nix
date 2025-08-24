@@ -89,6 +89,11 @@ in rec {
   # Any non-collection is considered non-empty
   safeNonEmpty = x: !(safeEmpty x);
 
+  replicate = n: dispatch {
+    list = xs: typed.concat.lists (lib.lists.replicate n xs);
+    string = s: lib.strings.replicate n s;
+  };
+
   # Prepend a collection to another collection.
   # The type of the second argument dictates the type of the result.
   # For 'prepend list list':
@@ -170,6 +175,17 @@ in rec {
       string_1 = { expr = size "a"; expected = 1; };
       string_2 = { expr = size "ab"; expected = 2; };
       null_0 = expect.error (size null);
+    };
+
+    replicate = {
+      list = {
+        simple = expect.eq (replicate 3 [1 2]) [1 2 1 2 1 2];
+        empty = expect.eq (replicate 3 []) [];
+      };
+      string = {
+        simple = expect.eq (replicate 3 "a") "aaa";
+        empty = expect.eq (replicate 3 "") "";
+      };
     };
 
     prepend = {

@@ -944,6 +944,8 @@ in rec {
         listWithLambda = expect.eq (pointerEqual [1 2 3] [1 2 (x: x)]) false;
       };
 
+      simpleFail = expect.noLambdasEq {} {a = id;};
+
     };
   };
 
