@@ -78,7 +78,9 @@ in rec {
             else if typeOf this == "set" then
               concatMapAttrs
                 (k: v:
-                  if k == "__toString"
+                  if k == "__functor"
+                  then { __functor__NoLambdas = "<__functor>"; }
+                  else if k == "__toString"
                   then { __toString__NoLambdas = "<__toString>"; }
                   else if k == "__show"
                   then { __show__NoLambdas = "<__show>"; }
@@ -90,7 +92,7 @@ in rec {
 
             else this;
 
-      in go 0 this;
+      in go 0 (pruneCycles this);
 
     PointerLambdas = this:
       let
@@ -122,7 +124,7 @@ in rec {
       in go 0 this;
 
     # Compare test outputs only on their canonical stringified form.
-    Print = this: log.vprintUnsafe this;
+    Print = this: log.vprint (log.pruneCycles this);
   };
 
   # Detect a raw test object
