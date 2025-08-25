@@ -500,9 +500,9 @@ let
           # KeyEvent input:
           e = keyCode: { e = keyCode; };
           # Literal string input with legend (can be multi-char, can contain colons)
-          s = legend: text: { s = text; l = legend; };
+          s = legend: text: { s = text; inherit legend; };
           # Macro input with legend.
-          m = legend: keyList: { m = keyList; l = legend; };
+          m = legend: keyList: { m = keyList; inherit legend; };
         };
 
         # Shorthand for placing known keys/aliases at mapping locations.
@@ -1340,7 +1340,32 @@ rec {
           let l = getLayout "Code QWERTY Compact";
               k = l.keyboard;
               q_key = getKey 0 0 k;
-          in expect.eq q_key.c.k "q";
+              z_key = getKey 2 0 k;
+          in {
+            q.c = expect.eq q_key.c.k "q";
+            z.c = expect.eq z_key.c.k "z";
+            z.se = expect.eq z_key.se.m 
+              [ { e = null;
+                k = "ctrl";
+                legend = null;
+                loc = false;
+                s = null; }
+              { e = null;
+                k = "alt";
+                legend = null;
+                loc = false;
+                s = null; }
+              { e = null;
+                k = "shift";
+                legend = null;
+                loc = false;
+                s = null; }
+              { e = null;
+                k = "right";
+                legend = null;
+                loc = false;
+                s = null; } ];
+          };
 
         variants.addMods =
           let l = getLayout "Code QWERTY Compact (0_C0Mods)";

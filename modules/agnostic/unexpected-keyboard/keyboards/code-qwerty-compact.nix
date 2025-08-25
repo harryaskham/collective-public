@@ -2,6 +2,7 @@
 
 with typed;
 with uklib;
+
 with codes.withAliases {
   switch_to_base = "switch_to_layout_Code_QWERTY_Compact";
   switch_to_C0Mods = "switch_to_layout_Code_QWERTY_Compact_0_C0Mods";
@@ -11,7 +12,11 @@ with codes.withAliases {
   switch_to_splitLE = "switch_to_layout_Code_QWERTY_Compact_4_splitLG";
 };
 
-{
+let macros = typed.recursiveMergeAttrsList [
+  (mkCardinal "show_termux_sidebar" (with _; with kv; m "⌁" [(k ctrl) (k alt) (k shift) (k right)]))
+];
+
+in {
   name = "Code QWERTY Compact";
   bottomRow = false;
   includeDefaultVariants = false;  # Added back manually as part of the ordered variants below.
@@ -203,7 +208,7 @@ with codes.withAliases {
       _
         "∞" nw.toggle_persistence   ne."0"
               c.p
-        "⇙" sw.floating_resize  "➟" se.floating_enable_passthrough
+                                    "➟" se.floating_enable_passthrough
       K;
   }
 
@@ -258,7 +263,7 @@ with codes.withAliases {
       K
                         ne."|"
               c.z
-        sw."\\"       
+        sw."\\"         "⇝" macros.se.show_termux_sidebar
       _
                       ne.cut
               c.x
@@ -292,7 +297,7 @@ with codes.withAliases {
           w.left        e.right
                   s.down
       _
-                      ne.action
+        "⤡" nw.floating_resize ne.action
                 c.enter
 
       K;
