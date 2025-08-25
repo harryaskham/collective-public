@@ -39,10 +39,16 @@ in {
         '';
 
         # Substitutions don't handle the udev rules at least in nixos-unstable 2025-08-25
-        postInstall = ''
-          ${attrs.postInstall or ""}
+        #postInstall = ''
+        #  ${attrs.postInstall or ""}
 
-          substituteInPlace $out/lib/udev/rules.d/83-hhd.rules \
+        #  substituteInPlace $out/lib/udev/rules.d/83-hhd.rules \
+        #    --replace-fail "/bin/chmod" "${lib.getExe' pkgs.coreutils "chmod"}"
+        #'';
+        postPatch = ''
+          ${attrs.postPatch or ""}
+
+          substituteInPlace usr/lib/udev/rules.d/83-hhd.rules \
             --replace-fail "/bin/chmod" "${lib.getExe' pkgs.coreutils "chmod"}"
         '';
       });
