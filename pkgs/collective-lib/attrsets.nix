@@ -363,7 +363,8 @@ let
       deepFilter (x: 
         x != {} 
         && !(builtins.isFunction x) 
-        && x != "<lambda>" 
+        && x != "<both lambda>" 
+        && x != "<uncomparable lambda>" 
         && x != "<__toString>" 
         && x != {__lambda = true;}
         && !(x ? __equal)) (diff_ params a b);
