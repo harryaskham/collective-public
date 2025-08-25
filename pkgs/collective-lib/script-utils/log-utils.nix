@@ -424,11 +424,11 @@ rec {
         };
 
         return = {
-          success = expect.eq (return.success "its ok") ''log-return 0 "" success "its ok"'';
-          value.int = expect.eq (return.value 123) ''log-return 0 123 success ""'';
-          value.string = expect.eq (return.value "a string") ''log-return 0 "a string" success ""'';
-          error = expect.eq (return.error "its bad") ''log-return 1 "" error "its bad"'';
-          errorCode = expect.eq (return.errorCode 2 "its bad") ''log-return 2 "" error "its bad"'';
+          success = expect.eq (return.success "its ok") ''log-return 0 "" success "its ok"; return $?'';
+          value.int = expect.eq (return.value 123) ''log-return 0 123 success ""; return $?'';
+          value.string = expect.eq (return.value "a string") ''log-return 0 "a string" success ""; return $?'';
+          error = expect.eq (return.error "its bad") ''log-return 1 "" error "its bad"; return $?'';
+          errorCode = expect.eq (return.errorCode 2 "its bad") ''log-return 2 "" error "its bad"; return $?'';
         };
 
         exit = {

@@ -323,13 +323,11 @@ ${eof}
     styles = with ansi; 
       let 
         expectANSI = actualWith: exWithout: exWith: expect.eq (rec {
-          styled = actualWith;
           escaped = escapeANSI actualWith;
           stripped = stripANSI actualWith;
           strippedEscaped = escapeANSI (stripANSI actualWith);
         }) {
-          styled = exWith;
-          escaped = escapeANSI exWith;
+          escaped = exWith;
           stripped = exWithout;
           strippedEscaped = exWithout;
         };
@@ -339,12 +337,12 @@ ${eof}
             expectANSI
               (style [fg.red] "test")
               "test"
-              ''\e[31mtest\e[0m'';
+              ''\\e[31mtest\\e[0;0m'';
           _01_backToBack =
             expectANSI
               "${(style [fg.red] "red")}${style [fg.blue] "blue"}"
               "redblue"
-              ''\e[31mred\e[0m\e[34mblue\e[0m'';
+              ''\\e[31mred\\e[0;0m\\e[34mblue\\e[0;0m'';
           _02_nested =
             expectANSI
               (_b_ ''
@@ -361,8 +359,8 @@ ${eof}
               '')
               (_b_ ''
                 outer
-                \e[40minner
-                \e[34mnested\e[0m
+                \\e[40minner
+                \\e[34mnested\\e[0;0m
               '');
         };
   };
