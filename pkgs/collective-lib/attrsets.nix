@@ -370,7 +370,10 @@ let
         && !(x ? __equal)) (diff_ params a b);
     diffShort_ = params: a: b:
       let dsnl = diffShortNoLambdas_ params a b;
-          ds = deepFilter (x: x != {} && !(x ? __equal)) (diff_ params a b);
+          ds = 
+            deepConcatMap
+              (k: v: if k == "__toString" then {"<__toString>" = v;} else {${k}= v;})
+              (deepFilter (x: x != {} && !(x ? __equal)) (diff_ params a b));
       in if emptyDiff dsnl then ds else dsnl;
     diffShort = diffShort_ {};
 
