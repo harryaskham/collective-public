@@ -634,7 +634,7 @@ let
 
     # Conversions from attribute sets to lists of 'name="value"' strings
     # for insertion into the XML layout.
-    from = {
+    from = lib.fix (self: {
       # Mask the 'rows', 'modmap' in the XML tag conversion.
       # Convert the remainder from camel to snake case.
       keyboard = keyboard_: xml.attrs {
@@ -670,10 +670,10 @@ let
             if (kv.k or null) != null then kv.k
             else if (kv.e or null) != null then "keyevent:${kv.e}"
             else if (kv.s or null) != null then "'${replaceStrings ["'"] ["\\'"] kv.s}'"
-            else if (kv.m or null) != null then "${joinSep "," (map keyValue kv.m)}"
+            else if (kv.m or null) != null then "${joinSep "," (map self.keyValue kv.m)}"
             else throw "Unexpected mapping type in: ${joinWords (attrNames kv)}";
         in "${prefix}${value}";
-    };
+    });
 
     # If a type defines an XML override, wrap a generating function to use it
     # instead of generated new XML.
