@@ -48,7 +48,7 @@ in {
         postPatch = ''
           ${attrs.postPatch or ""}
 
-          substituteInPlace usr/lib/udev/rules.d/83-hhd.rules \
+          substituteInPlace $out/lib/udev/rules.d/83-hhd.rules \
             --replace-fail "/bin/chmod" "${lib.getExe' pkgs.coreutils "chmod"}"
         '';
       });
