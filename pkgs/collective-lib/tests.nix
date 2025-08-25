@@ -578,8 +578,14 @@ in rec {
   mergeModuleSuites = modules:
     mergeSuites (mapAttrs (_: testModule) modules);
 
+  # Expose module-specific merger separately.
+  modules = {
+    withMergedSuites = modules:
+      modules // { _tests = mergeModuleSuites modules; };
+  };
+
   withMergedSuites = modules:
-    modules // { _tests = mergeModuleSuites modules; };
+    modules // { _tests = withMergedSuites modules; };
 
   # Test the test lib
   __testf = x: x;

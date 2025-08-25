@@ -1,6 +1,6 @@
 { collective-lib, ... } @ args:
 
-collective-lib.tests.withMergedSuites {
+collective-lib.tests.modules.withMergedSuites {
   agnostic = import ./agnostic args;
   home-manager = import ./home-manager args;
   nixos = import ./nixos args;
