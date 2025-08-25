@@ -27,17 +27,20 @@ in {
 
       handheld-daemon-with-adjustor = pkgs.handheld-daemon.overrideAttrs (attrs: {
         nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ hhdPython.pkgs.wrapPython ];
+
         propagatedBuildInputs =
           (attrs.propagatedBuildInputs or [])
           ++ (with pkgs.python3Packages; [handheld-daemon-adjustor])
           ++ (with pkgs; [busybox]);
 
+        # Ensure the Python adjustor can be seen by HHD
         postFixup = ''
           wrapProgram "$out/bin/hhd" \
             --prefix PYTHONPATH : "$PYTHONPATH" \
             --prefix PATH : "${hhdPython}/bin"
         '';
 
+        # Substitutions don't handle the udev rules at least in nixos-unstable 2025-08-25
         postPatch = ''
           ${attrs.postPatch or ""}
 
@@ -50,26 +53,26 @@ in {
             --replace-fail '"chmod"' '"${lib.getExe' coreutils "chmod"}"'
         '';
 
-        build-system = with python3Packages; [
-          setuptools
-        ];
+        #build-system = with python3Packages; [
+        #  setuptools
+        #];
 
-        dependencies = with python3Packages; [
-          evdev
-          pyserial
-          pyyaml
-          rich
-          setuptools
-          xlib
-        ];
+        #dependencies = with python3Packages; [
+        #  evdev
+        #  pyserial
+        #  pyyaml
+        #  rich
+        #  setuptools
+        #  xlib
+        #];
 
         # This package doesn't have upstream tests.
-        doCheck = false;
+        #doCheck = false;
 
-        postInstall = ''
-          install -Dm644 $src/usr/lib/udev/rules.d/83-hhd.rules -t $out/lib/udev/rules.d/
-          install -Dm644 $src/usr/lib/udev/hwdb.d/83-hhd.hwdb -t $out/lib/udev/hwdb.d/
-        '';
+        #postInstall = ''
+        #  install -Dm644 $src/usr/lib/udev/rules.d/83-hhd.rules -t $out/lib/udev/rules.d/
+        #  install -Dm644 $src/usr/lib/udev/hwdb.d/83-hhd.hwdb -t $out/lib/udev/hwdb.d/
+        #'';
       });
 
     in rec {
