@@ -670,7 +670,7 @@ let
             if (kv.k or null) != null then kv.k
             else if (kv.e or null) != null then "keyevent:${kv.e}"
             else if (kv.s or null) != null then "'${replaceStrings ["'"] ["\\'"] kv.s}'"
-            else if (kv.m or null) != null then "${joinSep "," (map mkKeyValue kv.m)}"
+            else if (kv.m or null) != null then "${joinSep "," (map keyValue kv.m)}"
             else throw "Unexpected mapping type in: ${joinWords (attrNames kv)}";
         in "${prefix}${value}";
     };
