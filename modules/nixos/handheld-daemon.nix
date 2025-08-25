@@ -1,4 +1,4 @@
-{ config, lib, pkgs, coreutils, ... }:
+{ config, lib, pkgs, ...}:
 
 with lib;
 
@@ -45,8 +45,8 @@ in {
           ${attrs.postPatch or ""}
 
           substituteInPlace src/usr/lib/udev/rules.d/83-hhd.rules \
-            --replace-fail "/bin/chmod" "${lib.getExe' coreutils "chmod"}" \
-            --replace-fail '"chmod"' '"${lib.getExe' coreutils "chmod"}"'
+            --replace-fail "/bin/chmod" "${lib.getExe' pkgs.coreutils "chmod"}" \
+            --replace-fail '"chmod"' '"${lib.getExe' pkgs.coreutils "chmod"}"'
         '';
 
         #build-system = with python3Packages; [
