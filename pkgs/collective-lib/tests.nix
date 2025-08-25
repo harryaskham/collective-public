@@ -585,7 +585,7 @@ in rec {
   };
 
   withMergedSuites = modules:
-    modules // { _tests = withMergedSuites modules; };
+    modules // { _tests = mergeSuites modules; };
 
   # Test the test lib
   __testf = x: x;
