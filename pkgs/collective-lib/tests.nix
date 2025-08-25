@@ -290,8 +290,10 @@ in rec {
                 header = atom.h1 "Actual";
                 borderStyles = [fg.brightblack];
                 body = _b_ ''
-                  ${_p_ result}
-                  ${optionalString (status == Status.Failed) (box {
+                  ${if isTryEvalFailure result 
+                    then style [fg.red bold] "<tryEval failure>"
+                    else else _p_ result}
+                  ${optionalString (status == Status.Failed && !(isTryEvalFailure result)) (box {
                       header = style_ [fg.yellow bold] "Diff";
                       styles = [bg.black italic];
                       showBorder = false;
