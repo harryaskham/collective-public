@@ -42,8 +42,14 @@ in {
         postPatch = ''
           ${attrs.postPatch or ""}
 
-          substituteInPlace $out/lib/udev/rules.d/83-hhd.rules \
+          substituteInPlace usr/lib/udev/rules.d/83-hhd.rules \
             --replace-fail "/bin/chmod" "${lib.getExe' pkgs.coreutils "chmod"}"
+        '';
+
+        # Override removing $src to install the patched versions of the rules.
+        postInstall = ''
+          install -Dm644 usr/lib/udev/rules.d/83-hhd.rules -t $out/lib/udev/rules.d/
+          install -Dm644 usr/lib/udev/hwdb.d/83-hhd.hwdb -t $out/lib/udev/hwdb.d/
         '';
       });
 
