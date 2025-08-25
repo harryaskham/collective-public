@@ -265,6 +265,8 @@ let
               "floating_disable_passthrough"
               "snap_left"
               "snap_right"
+              "snap_top"
+              "snap_bottom"
               "fill_width"
               "center_horizontal"
               "center_vertical"

@@ -186,7 +186,7 @@ in {
               c.r
         sw."$"      "⎅" se.center_horizontal
       _
-                    ne."5"
+        "↥" nw.snap_top ne."5"
               c.t
         sw."%"      "⇹" se.fill_width
       _
@@ -194,7 +194,7 @@ in {
               c.y
         sw."^"      "⟷" se.switch_to_splitPG
       _
-                    ne."7"
+        "↧" nw.snap_bottom  ne."7"
               c.u
         sw."&"      "⟺" se.switch_to_splitLG
       _
