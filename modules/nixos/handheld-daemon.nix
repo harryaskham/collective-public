@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ... }:
+{ config, lib, pkgs, coreutils, ... }:
 
 with lib;
 
@@ -45,10 +45,6 @@ in {
           ${attrs.postPatch or ""}
 
           substituteInPlace src/usr/lib/udev/rules.d/83-hhd.rules \
-            --replace-fail "/bin/chmod" "${lib.getExe' coreutils "chmod"}" \
-            --replace-fail '"chmod"' '"${lib.getExe' coreutils "chmod"}"'
-
-          substituteInPlace src/usr/lib/udev/rules.d/83-hhd-user.rules \
             --replace-fail "/bin/chmod" "${lib.getExe' coreutils "chmod"}" \
             --replace-fail '"chmod"' '"${lib.getExe' coreutils "chmod"}"'
         '';
