@@ -39,9 +39,9 @@ in {
         '';
 
         # Substitutions don't handle the udev rules at least in nixos-unstable 2025-08-25
-        preInstall = ''
-          ${attrs.preInstall or ""}
-          substituteInPlace usr/lib/udev/rules.d/83-hhd.rules \
+        postInstall = ''
+          ${attrs.postInstall or ""}
+          substituteInPlace $src/usr/lib/udev/rules.d/83-hhd.rules \
             --replace-fail "/bin/chmod" "${lib.getExe' pkgs.coreutils "chmod"}"
         '';
       });
