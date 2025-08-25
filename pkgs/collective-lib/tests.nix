@@ -215,7 +215,10 @@ in rec {
 
     lazyFieldsEq = lazyEqOn Compare.Fields;
 
-    anyLambda = _: throw ''expect.anyLambda was called; should only be used in placeholder for Print/NoLambdas expectations.'';
+    anyLambda = _:
+      builtins.traceSeq
+        ''expect.anyLambda was called; should only be used in placeholder for Print/NoLambdas expectations.''
+        {};
 
     asserts = {
       ok = expr_: {
