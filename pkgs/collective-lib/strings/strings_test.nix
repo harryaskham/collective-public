@@ -229,17 +229,23 @@ in suite {
       with ansi;
       let
         a = box {body = "a";};
-        b = box {header = "b"; body = box {body = "c";};};
-        x = box {body = joinVertical [a b];};
+        b = box {header = "b"; body = [(box {body = "c";})];};
+        x = box {body = joinVertical [(toString a) (toString b)];};
       in
-        expect.eq (stripANSI x)
+        expect.eq
+          (stripANSI (toString x))
           (joinLines [
-            "lineA      headB  lineA      headB  lineA      headB  "
-            "longerlineA       longerlineA       longerlineA       "
-            "                                                      "
-            "           lineB             lineB             lineB  "
-            "                                                      "
-            "             footB             footB             footB"
+            "                   "
+            " ┏━━━━━━━━━━━━━━━┓ "
+            " ┃               ┃ "
+            " ┃ ┏━━━┓  ┏━━━┓  ┃ "
+            " ┃ ┃   ┃  ┃ b ┃  ┃ "
+            " ┃ ┃ a ┃  ┣━━━┫  ┃ "
+            " ┃ ┃   ┃  ┃   ┃  ┃ "
+            " ┃ ┃   ┃  ┃ c ┃  ┃ "
+            " ┃ ┃   ┃  ┃   ┃  ┃ "
+            " ┃ ┗━━━┛  ┗━━━┛  ┃ "
+            " ┗━━━━━━━━━━━━━━━┛ "
           ])
     );
   };

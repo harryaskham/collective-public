@@ -119,7 +119,7 @@ in rec {
       height = maximum (map length blocksLines);
       padBlockV = pad {to = height; emptyElem = "";};
       padBlockH = ls:
-        let width = maximum (map stringLength ls);
+        let width = maximum (map utf8StringLength ls);
         in map (pad { to = width; }) ls;
       padBlockLines = compose padBlockH padBlockV;
       paddedBlocksLines = map padBlockLines blocksLines;
