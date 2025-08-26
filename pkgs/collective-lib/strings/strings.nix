@@ -529,13 +529,16 @@ in rec {
 
   utf8StringLength = s: utf8StringLength_ {inherit s;};
   utf8StringLength_ = {ignoreANSI ? true, s}:
-    let go = cs:
+    let s' = if ignoreANSI then typed.script-utils.ansi-utils.ansi.stripANSI s else s;
+        go = cs:
           if cs == [] then 0
           else 
             let snocd = snoc cs;
                 n = utf8CharLength snocd.head;
             in 1 + go (drop (n - 1) snocd.tail);
-    in go (stringToCharacters (if ignoreANSI then typed.script-utils.ansi-utils.ansi.stripANSI s else s));
+    in 
+      if isASCII s' then stringLength s'
+      else go (stringToCharacters s');
 
   # Pad a given string with spaces until it is at least n characters long
   padString = { to, align ? "left", emptyChar ? " ", ignoreANSI ? true, utf8 ? false, ... }: s:
@@ -590,5 +593,18 @@ in rec {
     in {__unequal.__stringDiff = state.segments ++ [state.current];};
 
   diffStrings = diffStrings_ {};
+
+  StringWidth = w: s: {
+    __toString = self: s;
+    __width = w;
+  };
+
+  width = x:
+    if x ? __width then x.__width
+    else if isList x then maximum (map width x)
+    else if isString x then 
+      let ls = splitLines x;
+      in if size ls == 1 then utf8StringLength (head ls) else maximum (map utf8StringLength ls)
+    else throw "Invalid argument to width: ${typeOf x}";
 
 }

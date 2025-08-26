@@ -138,14 +138,6 @@ in rec {
       right = 1;
     };
 
-    width = x:
-      if x ? __width then x.__width
-      else if isList x then maximum (map width x)
-      else if isString x then 
-        let ls = splitLines x;
-        in if size ls == 1 then utf8StringLength (head ls) else maximum (map utf8StringLength ls)
-      else throw "Invalid argument to width: ${typeOf x}";
-
     box = { 
       styles ? [fg.brightwhite],
       borderStyles ? [fg.brightblack],
