@@ -279,13 +279,13 @@ in suite {
     };
   };
 
-  utf8StringLength = 
-    let 
-      a = "a";
-      b = "🌍";
-    in solo {
-      single = expect.eq [(lib.stringLength a) (utf8StringLength a)] [1 1];
-      emoji = expect.eq [(lib.stringLength b) (utf8StringLength b)] [4 1];
-      boxDrawing = expect.eq [(lib.stringLength "┏━━") (utf8StringLength "┏━━")] [9 3];
-    };
+  utf8StringLength = {
+    single = expect.eq [(lib.stringLength "a") (utf8StringLength "a")] [1 1];
+    emoji = expect.eq [(lib.stringLength "🌍") (utf8StringLength "🌍")] [4 1];
+    boxDrawing = expect.eq [(lib.stringLength "┏━━") (utf8StringLength "┏━━")] [9 3];
+    boxDrawingColored =
+      with ansi;
+      let x = style [fg.red] "┏━━";
+      in expect.eq [(lib.stringLength x) (utf8StringLength x)] [22 3];
+  };
 }

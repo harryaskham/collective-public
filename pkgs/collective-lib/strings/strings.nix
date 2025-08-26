@@ -514,29 +514,33 @@ in rec {
     builtins.fromJSON ''"\u${to4CharHexString (i + 1)}"'';
 
   asciiTable = mergeAttrsList (genList (i: { ${toAsciiChar i} = i; }) 256);
-  restByteLength = b:
-    if b / 32 == 7 then 4
+
+  onlyASCII = s: stringAsChars (c: if asciiTable ? ${c} then c else "") s;
+  isASCII = s: s == onlyASCII s;
+
+  utf8CharLength = c:
+    # Default to 2-byte continuation if Nix can't look up the character.
+    let b = asciiTable.${c} or (30 * 8);
+    in if b < 128 then 1
+    else if b / 32 == 7 then 4
     else if b / 16 == 6 then 3
     else if b / 8 == 30 then 2
     else throw "Invalid UTF-8 lead byte: ${toString b}";
 
-  utf8CharLength = c:
-    let b = asciiTable.${c} or (30 * 8);
-    in if b < 128 then 1
-    else restByteLength b;
-
-  utf8StringLength = s:
+  utf8StringLength = s: utf8StringLength_ {inherit s;};
+  utf8StringLength_ = {ignoreANSI ? true, s}:
     let go = cs:
           if cs == [] then 0
           else 
             let snocd = snoc cs;
                 n = utf8CharLength snocd.head;
             in 1 + go (drop (n - 1) snocd.tail);
-    in go (stringToCharacters s);
+    in go (stringToCharacters (if ignoreANSI then typed.script-utils.ansi-utils.ansi.stripANSI s else s));
 
   # Pad a given string with spaces until it is at least n characters long
-  padString = { to, align ? "left", emptyChar ? " ", ignoreANSI ? true, ... }: s:
-    let len = stringLength (if ignoreANSI then typed.script-utils.ansi-utils.ansi.stripANSI s else s);
+  padString = { to, align ? "left", emptyChar ? " ", ignoreANSI ? true, utf8 ? false, ... }: s:
+    let lenF = if utf8 then utf8StringLength else stringLength;
+        len = lenF (if ignoreANSI then typed.script-utils.ansi-utils.ansi.stripANSI s else s);
         paddingSize = max 0 (to - len);
         padding = typed.replicate paddingSize emptyChar;
         halfPaddingL = typed.replicate (builtins.floor (paddingSize / 2.0)) emptyChar;

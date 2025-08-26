@@ -143,7 +143,7 @@ in rec {
       else if isList x then maximum (map width x)
       else if isString x then 
         let ls = splitLines x;
-        in if size ls == 1 then utf8StringLength (head ls) else width ls
+        in if size ls == 1 then utf8StringLength (head ls) else maximum (map utf8StringLength ls)
       else throw "Invalid argument to width: ${typeOf x}";
 
     box = { 
@@ -211,7 +211,7 @@ in rec {
 
         mkLine = s: join [
           lineLeft
-          (style' styles (pad { to = contentWidth; inherit align;} s))
+          (style' styles (pad { to = contentWidth; utf8 = true; inherit align;} s))
           lineRight
         ];
 
@@ -463,7 +463,7 @@ ${eof}
                   };
               in {
                 withoutColor = expect.eq
-                  (toString (outer false))
+                  (stripANSI (toString (outer false)))
                   (joinLines [
                     "                "
                     " ┏━━━━━━━━━━━━┓ "
