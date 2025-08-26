@@ -513,10 +513,26 @@ in rec {
   toAsciiChar = i: 
     builtins.fromJSON ''"\u${to4CharHexString (i + 1)}"'';
 
-  asciiTable = genList (i: { ${toAsciiChar i} = i; }) 256;
+  asciiTable = mergeAttrsList (genList (i: { ${toAsciiChar i} = i; }) 256);
+  restByteLength = b:
+    if b / 32 == 7 then 4
+    else if b / 16 == 6 then 3
+    else if b / 8 == 30 then 2
+    else throw "Invalid UTF-8 lead byte: ${toString b}";
 
-  # Count Unicode codepoints (not bytes). Nix's stringLength counts bytes.
-  utf8StringLength = s: length (stringToCharacters s);
+  utf8CharLength = c:
+    let b = asciiTable.${c} or (30 * 8);
+    in if b < 128 then 1
+    else restByteLength b;
+
+  utf8StringLength = s:
+    let go = cs:
+          if cs == [] then 0
+          else 
+            let snocd = snoc cs;
+                n = utf8CharLength snocd.head;
+            in 1 + go (drop (n - 1) snocd.tail);
+    in go (stringToCharacters s);
 
   # Pad a given string with spaces until it is at least n characters long
   padString = { to, align ? "left", emptyChar ? " ", ignoreANSI ? true, ... }: s:

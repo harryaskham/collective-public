@@ -286,5 +286,6 @@ in suite {
     in solo {
       single = expect.eq [(lib.stringLength a) (utf8StringLength a)] [1 1];
       emoji = expect.eq [(lib.stringLength b) (utf8StringLength b)] [4 1];
+      boxDrawing = expect.eq [(lib.stringLength "┏━━") (utf8StringLength "┏━━")] [9 3];
     };
 }
