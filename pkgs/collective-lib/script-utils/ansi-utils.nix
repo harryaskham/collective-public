@@ -10,6 +10,7 @@ let
 in
 
 with collective-lib.collections;
+with collective-lib.dispatchlib;
 with collective-lib.syntax;
 with lib;
 with lib.strings;
@@ -137,6 +138,14 @@ in rec {
       right = 1;
     };
 
+    width = x:
+      if x ? __width then x.__width
+      else if isList x then maximum (map width x)
+      else if isString x then 
+        let ls = splitLines x;
+        in if size ls == 1 then utf8StringLength (head ls) else width ls
+      else throw "Invalid argument to width: ${typeOf x}";
+
     box = { 
       styles ? [fg.brightwhite],
       borderStyles ? [fg.brightblack],
@@ -156,21 +165,31 @@ in rec {
         left = 1;
         right = 1;
       },
+      # Body can be string or list of HasWidth
       body ? "",
       align ? "left"
     }: 
       let
-        headerBlock = _b_ header;
-        unstyledHeaderBlock = stripANSI headerBlock;
-        unstyledHeaderLines = splitLines unstyledHeaderBlock;
-        headerLines = splitLines headerBlock;
 
-        bodyBlock = _b_ body;
-        unstyledBodyBlock = stripANSI bodyBlock;
-        unstyledLines = splitLines unstyledBodyBlock;
-        lines = splitLines bodyBlock;
+        toBlock = dispatch {
+          list = map toBlock;
+          string = body: rec {
+            __block = _b_ body;
+            __toString = self: self.__block;
+            __width = width __block;
+          };
+          set = xs:
+            if xs ? __width then xs
+            else throw "Invalid argument to box: body must be a string or list of HasWidth";
+        };
+        headerBlock = toBlock header;
+        bodyBlocks =
+          if isList body then map toBlock body 
+          else if isString body then [(toBlock body)]
+          else if body ? __width then [body]
+          else throw "Invalid argument to box: body must be a string or list of HasWidth";
 
-        contentWidth = maximum (map size (unstyledLines ++ (optionals (header != null) unstyledHeaderLines)));
+        contentWidth = width ((optionals (header != null) [headerBlock]) ++ bodyBlocks);
         innerWidth = contentWidth + padding.left + padding.right;
         borderedWidth = innerWidth + 2;
         outerWidth = borderedWidth + margin.left + margin.right;
@@ -211,21 +230,29 @@ in rec {
         leftPadding = "${style' styles (spaces padding.left)}";
         rightPadding = "${style' styles (spaces padding.right)}";
 
-        content = joinLines (map mkLine lines);
+        mkBlock = block: joinLines (mapLines mkLine (toString block));
+        content = joinLines (map mkBlock bodyBlocks);
 
         maybeHeaderLines =
           if header == null then []
-          else (map mkLine headerLines) ++ (if showDivider then [midBorder] else []);
-      in joinLines (
-        topMargin
-        ++ [topBorder]
-        ++ maybeHeaderLines
-        ++ topPadding
-        ++ [content]
-        ++ bottomPadding
-        ++ [bottomBorder]
-        ++ bottomMargin
-      );
+          else [(mkBlock headerBlock)] ++ (if showDivider then [midBorder] else []);
+      in 
+        {
+          # Nix doesn't handle unicode codepoints or ANSI, so we include the logical width here.
+          # Enables nesting by providing a 'body' as a list of blocks / boxes.
+          __width = outerWidth;
+          __block = joinLines (
+            topMargin
+            ++ [topBorder]
+            ++ maybeHeaderLines
+            ++ topPadding
+            ++ [content]
+            ++ bottomPadding
+            ++ [bottomBorder]
+            ++ bottomMargin
+          );
+          __toString = self: self.__block;
+        };
 
     echoWith = arg:
       let heredoc = arg.heredoc or true;
@@ -373,7 +400,7 @@ ${eof}
               in expect.eq (stripANSI x) x;
             simpleBox =
               expect.eq 
-                (stripANSI (box {body = "a";}))
+                (stripANSI (toString (box {body = "a";})))
                 (joinLines [
                   "       "
                   " ┏━━━┓ "
@@ -382,9 +409,10 @@ ${eof}
                   " ┃   ┃ "
                   " ┗━━━┛ "
                 ]);
+
             header =
               expect.eq 
-                (stripANSI (box {header = "b"; body = "a";}))
+                (stripANSI (toString (box {header = "b"; body = "a";})))
                 (joinLines [
                   "       "
                   " ┏━━━┓ "
@@ -395,11 +423,12 @@ ${eof}
                   " ┃   ┃ "
                   " ┗━━━┛ "
                 ]);
+
             styledHeader =
               expect.eq 
-                (stripANSI (box {header = style [fg.red] "head"; body = "body";}))
+                (stripANSI (toString (box {header = style [fg.red] "head"; body = "body";})))
                 (joinLines [
-                  "       "
+                  "          "
                   " ┏━━━━━━┓ "
                   " ┃ head ┃ "
                   " ┣━━━━━━┫ "
@@ -408,11 +437,12 @@ ${eof}
                   " ┃      ┃ "
                   " ┗━━━━━━┛ "
                 ]);
+
             styledBody =
               expect.eq 
-                (stripANSI (box {header = "head"; body = style [fg.blue] "body";}))
+                (stripANSI (toString (box {header = "head"; body = style [fg.blue] "body";})))
                 (joinLines [
-                  "       "
+                  "          "
                   " ┏━━━━━━┓ "
                   " ┃ head ┃ "
                   " ┣━━━━━━┫ "
@@ -421,6 +451,56 @@ ${eof}
                   " ┃      ┃ "
                   " ┗━━━━━━┛ "
                 ]);
+
+            nested =
+              let inner = withColor: box {
+                    header = if withColor then style [fg.red] "inner" else "inner";
+                    body = if withColor then style [fg.blue] "body" else "body";
+                  };
+                  outer = withColor: box {
+                    header = if withColor then style [fg.green] "outer" else "outer";
+                    body = [ "Inner box:" (inner withColor) ];
+                  };
+              in {
+                withoutColor = expect.eq
+                  (toString (outer false))
+                  (joinLines [
+                    "                "
+                    " ┏━━━━━━━━━━━━┓ "
+                    " ┃ outer      ┃ "
+                    " ┣━━━━━━━━━━━━┫ "
+                    " ┃            ┃ "
+                    " ┃ Inner box: ┃ "
+                    " ┃            ┃ "
+                    " ┃ ┏━━━━━━━┓  ┃ "
+                    " ┃ ┃ inner ┃  ┃ "
+                    " ┃ ┣━━━━━━━┫  ┃ "
+                    " ┃ ┃       ┃  ┃ "
+                    " ┃ ┃ body  ┃  ┃ "
+                    " ┃ ┃       ┃  ┃ "
+                    " ┃ ┗━━━━━━━┛  ┃ "
+                    " ┗━━━━━━━━━━━━┛ "
+                  ]);
+                withColor = expect.eq
+                  (stripANSI (toString (outer true)))
+                  (joinLines [
+                    "                "
+                    " ┏━━━━━━━━━━━━┓ "
+                    " ┃ outer      ┃ "
+                    " ┣━━━━━━━━━━━━┫ "
+                    " ┃            ┃ "
+                    " ┃ Inner box: ┃ "
+                    " ┃            ┃ "
+                    " ┃ ┏━━━━━━━┓  ┃ "
+                    " ┃ ┃ inner ┃  ┃ "
+                    " ┃ ┣━━━━━━━┫  ┃ "
+                    " ┃ ┃       ┃  ┃ "
+                    " ┃ ┃ body  ┃  ┃ "
+                    " ┃ ┃       ┃  ┃ "
+                    " ┃ ┗━━━━━━━┛  ┃ "
+                    " ┗━━━━━━━━━━━━┛ "
+                  ]);
+              };
           };
         };
   };

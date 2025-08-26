@@ -244,28 +244,47 @@ in suite {
     );
   };
 
-  diffStrings = solo {
+  diffStrings = {
     empty = expect.eq (diffStrings "" "") {__equal = "";};
     equal = expect.eq (diffStrings "a" "a") {__equal = "a";};
     unequal = {
       one = expect.eq (diffStrings "a" "b")
-        {__unequal.__diff = [{__unequal = {first = "a"; second = "b";};}];};
+        {__unequal.__stringDiff = [{
+          __unequal = {first = "a"; second = "b";};}];};
       whole = expect.eq (diffStrings "abc" "def")
-        {__unequal.__diff = [{__unequal = {first = "abc"; second = "def";};}];};
+        {__unequal.__stringDiff = [
+          {__unequal = {first = "abc"; second = "def";};}
+        ];};
       prefix = expect.eq (diffStrings "abcd" "abef")
-        {__unequal.__diff = [{__equal = "ab";}
-                             {__unequal = {first = "cd"; second = "ef";};}];};
+        {__unequal.__stringDiff = [
+          {__equal = "ab";}
+          {__unequal = {first = "cd"; second = "ef";};}];};
       suffix = expect.eq (diffStrings "abcd" "efcd")
-        {__unequal.__diff = [{__unequal = {first = "ab"; second = "ef";};}
-                             {__equal = "cd";}];};
+        {__unequal.__stringDiff = [
+          {__unequal = {first = "ab"; second = "ef";};}
+          {__equal = "cd";}
+        ];};
       infix = expect.eq (diffStrings "xcdex" "acdef")
-        {__unequal.__diff = [{__unequal = {first = "x"; second = "a";};}
-                             {__equal = "cde";}
-                             {__unequal = {first = "x"; second = "f";};}];};
+        {__unequal.__stringDiff = [
+          {__unequal = {first = "x"; second = "a";};}
+          {__equal = "cde";}
+          {__unequal = {first = "x"; second = "f";};}
+        ];};
       differentLengths = expect.eq (diffStrings "xcdex" "acdefoo")
-        {__unequal.__diff = [{__unequal = {first = "x"; second = "a";};}
-                             {__equal = "cde";}
-                             {__unequal = {first = "x"; second = "foo";};}];};
+        {__unequal.__stringDiff = [
+          {__unequal = {first = "x"; second = "a";};}
+          {__equal = "cde";}
+          {__unequal = {first = "x"; second = "foo";};}
+        ];};
     };
   };
+
+  utf8StringLength = 
+    let 
+      a = "a";
+      b = "🌍";
+    in solo {
+      single = expect.eq [(lib.stringLength a) (utf8StringLength a)] [1 1];
+      emoji = expect.eq [(lib.stringLength b) (utf8StringLength b)] [4 1];
+    };
 }

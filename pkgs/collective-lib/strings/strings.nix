@@ -513,6 +513,11 @@ in rec {
   toAsciiChar = i: 
     builtins.fromJSON ''"\u${to4CharHexString (i + 1)}"'';
 
+  asciiTable = genList (i: { ${toAsciiChar i} = i; }) 256;
+
+  # Count Unicode codepoints (not bytes). Nix's stringLength counts bytes.
+  utf8StringLength = s: length (stringToCharacters s);
+
   # Pad a given string with spaces until it is at least n characters long
   padString = { to, align ? "left", emptyChar ? " ", ignoreANSI ? true, ... }: s:
     let len = stringLength (if ignoreANSI then typed.script-utils.ansi-utils.ansi.stripANSI s else s);
@@ -531,7 +536,7 @@ in rec {
     if ignoreANSI then diffStrings_ (args // {ignoreANSI = false;}) (ansi.stripANSI a) (ansi.stripANSI b)
     else if a == b then {__equal = a;}
     else let
-      ab = log.trace.showId (padLongest_ {emptyElem = "";} (mapAttrs (_: stringToCharacters) {inherit a b;}));
+      ab = padLongest_ {emptyElem = "";} (mapAttrs (_: stringToCharacters) {inherit a b;});
       state =
         typed.fold 
           ({current, segments}: {a, b}:
@@ -562,7 +567,7 @@ in rec {
               })
           {current = null; segments = [];}
           (zipListsWith (a: b: { inherit a b; }) ab.a ab.b);
-    in {__unequal.__diff = state.segments ++ [state.current];};
+    in {__unequal.__stringDiff = state.segments ++ [state.current];};
 
   diffStrings = diffStrings_ {};
 

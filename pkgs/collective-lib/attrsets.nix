@@ -364,24 +364,33 @@ let
     # Diff two attrsets, returning any divergent keys and their values.
     # Lambda-diffs only shown if they are causing diff failure.
     diffShortNoLambdas_ = params: a: b:
-      deepFilter (x: 
-        x != {} 
-        && !(builtins.isFunction x) 
-        && x != "<both lambda>" 
-        && x != "<uncomparable lambda>" 
-        && x != "<__toString>" 
-        && x != {__lambda = true;}
-        && !(x ? __equal)) (diff_ params a b);
+      deepFilterCond
+        (x: !(x ? __stringDiff))
+        (x: 
+          x != {} 
+          && !(builtins.isFunction x) 
+          && x != "<both lambda>" 
+          && x != "<uncomparable lambda>" 
+          && x != "<__toString>" 
+          && x != {__lambda = true;}
+          && !(x ? __equal))
+        (diff_ params a b);
+
     diffShort_ = params: a: b:
       let dsnl = diffShortNoLambdas_ params a b;
           ds = 
             deepConcatMap
               (k: v: if k == "__toString" then {"<__toString>" = v;} else {${k}= v;})
-              (deepFilter (x: x != {} && !(x ? __equal)) (diff_ params a b));
+              (deepFilterCond
+                (x: !(x ? __stringDiff))
+                (x: x != {} && !(x ? __equal))
+                (diff_ params a b));
       in if emptyDiff dsnl then ds else dsnl;
+
     diffShort = diffShort_ {};
 
-    diffShortWithEq = a: b: deepFilter (x: !(x ? __equal)) (diffWithEq a b);
+    diffShortWithEq = a: b:
+      deepFilterCond (x: !(x ? __stringDiff)) (x: !(x ? __equal)) (diffWithEq a b);
 
     # Whether a diff is empty i.e. two objects were equal.
     emptyDiff = dispatch.def (_: false) {

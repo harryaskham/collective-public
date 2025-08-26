@@ -273,6 +273,13 @@ in rec {
     set = xs: filterAttrs (_: f) (mapAttrs (_: deepFilter f) xs);
   };
 
+  deepFilterCond = cond: f: dispatch.def id {
+    list = xs: filter f (map (deepFilterCond cond f) xs);
+    set = xs: 
+      if cond xs then filterAttrs (_: f) (mapAttrs (_: deepFilterCond cond f) xs)
+      else xs;
+  };
+
   # Map a function over the depth and leaves of an arbitrary value, applying it recursively to all set and list values.
   deepMapWith = f:
     let

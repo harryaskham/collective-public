@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+source $COLLECTIVE_PUBLIC_DIR/scripts/init
+with-lib "$@"
