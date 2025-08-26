@@ -1088,11 +1088,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1755652291,
-        "narHash": "sha256-/z9IetPiO8WK7p+IaLTzTpSFcGDGAs6nAIjd66DAD/k=",
+        "lastModified": 1755652679,
+        "narHash": "sha256-F6TT8GpZ4KSk/3fhHo22ZmgBfW79CrOJQG9Zf4687F4=",
         "owner": "harryaskham",
         "repo": "nix-reflect",
-        "rev": "64abe0d726d6c0ed135ea5426f506b7da7ff66e0",
+        "rev": "dec70ff3226229016ed35b986a98511307067621",
         "type": "github"
       },
       "original": {
