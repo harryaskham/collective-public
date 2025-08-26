@@ -225,5 +225,47 @@ in suite {
             "           _  footB_           _  footB_           _  footB"
           ]);
       };
+    boxes = skip (
+      with ansi;
+      let
+        a = box {body = "a";};
+        b = box {header = "b"; body = box {body = "c";};};
+        x = box {body = joinVertical [a b];};
+      in
+        expect.eq (stripANSI x)
+          (joinLines [
+            "lineA      headB  lineA      headB  lineA      headB  "
+            "longerlineA       longerlineA       longerlineA       "
+            "                                                      "
+            "           lineB             lineB             lineB  "
+            "                                                      "
+            "             footB             footB             footB"
+          ])
+    );
+  };
+
+  diffStrings = solo {
+    empty = expect.eq (diffStrings "" "") {__equal = "";};
+    equal = expect.eq (diffStrings "a" "a") {__equal = "a";};
+    unequal = {
+      one = expect.eq (diffStrings "a" "b")
+        {__unequal.__diff = [{__unequal = {first = "a"; second = "b";};}];};
+      whole = expect.eq (diffStrings "abc" "def")
+        {__unequal.__diff = [{__unequal = {first = "abc"; second = "def";};}];};
+      prefix = expect.eq (diffStrings "abcd" "abef")
+        {__unequal.__diff = [{__equal = "ab";}
+                             {__unequal = {first = "cd"; second = "ef";};}];};
+      suffix = expect.eq (diffStrings "abcd" "efcd")
+        {__unequal.__diff = [{__unequal = {first = "ab"; second = "ef";};}
+                             {__equal = "cd";}];};
+      infix = expect.eq (diffStrings "xcdex" "acdef")
+        {__unequal.__diff = [{__unequal = {first = "x"; second = "a";};}
+                             {__equal = "cde";}
+                             {__unequal = {first = "x"; second = "f";};}];};
+      differentLengths = expect.eq (diffStrings "xcdex" "acdefoo")
+        {__unequal.__diff = [{__unequal = {first = "x"; second = "a";};}
+                             {__equal = "cde";}
+                             {__unequal = {first = "x"; second = "foo";};}];};
+    };
   };
 }

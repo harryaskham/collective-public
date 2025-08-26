@@ -162,6 +162,16 @@ in rec {
     string = padString args;
   };
 
+  padLongest = padLongest_ {};
+  padLongest_ = args: dispatch {
+    list = xs: 
+      let width = maximum (map size xs);
+      in map (pad (args // {to = width;})) xs;
+    set = xs:
+      let width = maximum (mapAttrsToList (_: size) xs);
+      in mapAttrs (_: pad (args // {to = width;})) xs;
+  };
+
   _tests = with collective-lib.tests; suite {
     collection = {
       list.empty = expect.True (collection []);
@@ -260,6 +270,8 @@ in rec {
             (pad {to = 10; ignoreANSI = true; emptyChar = "x"; emptyElem = 7;})
             ["abcde" [1 2 3] redHello])
           ["abcdexxxxx" [1 2 3 7 7 7 7 7 7 7] "${redHello}xxxxx"];
+      padLongest.list = expect.eq (padLongest ["hi" "hello" [0 1 2 3]]) ["hi   " "hello" [0 1 2 3 null]];
+      padLongest.set = expect.eq (padLongest {a = "hi"; b = "hello"; c = [0 1 2 3];}) {a = "hi   "; b = "hello"; c = [0 1 2 3 null];};
     };
   };
 

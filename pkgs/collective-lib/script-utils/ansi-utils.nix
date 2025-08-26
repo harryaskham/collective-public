@@ -78,14 +78,14 @@ in rec {
       else ''${code styles}${text}'';
     style' = styles: text: "${end}${style styles text}";
 
-    escapeANSI = replaceStrings ["\\"] ["\\\\"];
+    escapeANSI = replaceStrings ["\\e["] ["\\\\e["];
     stripANSI = text:
       let 
-        c = ''.*(\\e\[[0-9;]+m).*'';
+        c = ''[^\\]*(\\e\[[0-9;]*[0-9]m).*'';
         r = match c text;
       in 
         if r == null then text
-        else stripANSI (replaceStrings r [""] text);
+        else stripANSI (replaceStrings (drop 0 r) [""] text);
 
     boxes = {
       single = {
@@ -362,6 +362,66 @@ ${eof}
                 \\e[40minner
                 \\e[34mnested\\e[0;0m
               '');
+          _03_strip = {
+            none = expect.eq (stripANSI "a") "a";
+            unescaped.flat = 
+              expect.eq (stripANSI ''\e[31mred\e[0;0m\e[34mblue\e[0;0m'') "redblue";
+            unescaped.nested = 
+              expect.eq (stripANSI ''\e[31mred\e[1m(redbold)\e[0;0m'') "red(redbold)";
+            escaped = 
+              let x = ''\\e[31mred\\e[0;0m\\e[34mblue\\e[0;0m'';
+              in expect.eq (stripANSI x) x;
+            simpleBox =
+              expect.eq 
+                (stripANSI (box {body = "a";}))
+                (joinLines [
+                  "       "
+                  " ┏━━━┓ "
+                  " ┃   ┃ "
+                  " ┃ a ┃ "
+                  " ┃   ┃ "
+                  " ┗━━━┛ "
+                ]);
+            header =
+              expect.eq 
+                (stripANSI (box {header = "b"; body = "a";}))
+                (joinLines [
+                  "       "
+                  " ┏━━━┓ "
+                  " ┃ b ┃ "
+                  " ┣━━━┫ "
+                  " ┃   ┃ "
+                  " ┃ a ┃ "
+                  " ┃   ┃ "
+                  " ┗━━━┛ "
+                ]);
+            styledHeader =
+              expect.eq 
+                (stripANSI (box {header = style [fg.red] "head"; body = "body";}))
+                (joinLines [
+                  "       "
+                  " ┏━━━━━━┓ "
+                  " ┃ head ┃ "
+                  " ┣━━━━━━┫ "
+                  " ┃      ┃ "
+                  " ┃ body ┃ "
+                  " ┃      ┃ "
+                  " ┗━━━━━━┛ "
+                ]);
+            styledBody =
+              expect.eq 
+                (stripANSI (box {header = "head"; body = style [fg.blue] "body";}))
+                (joinLines [
+                  "       "
+                  " ┏━━━━━━┓ "
+                  " ┃ head ┃ "
+                  " ┣━━━━━━┫ "
+                  " ┃      ┃ "
+                  " ┃ body ┃ "
+                  " ┃      ┃ "
+                  " ┗━━━━━━┛ "
+                ]);
+          };
         };
   };
 }

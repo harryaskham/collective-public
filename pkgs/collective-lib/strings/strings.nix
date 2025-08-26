@@ -525,4 +525,45 @@ in rec {
       right = "${padding}${s}";
       center = "${halfPaddingL}${s}${halfPaddingR}";
     };
+
+  diffStrings_ = {aLabel ? "first", bLabel ? "second", ignoreANSI ? true} @ args: a: b:
+    with typed.script-utils.ansi-utils;
+    if ignoreANSI then diffStrings_ (args // {ignoreANSI = false;}) (ansi.stripANSI a) (ansi.stripANSI b)
+    else if a == b then {__equal = a;}
+    else let
+      ab = log.trace.showId (padLongest_ {emptyElem = "";} (mapAttrs (_: stringToCharacters) {inherit a b;}));
+      state =
+        typed.fold 
+          ({current, segments}: {a, b}:
+            if current == null then {
+              current = 
+                if a == b
+                then { __equal = a; } 
+                else { __unequal = { ${aLabel} = a; ${bLabel} = b;}; };
+              inherit segments;
+            }
+            else if a == b then
+              if current ? __equal then {
+                current = { __equal = current.__equal + a; };
+                inherit segments;
+              }
+              else {
+                current = { __equal = a; };
+                segments = segments ++ [current];
+              }
+            else
+              if current ? __unequal then {
+                current = { __unequal = { ${aLabel} = current.__unequal.${aLabel} + a; ${bLabel} = current.__unequal.${bLabel} + b; }; };
+                inherit segments;
+              }
+              else {
+                current = { __unequal = { ${aLabel} = a; ${bLabel} = b; }; };
+                segments = segments ++ [current];
+              })
+          {current = null; segments = [];}
+          (zipListsWith (a: b: { inherit a b; }) ab.a ab.b);
+    in {__unequal.__diff = state.segments ++ [state.current];};
+
+  diffStrings = diffStrings_ {};
+
 }

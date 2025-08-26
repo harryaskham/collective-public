@@ -320,9 +320,17 @@ let
       depth ? 0,
       aLabel ? "first",
       bLabel ? "second",
-      allLambdasEqual ? false
+      allLambdasEqual ? false,
+      ignoreANSI ? true
     }: a: b:
-      if depth == maxDepth then { __maxDepth = true; }
+      if isString a && isString b
+        then diffStrings_ {inherit ignoreANSI aLabel bLabel;} a b
+      else if isFunction a && isFunction b then
+        if allLambdasEqual
+        then { __equal = "<both lambda>"; }
+        else { __unequal = "<uncomparable lambda>"; }
+      else if depth == maxDepth 
+        then { __maxDepth = true; }
       else if isList a && isList b
         then
           (zipListsWith
@@ -350,10 +358,6 @@ let
                   (elemAt values 0)
                   (elemAt values 1))
             [a b])
-      else if isFunction a && isFunction b then
-        if allLambdasEqual
-        then { __equal = "<both lambda>"; }
-        else { __unequal = "<uncomparable lambda>"; }
       else if a == b then { __equal = a; }
       else { __unequal = { ${aLabel} = a; ${bLabel} = b; }; };
 
