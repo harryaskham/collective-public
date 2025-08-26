@@ -165,15 +165,15 @@ in suite {
   };
 
   joinVertical = {
-    empty = expect.eq (joinVertical []) "";
-    single = expect.eq (joinVertical [""]) "";
-    twoLines = expect.eq (joinVertical [
+    empty = expect.eq (toString (joinVertical [])) "";
+    single = expect.eq (toString (joinVertical [""])) "";
+    twoLines = expect.eq (toString (joinVertical [
       "line1"
       "line2"
-    ]) "line1line2";
+    ])) "line1line2";
     twoBlocks =
       expect.eq 
-        (joinVertical [
+        (toString (joinVertical [
           (_b_ ''
             line1
             longerline1
@@ -183,7 +183,7 @@ in suite {
             longerline2
             line3
           '')
-        ])
+        ]))
         (joinLines [
           "line1      line2      "
           "longerline1longerline2"
@@ -205,7 +205,7 @@ in suite {
         '';
       in {
         noSep = expect.eq 
-          (joinVertical [a b a b a b])
+          (toString (joinVertical [a b a b a b]))
           (joinLines [
             "lineA      headB  lineA      headB  lineA      headB  "
             "longerlineA       longerlineA       longerlineA       "
@@ -215,7 +215,7 @@ in suite {
             "             footB             footB             footB"
           ]);
         sep = expect.eq 
-          (joinVerticalSep "_" [a b a b a b])
+          (toString (joinVerticalSep "_" [a b a b a b]))
           (joinLines [
             "lineA      _headB  _lineA      _headB  _lineA      _headB  "
             "longerlineA_       _longerlineA_       _longerlineA_       "
@@ -230,7 +230,7 @@ in suite {
       let
         a = box {body = "a";};
         b = box {header = "b"; body = [(box {body = "c";})];};
-        x = box {body = joinVertical [(toString a) (toString b)];};
+        x = box {body = joinVertical [a b];};
       in
         expect.eq
           (stripANSI (toString x))

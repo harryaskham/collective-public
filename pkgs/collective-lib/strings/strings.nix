@@ -109,23 +109,24 @@ in rec {
   # Join a list of statements into a semicolon-escapednewline separated string.
   joinStatementLines = joinOptionalsSep "; \\\n";
 
-  # Joins a list of strings vertically
+  # Joins a list of strings vertically, retaining width information.
   joinVertical = joinVerticalSep "";
   joinVerticalSep = sep: blocks:
     if empty blocks then ""
     else if size blocks == 1 then head blocks
     else let 
-      blocksLines = map splitLines blocks;
+      sepW = utf8StringLength sep;
+      blocksLines = map (b: splitLines (toString b)) blocks;
+      blockWidths = map width blocks;
       height = maximum (map length blocksLines);
       padBlockV = pad {to = height; emptyElem = "";};
-      padBlockH = ls:
-        let width = maximum (map utf8StringLength ls);
-        in map (pad { to = width; }) ls;
-      padBlockLines = compose padBlockH padBlockV;
-      paddedBlocksLines = map padBlockLines blocksLines;
+      padBlockH = w: ls: map (pad { to = w; }) ls;
+      padBlockLines = w: ls: padBlockH w (padBlockV ls);
+      paddedBlocksLines = zipListsWith padBlockLines blockWidths blocksLines;
       joinBlockLines = zipListsWith (a: b: "${a}${sep}${b}");
       joinBlocksLines = typed.fold._1 joinBlockLines;
-    in joinLines (joinBlocksLines paddedBlocksLines);
+    in
+      StringWidth (sum blockWidths + sepW) (joinLines (joinBlocksLines paddedBlocksLines));
 
   # Add a prefix to a string.
   addPrefix = prefix: s: prefix + s;

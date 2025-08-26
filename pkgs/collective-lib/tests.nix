@@ -290,30 +290,31 @@ in rec {
           inherit status evalStatus result;
           __toString = _:
             if result == null then msg
-            else ''
-              ${with ansi; box { 
-                header = atom.h1 "Actual";
-                borderStyles = [fg.brightblack];
-                body = _b_ ''
-                  ${if isTryEvalFailure result 
-                    then style [fg.red bold] "<tryEval failure>"
-                    else _p_ result}
-                  ${optionalString (status == Status.Failed && !(isTryEvalFailure result)) (box {
-                      header = style_ [fg.yellow bold] "Diff";
-                      styles = [bg.black italic];
-                      showBorder = false;
-                      showDivider = false;
-                      body = _p_ (
-                        diffShort_ {
-                          maxDepth = 10;
-                          aLabel = "expected";
-                          bLabel = "actual";
-                        }
-                        test.expected result);
-                      })}
-                 '';
-                }}
-              '';
+            else toString (with ansi; box { 
+              header = atom.h1 "Actual";
+              borderStyles = [fg.brightblack];
+              body = [
+                (_b_ (
+                  if isTryEvalFailure result 
+                  then style [fg.red bold] "<tryEval failure>"
+                  else _p_ result))
+              ] ++ (
+                optionals ((status == Status.Failed) && !(isTryEvalFailure result)) [
+                  (box {
+                    header = style_ [fg.yellow bold] "Diff";
+                    styles = [bg.black italic];
+                    showBorder = false;
+                    showDivider = false;
+                    body = _p_ (
+                      diffShort_ {
+                        maxDepth = 10;
+                        aLabel = "expected";
+                        bLabel = "actual";
+                      }
+                      test.expected result);
+                    })
+                ]);
+              });
         };
        in
         if test.skip
@@ -345,19 +346,21 @@ in rec {
         ${_h_ (with ansi; box { 
           header = atom.h1 "Expected";
           borderStyles = [fg.brightblack];
-          body = _b_ ''
-            ${_pv_ test.rawExpected}
-            ${optionalString
-                (test.compare != null) 
-                (with ansi; box { 
-                  header = style_ [fg.yellow bold] "Comparing on";
-                  styles = [bg.black italic];
-                  showBorder = false;
-                  showDivider = false;
-                  #styles = [fg.brightblack bg.black];
-                  body = _p_ test.expected;
-                })}
-          '';
+          body = [
+            (_b_ ''
+              ${_pv_ test.rawExpected}
+            '')
+          ] ++ (
+            optionals
+              (test.compare != null) 
+              [(with ansi; box { 
+                header = style_ [fg.yellow bold] "Comparing on";
+                styles = [bg.black italic];
+                showBorder = false;
+                showDivider = false;
+                #styles = [fg.brightblack bg.black];
+                body = _p_ test.expected;
+              })]);
         })}
         ${_h_ actual}
       '';
