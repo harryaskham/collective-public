@@ -192,7 +192,7 @@ in rec {
 
         mkLine = s: join [
           lineLeft
-          (style' styles (pad { width = contentWidth; inherit align;} s))
+          (style' styles (pad { to = contentWidth; inherit align;} s))
           lineRight
         ];
 

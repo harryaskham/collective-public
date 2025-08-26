@@ -15,6 +15,8 @@ let
   log = collective-lib.log;
   typed = collective-lib.typed;
   errors = collective-lib.errors;
+  lists = collective-lib.lists;
+  strings = collective-lib.strings;
 in rec {
   # Identify values that have elements.
   # Paths are collections, treated as normalised lists of components.
@@ -153,6 +155,13 @@ in rec {
     attrs = p: xs: all.solos p (solos xs);
   };
 
+  # Expose pad polymorphically via dispatch functor trick.
+  pad = args: {
+    __functor = dispatch;
+    list = padList args;
+    string = padString args;
+  };
+
   _tests = with collective-lib.tests; suite {
     collection = {
       list.empty = expect.True (collection []);
@@ -238,6 +247,19 @@ in rec {
       solos.false.key = expect.False (all.solos (k: v: size k == 1) [{a=1;}{b=2;}{ccc=3;}]);
       solos.nonSolos.list = expect.error (all.solos (k: v: size k == 1) [{a=1;b=2;c=3;}]);
       solos.nonSolos.set = expect.error (all.solos (k: v: size k == 1) {a=1;b=2;c=3;});
+    };
+
+    pad = {
+      string = expect.eq (pad {to = 5;} "abc") "abc  ";
+      list = expect.eq (pad {to = 5;} [1 2 3]) [1 2 3 null null];
+      poly = 
+        let ansi = collective-lib.script-utils.ansi-utils.ansi;
+            redHello = with ansi; style [underline fg.red] "hello";
+        in expect.eq 
+          (map
+            (pad {to = 10; ignoreANSI = true; emptyChar = "x"; emptyElem = 7;})
+            ["abcde" [1 2 3] redHello])
+          ["abcdexxxxx" [1 2 3 7 7 7 7 7 7 7] "${redHello}xxxxx"];
     };
   };
 

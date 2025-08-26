@@ -4,9 +4,10 @@
   ... }:
 
 with strings;
+with collective-lib.syntax;
 with collective-lib.tests;
-
-suite {
+let ansi = collective-lib.script-utils.ansi-utils.ansi;
+in suite {
   split = {
     whitespace = {
       expr = splitWhitespace " \n hell   o \n\n  \t \n wor\t\tld  \n";
@@ -146,5 +147,83 @@ suite {
     tildeWithPath = expect.eq (stringToPath "~/a/b") /home/test/a/b;
     dot = expect.eq (stringToPath "./a/b/c") /tmp/pwd/a/b/c;
     slash = expect.eq (stringToPath "/a/b/c") /a/b/c;
+  };
+
+  pad = {
+    left = expect.eq (padString {to = 10; align = "left";} "hello") "hello     ";
+    right = expect.eq (padString {to = 10; align = "right";} "hello") "     hello";
+    center.exact = expect.eq (padString {to = 9; align = "center";} "hello") "  hello  ";
+    center.roundUp = expect.eq (padString {to = 10; align = "center";} "hello") "  hello   ";
+    center.roundDown = expect.eq (padString {to = 8; align = "center";} "hello") " hello  ";
+    emptyChar = expect.eq (padString {to = 10; emptyChar = "x";} "hello") "helloxxxxx";
+    ignoreANSI.true =
+      let redHello = with ansi; style [underline fg.red] "hello";
+      in expect.eq (padString {to = 9; align = "center"; ignoreANSI = true;} redHello) "  ${redHello}  ";
+    ignoreANSI.false =
+      let redHello = with ansi; style [underline fg.red] "hello";
+      in expect.eq (padString {to = 9; align = "center"; ignoreANSI = false;} redHello) "${redHello}"; # Already too wide with the codes in place.
+  };
+
+  joinVertical = {
+    empty = expect.eq (joinVertical []) "";
+    single = expect.eq (joinVertical [""]) "";
+    twoLines = expect.eq (joinVertical [
+      "line1"
+      "line2"
+    ]) "line1line2";
+    twoBlocks =
+      expect.eq 
+        (joinVertical [
+          (_b_ ''
+            line1
+            longerline1
+          '')
+          (_b_ ''
+            line2
+            longerline2
+            line3
+          '')
+        ])
+        (joinLines [
+          "line1      line2      "
+          "longerline1longerline2"
+          "           line3      "
+        ]);
+    manyBlocks =
+      let
+        a = _b_ ''
+          lineA
+          longerlineA
+        '';
+        b = _b_ ''
+          headB
+          
+
+          lineB
+
+            footB
+        '';
+      in {
+        noSep = expect.eq 
+          (joinVertical [a b a b a b])
+          (joinLines [
+            "lineA      headB  lineA      headB  lineA      headB  "
+            "longerlineA       longerlineA       longerlineA       "
+            "                                                      "
+            "           lineB             lineB             lineB  "
+            "                                                      "
+            "             footB             footB             footB"
+          ]);
+        sep = expect.eq 
+          (joinVerticalSep "_" [a b a b a b])
+          (joinLines [
+            "lineA      _headB  _lineA      _headB  _lineA      _headB  "
+            "longerlineA_       _longerlineA_       _longerlineA_       "
+            "           _       _           _       _           _       "
+            "           _lineB  _           _lineB  _           _lineB  "
+            "           _       _           _       _           _       "
+            "           _  footB_           _  footB_           _  footB"
+          ]);
+      };
   };
 }

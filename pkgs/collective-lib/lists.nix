@@ -209,6 +209,18 @@ in rec {
   maybeNamedLazyList = name: x: if isLazyList x then setThunkName name x else NamedLazyList name x;
   NamedLazyList = name: LazyList_ (NamedThunk name);
 
+  padList = { to, emptyElem ? null, align ? "left", ... }: xs:
+    let len = size xs;
+        paddingSize = max 0 (to - len);
+        padding = typed.replicate paddingSize [emptyElem];
+        halfPaddingL = typed.replicate (builtins.floor (paddingSize / 2.0)) [emptyElem];
+        halfPaddingR = typed.replicate (builtins.ceil (paddingSize / 2.0)) [emptyElem];
+    in switch align {
+      left = xs ++ padding;
+      right = padding ++ xs;
+      center = halfPaddingL ++ xs ++ halfPaddingR;
+    };
+
   _tests = with collective-lib.tests; suite {
     fold.list.default = {
       sum = expect.eq 10 (fold.list (a: b: a + b) 4 [1 2 3]);
@@ -314,6 +326,15 @@ in rec {
       single = expect.eq (takeWhile (a: a > 0) [1]) [1];
       multiple = expect.eq (takeWhile (a: a > 0) [1 2 3]) [1 2 3];
       multiple2 = expect.eq (takeWhile (a: a < 3) [1 2 3]) [1 2];
+    };
+
+    padList = {
+      left = expect.eq (padList {to = 10; align = "left";} [0 1 2 3 4]) [0 1 2 3 4 null null null null null];
+      right = expect.eq (padList {to = 10; align = "right";} [0 1 2 3 4]) [null null null null null 0 1 2 3 4];
+      center.exact = expect.eq (padList {to = 9; align = "center";} [0 1 2 3 4]) [null null 0 1 2 3 4 null null];
+      center.roundUp = expect.eq (padList {to = 10; align = "center";} [0 1 2 3 4]) [null null 0 1 2 3 4 null null null];
+      center.roundDown = expect.eq (padList {to = 8; align = "center";} [0 1 2 3 4]) [null 0 1 2 3 4 null null];
+      withValue = expect.eq (padList {to = 8; emptyElem = "ok";} [0 1 2 3 4]) [0 1 2 3 4 "ok" "ok" "ok"];
     };
   };
 

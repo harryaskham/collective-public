@@ -7,6 +7,7 @@
 
 with lib;
 with lib.strings;
+with collective-lib.collections;
 with collective-lib.dispatchlib;
 with collective-lib.lists;
 with collective-lib.functions;
@@ -107,6 +108,24 @@ in rec {
 
   # Join a list of statements into a semicolon-escapednewline separated string.
   joinStatementLines = joinOptionalsSep "; \\\n";
+
+  # Joins a list of strings vertically
+  joinVertical = joinVerticalSep "";
+  joinVerticalSep = sep: blocks:
+    if empty blocks then ""
+    else if size blocks == 1 then head blocks
+    else let 
+      blocksLines = map splitLines blocks;
+      height = maximum (map length blocksLines);
+      padBlockV = pad {to = height; emptyElem = "";};
+      padBlockH = ls:
+        let width = maximum (map stringLength ls);
+        in map (pad { to = width; }) ls;
+      padBlockLines = compose padBlockH padBlockV;
+      paddedBlocksLines = map padBlockLines blocksLines;
+      joinBlockLines = zipListsWith (a: b: "${a}${sep}${b}");
+      joinBlocksLines = typed.fold._1 joinBlockLines;
+    in joinLines (joinBlocksLines paddedBlocksLines);
 
   # Add a prefix to a string.
   addPrefix = prefix: s: prefix + s;
@@ -495,12 +514,12 @@ in rec {
     builtins.fromJSON ''"\u${to4CharHexString (i + 1)}"'';
 
   # Pad a given string with spaces until it is at least n characters long
-  pad = { width, align ? "left", ignoreANSI ? true }: s:
+  padString = { to, align ? "left", emptyChar ? " ", ignoreANSI ? true, ... }: s:
     let len = stringLength (if ignoreANSI then typed.script-utils.ansi-utils.ansi.stripANSI s else s);
-        paddingSize = max 0 (width - len);
-        padding = typed.replicate paddingSize " ";
-        halfPaddingL = typed.replicate (builtins.floor (paddingSize / 2.0)) " ";
-        halfPaddingR = typed.replicate (builtins.ceil (paddingSize / 2.0)) " ";
+        paddingSize = max 0 (to - len);
+        padding = typed.replicate paddingSize emptyChar;
+        halfPaddingL = typed.replicate (builtins.floor (paddingSize / 2.0)) emptyChar;
+        halfPaddingR = typed.replicate (builtins.ceil (paddingSize / 2.0)) emptyChar;
     in switch align {
       left = "${s}${padding}";
       right = "${padding}${s}";
