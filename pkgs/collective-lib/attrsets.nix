@@ -368,7 +368,7 @@ let
         (x: !(x ? __stringDiff))
         (x: 
           # x != {} (disabled - hides diffs like {a = 1;} vs {a = 2; b = {};})
-          && !(builtins.isFunction x) 
+          !(builtins.isFunction x) 
           && x != "<both lambda>" 
           && x != "<uncomparable lambda>" 
           && x != "<__toString>" 
