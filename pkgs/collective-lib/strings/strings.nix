@@ -520,13 +520,16 @@ in rec {
   isASCII = s: s == onlyASCII s;
 
   utf8CharLength = c:
-    # Default to 2-byte continuation if Nix can't look up the character.
-    let b = asciiTable.${c} or (30 * 8);
-    in if b < 128 then 1
-    else if b / 32 == 7 then 4
-    else if b / 16 == 6 then 3
-    else if b / 8 == 30 then 2
-    else throw "Invalid UTF-8 lead byte: ${toString b}";
+    # Default to 4-byte char if Nix can't look up the character.
+    # This will under-count in uncertain cases.
+    if !(asciiTable ? ${c}) then 4
+    else 
+      let b = asciiTable.${c};
+      in if b < 128 then 1
+      else if b / 32 == 7 then 4
+      else if b / 16 == 6 then 3
+      else if b / 8 == 30 then 2
+      else throw "Invalid UTF-8 lead byte: ${toString b}";
 
   utf8StringLength = s: utf8StringLength_ {inherit s;};
   utf8StringLength_ = {ignoreANSI ? true, s}:
