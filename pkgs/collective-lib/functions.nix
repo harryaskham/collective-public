@@ -107,7 +107,7 @@ in rec {
   # addEllipsis f {a = 1; b = 2; c = 3;} = 3
   addEllipsis = f:
     if f ? __isAddedEllipsis then f else
-    let fArgs = builtins.functionArgs f;
+    let fArgs = lib.functionArgs f;
     in if (empty fArgs) then {...}@args: f args
     else {
       __isAddedEllipsis = true;
@@ -115,20 +115,41 @@ in rec {
     };
 
   nullArgs = f:
-    mapAttrs (_: _: null) (builtins.functionArgs f);
+    mapAttrs (_: _: null) (lib.functionArgs f);
 
   unitArgs = f:
-    mapAttrs (_: _: {}) (builtins.functionArgs f);
+    mapAttrs (_: _: {}) (lib.functionArgs f);
 
-  nullRequiredArgs = f:
-    concatMapAttrs 
-      (name: hasDefault: if hasDefault then {} else { ${name} = null; })
-      (builtins.functionArgs f);
+  argNames = f: attrNames (lib.functionArgs f);
+  requiredArgs = f: filterAttrs (_: v: !v) (lib.functionArgs f);
+  defaultArgs = f: filterAttrs (_: v: v) (lib.functionArgs f);
+  missingRequiredArgNames = f: args: attrNames (removeAttrs (requiredArgs f) (attrNames args));
 
-  unitRequiredArgs = f:
-    concatMapAttrs 
-      (name: hasDefault: if hasDefault then {} else { ${name} = {}; })
-      (builtins.functionArgs f);
+  # Get the names of arguments that were supplied but not expected by the function.
+  # Can't know about ellipses, so this isn't an error by itself.
+  suppliedUnknownArgs = f: args: attrNames (removeAttrs args (argNames f));
+
+  nullRequiredArgs = f: mapAttrs (_: _: null) (requiredArgs f);
+  unitRequiredArgs = f: mapAttrs (_: _: {}) (requiredArgs f);
+
+  hasFunctionArgs = f: lib.functionArgs f != {};
+
+  # Function application that throws a catchable error if arguments are missing,
+  # rather than the default behavior of:
+  # Missing arguments: ({a}: a) {} -> error: function 'anonymous lambda' called without required argument 'a'
+  # Non-attrset arguments: ({a}: a) 1 -> error: expected a set but found an integer: 1
+  # Can't distinguish between a zero-arg function that only accepts {} and a regular function,
+  # so can't catch (({}: 1) 2)
+  tryApply = f: args:
+    if typed.isFunctor f then tryApply (f.__functor f) args
+    else if builtins.isFunction f then
+      if hasFunctionArgs f then
+        assert that (isAttrs args) "tryApply: expected attrset, got ${lib.typeOf args}";
+        let missingArgs = missingRequiredArgNames f args; in
+        assert that (missingArgs == []) "tryApply: expected attrset to contain all required arguments; missing: ${joinSep ", " missingArgs}";
+        f args
+      else f args
+    else _throw_ "tryApply: expected function, got ${lib.typeOf f}";
 
   # Make a thunk out of a value
   thunk = x: _: x;
@@ -804,134 +825,174 @@ in rec {
               7;
         };
       };
+    };
 
-      pipe = {
-        simple = expect.eq
-          (pipe 123
-            (x: x + 1)
-            toString
-            (s: "${s} is 124")
-            ___)
-          "124 is 124";
+    pipe = {
+      simple = expect.eq
+        (pipe 123
+          (x: x + 1)
+          toString
+          (s: "${s} is 124")
+          ___)
+        "124 is 124";
+    };
+
+    addEllipsis = 
+      let f = {a, b}: a + b;
+      in {
+        simple = expect.eq (addEllipsis f {a = 1; b = 2; c = 5;}) 3;
       };
 
-      addEllipsis = 
-        let f = {a, b}: a + b;
+    requiredArgs = {
+      attrs = expect.eq (requiredArgs ({a, b, c ? 3}: a + b + c)) {a = false; b = false;};
+      lambda = expect.eq (requiredArgs (a: a)) {};
+    };
+
+    defaultArgs = {
+      attrs = expect.eq (defaultArgs ({a, b, c ? 3}: a + b + c)) {c = true;};
+      lambda = expect.eq (defaultArgs (a: a)) {};
+    };
+
+    missingRequiredArgs = {
+      all = expect.eq (missingRequiredArgNames ({a, b, c}: a + b + c) {}) ["a" "b" "c"];
+      total = expect.eq (missingRequiredArgNames ({a, b, c ? 3}: a + b + c) {a = 0; b = 1; c = 2;}) [];
+      partial = expect.eq (missingRequiredArgNames ({a, b, c ? 3}: a + b + c) {b = 1;}) ["a"];
+      functor = expect.eq (missingRequiredArgNames ({__functor = self:
+        {a, b, c ? 3}: a + b + c;}) {b = 1;}) ["a"];
+      lambda = expect.eq (missingRequiredArgNames (a: a) {a = 1;}) [];
+    };
+
+    unitArgs = expect.eq (unitArgs ({a, b, c ? 3}: a + b + c)) {a = {}; b = {}; c = {};};
+    nullArgs = expect.eq (nullArgs ({a, b, c ? 3}: a + b + c)) {a = null; b = null; c = null;};
+    nullRequiredArgs = expect.eq (nullRequiredArgs ({a, b, c ? 3}: a + b + c)) {a = null; b = null;};
+    unitRequiredArgs = expect.eq (unitRequiredArgs ({a, b, c ? 3}: a + b + c)) {a = {}; b = {};};
+
+    tryApply = skip {
+      simple = {
+        lambda = expect.eq (tryApply (a: a) 1) 1;
+        functor.lambda = expect.eq (tryApply {__functor = self: a: a;} 1) 1;
+        functor.attrs = expect.eq (tryApply {
+          __functor = self: 
+          {a}: a;
+        } {a = 1;}) 1;
+        attrs = expect.eq (tryApply ({a}: a) {a = 1;}) 1;
+        defaultAttrs = expect.eq (tryApply ({a ? 1}: a) {}) 1;
+        providedDefaultAttrs = expect.eq (tryApply ({a ? 1}: a) {a = 2;}) 2;
+      };
+      missing = {
+        empty = expect.error (tryApply ({a}: a) {});
+        unused = expect.error (tryApply ({a, b}: a) {a = 1;});
+        used = expect.error (tryApply ({a, b}: a) {b = 1;});
+        mixed = expect.error (tryApply ({a, b ? 2}: a) {b = 1;});
+        functor = expect.error (tryApply {__functor = self: {a}: a;} {});
+      };
+      nonAttrset = expect.error (tryApply ({a}: a) 1);
+    };
+
+    thunk = {
+      manual = expect.eq ((thunk 123) {}) 123;
+      resolve = expect.eq (resolve (thunk 123)) 123;
+      recursive =
+        let mkX = i: { inherit i; next = thunk (mkX (i + 1)); };
         in {
-          simple = expect.eq (addEllipsis f {a = 1; b = 2; c = 5;}) 3;
+          mkXPrints = expect.printEq (mkX 0) { i = 0; next = expect.anyLambda; };
+          mkX_0 = expect.eq (mkX 0).i 0;
+          mkX_0_next = expect.eq (resolve (mkX 0).next).i 1;
+          mkX_0_next_next = expect.eq (resolve (resolve (mkX 0).next).next).i 2;
+        };
+    };
+    Thunk = {
+      isThunkLambda = expect.eq (isThunkSet (_: 123)) false;
+      isThunkSet = expect.eq (isThunkSet {}) false;
+      isThunkThunk = expect.eq (isThunkSet (Thunk 123)) true;
+      mk = expect.eq (resolve (Thunk 123)) 123;
+      mk2 = expect.eq (resolve (resolve (Thunk (Thunk 123)))) 123;
+      mk5 = expect.eq
+        (resolve (resolve (resolve (resolve (resolve
+          (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
+        )))))
+        123;
+      print1 = expect.eq (log.print (Thunk 123)) "Thunk >-> int";
+      printNamed1 = expect.eq (log.print (NamedThunk "name" 123)) "Thunk >-[name]-> int";
+      print5 = expect.eq
+        (log.print
+          (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
+        )
+        "Thunk >-> set";
+      show5 = expect.eq
+        (log.show
+          (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
+        )
+        "Thunk >-> set";
+      do = expect.eq (thunkDo (Thunk 123) (x: x+1)) 124;
+      fmap = expect.eq (resolve (thunkFmap (Thunk 123) (x: x+1))) 124;
+      fmapRetainsThunk = expect.True (isThunkSet (thunkFmap (Thunk 123) (x: x+1)));
+    };
+
+    fjoin = {
+      fUnary =
+        let f = a: a * 3;
+        in {
+          gUnary =
+            let g = a: a + 2;
+                gf = fjoin (gr: fr: {inherit gr fr;}) g f;
+            in {
+              expr = gf 2 10;
+              expected = { fr = 6; gr = 12;};
+            };
+          gBinary =
+            let g = a: b: a + b;
+                gf = fjoin (gr: fr: {inherit gr fr;}) g f;
+            in {
+              expr = gf 2 10 1;
+              expected = { fr = 6; gr = 11;};
+            };
         };
 
-      unitArgs = expect.eq (unitArgs ({a, b, c ? 3}: a + b + c)) {a = {}; b = {}; c = {};};
-      nullArgs = expect.eq (nullArgs ({a, b, c ? 3}: a + b + c)) {a = null; b = null; c = null;};
-      nullRequiredArgs = expect.eq (nullRequiredArgs ({a, b, c ? 3}: a + b + c)) {a = null; b = null;};
-      unitRequiredArgs = expect.eq (unitRequiredArgs ({a, b, c ? 3}: a + b + c)) {a = {}; b = {};};
-
-      thunk = {
-        manual = expect.eq ((thunk 123) {}) 123;
-        resolve = expect.eq (resolve (thunk 123)) 123;
-        recursive =
-          let mkX = i: { inherit i; next = thunk (mkX (i + 1)); };
-          in {
-            mkXPrints = expect.printEq (mkX 0) { i = 0; next = expect.anyLambda; };
-            mkX_0 = expect.eq (mkX 0).i 0;
-            mkX_0_next = expect.eq (resolve (mkX 0).next).i 1;
-            mkX_0_next_next = expect.eq (resolve (resolve (mkX 0).next).next).i 2;
-          };
-      };
-      Thunk = {
-        isThunkLambda = expect.eq (isThunkSet (_: 123)) false;
-        isThunkSet = expect.eq (isThunkSet {}) false;
-        isThunkThunk = expect.eq (isThunkSet (Thunk 123)) true;
-        mk = expect.eq (resolve (Thunk 123)) 123;
-        mk2 = expect.eq (resolve (resolve (Thunk (Thunk 123)))) 123;
-        mk5 = expect.eq
-          (resolve (resolve (resolve (resolve (resolve
-            (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
-          )))))
-          123;
-        print1 = expect.eq (log.print (Thunk 123)) "Thunk >-> int";
-        printNamed1 = expect.eq (log.print (NamedThunk "name" 123)) "Thunk >-[name]-> int";
-        print5 = expect.eq
-          (log.print
-            (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
-          )
-          "Thunk >-> set";
-        show5 = expect.eq
-          (log.show
-            (Thunk (Thunk (Thunk (Thunk (Thunk 123)))))
-          )
-          "Thunk >-> set";
-        do = expect.eq (thunkDo (Thunk 123) (x: x+1)) 124;
-        fmap = expect.eq (resolve (thunkFmap (Thunk 123) (x: x+1))) 124;
-        fmapRetainsThunk = expect.True (isThunkSet (thunkFmap (Thunk 123) (x: x+1)));
-      };
-
-      fjoin = {
-        fUnary =
-          let f = a: a * 3;
-          in {
-            gUnary =
-              let g = a: a + 2;
-                  gf = fjoin (gr: fr: {inherit gr fr;}) g f;
-              in {
-                expr = gf 2 10;
-                expected = { fr = 6; gr = 12;};
-              };
-            gBinary =
-              let g = a: b: a + b;
-                  gf = fjoin (gr: fr: {inherit gr fr;}) g f;
-              in {
-                expr = gf 2 10 1;
-                expected = { fr = 6; gr = 11;};
-              };
-          };
-
-        fBinary =
-          let f = a: b: a * b;
-          in {
-            gUnary =
-              let g = a: a + 2;
-                  gf = fjoin (gr: fr: {inherit gr fr;}) g f;
-              in {
-                expr = gf 3 2 10;
-                expected = { fr = 6; gr = 12;};
-              };
-            gBinary =
-              let g = a: b: a + b;
-                  gf = fjoin (gr: fr: {inherit gr fr;}) g f;
-              in {
-                expr = gf 3 2 10 1;
-                expected = { fr = 6; gr = 11;};
-              };
-          };
-
-        orderedWithOrderedMerge = {
-          distinct = {
-            expr =
-              let f = Variadic.mkOrdered ["a" "b"];
-                  g = Variadic.mkOrdered ["c" "d"];
-                  gf = fjoin mergeAttrs g f;
-              in gf 1 2 3 4;
-            expected = { a = 1; b = 2; c = 3; d = 4; };
-          };
-          overlapping = {
-            expr =
-              let f = Variadic.mkOrdered ["a" "b"];
-                  g = Variadic.mkOrdered ["b" "c"];
-                  gf = fjoin mergeAttrs g f;
-              in gf 1 2 3 4;
-            expected = { a = 1; b = 2; c = 4; };
-          };
-          overlappingFlip = {
-            expr =
-              let f = Variadic.mkOrdered ["a" "b"];
-                  g = Variadic.mkOrdered ["b" "c"];
-                  gf = fjoin (flip mergeAttrs) g f;
-              in gf 1 2 3 4;
-            expected = { a = 1; b = 3; c = 4; };
-          };
+      fBinary =
+        let f = a: b: a * b;
+        in {
+          gUnary =
+            let g = a: a + 2;
+                gf = fjoin (gr: fr: {inherit gr fr;}) g f;
+            in {
+              expr = gf 3 2 10;
+              expected = { fr = 6; gr = 12;};
+            };
+          gBinary =
+            let g = a: b: a + b;
+                gf = fjoin (gr: fr: {inherit gr fr;}) g f;
+            in {
+              expr = gf 3 2 10 1;
+              expected = { fr = 6; gr = 11;};
+            };
         };
 
+      orderedWithOrderedMerge = {
+        distinct = {
+          expr =
+            let f = Variadic.mkOrdered ["a" "b"];
+                g = Variadic.mkOrdered ["c" "d"];
+                gf = fjoin mergeAttrs g f;
+            in gf 1 2 3 4;
+          expected = { a = 1; b = 2; c = 3; d = 4; };
+        };
+        overlapping = {
+          expr =
+            let f = Variadic.mkOrdered ["a" "b"];
+                g = Variadic.mkOrdered ["b" "c"];
+                gf = fjoin mergeAttrs g f;
+            in gf 1 2 3 4;
+          expected = { a = 1; b = 2; c = 4; };
+        };
+        overlappingFlip = {
+          expr =
+            let f = Variadic.mkOrdered ["a" "b"];
+                g = Variadic.mkOrdered ["b" "c"];
+                gf = fjoin (flip mergeAttrs) g f;
+            in gf 1 2 3 4;
+          expected = { a = 1; b = 3; c = 4; };
+        };
       };
 
       pointerEqual = {
