@@ -127,6 +127,12 @@ in rec {
     Print = this: log.vprint (log.pruneCycles this);
   };
 
+  # Add a lambda to a value to make it uncomparable.
+  uncomparable = a: {
+    inherit a;
+    __functor = self: {}: self.a;
+  }
+
   # Detect a raw test object
   isTest = test: test ? expr && test ? expected;
 
