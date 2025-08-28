@@ -131,7 +131,7 @@ in rec {
   uncomparable = a: {
     inherit a;
     __functor = self: {}: self.a;
-  }
+  };
 
   # Detect a raw test object
   isTest = test: test ? expr && test ? expected;
