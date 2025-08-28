@@ -130,6 +130,7 @@ in rec {
   # Add a lambda to a value to make it uncomparable.
   uncomparable = a: {
     inherit a;
+    __toString = self: "<uncomparable: ${_p_ self.a}>";
     __functor = self: {}: self.a;
   };
 
