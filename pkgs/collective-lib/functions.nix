@@ -111,7 +111,7 @@ in rec {
     in if (empty fArgs) then {...}@args: f args
     else {
       __isAddedEllipsis = true;
-      __functor = self: args: f (intersectAttrs fArgs args); 
+      __functor = self: args: tryApply f (intersectAttrs fArgs args); 
     };
 
   nullArgs = f:
@@ -867,7 +867,7 @@ in rec {
     nullRequiredArgs = expect.eq (nullRequiredArgs ({a, b, c ? 3}: a + b + c)) {a = null; b = null;};
     unitRequiredArgs = expect.eq (unitRequiredArgs ({a, b, c ? 3}: a + b + c)) {a = {}; b = {};};
 
-    tryApply = skip {
+    tryApply = {
       simple = {
         lambda = expect.eq (tryApply (a: a) 1) 1;
         functor.lambda = expect.eq (tryApply {__functor = self: a: a;} 1) 1;
