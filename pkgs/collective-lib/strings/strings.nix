@@ -140,6 +140,9 @@ in rec {
   # Map a function over the lines in a string with index.
   imapLines = f: s: imap0 f (splitLines s);
 
+  # Map a function over the lines in a string except the first
+  mapTailLines = f: imapLines (i: l: if i > 0 then f l else l);
+
   # Map a function over the lines in a string and concat the result
   concatMapLines = f: s: joinLines (mapLines f s);
 
