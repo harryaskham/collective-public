@@ -36,7 +36,7 @@ function maybe-bootstrap-cursor-agent() {
 function color() {
   IFS=''
   while read -r line ; do
-    printf "$line\n"
+    (printf "$line\n" 1>&2) 2>&1  # stderr to avoid buffer but output on stdout
   done
 }
 
