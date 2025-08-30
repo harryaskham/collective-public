@@ -36,7 +36,7 @@ function maybe-bootstrap-cursor-agent() {
 function color() {
   IFS=''
   while read -r line ; do
-    (printf "$line\n" 1>&2) 2>&1  # stderr to avoid buffer but output on stdout
+    (printf "$line\n" 1>&2) 2>&1
   done
 }
 
@@ -45,13 +45,17 @@ function with-installable() {
   arg_name="$2"
   expr="$3"
   shift 3
-  nix eval --impure --show-trace --apply "$arg_name: $expr" ${@} $installable
+  flags=()
+  if [[ "$CLTV_TRACE_LEVEL" != "0" ]]; then
+    flags+=(--show-trace)
+  fi
+  nix eval --impure ${flags[@]} --apply "$arg_name: $expr" ${@} $installable
 }
 
 function with-lib() {
   expr="$1"
   shift 
-  with-installable ".#lib.x86_64-linux" "lib" "$expr" ${@}
+  with-installable ".#lib.x86_64-linux" "lib" "with lib; $expr" ${@}
 }
 
 function eval-expr() {
@@ -59,6 +63,7 @@ function eval-expr() {
   shift 1
   with-lib "$expr" --raw 2>&1 \
     | sed "s/trace: start_trace(\(.\+\)): /\\\\e[90m[\\1] \\\\e[0m/" \
+    | sed '/warning.*dirty/d' \
     | grep -v "^trace: end_trace$" \
     | color
 }
