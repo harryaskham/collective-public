@@ -91,16 +91,16 @@ in rec {
   # Any non-collection is considered non-empty
   safeNonEmpty = x: !(safeEmpty x);
 
-  # Handle string replication for StringWidth, StringPieces
+  # Handle string replication for StringWidth, Strings
   replicate = n: dispatch {
     list = xs: typed.concat.lists (lib.lists.replicate n xs);
     string = s: lib.strings.replicate n s;
     set = s:
-      if isStringWidth s then StringPieces (lib.lists.replicate n s)
-      else if isStringPieces s then
-        StringPieces (typed.replicate n s.__pieces)
+      if isStringWidth s then Strings (lib.lists.replicate n s)
+      else if isStrings s then
+        Strings (typed.replicate n s.__pieces)
       else if s ? __width then StringWidth (width s * n) (lib.strings.replicate n (toString s))
-      else throw "Invalid set argument to replicate: ${_ph_ s} (expected StringWidth, StringPieces, or __width)";
+      else throw "Invalid set argument to replicate: ${_ph_ s} (expected StringWidth, Strings, or __width)";
   };
 
   # Prepend a collection to another collection.
@@ -213,14 +213,14 @@ in rec {
         empty = expect.eq (replicate 3 "") "";
         StringWidth = expect.noLambdasEq 
           (replicate 3 (StringWidth 1 "a")) 
-          (StringPieces [
+          (Strings [
             (StringWidth 1 "a")
             (StringWidth 1 "a")
             (StringWidth 1 "a")
           ]);
-        StringPieces = expect.noLambdasEq 
-          (replicate 3 (StringPieces ["a" "b"])) 
-          (StringPieces [ "a" "b" "a" "b" "a" "b"]);
+        Strings = expect.noLambdasEq 
+          (replicate 3 (Strings ["a" "b"])) 
+          (Strings [ "a" "b" "a" "b" "a" "b"]);
       };
     };
 

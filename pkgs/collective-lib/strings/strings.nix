@@ -613,24 +613,47 @@ in rec {
 
   Char = StringWidth 1;
 
-  StringWidth = w: s: {
-    __isStringWidth = true;
-    __toString = self: s;
-    __width = w;
-  };
+  StringWidth = w: s: 
+    let
+      cls = {
+        __isStringWidth = true;
+        __toString = self: s;
+        __width = w;
+        __unbound = {
+          append = this: that: Strings [this that];
+        };
+      };
+    in
+      cls // mapAttrs (_: f: f cls) cls.__unbound;
+
   isStringWidth = x: x ? __isStringWidth;
+  StringW = s: StringWidth (width s) s;
 
   # A longer string that can be composed of other StringWidths, chars, etc.
-  StringPieces = ss: 
-    assert that (isList ss) "StringPieces: Got non-list ${typeOf ss}";
-    {
-      __isStringPieces = true;
-      __repr = join (map toString ss);
-      __pieces = ss;
-      __toString = self: self.__repr;
-      __width = width ss;
-    };
-  isStringPieces = x: x ? __isStringPieces;
+  Strings = ss_:
+    if isStrings ss_ then ss_
+    else let 
+      ss =
+        if isString ss_ then [(StringW ss_)] 
+        else if isStringWidth ss_ then [ss_]
+        else if ss_ ? __width then [ss_]
+        else ss_;
+    in assert that (isList ss) "Strings: Got non-list ${typeOf ss}";
+    let 
+      cls = {
+        __isStrings = true;
+        __repr = join (map toString ss);
+        __pieces = ss;
+        __toString = self: self.__repr;
+        __width = width ss;
+        __unbound = {
+          append = this: that: Strings (this.__pieces ++ (Strings that).__pieces);
+          mapPieces = this: f: Strings (map f this.__pieces);
+        };
+      };
+    in cls // mapAttrs (_: f: f cls) cls.__unbound;
+
+  isStrings = x: x ? __isStrings;
 
   width = x:
     if x ? __width then x.__width

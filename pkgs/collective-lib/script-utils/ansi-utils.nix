@@ -163,25 +163,10 @@ in rec {
     }: 
       let
 
-        toBlock = dispatch {
-          list = map toBlock;
-          string = body: rec {
-            __block = _b_ body;
-            __toString = self: self.__block;
-            __width = width __block;
-          };
-          set = xs:
-            if xs ? __width then xs
-            else throw "Invalid argument to box: body must be a string or list of HasWidth";
-        };
-        headerBlock = toBlock header;
-        bodyBlocks =
-          if isList body then map toBlock body 
-          else if isString body then [(toBlock body)]
-          else if body ? __width then [body]
-          else throw "Invalid argument to box: body must be a string or list of HasWidth";
+        headerBlock = Strings header;
+        bodyBlocks = Strings body;
 
-        contentWidth = width ((optionals (header != null) [headerBlock]) ++ bodyBlocks);
+        contentWidth = width (if header != null then headerBlock.append bodyBlocks else bodyBlocks);
         innerWidth = contentWidth + padding.left + padding.right;
         borderedWidth = innerWidth + 2;
         outerWidth = borderedWidth + margin.left + margin.right;
@@ -222,8 +207,8 @@ in rec {
         leftPadding = "${style' styles (spaces padding.left)}";
         rightPadding = "${style' styles (spaces padding.right)}";
 
-        mkBlock = block: joinLines (mapLines mkLine (toString block));
-        content = joinLines (map mkBlock bodyBlocks);
+        mkBlock = ss: ss.mapPieces (p: joinLines (mapLines mkLine (toString p)));
+        content = mkBlock bodyBlocks;
 
         maybeHeaderLines =
           if header == null then []
