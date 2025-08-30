@@ -163,8 +163,8 @@ in rec {
     }: 
       let
 
-        headerBlock = Strings header;
-        bodyBlocks = Strings body;
+        headerBlock = (Strings header).mapPieces (compose _b_ toString);
+        bodyBlocks = (Strings body).mapPieces (compose _b_ toString);
 
         contentWidth = width (if header != null then headerBlock.append bodyBlocks else bodyBlocks);
         innerWidth = contentWidth + padding.left + padding.right;
