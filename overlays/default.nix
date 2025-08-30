@@ -16,7 +16,6 @@ let
           (import ../pkgs/pythonPackages { pkgs = prev; })
           // {
             image-go-nord = stable.python3Packages.image-go-nord;
-            pyopengl-accelerate = stable.python3Packages.pyopengl-accelerate;
           }
         );
       };
