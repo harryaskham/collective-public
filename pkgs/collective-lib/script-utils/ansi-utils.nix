@@ -90,37 +90,37 @@ in rec {
 
     boxes = {
       single = {
-        vLine = "│";
-        hLine = "─";
-        hMidLine = "─";
-        kneeSW = "└";
-        kneeSE = "┘";
-        kneeNW = "┌";
-        kneeNE = "┐";
-        teeL = "├";
-        teeR = "┤";
+        vLine = Char "│";
+        hLine = Char "─";
+        hMidLine = Char "─";
+        kneeSW = Char "└";
+        kneeSE = Char "┘";
+        kneeNW = Char "┌";
+        kneeNE = Char "┐";
+        teeL = Char "├";
+        teeR = Char "┤";
       };
       heavy = {
-        vLine = "┃";
-        hLine = "━";
-        hMidLine = "━";
-        kneeSW = "┗";
-        kneeSE = "┛";
-        kneeNW = "┏";
-        kneeNE = "┓";
-        teeL = "┣";
-        teeR = "┫";
+        vLine = Char "┃";
+        hLine = Char "━";
+        hMidLine = Char "━";
+        kneeSW = Char "┗";
+        kneeSE = Char "┛";
+        kneeNW = Char "┏";
+        kneeNE = Char "┓";
+        teeL = Char "┣";
+        teeR = Char "┫";
       };
       double = {
-        vLine = "║";
-        hLine = "═";
-        hMidLine = "─";
-        kneeSW = "╚";
-        kneeSE = "╝";
-        kneeNW = "╔";
-        kneeNE = "╗";
-        teeL = "╠";
-        teeR = "╣";
+        vLine = Char "║";
+        hLine = Char "═";
+        hMidLine = Char "─";
+        kneeSW = Char "╚";
+        kneeSE = Char "╝";
+        kneeNW = Char "╔";
+        kneeNE = Char "╗";
+        teeL = Char "╠";
+        teeR = Char "╣";
       };
     };
 

@@ -548,9 +548,19 @@ in rec {
       else go (stringToCharacters s');
 
   # Pad a given string with spaces until it is at least n characters long
+  # If the string implements __width, this is respected instead of trying to infer using utf8StringLength.
   padString = { to, align ? "left", emptyChar ? " ", ignoreANSI ? true, utf8 ? false, ... }: s:
-    let lenF = if utf8 then utf8StringLength else stringLength;
-        len = lenF (if ignoreANSI then typed.script-utils.ansi-utils.ansi.stripANSI s else s);
+    let len = 
+          if s ? __width then 
+            width s
+          else 
+            with typed.script-utils.ansi-utils.ansi;
+            if utf8 then
+              if ignoreANSI then utf8StringLength (stripANSI s)
+              else utf8StringLength s
+            else
+              if ignoreANSI then stringLength (stripANSI s)
+              else stringLength s;
         paddingSize = max 0 (to - len);
         padding = typed.replicate paddingSize emptyChar;
         halfPaddingL = typed.replicate (builtins.floor (paddingSize / 2.0)) emptyChar;
@@ -601,10 +611,26 @@ in rec {
 
   diffStrings = diffStrings_ {};
 
+  Char = StringWidth 1;
+
   StringWidth = w: s: {
+    __isStringWidth = true;
     __toString = self: s;
     __width = w;
   };
+  isStringWidth = x: x ? __isStringWidth;
+
+  # A longer string that can be composed of other StringWidths, chars, etc.
+  StringPieces = ss: 
+    assert that (isList ss) "StringPieces: Got non-list ${typeOf ss}";
+    {
+      __isStringPieces = true;
+      __repr = join (map toString ss);
+      __pieces = ss;
+      __toString = self: self.__repr;
+      __width = width ss;
+    };
+  isStringPieces = x: x ? __isStringPieces;
 
   width = x:
     if x ? __width then x.__width
