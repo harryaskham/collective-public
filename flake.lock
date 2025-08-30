@@ -1366,6 +1366,22 @@
         "type": "github"
       }
     },
+    "nixpkgs-stable": {
+      "locked": {
+        "lastModified": 1756558757,
+        "narHash": "sha256-x5OkJi9qbTt1ltg25342wmG2aoPW41g3dYIsgKT/GNU=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "3896dc93edf728b89526379c8a479105a67d6364",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "release-25.05",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
     "nixpkgs_10": {
       "locked": {
         "lastModified": 1754725699,
@@ -1643,7 +1659,8 @@
         "flake-utils": "flake-utils",
         "nix-parsec": "nix-parsec",
         "nix-reflect": "nix-reflect",
-        "nixpkgs": "nixpkgs_18"
+        "nixpkgs": "nixpkgs_18",
+        "nixpkgs-stable": "nixpkgs-stable"
       }
     },
     "systems": {

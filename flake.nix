@@ -3,6 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    nixpkgs-stable.url = "github:nixos/nixpkgs/release-25.05";
 
     nix-parsec.url = "github:nprindle/nix-parsec";
 
@@ -15,6 +16,7 @@
   outputs = {
     self,
     nixpkgs,
+    nixpkgs-stable,
     flake-utils,
     ...
   } @ inputs:
@@ -44,6 +46,6 @@
         }
       ) // {
         inherit inputs;
-        overlays = import ./overlays { inherit inputs; inherit (nixpkgs) lib; };
+        overlays = import ./overlays { inherit inputs; inherit (nixpkgs) lib; inherit nixpkgs-stable; };
       };
 }

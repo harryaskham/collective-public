@@ -1,20 +1,22 @@
-{inputs, lib, ...}:
+{
+  inputs,
+  lib, 
+  # Downgrades
+  nixpkgs-stable,
+  ...
+}:
 
 let
-  imageGoNordOverlay = self: super: {
-    image-go-nord = super.image-go-nord.overrideAttrs (_: {
-      doCheck = false;
-      propagatedBuildInputs =
-        let missingBuildInputs = with super; [numpy ffmpeg-python requests];
-        in super.image-go-nord.propagatedBuildInputs ++ missingBuildInputs;
-    });
-  };
   overlays = {
-    python3Overlay = final: prev: rec {
+    python3Overlay = final: prev: 
+      let stable = import nixpkgs-stable { inherit (prev) system; };
+      in rec {
       python3 = prev.python3.override {
         packageOverrides = (self: super:
           (import ../pkgs/pythonPackages { pkgs = prev; })
-          // (imageGoNordOverlay self super)
+          // {
+            image-go-nord = stable.python3Packages.image-go-nord;
+          }
         );
       };
       python3Packages = prev.python3Packages // final.python3.pkgs;
