@@ -35,6 +35,12 @@ rec {
         { up = 80; down = 65; speed = 80.0; }
         { up = 85; down = 75; speed = 100.0; }
       ];
+    winMiniLow = mkCurve curveTemplates.winMini "Low" [
+      { up = 60; down = 0; speed = 0.0; }
+      { up = 70; down = 55; speed = 40.0; }
+      { up = 80; down = 65; speed = 80.0; }
+      { up = 85; down = 70; speed = 100.0; }
+    ];
   };
   curveId = curve: "${curve.model} ${curve.suffix}";
   curveFilename = curve: "${curveId curve}.json";
