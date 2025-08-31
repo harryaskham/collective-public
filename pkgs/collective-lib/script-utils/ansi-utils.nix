@@ -174,16 +174,14 @@ in rec {
       let
         headerBlock = flattenToStrings1 header;
         bodyBlock = flattenToStrings1 body;
-        mkOuterBlock = s: Lines (s.mapBlockLines mkLine);
+        mkOuterBlock = s: Lines (s.mapLines mkLine);
         outerHeaderBlock =
           if header == null
           then Strings []
-          else Lines (
-            [(mkOuterBlock headerBlock)]
+          else Lines 
+            ([(mkOuterBlock headerBlock)]
             ++ (optionals showDivider [midBorder]));
         outerBodyBlock = mkOuterBlock bodyBlock;
-          #if lib.isList body then Strings (map (e: mkBlock (bodyItem e)) body)
-          #else mkBlock (Strings_ { w = contentWidth; } body);
 
         # Explicit width calculations needed for chars that are >1 unicode codepoint wide.
         # This trusts that body and header correctly report their widths and break if not:
@@ -208,11 +206,12 @@ in rec {
         lineLeft = Join [leftMargin vBorder leftPadding];
         lineRight = Join [rightPadding vBorder rightMargin];
 
-        mkLine = s: Strings_ {w = contentWidth;} [
+        #mkLine = s: Strings_ {w = outerWidth;} [
+        mkLine = s: Strings_ {w = outerWidth;} (Join [
           lineLeft
-          (style' styles (pad { to = contentWidth; utf8 = true; inherit align; asStrings = true; } s))
+          (Strings_ {w = contentWidth;} [(style' styles (pad { to = contentWidth; utf8 = true; inherit align; asStrings = true; } s))])
           lineRight
-        ];
+        ]);
 
         leftMargin = spaces margin.left;
         rightMargin = spaces margin.right;
@@ -224,26 +223,26 @@ in rec {
         midBorder = Join [leftMargin hBorderMid rightMargin];
         bottomBorder = Join [leftMargin hBorderBottom rightMargin];
 
-        topPadding = Strings (lib.lists.replicate padding.top (mkLine ""));
-        bottomPadding = Strings (lib.lists.replicate padding.bottom (mkLine ""));
+        topPadding = Lines (lib.lists.replicate padding.top (mkLine ""));
+        bottomPadding = Lines (lib.lists.replicate padding.bottom (mkLine ""));
         leftPadding = style' styles (spaces padding.left);
         rightPadding = style' styles (spaces padding.right);
 
-        debugBoxes = false;
+        debugBoxes = true;
 
         boxStrings = 
         # Nix doesn't handle unicode codepoints or ANSI, so we include the logical width here.
         # Enables nesting by providing a 'body' as a list of blocks / boxes.
-          NonEmptyLines [
-            topMargin
-            topBorder
-            outerHeaderBlock
-            topPadding
-            outerBodyBlock
-            bottomPadding
-            bottomBorder
-            bottomMargin
-          ];
+          let lines_ = [
+                topMargin
+                topBorder
+                outerHeaderBlock
+                topPadding
+                outerBodyBlock
+                bottomPadding
+                bottomBorder
+              ] ++ (optionals (margin.bottom > 0) [bottomMargin]);
+          in NonEmptyLines lines_;
       in 
         Strings_ {w = outerWidth;} (Lines [
           boxStrings

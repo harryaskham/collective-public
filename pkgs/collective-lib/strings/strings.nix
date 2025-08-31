@@ -571,9 +571,12 @@ in rec {
         padRight = halfPaddingR;
         padFull = padding;
     in (if asStrings then id else toString) (switch align {
-      left = Strings_ {w = w + paddingSize;} [s padFull];
-      right = Strings_ {w = w + paddingSize;} [padFull s];
-      center = Strings_ {w = w + paddingSize;} [padLeft s padRight];
+      #left = Strings_ {w = w + paddingSize;} [s padFull];
+      #right = Strings_ {w = w + paddingSize;} [padFull s];
+      #center = Strings_ {w = w + paddingSize;} [padLeft s padRight];
+      left = Strings_ { w = w + paddingSize;} [s padFull];
+      right = Join [padFull s];
+      center = Join [padLeft s padRight];
     });
 
   diffStrings_ = {aLabel ? "first", bLabel ? "second", ignoreANSI ? true} @ args: a: b:
@@ -624,9 +627,9 @@ Strings = x:
   if isStrings x then x
   else Strings_ {} x;
 
-Join = ss: 
-  assert that (!isString ss) "Join: Got string argument to Join: ${typeOf ss} (expected Strings)";
-  Strings_ {w = sum (map width ss);} ss;
+Join = ss:
+  let pieces = if isList ss then ss else [ss]; in
+  Strings_ {w = sum (map width pieces);} pieces;
 
 # A longer string that can be composed of other StringWs, chars, etc.
 # Can override width of whole string if known to contain UTF-8.
@@ -645,7 +648,7 @@ Strings_ = {w ? null} @ args: ss:
       __repr = join (map toString this.__pieces);
       __pieces = pieces;
       __toString = _: this.__repr;
-      __width = if w == null then width this.__repr else w;
+      __width = if w == null then width this.__pieces else w;
 
       # Flatten the string to just its repr, retaining the width of the whole block.
       flatten = {}: Strings_ {w = this.__width;} this.__repr;
@@ -699,7 +702,7 @@ NonEmptyLines = ls:
 
 width = x:
   if x ? __width then x.__width
-  else if isList x then maximum (map width x)
+  else if isList x then if x == [] then 0 else maximum (map width x)
   # If a regular string, infer its width using utf8StringLength
   else if isString x then 
     let ls = splitLines x;
