@@ -656,17 +656,17 @@ Strings_ = {w ? null} @ args: ss:
 
       debug = 
         with typed.script-utils.ansi-utils;
-        {}: _b_ ''
+        { v ? 0 } @ args: _b_ ''
         (Strings:${toString this.__width}
           >>>${_h_ this.__repr}${ansi.end}<<<
-          pwidths: ${_l_ (map width this.__pieces)}
+          pwidths: ${_l_ (map width this.__pieces)}${optionalString (v > 0) (_h_ ''
           pieces:
             ${_h_ (_bs_ (for this.__pieces (dispatch.def (p: _throw_ "debug error: ${_ph_ p}") {
               string = s: "string(${s}${ansi.end})";
               set = p: p.debug {};
-              list = ps: _ls_ (map (p: p.debug {}) ps);
+              list = ps: _ls_ (map (p: p.debug args) ps);
             })))};
-        )
+         '')})
       '';
     });
 
@@ -676,11 +676,11 @@ String1 = s: Strings [s];
 StringW = w: s: Strings_ { inherit w; } [s];
 Char = StringW 1;
 
-Line = s: Strings [s "\n"];
+Line = s: Strings_ {w = width s;} [s "\n"];
 
 Lines = ls_:
   let ls = map Line ls_;
-  in Strings_ {w = width ls_;} ls;
+  in Strings ls;
 
 NonEmptyStrings = ss:
   Strings (filter (s: toString s != "") ss);

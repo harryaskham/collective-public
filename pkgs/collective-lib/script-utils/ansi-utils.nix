@@ -198,11 +198,11 @@ in rec {
         lineLeft = Join [leftMargin vBorder leftPadding];
         lineRight = Join [rightPadding vBorder rightMargin];
 
-        mkLine = s: Strings [
+        mkLine = s: Line (Join [
           lineLeft
           (style' styles (pad { to = contentWidth; utf8 = true; inherit align; asStrings = true; } s))
           lineRight
-        ];
+        ]);
 
         leftMargin = spaces margin.left;
         rightMargin = spaces margin.right;
@@ -215,14 +215,14 @@ in rec {
         # Do not append a trailing newline on the bottom border to match expected strings
         bottomBorder = Join [leftMargin hBorderBottom rightMargin];
 
-        topPadding = Lines (lib.lists.replicate padding.top (mkLine ""));
-        bottomPadding = Lines (lib.lists.replicate padding.bottom (mkLine ""));
+        topPadding = Strings (lib.lists.replicate padding.top (mkLine ""));
+        bottomPadding = Strings (lib.lists.replicate padding.bottom (mkLine ""));
         leftPadding = style' styles (spaces padding.left);
         rightPadding = style' styles (spaces padding.right);
 
-        mkBlock = ss: Lines (ss.mapLines mkLine);
+        mkBlock = ss: Strings (ss.mapLines mkLine);
         content =
-          if lib.isList body then Lines (map (e: mkBlock (bodyItem e)) body)
+          if lib.isList body then Strings (map (e: mkBlock (bodyItem e)) body)
           else mkBlock (Strings_ { w = contentWidth; } body);
 
         maybeHeaderLines =
@@ -254,15 +254,15 @@ in rec {
             (typed.replicate outerWidth ".")
             "^ ${toString outerWidth} dots"
 
-            #(Join ["topMargin: " (topMargin.debug {})])
-            #(Join ["topBorder: " (topBorder.debug {})])
-            #(Join ["maybeHeaderLines: " (maybeHeaderLines.debug {})])
-            #(Join ["topPadding: " (topPadding.debug {})])
-            #(Join ["content: " (content.debug {})])
-            #(Join ["bottomPadding: " (bottomPadding.debug {})])
-            #(Join ["bottomBorder: " (bottomBorder.debug {})])
-            #(Join ["bottomMargin: " (bottomMargin.debug {})])
-            (Join ["boxStrings: " (boxStrings.debug {})])
+            (Lines ["topMargin: " (topMargin.debug {})])
+            (Lines ["topBorder: " (topBorder.debug { v = 1; })])
+            (Lines ["maybeHeaderLines: " (maybeHeaderLines.debug {})])
+            (Lines ["topPadding: " (topPadding.debug {})])
+            (Lines ["content: " (content.debug {})])
+            (Lines ["bottomPadding: " (bottomPadding.debug {})])
+            (Lines ["bottomBorder: " (bottomBorder.debug {})])
+            # (Join ["bottomMargin: " (bottomMargin.debug {})])
+            #(Join ["boxStrings: " (boxStrings.debug {})])
 
 
             "widths:"
@@ -274,7 +274,10 @@ in rec {
             (Join ["bottomPadding: " (toString (width bottomPadding))])
             (Join ["bottomBorder: " (toString (width bottomBorder))])
             #(Join ["bottomMargin: " (toString (width bottomMargin))])
-            (Join ["computed (overridden): " (width boxStrings)])
+
+            (Join ["content (computed): " (toString contentWidth)])
+            (Join ["box (computed): " (toString (width boxStrings))])
+
             (Join ["final outerWidth: " (toString outerWidth)])
           ]))
         ]);
