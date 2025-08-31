@@ -172,13 +172,23 @@ in rec {
       align ? "left"
     }: 
       let
-        headerBlock = Strings header;
-        bodyItem = e: Strings e;
-          #if isStrings e then Strings (indent.by 1 (toString e)) else Strings e;
-        baseContentWidth =
-          if lib.isList body then maximum (map (e: width (bodyItem e)) body)
-          else width (Strings body);
-        contentWidth = if header == null then baseContentWidth else maximum [ (width headerBlock) baseContentWidth ];
+        headerBlock = flattenToStrings1 header;
+        bodyBlock = flattenToStrings1 body;
+        mkOuterBlock = s: Lines (s.mapBlockLines mkLine);
+        outerHeaderBlock =
+          if header == null
+          then Strings []
+          else Lines (
+            [(mkOuterBlock headerBlock)]
+            ++ (optionals showDivider [midBorder]));
+        outerBodyBlock = mkOuterBlock bodyBlock;
+          #if lib.isList body then Strings (map (e: mkBlock (bodyItem e)) body)
+          #else mkBlock (Strings_ { w = contentWidth; } body);
+
+        # Explicit width calculations needed for chars that are >1 unicode codepoint wide.
+        # This trusts that body and header correctly report their widths and break if not:
+        # - Will over-pad or under-pad, moving the right border out of place.
+        contentWidth = maximum [ (if header == null then 0 else width headerBlock) (width bodyBlock) ];
         innerWidth = contentWidth + padding.left + padding.right;
         borderedWidth = innerWidth + 2;
         outerWidth = borderedWidth + margin.left + margin.right;
@@ -198,11 +208,11 @@ in rec {
         lineLeft = Join [leftMargin vBorder leftPadding];
         lineRight = Join [rightPadding vBorder rightMargin];
 
-        mkLine = s: Line (Join [
+        mkLine = s: Strings_ {w = contentWidth;} [
           lineLeft
           (style' styles (pad { to = contentWidth; utf8 = true; inherit align; asStrings = true; } s))
           lineRight
-        ]);
+        ];
 
         leftMargin = spaces margin.left;
         rightMargin = spaces margin.right;
@@ -210,9 +220,8 @@ in rec {
         topMargin = Lines (lib.lists.replicate margin.top (spaces outerWidth));
         bottomMargin = Lines (lib.lists.replicate margin.bottom (spaces outerWidth));
 
-        topBorder = Line (Join [leftMargin hBorderTop rightMargin]);
-        midBorder = Line (Join [leftMargin hBorderMid rightMargin]);
-        # Do not append a trailing newline on the bottom border to match expected strings
+        topBorder = Join [leftMargin hBorderTop rightMargin];
+        midBorder = Join [leftMargin hBorderMid rightMargin];
         bottomBorder = Join [leftMargin hBorderBottom rightMargin];
 
         topPadding = Strings (lib.lists.replicate padding.top (mkLine ""));
@@ -220,29 +229,17 @@ in rec {
         leftPadding = style' styles (spaces padding.left);
         rightPadding = style' styles (spaces padding.right);
 
-        mkBlock = ss: Strings (ss.mapLines mkLine);
-        content =
-          if lib.isList body then Strings (map (e: mkBlock (bodyItem e)) body)
-          else mkBlock (Strings_ { w = contentWidth; } body);
-
-        maybeHeaderLines =
-          if header == null then Strings []
-          else 
-            Strings ([
-              (mkBlock headerBlock)
-            ] ++ (optionals showDivider [midBorder]));
-
         debugBoxes = false;
 
         boxStrings = 
         # Nix doesn't handle unicode codepoints or ANSI, so we include the logical width here.
         # Enables nesting by providing a 'body' as a list of blocks / boxes.
-          NonEmptyStrings [
+          NonEmptyLines [
             topMargin
             topBorder
-            maybeHeaderLines
+            outerHeaderBlock
             topPadding
-            content
+            outerBodyBlock
             bottomPadding
             bottomBorder
             bottomMargin
@@ -256,9 +253,9 @@ in rec {
 
             (Lines ["topMargin: " (topMargin.debug {})])
             (Lines ["topBorder: " (topBorder.debug { v = 1; })])
-            (Lines ["maybeHeaderLines: " (maybeHeaderLines.debug {})])
+            (Lines ["outerHeaderBlock: " (outerHeaderBlock.debug {})])
             (Lines ["topPadding: " (topPadding.debug {})])
-            (Lines ["content: " (content.debug {})])
+            (Lines ["outerBodyBlock: " (outerBodyBlock.debug {})])
             (Lines ["bottomPadding: " (bottomPadding.debug {})])
             (Lines ["bottomBorder: " (bottomBorder.debug {})])
             # (Join ["bottomMargin: " (bottomMargin.debug {})])
@@ -268,9 +265,9 @@ in rec {
             "widths:"
             (Join ["topMargin: " (toString (width topMargin))])
             (Join ["topBorder: " (toString (width topBorder))])
-            (optionalStrings (header != null) (Join ["maybeHeaderLines: " (toString (width maybeHeaderLines))]))
+            (optionalStrings (header != null) (Join ["outerHeaderBlock: " (toString (width outerHeaderBlock))]))
             (Join ["topPadding: " (toString (width topPadding))])
-            (Join ["content: " (toString (width content))])
+            (Join ["outerBodyBlock: " (toString (width outerBodyBlock))])
             (Join ["bottomPadding: " (toString (width bottomPadding))])
             (Join ["bottomBorder: " (toString (width bottomBorder))])
             #(Join ["bottomMargin: " (toString (width bottomMargin))])

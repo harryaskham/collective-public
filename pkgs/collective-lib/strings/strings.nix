@@ -619,7 +619,11 @@ diffStrings = diffStrings_ {};
 # Strings + __width typeclass
 
 # A longer string that can be composed of other Strings, chars, etc.
-Strings = Strings_ {};
+# Don't re-wrap Strings so we can retain any inner width information.
+Strings = x:
+  if isStrings x then x
+  else Strings_ {} x;
+
 Join = ss: 
   assert that (!isString ss) "Join: Got string argument to Join: ${typeOf ss} (expected Strings)";
   Strings_ {w = sum (map width ss);} ss;
@@ -627,7 +631,9 @@ Join = ss:
 # A longer string that can be composed of other StringWs, chars, etc.
 # Can override width of whole string if known to contain UTF-8.
 Strings_ = {w ? null} @ args: ss:
-  let 
+  # Only re-wrap if the width differs.
+  if isStrings ss && (w == null || w == width ss) then ss
+  else let 
     pieces =
       if isString ss then [(Strings_ args [ss])] 
       else if isStrings ss then ss.__pieces
@@ -640,6 +646,9 @@ Strings_ = {w ? null} @ args: ss:
       __pieces = pieces;
       __toString = _: this.__repr;
       __width = if w == null then width this.__repr else w;
+
+      # Flatten the string to just its repr, retaining the width of the whole block.
+      flatten = {}: Strings_ {w = this.__width;} this.__repr;
 
       append = that: Strings (this.__pieces ++ (Strings that).__pieces);
       replicate = n: toString (Strings (typed.replicate n (toString this)));
@@ -679,7 +688,7 @@ Char = StringW 1;
 Line = s: Strings_ {w = width s;} [s "\n"];
 
 Lines = ls_:
-  let ls = map Line ls_;
+  let ls = imap0 (i: l: if i == (size ls_ - 1) then l else Line l) ls_;
   in Strings ls;
 
 NonEmptyStrings = ss:
@@ -697,4 +706,11 @@ width = x:
     in if size ls == 1 then utf8StringLength (head ls) else maximum (map utf8StringLength ls)
   else throw "Invalid argument to width: ${typeOf x}";
 
+flattenToStrings1 = dispatch {
+  string = String1;
+  list = ss: Strings (map flattenToStrings1 ss);
+  set = s: 
+    if isStrings s then s.flatten {}
+    else throw "Invalid argument to flattenToStrings1: ${typeOf s}";
+};
 }
