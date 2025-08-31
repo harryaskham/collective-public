@@ -91,16 +91,13 @@ in rec {
   # Any non-collection is considered non-empty
   safeNonEmpty = x: !(safeEmpty x);
 
-  # Handle string replication for StringWidth, Strings
+  # Handle string replication for StringW, Strings
   replicate = n: dispatch {
     list = xs: typed.concat.lists (lib.lists.replicate n xs);
     string = s: lib.strings.replicate n s;
     set = s:
-      if isStringWidth s then Strings (lib.lists.replicate n s)
-      else if isStrings s then
-        Strings (typed.replicate n s.__pieces)
-      else if s ? __width then StringWidth (width s * n) (lib.strings.replicate n (toString s))
-      else throw "Invalid set argument to replicate: ${_ph_ s} (expected StringWidth, Strings, or __width)";
+      if isStrings s then s.replicate n
+      else throw "Invalid set argument to replicate: ${_ph_ s} (expected Strings)";
   };
 
   # Prepend a collection to another collection.
@@ -167,6 +164,9 @@ in rec {
     __functor = dispatch;
     list = padList args;
     string = padString args;
+    set = xs: 
+      if isStrings xs then padString args (toString xs)
+      else throw "Invalid set argument to pad: ${_ph_ xs} (expected Strings)";
   };
 
   padLongest = padLongest_ {};
@@ -211,16 +211,15 @@ in rec {
       string = {
         simple = expect.eq (replicate 3 "a") "aaa";
         empty = expect.eq (replicate 3 "") "";
-        StringWidth = expect.noLambdasEq 
-          (replicate 3 (StringWidth 1 "a")) 
-          (Strings [
-            (StringWidth 1 "a")
-            (StringWidth 1 "a")
-            (StringWidth 1 "a")
-          ]);
-        Strings = expect.noLambdasEq 
-          (replicate 3 (Strings ["a" "b"])) 
-          (Strings [ "a" "b" "a" "b" "a" "b"]);
+        StringW = expect.eq 
+          (toString (replicate 3 (StringW 1 "a"))) 
+          "aaa";
+        Strings = expect.eq 
+          (toString (replicate 3 (Strings ["a" "b"]))) 
+          "ababab";
+        Char = expect.eq 
+          (toString (replicate 3 (Char "a"))) 
+          "aaa";
       };
     };
 
@@ -281,7 +280,7 @@ in rec {
       list = expect.eq (pad {to = 5;} [1 2 3]) [1 2 3 null null];
       poly = 
         let ansi = collective-lib.script-utils.ansi-utils.ansi;
-            redHello = with ansi; style [underline fg.red] "hello";
+            redHello = toString (with ansi; style [underline fg.red] "hello");
         in expect.eq 
           (map
             (pad {to = 10; ignoreANSI = true; emptyChar = "x"; emptyElem = 7;})

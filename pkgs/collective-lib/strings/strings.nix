@@ -115,7 +115,7 @@ in rec {
     if empty blocks then ""
     else if size blocks == 1 then head blocks
     else let 
-      sepW = utf8StringLength sep;
+      sepW = width sep;
       blocksLines = map (b: splitLines (toString b)) blocks;
       blockWidths = map width blocks;
       height = maximum (map length blocksLines);
@@ -126,7 +126,7 @@ in rec {
       joinBlockLines = zipListsWith (a: b: "${a}${sep}${b}");
       joinBlocksLines = typed.fold._1 joinBlockLines;
     in
-      StringWidth (sum blockWidths + sepW) (joinLines (joinBlocksLines paddedBlocksLines));
+      StringW (sum blockWidths + sepW) (joinLines (joinBlocksLines paddedBlocksLines));
 
   # Add a prefix to a string.
   addPrefix = prefix: s: prefix + s;
@@ -524,7 +524,7 @@ in rec {
 
   utf8CharLength = c:
     # Default to 4-byte char if Nix can't look up the character.
-    # This will under-count in uncertain cases.
+    # This will under-count in uncertain cases (i.e. drop too many characters)
     if !(asciiTable ? ${c}) then 4
     else 
       let b = asciiTable.${c};
@@ -549,118 +549,124 @@ in rec {
 
   # Pad a given string with spaces until it is at least n characters long
   # If the string implements __width, this is respected instead of trying to infer using utf8StringLength.
-  padString = { to, align ? "left", emptyChar ? " ", ignoreANSI ? true, utf8 ? false, ... }: s:
-    let len = 
-          if s ? __width then 
-            width s
-          else 
+  padString = { to, align ? "left", emptyChar ? " ", ignoreANSI ? true, utf8 ? false, asStrings ? false, ... }: s:
+    let w = 
+          if !ignoreANSI then
+            if utf8 then utf8StringLength (toString s) else stringLength (toString s)
+
+          else if s ? __width then width s
+
+          else
             with typed.script-utils.ansi-utils.ansi;
-            if utf8 then
-              if ignoreANSI then utf8StringLength (stripANSI s)
-              else utf8StringLength s
-            else
-              if ignoreANSI then stringLength (stripANSI s)
-              else stringLength s;
-        paddingSize = max 0 (to - len);
+            if utf8 then utf8StringLength (stripANSI s)
+            else stringLength (stripANSI s);
+        paddingSize = max 0 (to - w);
         padding = typed.replicate paddingSize emptyChar;
         halfPaddingL = typed.replicate (builtins.floor (paddingSize / 2.0)) emptyChar;
         halfPaddingR = typed.replicate (builtins.ceil (paddingSize / 2.0)) emptyChar;
-    in switch align {
-      left = "${s}${padding}";
-      right = "${padding}${s}";
-      center = "${halfPaddingL}${s}${halfPaddingR}";
-    };
+    in (if asStrings then id else toString) (switch align {
+      left = Strings_ {w = w + paddingSize;} [s padding];
+      right = Strings_ {w = w + paddingSize;} [padding s];
+      center = Strings_ {w = w + paddingSize;} [halfPaddingL s halfPaddingR];
+    });
 
   diffStrings_ = {aLabel ? "first", bLabel ? "second", ignoreANSI ? true} @ args: a: b:
     with typed.script-utils.ansi-utils;
-    if ignoreANSI then diffStrings_ (args // {ignoreANSI = false;}) (ansi.stripANSI a) (ansi.stripANSI b)
-    else if a == b then {__equal = a;}
-    else let
-      ab = padLongest_ {emptyElem = "";} (mapAttrs (_: stringToCharacters) {inherit a b;});
-      state =
-        typed.fold 
-          ({current, segments}: {a, b}:
-            if current == null then {
-              current = 
-                if a == b
-                then { __equal = a; } 
-                else { __unequal = { ${aLabel} = a; ${bLabel} = b;}; };
+  if ignoreANSI then diffStrings_ (args // {ignoreANSI = false;}) (ansi.stripANSI a) (ansi.stripANSI b)
+  else if a == b then {__equal = a;}
+  else let
+    ab = padLongest_ {emptyElem = "";} (mapAttrs (_: stringToCharacters) {inherit a b;});
+    state =
+      typed.fold 
+        ({current, segments}: {a, b}:
+          if current == null then {
+            current = 
+              if a == b
+              then { __equal = a; } 
+              else { __unequal = { ${aLabel} = a; ${bLabel} = b;}; };
+            inherit segments;
+          }
+          else if a == b then
+            if current ? __equal then {
+              current = { __equal = current.__equal + a; };
               inherit segments;
             }
-            else if a == b then
-              if current ? __equal then {
-                current = { __equal = current.__equal + a; };
-                inherit segments;
-              }
-              else {
-                current = { __equal = a; };
-                segments = segments ++ [current];
-              }
-            else
-              if current ? __unequal then {
-                current = { __unequal = { ${aLabel} = current.__unequal.${aLabel} + a; ${bLabel} = current.__unequal.${bLabel} + b; }; };
-                inherit segments;
-              }
-              else {
-                current = { __unequal = { ${aLabel} = a; ${bLabel} = b; }; };
-                segments = segments ++ [current];
-              })
-          {current = null; segments = [];}
-          (zipListsWith (a: b: { inherit a b; }) ab.a ab.b);
-    in {__unequal.__stringDiff = state.segments ++ [state.current];};
+            else {
+              current = { __equal = a; };
+              segments = segments ++ [current];
+            }
+          else
+            if current ? __unequal then {
+              current = { __unequal = { ${aLabel} = current.__unequal.${aLabel} + a; ${bLabel} = current.__unequal.${bLabel} + b; }; };
+              inherit segments;
+            }
+            else {
+              current = { __unequal = { ${aLabel} = a; ${bLabel} = b; }; };
+              segments = segments ++ [current];
+            })
+        {current = null; segments = [];}
+        (zipListsWith (a: b: { inherit a b; }) ab.a ab.b);
+  in {__unequal.__stringDiff = state.segments ++ [state.current];};
 
-  diffStrings = diffStrings_ {};
+diffStrings = diffStrings_ {};
 
-  Char = StringWidth 1;
+# Strings + __width typeclass
 
-  StringWidth = w: s: 
-    let
-      cls = {
-        __isStringWidth = true;
-        __toString = self: s;
-        __width = w;
-        __unbound = {
-          append = this: that: Strings [this that];
-        };
-      };
-    in
-      cls // mapAttrs (_: f: f cls) cls.__unbound;
+# A longer string that can be composed of other Strings, chars, etc.
+Strings = Strings_ {};
+Join = ss: Strings_ {w = sum (map width ss);} [ss];
 
-  isStringWidth = x: x ? __isStringWidth;
-  StringW = s: StringWidth (width s) s;
+# A longer string that can be composed of other StringWs, chars, etc.
+# Can override width of whole string if known to contain UTF-8.
+Strings_ = {w ? null} @ args: ss:
+  let 
+    pieces =
+      if isString ss then [(Strings_ args [ss])] 
+      else if isStrings ss then ss.__pieces
+      else if isList ss then ss
+      else _throw_ "Strings: Got invalid argument to Strings: ${typeOf ss}";
+  in 
+    lib.fix (this: {
+      __isStrings = true;
+      __repr = join (map toString this.__pieces);
+      __pieces = pieces;
+      __toString = _: this.__repr;
+      __width = if w == null then width this.__repr else w;
 
-  # A longer string that can be composed of other StringWidths, chars, etc.
-  Strings = ss_:
-    if isStrings ss_ then ss_
-    else let 
-      ss =
-        if isString ss_ then [(StringW ss_)] 
-        else if isStringWidth ss_ then [ss_]
-        else if ss_ ? __width then [ss_]
-        else ss_;
-    in assert that (isList ss) "Strings: Got non-list ${typeOf ss}";
-    let 
-      cls = {
-        __isStrings = true;
-        __repr = join (map toString ss);
-        __pieces = ss;
-        __toString = self: self.__repr;
-        __width = width ss;
-        __unbound = {
-          append = this: that: Strings (this.__pieces ++ (Strings that).__pieces);
-          mapPieces = this: f: Strings (map f this.__pieces);
-        };
-      };
-    in cls // mapAttrs (_: f: f cls) cls.__unbound;
+      append = that: Strings (this.__pieces ++ (Strings that).__pieces);
+      replicate = n: Strings (typed.replicate n (toString this));
 
-  isStrings = x: x ? __isStrings;
+      mapPieces = f: Strings (map f this.__pieces);
 
-  width = x:
-    if x ? __width then x.__width
-    else if isList x then maximum (map width x)
-    else if isString x then 
-      let ls = splitLines x;
-      in if size ls == 1 then utf8StringLength (head ls) else maximum (map utf8StringLength ls)
-    else throw "Invalid argument to width: ${typeOf x}";
+      # Get the lines of the string, retaining the width of the whole block.
+      blockLines = {}: map (Strings_ {w = this.__width;}) (splitLines (toString this));
+      mapBlockLines = f: map f (this.blockLines {});
+
+      lines = {}: splitLines this.__repr;
+      mapLines = f: map f (this.lines {});
+      concatMapLines = f: joinLines (map f (this.lines {}));
+    });
+
+isStrings = x: x ? __isStrings;
+
+String1 = s: Strings [s];
+StringW = w: s: Strings_ { inherit w; } [s];
+Char = StringW 1;
+
+Line = s: 
+  let w = width s;
+  in Strings_ {inherit w;} ([s "\n"]);
+Lines = ls:
+  let w = width ls;
+  in Strings_ {inherit w;} (imap (i: l: Join [l "\n"]) ls);
+
+width = x:
+  if x ? __width then x.__width
+  else if isList x then maximum (map width x)
+  # If a regular string, infer its width using utf8StringLength
+  else if isString x then 
+    let ls = splitLines x;
+    in if size ls == 1 then utf8StringLength (head ls) else maximum (map utf8StringLength ls)
+  else throw "Invalid argument to width: ${typeOf x}";
 
 }

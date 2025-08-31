@@ -294,4 +294,13 @@ in suite {
       let x = style [fg.red] "┏━━";
       in expect.eq [(lib.stringLength x) (utf8StringLength x)] [22 3];
   };
+
+  Strings = {
+    simple = expect.eq (toString (Strings ["a" "b"])) "ab";
+    Join = expect.eq (toString (Join [(Strings ["a" "b"]) (Strings ["c" "d"])])) "abcd";
+    Char = expect.eq (toString (Char "a")) "a";
+    Lines = expect.eq (toString (Lines ["a" "b"])) "a\nb\n";
+    Line = expect.eq (toString (Line "a")) "a\n";
+    replicate = expect.eq ((Char "a").replicate 3) "aaa";
+  };
 }

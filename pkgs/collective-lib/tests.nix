@@ -301,10 +301,9 @@ in rec {
               header = atom.h1 "Actual";
               borderStyles = [fg.brightblack];
               body = [
-                (_b_ (
-                  if isTryEvalFailure result 
-                  then style [fg.red bold] "<tryEval failure>"
-                  else _p_ result))
+                (if isTryEvalFailure result 
+                 then style [fg.red bold] "<tryEval failure>"
+                 else _p_ result)
               ] ++ (
                 optionals ((status == Status.Failed) && !(isTryEvalFailure result)) [
                   (box {

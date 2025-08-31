@@ -73,20 +73,30 @@ in rec {
     end = code [reset reset];
     style = styles: text:
       if styles == [] then text
-      else ''${code styles}${text}${end}'';
+      else (Strings_ {w = width text;} [(code styles) text end]);
     style_ = styles: text:
       if styles == [] then text
-      else ''${code styles}${text}'';
-    style' = styles: text: "${end}${style styles text}";
+      else (Strings_ {w = width text;} [(code styles) text]);
+    style' = styles: text: (Strings_ {w = width text;} [end (style styles text)]);
 
-    escapeANSI = replaceStrings ["\\e["] ["\\\\e["];
+    escapeANSI = s: 
+      if isString s then
+        replaceStrings ["\\e["] ["\\\\e["] (toString s)
+      else if isStrings s then
+        s.mapPieces escapeANSI
+      else throw "Invalid argument to escapeANSI: ${typeOf s} (expected String or Strings)";
+
     stripANSI = text:
-      let 
-        c = ''[^\\]*(\\e\[[0-9;]*[0-9]m).*'';
-        r = match c text;
-      in 
-        if r == null then text
-        else stripANSI (replaceStrings (drop 0 r) [""] text);
+      if isString text then
+        let 
+          c = ''[^\\]*(\\e\[[0-9;]*[0-9]m).*'';
+          r = match c (toString text);
+        in 
+          if r == null then text
+          else stripANSI (replaceStrings (drop 0 r) [""] (toString text))
+      else if isStrings text then
+        text.mapPieces stripANSI
+      else throw "Invalid argument to stripANSI: ${typeOf text} (expected String or Strings)";
 
     boxes = {
       single = {
@@ -162,18 +172,17 @@ in rec {
       align ? "left"
     }: 
       let
+        headerBlock = Strings header;
+        bodyBlocks = Strings body;
 
-        headerBlock = (Strings header).mapPieces (compose _b_ toString);
-        bodyBlocks = (Strings body).mapPieces (compose _b_ toString);
-
-        contentWidth = width (if header != null then headerBlock.append bodyBlocks else bodyBlocks);
+        contentWidth = if header == null then width body else maximum [(width header) (width body)];
         innerWidth = contentWidth + padding.left + padding.right;
         borderedWidth = innerWidth + 2;
         outerWidth = borderedWidth + margin.left + margin.right;
 
         vBorder = style' (styles ++ borderStyles) (if showBorder then border.vLine else " ");
         hBorder = hLine: kneeW: kneeE:
-          style' (styles ++ borderStyles) "${kneeW}${typed.replicate innerWidth hLine}${kneeE}";
+          style' (styles ++ borderStyles) (Strings [kneeW (replicate innerWidth hLine) kneeE]);
         hBorderTop = 
           if showBorder then hBorder border.hLine border.kneeNW border.kneeNE
           else hBorder " " " " " ";
@@ -183,53 +192,49 @@ in rec {
         hBorderBottom =
           if showBorder then hBorder border.hLine border.kneeSW border.kneeSE
           else hBorder " " " " " ";
-        lineLeft = "${leftMargin}${vBorder}${leftPadding}";
-        lineRight = "${rightPadding}${vBorder}${rightMargin}";
+        lineLeft = Strings [leftMargin vBorder leftPadding];
+        lineRight = Strings [rightPadding vBorder rightMargin];
 
-        mkLine = s: join [
+        mkLine = s: Strings [
           lineLeft
-          (style' styles (pad { to = contentWidth; utf8 = true; inherit align;} s))
+          (style' styles (pad { to = contentWidth; utf8 = true; inherit align; asStrings = true; } s))
           lineRight
         ];
 
-        leftMargin = "${spaces margin.left}";
-        rightMargin = "${end}${spaces margin.right}";
+        leftMargin = spaces margin.left;
+        rightMargin = Strings [end (spaces margin.right)];
 
-        topMargin = typed.replicate margin.top [(spaces outerWidth)];
-        bottomMargin = typed.replicate margin.bottom [(spaces outerWidth)];
+        topMargin = Lines (typed.replicate margin.top [(spaces outerWidth)]);
+        bottomMargin = Lines (typed.replicate margin.bottom [(spaces outerWidth)]);
 
-        topBorder = "${leftMargin}${hBorderTop}${rightMargin}";
-        midBorder = "${leftMargin}${hBorderMid}${rightMargin}";
-        bottomBorder = "${leftMargin}${hBorderBottom}${rightMargin}";
+        topBorder = Line ([leftMargin hBorderTop rightMargin]);
+        midBorder = Line ([leftMargin hBorderMid rightMargin]);
+        bottomBorder = Line ([leftMargin hBorderBottom rightMargin]);
 
-        topPadding = typed.replicate padding.top [(mkLine "")];
-        bottomPadding = typed.replicate padding.bottom [(mkLine "")];
-        leftPadding = "${style' styles (spaces padding.left)}";
-        rightPadding = "${style' styles (spaces padding.right)}";
+        topPadding = Lines (typed.replicate padding.top [(mkLine "")]);
+        bottomPadding = Lines (typed.replicate padding.bottom [(mkLine "")]);
+        leftPadding = style' styles (spaces padding.left);
+        rightPadding = style' styles (spaces padding.right);
 
-        mkBlock = ss: ss.mapPieces (p: joinLines (mapLines mkLine (toString p)));
+        mkBlock = ss: Lines (ss.mapLines mkLine);
         content = mkBlock bodyBlocks;
 
         maybeHeaderLines =
-          if header == null then []
-          else [(mkBlock headerBlock)] ++ (if showDivider then [midBorder] else []);
+          if header == null then Strings []
+          else Strings ([(mkBlock headerBlock)] ++ (if showDivider then [midBorder] else []));
       in 
-        {
-          # Nix doesn't handle unicode codepoints or ANSI, so we include the logical width here.
-          # Enables nesting by providing a 'body' as a list of blocks / boxes.
-          __width = outerWidth;
-          __block = joinLines (
-            topMargin
-            ++ [topBorder]
-            ++ maybeHeaderLines
-            ++ topPadding
-            ++ [content]
-            ++ bottomPadding
-            ++ [bottomBorder]
-            ++ bottomMargin
-          );
-          __toString = self: self.__block;
-        };
+        # Nix doesn't handle unicode codepoints or ANSI, so we include the logical width here.
+        # Enables nesting by providing a 'body' as a list of blocks / boxes.
+        Strings_ {w = outerWidth;} [
+          topMargin
+          topBorder
+          maybeHeaderLines
+          topPadding
+          content
+          bottomPadding
+          bottomBorder
+          bottomMargin
+        ];
 
     echoWith = arg:
       let heredoc = arg.heredoc or true;
