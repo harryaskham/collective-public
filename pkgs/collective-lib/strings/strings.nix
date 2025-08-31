@@ -116,6 +116,7 @@ in rec {
     else if size blocks == 1 then head blocks
     else let 
       sepW = width sep;
+      sepCount = (size blocks) - 1;
       blocksLines = map (b: splitLines (toString b)) blocks;
       blockWidths = map width blocks;
       height = maximum (map length blocksLines);
@@ -126,13 +127,15 @@ in rec {
       joinBlockLines = zipListsWith (a: b: "${a}${sep}${b}");
       joinBlocksLines = typed.fold._1 joinBlockLines;
     in
-      StringW (sum blockWidths + sepW) (joinLines (joinBlocksLines paddedBlocksLines));
+      StringW (sum blockWidths + (sepW * sepCount)) (joinLines (joinBlocksLines paddedBlocksLines));
 
   # Add a prefix to a string.
   addPrefix = prefix: s: prefix + s;
 
   # A string of n spaces.
-  spaces = n: replicate n " ";
+  spaces = n:
+    let s = concatStringsSep "" (lib.lists.replicate n " ");
+    in StringW n s;
 
   # Map a function over the lines in a string.
   mapLines = f: s: map f (splitLines s);
@@ -564,10 +567,13 @@ in rec {
         padding = typed.replicate paddingSize emptyChar;
         halfPaddingL = typed.replicate (builtins.floor (paddingSize / 2.0)) emptyChar;
         halfPaddingR = typed.replicate (builtins.ceil (paddingSize / 2.0)) emptyChar;
+        padLeft = halfPaddingL;
+        padRight = halfPaddingR;
+        padFull = padding;
     in (if asStrings then id else toString) (switch align {
-      left = Strings_ {w = w + paddingSize;} [s padding];
-      right = Strings_ {w = w + paddingSize;} [padding s];
-      center = Strings_ {w = w + paddingSize;} [halfPaddingL s halfPaddingR];
+      left = Strings_ {w = w + paddingSize;} [s padFull];
+      right = Strings_ {w = w + paddingSize;} [padFull s];
+      center = Strings_ {w = w + paddingSize;} [padLeft s padRight];
     });
 
   diffStrings_ = {aLabel ? "first", bLabel ? "second", ignoreANSI ? true} @ args: a: b:
@@ -614,7 +620,9 @@ diffStrings = diffStrings_ {};
 
 # A longer string that can be composed of other Strings, chars, etc.
 Strings = Strings_ {};
-Join = ss: Strings_ {w = sum (map width ss);} [ss];
+Join = ss: 
+  assert that (!isString ss) "Join: Got string argument to Join: ${typeOf ss} (expected Strings)";
+  Strings_ {w = sum (map width ss);} ss;
 
 # A longer string that can be composed of other StringWs, chars, etc.
 # Can override width of whole string if known to contain UTF-8.
@@ -634,7 +642,7 @@ Strings_ = {w ? null} @ args: ss:
       __width = if w == null then width this.__repr else w;
 
       append = that: Strings (this.__pieces ++ (Strings that).__pieces);
-      replicate = n: Strings (typed.replicate n (toString this));
+      replicate = n: toString (Strings (typed.replicate n (toString this)));
 
       mapPieces = f: Strings (map f this.__pieces);
 
@@ -645,6 +653,21 @@ Strings_ = {w ? null} @ args: ss:
       lines = {}: splitLines this.__repr;
       mapLines = f: map f (this.lines {});
       concatMapLines = f: joinLines (map f (this.lines {}));
+
+      debug = 
+        with typed.script-utils.ansi-utils;
+        {}: _b_ ''
+        (Strings:${toString this.__width}
+          >>>${_h_ this.__repr}${ansi.end}<<<
+          pwidths: ${_l_ (map width this.__pieces)}
+          pieces:
+            ${_h_ (_bs_ (for this.__pieces (dispatch.def (p: _throw_ "debug error: ${_ph_ p}") {
+              string = s: "string(${s}${ansi.end})";
+              set = p: p.debug {};
+              list = ps: _ls_ (map (p: p.debug {}) ps);
+            })))};
+        )
+      '';
     });
 
 isStrings = x: x ? __isStrings;
@@ -653,12 +676,17 @@ String1 = s: Strings [s];
 StringW = w: s: Strings_ { inherit w; } [s];
 Char = StringW 1;
 
-Line = s: 
-  let w = width s;
-  in Strings_ {inherit w;} ([s "\n"]);
-Lines = ls:
-  let w = width ls;
-  in Strings_ {inherit w;} (imap (i: l: Join [l "\n"]) ls);
+Line = s: Strings [s "\n"];
+
+Lines = ls_:
+  let ls = map Line ls_;
+  in Strings_ {w = width ls_;} ls;
+
+NonEmptyStrings = ss:
+  Strings (filter (s: toString s != "") ss);
+
+NonEmptyLines = ls:
+  Lines (filter (l: toString l != "") ls);
 
 width = x:
   if x ? __width then x.__width

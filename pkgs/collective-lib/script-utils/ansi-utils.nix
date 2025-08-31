@@ -83,7 +83,7 @@ in rec {
       if isString s then
         replaceStrings ["\\e["] ["\\\\e["] (toString s)
       else if isStrings s then
-        s.mapPieces escapeANSI
+        toString (s.mapPieces escapeANSI)
       else throw "Invalid argument to escapeANSI: ${typeOf s} (expected String or Strings)";
 
     stripANSI = text:
@@ -95,7 +95,7 @@ in rec {
           if r == null then text
           else stripANSI (replaceStrings (drop 0 r) [""] (toString text))
       else if isStrings text then
-        text.mapPieces stripANSI
+        toString (text.mapPieces stripANSI)
       else throw "Invalid argument to stripANSI: ${typeOf text} (expected String or Strings)";
 
     boxes = {
@@ -173,16 +173,19 @@ in rec {
     }: 
       let
         headerBlock = Strings header;
-        bodyBlocks = Strings body;
-
-        contentWidth = if header == null then width body else maximum [(width header) (width body)];
+        bodyItem = e: Strings e;
+          #if isStrings e then Strings (indent.by 1 (toString e)) else Strings e;
+        baseContentWidth =
+          if lib.isList body then maximum (map (e: width (bodyItem e)) body)
+          else width (Strings body);
+        contentWidth = if header == null then baseContentWidth else maximum [ (width headerBlock) baseContentWidth ];
         innerWidth = contentWidth + padding.left + padding.right;
         borderedWidth = innerWidth + 2;
         outerWidth = borderedWidth + margin.left + margin.right;
 
         vBorder = style' (styles ++ borderStyles) (if showBorder then border.vLine else " ");
         hBorder = hLine: kneeW: kneeE:
-          style' (styles ++ borderStyles) (Strings [kneeW (replicate innerWidth hLine) kneeE]);
+          style' (styles ++ borderStyles) (Join ([kneeW] ++ (lib.lists.replicate innerWidth hLine) ++ [kneeE]));
         hBorderTop = 
           if showBorder then hBorder border.hLine border.kneeNW border.kneeNE
           else hBorder " " " " " ";
@@ -192,8 +195,8 @@ in rec {
         hBorderBottom =
           if showBorder then hBorder border.hLine border.kneeSW border.kneeSE
           else hBorder " " " " " ";
-        lineLeft = Strings [leftMargin vBorder leftPadding];
-        lineRight = Strings [rightPadding vBorder rightMargin];
+        lineLeft = Join [leftMargin vBorder leftPadding];
+        lineRight = Join [rightPadding vBorder rightMargin];
 
         mkLine = s: Strings [
           lineLeft
@@ -202,39 +205,81 @@ in rec {
         ];
 
         leftMargin = spaces margin.left;
-        rightMargin = Strings [end (spaces margin.right)];
+        rightMargin = spaces margin.right;
 
-        topMargin = Lines (typed.replicate margin.top [(spaces outerWidth)]);
-        bottomMargin = Lines (typed.replicate margin.bottom [(spaces outerWidth)]);
+        topMargin = Lines (lib.lists.replicate margin.top (spaces outerWidth));
+        bottomMargin = Lines (lib.lists.replicate margin.bottom (spaces outerWidth));
 
-        topBorder = Line ([leftMargin hBorderTop rightMargin]);
-        midBorder = Line ([leftMargin hBorderMid rightMargin]);
-        bottomBorder = Line ([leftMargin hBorderBottom rightMargin]);
+        topBorder = Line (Join [leftMargin hBorderTop rightMargin]);
+        midBorder = Line (Join [leftMargin hBorderMid rightMargin]);
+        # Do not append a trailing newline on the bottom border to match expected strings
+        bottomBorder = Join [leftMargin hBorderBottom rightMargin];
 
-        topPadding = Lines (typed.replicate padding.top [(mkLine "")]);
-        bottomPadding = Lines (typed.replicate padding.bottom [(mkLine "")]);
+        topPadding = Lines (lib.lists.replicate padding.top (mkLine ""));
+        bottomPadding = Lines (lib.lists.replicate padding.bottom (mkLine ""));
         leftPadding = style' styles (spaces padding.left);
         rightPadding = style' styles (spaces padding.right);
 
         mkBlock = ss: Lines (ss.mapLines mkLine);
-        content = mkBlock bodyBlocks;
+        content =
+          if lib.isList body then Lines (map (e: mkBlock (bodyItem e)) body)
+          else mkBlock (Strings_ { w = contentWidth; } body);
 
         maybeHeaderLines =
           if header == null then Strings []
-          else Strings ([(mkBlock headerBlock)] ++ (if showDivider then [midBorder] else []));
-      in 
+          else 
+            Strings ([
+              (mkBlock headerBlock)
+            ] ++ (optionals showDivider [midBorder]));
+
+        debugBoxes = false;
+
+        boxStrings = 
         # Nix doesn't handle unicode codepoints or ANSI, so we include the logical width here.
         # Enables nesting by providing a 'body' as a list of blocks / boxes.
-        Strings_ {w = outerWidth;} [
-          topMargin
-          topBorder
-          maybeHeaderLines
-          topPadding
-          content
-          bottomPadding
-          bottomBorder
-          bottomMargin
-        ];
+          NonEmptyStrings [
+            topMargin
+            topBorder
+            maybeHeaderLines
+            topPadding
+            content
+            bottomPadding
+            bottomBorder
+            bottomMargin
+          ];
+      in 
+        Strings_ {w = outerWidth;} (Lines [
+          boxStrings
+          (optionalStrings debugBoxes (NonEmptyLines [
+            (typed.replicate outerWidth ".")
+            "^ ${toString outerWidth} dots"
+
+            #(Join ["topMargin: " (topMargin.debug {})])
+            #(Join ["topBorder: " (topBorder.debug {})])
+            #(Join ["maybeHeaderLines: " (maybeHeaderLines.debug {})])
+            #(Join ["topPadding: " (topPadding.debug {})])
+            #(Join ["content: " (content.debug {})])
+            #(Join ["bottomPadding: " (bottomPadding.debug {})])
+            #(Join ["bottomBorder: " (bottomBorder.debug {})])
+            #(Join ["bottomMargin: " (bottomMargin.debug {})])
+            (Join ["boxStrings: " (boxStrings.debug {})])
+
+
+            "widths:"
+            (Join ["topMargin: " (toString (width topMargin))])
+            (Join ["topBorder: " (toString (width topBorder))])
+            (optionalStrings (header != null) (Join ["maybeHeaderLines: " (toString (width maybeHeaderLines))]))
+            (Join ["topPadding: " (toString (width topPadding))])
+            (Join ["content: " (toString (width content))])
+            (Join ["bottomPadding: " (toString (width bottomPadding))])
+            (Join ["bottomBorder: " (toString (width bottomBorder))])
+            #(Join ["bottomMargin: " (toString (width bottomMargin))])
+            (Join ["computed (overridden): " (width boxStrings)])
+            (Join ["final outerWidth: " (toString outerWidth)])
+          ]))
+        ]);
+
+    optionalStrings = cond: ss: if cond then ss else Strings [];
 
     echoWith = arg:
       let heredoc = arg.heredoc or true;
