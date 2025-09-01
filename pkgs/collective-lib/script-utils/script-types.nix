@@ -112,9 +112,16 @@ rec {
       # this can be empty.
       scriptBody =
         codeBlockHeader "### Script Body"
-        (if args ? body then codeBlock args.body
-         else if args ? main then codeBlockLines ["function main() {" args.main "}"]
-         else "");
+        (if args ? body
+          then _b_ args.body
+          else if args ? main
+          # No indent to avoid breaking heredoc
+          then _b_ ''
+            function main() {
+            ${args.main}
+            }
+            ''
+        else "");
 
       # Build the final completed script
       fullScript = codeBlocks [
