@@ -3853,7 +3853,7 @@ let
           null = ''""'';
           list = ''(${joinSep " " (map toShellValue x)})'';
         }.${lib.typeOf x} or (
-          if hasToString x then toShellValueUnsafe x
+          if hasToString x then toShellValueUnsafe (toString x)
           else throw "toShellValueUnsafe: ${lib.typeOf x} not supported");
     };
 
