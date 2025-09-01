@@ -306,15 +306,16 @@ ${eof}
          else "${echoCmd} ${style styles text}${suffix}";
 
     # echoVariadic echoParam... [styles]... "text"
+    # TODO: move to Variadic
     echoVariadic = params: arg:
       let
         isEchoParam = isFunction arg;
         isStyles = isList arg;
-        isText = isString arg;
+        isText = isString arg || isStrings arg;
       in # Allow passing without needing the chain of ({} |> param)
          if (isFunction params) then echoVariadic (params {}) arg
          # When we hit text, conclude and issue the params
-         else if isText then echoWith (params // { text = arg; })
+         else if isText then echoWith (params // { text = toString arg; })
          # Otherwise set styles
          else if isStyles then echoVariadic (params // { styles = arg; })
          # Or apply a parameter function
