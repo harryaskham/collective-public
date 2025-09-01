@@ -323,9 +323,10 @@ let
       allLambdasEqual ? false,
       ignoreANSI ? true
     }: a: b:
-      if isString a && isString b
-        then diffStrings_ {inherit ignoreANSI aLabel bLabel;} a b
-      else if isFunction a && isFunction b then
+      # TODO: TOO SLOW
+      #if isString a && isString b
+      #  then diffStrings_ {inherit ignoreANSI aLabel bLabel;} a b
+      if isFunction a && isFunction b then
         if allLambdasEqual
         then { __equal = "<both lambda>"; }
         else { __unequal = "<uncomparable lambda>"; }
