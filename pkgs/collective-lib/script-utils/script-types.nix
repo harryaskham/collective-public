@@ -4,6 +4,7 @@ with lib;
 with lib.strings;
 with collective-lib.strings;
 with collective-lib.functions;
+with collective-lib.syntax;
 with script-utils.ansi-utils;
 with script-utils.log-utils;
 with script-utils.usage-utils;
