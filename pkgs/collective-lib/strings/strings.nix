@@ -691,8 +691,11 @@ Char = StringW 1;
 Line = s: Strings_ {w = width s;} [s "\n"];
 
 Lines = ls_:
-  let ls = imap0 (i: l: if i == (size ls_ - 1) then l else Line l) ls_;
-  in Strings ls;
+  if isList ls_ then
+    let ls = imap0 (i: l: if i == (size ls_ - 1) then l else Line l) ls_;
+    in Strings ls
+  else
+    Lines [ls_];
 
 NonEmptyStrings = ss:
   Strings (filter (s: toString s != "") ss);

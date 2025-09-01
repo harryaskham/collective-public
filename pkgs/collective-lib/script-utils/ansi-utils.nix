@@ -172,8 +172,8 @@ in rec {
       align ? "left"
     }: 
       let
-        headerBlock = flattenToStrings1 header;
-        bodyBlock = flattenToStrings1 body;
+        headerBlock = flattenToStrings1 (Lines header);
+        bodyBlock = flattenToStrings1 (Lines body);
         mkOuterBlock = s: Lines (s.mapLines mkLine);
         outerHeaderBlock =
           if header == null
@@ -209,7 +209,7 @@ in rec {
         #mkLine = s: Strings_ {w = outerWidth;} [
         mkLine = s: Strings_ {w = outerWidth;} (Join [
           lineLeft
-          (Strings_ {w = contentWidth;} [(style' styles (pad { to = contentWidth; utf8 = true; inherit align; asStrings = true; } s))])
+          (style' styles (pad { to = contentWidth; utf8 = true; inherit align; asStrings = true; } s))
           lineRight
         ]);
 
