@@ -621,6 +621,11 @@ diffStrings = diffStrings_ {};
 
 # Strings + __width typeclass
 
+stringArg = arg:
+  if isString arg then arg
+  else if hasToString arg then toString arg
+  else throw "stringArg: Got invalid argument to stringArg: ${typeOf arg} (expected string or a ToString instance)";
+
 # A longer string that can be composed of other Strings, chars, etc.
 # Don't re-wrap Strings so we can retain any inner width information.
 Strings = x:
