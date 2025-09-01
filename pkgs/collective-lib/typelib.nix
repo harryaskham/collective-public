@@ -3845,15 +3845,16 @@ let
       toShellValueUnsafe = x:
         if SU.isTypedAttrs x then _throw_ ''toShellValueUnsafe: Got typed attrs: ${_p_ h}''
         else {
-          "int" = toString x;
-          "float" = toString x;
-          "bool" = if x then "true" else "false";
-          "string" = shellQuote x;
-          "path" = shellQuote x;
-          "null" = ''""'';
-          "list" = ''(${joinSep " " (map toShellValue x)})'';
+          int = toString x;
+          float = toString x;
+          bool = if x then "true" else "false";
+          string = shellQuote x;
+          path = shellQuote x;
+          null = ''""'';
+          list = ''(${joinSep " " (map toShellValue x)})'';
         }.${lib.typeOf x} or (
-          throw "toShellValueUnsafe: ${lib.typeOf x} not supported");
+          if hasToString x then toShellValueUnsafe x
+          else throw "toShellValueUnsafe: ${lib.typeOf x} not supported");
     };
 
   };
