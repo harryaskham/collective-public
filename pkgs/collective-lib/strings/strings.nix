@@ -570,14 +570,17 @@ in rec {
         padLeft = halfPaddingL;
         padRight = halfPaddingR;
         padFull = padding;
-    in (if asStrings then id else toString) (switch align {
-      #left = Strings_ {w = w + paddingSize;} [s padFull];
-      #right = Strings_ {w = w + paddingSize;} [padFull s];
-      #center = Strings_ {w = w + paddingSize;} [padLeft s padRight];
-      left = Strings_ { w = w + paddingSize;} [s padFull];
-      right = Join [padFull s];
-      center = Join [padLeft s padRight];
-    });
+    in 
+      if asStrings then switch align {
+        left = Strings_ { w = w + paddingSize;} [s padFull];
+        right = Strings_ { w = w + paddingSize;} [padFull s];
+        center = Strings_ { w = w + paddingSize;} [padLeft s padRight];
+      }
+      else switch align {
+        left = join [s padFull];
+        right = join [padFull s];
+        center = join [padLeft s padRight];
+      };
 
   diffStrings_ = {aLabel ? "first", bLabel ? "second", ignoreANSI ? true} @ args: a: b:
     with typed.script-utils.ansi-utils;
