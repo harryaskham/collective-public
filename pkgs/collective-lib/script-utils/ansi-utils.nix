@@ -228,7 +228,7 @@ in rec {
         leftPadding = style' styles (spaces padding.left);
         rightPadding = style' styles (spaces padding.right);
 
-        debugBoxes = true;
+        debugBoxes = false;
 
         boxStrings = 
         # Nix doesn't handle unicode codepoints or ANSI, so we include the logical width here.
