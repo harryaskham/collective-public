@@ -176,9 +176,7 @@ in rec {
         bodyBlock = flattenToStrings1 (Lines body);
         mkOuterBlock = s: Lines (s.mapLines mkLine);
         outerHeaderBlock =
-          if header == null
-          then Strings []
-          else Lines 
+          Lines 
             ([(mkOuterBlock headerBlock)]
             ++ (optionals showDivider [midBorder]));
         outerBodyBlock = mkOuterBlock bodyBlock;
@@ -233,15 +231,16 @@ in rec {
         boxStrings = 
         # Nix doesn't handle unicode codepoints or ANSI, so we include the logical width here.
         # Enables nesting by providing a 'body' as a list of blocks / boxes.
-          let lines_ = [
-                topMargin
-                topBorder
-                outerHeaderBlock
-                topPadding
-                outerBodyBlock
-                bottomPadding
-                bottomBorder
-              ] ++ (optionals (margin.bottom > 0) [bottomMargin]);
+          let lines_ =
+                (optionals (margin.top > 0) [topMargin])
+                ++ [topBorder]
+                ++ (optionals (header != null) [outerHeaderBlock])
+                ++ (optionals (padding.top > 0) [topPadding])
+                ++ [outerBodyBlock]
+                ++ (optionals (padding.bottom > 0) [bottomPadding])
+                ++ [bottomBorder]
+                ++ (optionals (margin.bottom > 0) [bottomMargin])
+                ++ (optionals (margin.bottom > 0) [bottomMargin]);
           in Lines lines_;
       in 
         Strings_ {w = outerWidth;} (Lines [

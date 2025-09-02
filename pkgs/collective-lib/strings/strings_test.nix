@@ -304,12 +304,41 @@ in suite {
 
   diffStrings = {
     empty = expect.eq (diffStrings "" "") {
-      __equal = "";
       __diffType = "string";
+      __equal = "";
+    };
+    emptyNonempty = expect.eq (diffStrings "" "a") {
+      __diffType = "string";
+      __unequal = [
+        { __unequal = {first = ""; second = "a";}; __diffType = "segment";}
+      ];
+    };
+    emptyNonemptyLinewise = expect.eq (diffStrings_ {linewiseStringDiff = true;} "" "\na\n") {
+      __diffType = "lines";
+      __unequal = [
+        { 
+          __diffType = "string";
+          __unequal = [
+            {__unequal = {second = "";}; __diffType = "segment";}
+          ];
+        }
+        { 
+          __diffType = "string";
+          __unequal = [
+            {__unequal = {second = "a";}; __diffType = "segment";}
+          ];
+        }
+        { 
+          __diffType = "string";
+          __unequal = [
+            {__unequal = {second = "";}; __diffType = "segment";}
+          ];
+        }
+      ];
     };
     equal = expect.eq (diffStrings "a" "a") {
-      __equal = "a";
       __diffType = "string";
+      __equal = "a";
     };
     unequal = {
       one = expect.eq (diffStrings "a" "b")
@@ -402,10 +431,14 @@ in suite {
             {__unequal = {first = "x"; second = "foo";}; __diffType = "segment";}
           ];
         };
-      pretty =
-        expect.eq 
+      pretty.linewise.true =
+        expect.eqOn ansi.stripANSI
           (diffStrings_ { prettyStringDiff = true; linewiseStringDiff = true; } "\nabc\ndef" "\naxx\nxxf\nxyz\n")
-          "\nabcxx\ndexxf\n<x>xyz\n<x>";
+          "\nabcxx\ndexxf\n_xyz\n_";
+      pretty.linewise.false =
+        expect.eqOn ansi.stripANSI
+          (diffStrings_ { prettyStringDiff = true; linewiseStringDiff = false; } "\nabc\ndef" "\naxx\nxxf\nxyz\n")
+          "\nabcxx\ndexxf\nxyz\n";
     };
   };
 

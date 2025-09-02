@@ -600,13 +600,20 @@ in rec {
     a: b:
     with (log.v 5).call "diffStrings" args a b ___;
     let 
+      missingElem = {__missing = true;};
+
       mkDiffSegmentSep = sep: segment:
         with (log.v 6).call "mkDiffSegmentSep" sep segment ___;
         return (
           segment.__equal or (
+            with ansi;
             joinSep sep [
-              (with ansi; style [bg.red fg.brightwhite] (segment.${aLabel} or "<x>"))
-              (with ansi; style [bg.green fg.brightwhite] (segment.${bLabel} or "<x>"))
+              (if segment ? ${aLabel}
+              then style [bg.red fg.brightwhite] segment.${aLabel}
+              else style [bg.brightblack fg.brightred] "_")
+              (if segment ? ${bLabel}
+              then style [bg.green fg.brightwhite] segment.${bLabel}
+              else style [bg.brightblack fg.brightgreen] "_")
             ]
           )
         );
@@ -628,9 +635,6 @@ in rec {
     in
     if diffDisplayStrings then
       diffStrings_ (args // {diffDisplayStrings = false;}) (ansi.stripANSI a) (ansi.stripANSI b)
-
-    else if a == b then {__equal = a; __diffType = "string";}
-
     else let
       ab = padLongest_ {emptyElem = "";} (mapAttrs (_: stringToCharacters) {inherit a b;});
       state =
@@ -673,30 +677,54 @@ in rec {
               })
           {current = null; segments = [];}
           (zipListsWith (a: b: { inherit a b; }) ab.a ab.b);
+      restA = substring (size ab.b) (size ab.a) a;
+      restB = substring (size ab.a) (size ab.b) b;
+      rest = 
+        if restA != "" then [{__unequal = {${aLabel} = restA;};}]
+        else if restB != "" then [{__unequal = {${bLabel} = restB;};}]
+        else [];
+      charDiff = 
+        map 
+          (d: d // { __diffType = "segment"; })
+          (state.segments ++ [state.current] ++ rest);
+
 
       linewiseDiff = 
         let 
+          splitWithEmpty = s: if s == "" then [missingElem] else splitLines s;
           go = diffStrings_ (args // {linewiseStringDiff = false; prettyStringDiff = false;});
-          padLines = pad {to = max (size la) (size lb); emptyElem = "";};
-          la = splitLines a;
-          lb = splitLines b;
-          lineDiffs = zipListsWith go (padLines la) (padLines lb);
+          la = splitWithEmpty a;
+          lb = splitWithEmpty b;
+          lineDiffs = zipListsWith go la lb;
+          restA = drop (size lb) la;
+          restB = drop (size la) lb;
+          rest = 
+            if restA != [] then map (l: go l missingElem) restA
+            else if restB != [] then map (l: go missingElem l) restB
+            else [];
+          allLineDiffs = lineDiffs ++ rest;
         in 
           {
             __diffType = "lines";
-            __unequal = lineDiffs;
+            __unequal = allLineDiffs;
           };
 
       fullStringDiff = {
         __diffType = "string";
-        __unequal = 
-          map (d: d // { __diffType = "segment"; })
-          (state.segments ++ [state.current]);
+        __unequal = charDiff;
       };
 
-      rawDiff = if linewiseStringDiff then linewiseDiff else fullStringDiff;
+      rawDiff = 
+        if a == b then {__equal = a; __diffType = "string";}
+        else if a == missingElem then {__unequal = [{__unequal = {${bLabel} = b;}; __diffType = "segment";}]; __diffType = "string";}
+        else if b == missingElem then {__unequal = [{__unequal = {${aLabel} = a;}; __diffType = "segment";}]; __diffType = "string";}
+        else if linewiseStringDiff then linewiseDiff
+        else fullStringDiff;
+
       finalDiff = if prettyStringDiff then mkPrettyStringDiff rawDiff else rawDiff;
     in 
+
+
       return finalDiff;
 
 # Strings + __width typeclass
