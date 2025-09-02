@@ -598,10 +598,10 @@ in rec {
       linewiseStringDiff ? false
     } @ args:
     a: b:
-    with (log.v 0).call "diffStrings" args a b ___;
+    with (log.v 5).call "diffStrings" args a b ___;
     let 
       mkDiffSegmentSep = sep: segment:
-        with (log.v 0).call "mkDiffSegmentSep" sep segment ___;
+        with (log.v 6).call "mkDiffSegmentSep" sep segment ___;
         return (
           segment.__equal or (
             joinSep sep [
@@ -611,7 +611,7 @@ in rec {
           )
         );
       mkPrettyStringDiff = d: 
-        with (log.v 0).call "mkPrettyStringDiff" d ___;
+        with (log.v 6).call "mkPrettyStringDiff" d ___;
         return (
           if d ? __equal then d.__equal
           else 
