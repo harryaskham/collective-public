@@ -1,7 +1,7 @@
 { lib ? import <nixpkgs/lib>,
   collective-lib ? import ./. { inherit lib; },
   enableStringDiff ? (
-    !(builtins.elem (builtins.getEnv "CLTV_ENABLE_STRING_DIFF") ["" "0" "false"])
+    !(builtins.elem (builtins.getEnv "CLTV_ENABLE_STRING_DIFF") ["0" "false"])
   ),
   ... }:
 
@@ -313,7 +313,7 @@ in rec {
                 optionals ((status == Status.Failed) && !(isTryEvalFailure result)) [
                   (box {
                     header = style_ [fg.yellow bold] "Diff";
-                    styles = [bg.black italic];
+                    styles = [bg.black];
                     showBorder = false;
                     showDivider = false;
                     body = _p_ (
@@ -367,7 +367,7 @@ in rec {
               (test.compare != null) 
               [(with ansi; box { 
                 header = style_ [fg.yellow bold] "Comparing on";
-                styles = [bg.black italic];
+                styles = [bg.black];
                 showBorder = false;
                 showDivider = false;
                 #styles = [fg.brightblack bg.black];

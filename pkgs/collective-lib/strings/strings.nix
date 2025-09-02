@@ -588,12 +588,23 @@ in rec {
 
   diffStrings = diffStrings_ {};
   diffStrings_ =
-    {aLabel ? "first", bLabel ? "second", display ? true} @ args:
+    {aLabel ? "first", bLabel ? "second", display ? true, prettyStringDiff ? false} @ args:
     a: b:
-    if display then 
+    let mkSegment = s:
+          if prettyStringDiff then
+            s.__equal or (
+              join [
+                (with ansi; style [bg.red fg.brightwhite] s.__unequal.${aLabel})
+                (with ansi; style [bg.green fg.brightwhite] s.__unequal.${aLabel})
+              ])
+          else s;
+    in
+    if display then
       diffStrings_ (args // {display = false;}) (ansi.stripANSI a) (ansi.stripANSI b)
-    else if a == b then 
+
+    else if a == b then
       {__equal = a;}
+
     else let
       ab = padLongest_ {emptyElem = "";} (mapAttrs (_: stringToCharacters) {inherit a b;});
       state =
@@ -636,7 +647,7 @@ in rec {
               })
           {current = null; segments = [];}
           (zipListsWith (a: b: { inherit a b; }) ab.a ab.b);
-    in {__unequal.__stringDiff = state.segments ++ [state.current];};
+    in {__unequal.__stringDiff = map mkSegment (state.segments ++ [state.current]);};
 
 # Strings + __width typeclass
 
