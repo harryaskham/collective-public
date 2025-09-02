@@ -586,6 +586,9 @@ in rec {
     );
 
 
+  mkPrettyStringDiff = segments: 
+    join (map mkSegment (state.segments ++ [state.current]));
+
   diffStrings = diffStrings_ {};
   diffStrings_ =
     {
@@ -593,7 +596,8 @@ in rec {
       bLabel ? "second",
       linewise ? false,
       display ? true,
-      prettyStringDiff ? false
+      enableStringDiff ? true,
+      prettyStringDiff ? true
     } @ args:
     a: b:
     let mkSegment = s:
@@ -601,7 +605,7 @@ in rec {
             s.__equal or (
               join [
                 (with ansi; style [bg.red fg.brightwhite] s.__unequal.${aLabel})
-                (with ansi; style [bg.green fg.brightwhite] s.__unequal.${aLabel})
+                (with ansi; style [bg.green fg.brightwhite] s.__unequal.${bLabel})
               ])
           else s;
     in
@@ -653,9 +657,25 @@ in rec {
               })
           {current = null; segments = [];}
           (zipListsWith (a: b: { inherit a b; }) ab.a ab.b);
-    in {__unequal.__stringDiff =
-          if prettyStringDiff then join (map mkSegment (state.segments ++ [state.current]))
-          else state.segments ++ [state.current];};
+
+      linewiseDiff = 
+        let 
+          la = splitLines a;
+          lb = splitLines b;
+          lineDiffs = diff_ (args // {linewise = false; prettyStringDiff = false;}) la lb;
+        in
+          if prettyStringDiff then map mkPrettyStringDiff lineDiffs
+          else lineDiffs;
+
+      fullStringDiff = 
+        let 
+          result = {__unequal = state.segments ++ [state.current];};
+        in 
+          if prettyStringDiff then mkPrettyStringDiff result
+          else result;
+
+    in 
+      if linewise then linewiseDiff else fullStringDiff;
 
 # Strings + __width typeclass
 
