@@ -1,18 +1,10 @@
 { lib ? import <nixpkgs/lib>, collective-lib ? import ./. { inherit lib; }, ... }:
 
 with lib;
-with collective-lib.collections;
-with collective-lib.dispatchlib;
-with collective-lib.errors;
-with collective-lib.lists;
-with collective-lib.strings;
-with collective-lib.tests;
-
-let
-  log = collective-lib.log;
-  errors = collective-lib.errors;
-  typelib = collective-lib.typelib;
-  typed = collective-lib.typed;
+with collective-lib;
+with typed; 
+let 
+  inherit (Types.TS) int;
 in rec {
   # For use as:
   # with lets { x = 123; }; x + 1

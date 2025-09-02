@@ -163,20 +163,58 @@ in suite {
     slash = expect.eq (stringToPath "/a/b/c") /a/b/c;
   };
 
-  pad = {
-    left = expect.eq (padString {to = 10; align = "left";} "hello") "hello     ";
-    right = expect.eq (padString {to = 10; align = "right";} "hello") "     hello";
-    center.exact = expect.eq (padString {to = 9; align = "center";} "hello") "  hello  ";
-    center.roundUp = expect.eq (padString {to = 10; align = "center";} "hello") "  hello   ";
-    center.roundDown = expect.eq (padString {to = 8; align = "center";} "hello") " hello  ";
-    emptyChar = expect.eq (padString {to = 10; emptyChar = "x";} "hello") "helloxxxxx";
-    ignoreANSI.true =
-      let redHello = with ansi; style [underline fg.red] "hello";
-      in expect.eq (padString {to = 9; align = "center"; ignoreANSI = true;} redHello) "  ${redHello}  ";
-    ignoreANSI.false =
-      let redHello = with ansi; style [underline fg.red] "hello";
-      in expect.eq (padString {to = 9; align = "center"; ignoreANSI = false;} redHello) "${redHello}"; # Already too wide with the codes in place.
-  };
+  pad =
+    let redHello = with ansi; style [underline fg.red] "hello";
+        redHelloPlus1 = with ansi; style [underline fg.red] "hello┏";
+        redHelloPlus1Char = with ansi; style [underline fg.red] (Strings ["hello" ansi.boxes.heavy.kneeNW]);
+        redHelloPlus2 = with ansi; style [underline fg.red] "hello┏┏";
+        redHelloPlus2Chars = with ansi; style [underline fg.red] (Strings ["hello" ansi.boxes.heavy.kneeNW ansi.boxes.heavy.kneeNW]);
+        redHelloPlus3 = with ansi; style [underline fg.red] "hello┏┏┏";
+        redHelloPlus3Chars = with ansi; style [underline fg.red] (Strings ["hello" ansi.boxes.heavy.kneeNW ansi.boxes.heavy.kneeNW ansi.boxes.heavy.kneeNW]);
+        redHelloPlus4 = with ansi; style [underline fg.red] "hello┏┏┏┏";
+        redHelloPlus4Chars = with ansi; style [underline fg.red] (Strings ["hello" ansi.boxes.heavy.kneeNW ansi.boxes.heavy.kneeNW ansi.boxes.heavy.kneeNW ansi.boxes.heavy.kneeNW]);
+    in {
+      left = expect.eq (padString {to = 10; align = "left";} "hello") "hello     ";
+      right = expect.eq (padString {to = 10; align = "right";} "hello") "     hello";
+      center.exact = expect.eq (padString {to = 9; align = "center";} "hello") "  hello  ";
+      center.roundUp = expect.eq (padString {to = 10; align = "center";} "hello") "  hello   ";
+      center.roundDown = expect.eq (padString {to = 8; align = "center";} "hello") " hello  ";
+      emptyChar = expect.eq (padString {to = 10; emptyChar = "x";} "hello") "helloxxxxx";
+
+      # Already too wide with the codes in place.
+      hello.display.stringLength.lib = expect.eq (lib.strings.stringLength redHello) 20;
+      hello.plus1.display.stringLength.lib = expect.eq (lib.strings.stringLength redHelloPlus1) 23;
+      # UTF8 char counts as 1
+      # TODO: This failure shows thy we're under-counting lines with box chars!
+      # We then add too much padding b/c we undercount these characters.
+      hello.display.stringLength.utf8 = expect.eq (utf8StringLength redHello) 20;
+      # Fails, 20
+      hello.plus1.display.stringLength.utf8 = expect.eq (utf8StringLength redHelloPlus1) 21;
+      # Fails, 20
+      hello.plus1Char.display.stringLength.utf8 = expect.eq (utf8StringLength redHelloPlus1Char) 21;
+      # Fails, 20
+      hello.plus2.display.stringLength.utf8 = expect.eq (utf8StringLength redHelloPlus2) 22;
+      # Fails, 20
+      hello.plus2Chars.display.stringLength.utf8 = expect.eq (utf8StringLength redHelloPlus2Chars) 22;
+      # Fails, 20
+      hello.plus3.display.stringLength.utf8 = expect.eq (utf8StringLength redHelloPlus3) 23;
+      # Fails, 20
+      hello.plus3Char.display.stringLength.utf8 = expect.eq (utf8StringLength redHelloPlus3Chars) 23;
+      # Fails, 23
+      hello.plus4.display.stringLength.utf8 = expect.eq (utf8StringLength redHelloPlus4) 24;
+      # Fails, 23
+      hello.plus4Chars.display.stringLength.utf8 = expect.eq (utf8StringLength redHelloPlus4Chars) 24;
+      # UTF8 char counts as 1, colors count as zero
+      hello.display.stringLength.displayLength = expect.eq (displayLength redHello) 5;
+      hello.plus1.display.stringLength.displayLength = expect.eq (displayLength redHelloPlus1) 6;
+      # UTF8 char counts as 1, colors count as zero
+      hello.pad.display.true =
+        expect.eq (padString {to = 9; align = "center"; display = true;} redHello)
+        "  ${redHello}  ";
+      hello.plus1.pad.display.false =
+        expect.eq (padString {to = 10; align = "center"; display = false;} redHelloPlus1)
+        "${redHelloPlus1}";
+    };
 
   joinVertical = {
     empty = expect.eq (toString (joinVertical [])) "";
@@ -306,7 +344,7 @@ in suite {
     boxDrawingColored =
       with ansi;
       let x = style [fg.red] "┏━━";
-      in expect.eq [(lib.stringLength x) (utf8StringLength x)] [22 3];
+      in expect.eq [(lib.stringLength x) (utf8StringLength x) (displayLength x)] [22 13 3];
   };
 
   Strings = {

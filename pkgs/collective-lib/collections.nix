@@ -165,7 +165,7 @@ in rec {
     list = padList args;
     string = padString args;
     set = xs: 
-      if isStrings xs then padString args (toString xs)
+      if isStrings xs then padString args xs
       else throw "Invalid set argument to pad: ${_ph_ xs} (expected Strings)";
   };
 
@@ -283,7 +283,7 @@ in rec {
             redHello = toString (with ansi; style [underline fg.red] "hello");
         in expect.eq 
           (map
-            (pad {to = 10; ignoreANSI = true; emptyChar = "x"; emptyElem = 7;})
+            (pad {to = 10; display = true; emptyChar = "x"; emptyElem = 7;})
             ["abcde" [1 2 3] redHello])
           ["abcdexxxxx" [1 2 3 7 7 7 7 7 7 7] "${redHello}xxxxx"];
       padLongest.list = expect.eq (padLongest ["hi" "hello" [0 1 2 3]]) ["hi   " "hello" [0 1 2 3 null]];

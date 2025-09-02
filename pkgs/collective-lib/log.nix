@@ -26,10 +26,10 @@ with collective-lib.syntax;
 
 # Printing/logging utilities
 let
-  typelib = collective-lib.typelib;
   typed = collective-lib.typed;
-  errors = collective-lib.errors;
-  syntax = collective-lib.syntax;
+  inherit (typed) Types typelib errors syntax;
+  inherit (Types.TS) String int;
+
   log = rec {
 
     # Shorthand for adding context for better traces when the expr fails to eval.

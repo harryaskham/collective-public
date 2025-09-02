@@ -209,7 +209,7 @@ in rec {
         #mkLine = s: Strings_ {w = outerWidth;} [
         mkLine = s: Strings_ {w = outerWidth;} (Join [
           lineLeft
-          (style' styles (pad { to = contentWidth; utf8 = true; inherit align; asStrings = true; } s))
+          (style' styles (pad { to = contentWidth; display = true; inherit align; asStrings = true; } s))
           lineRight
         ]);
 

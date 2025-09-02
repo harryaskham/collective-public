@@ -13,6 +13,7 @@ with collective-lib.lists;
 with collective-lib.functions;
 with collective-lib.syntax;
 with collective-lib.rebinds;
+with collective-lib.script-utils.ansi-utils;
 
 # String formatting and indentation utilities.
 # Allows for multi-line indentation in indented strings where
@@ -537,90 +538,105 @@ in rec {
       else if b / 8 == 30 then 2
       else throw "Invalid UTF-8 lead byte: ${toString b}";
 
-  utf8StringLength = s: utf8StringLength_ {inherit s;};
-  utf8StringLength_ = {ignoreANSI ? true, s}:
-    let s' = if ignoreANSI then typed.script-utils.ansi-utils.ansi.stripANSI s else s;
-        go = cs:
-          if cs == [] then 0
-          else 
-            let snocd = snoc cs;
-                n = utf8CharLength snocd.head;
-            in 1 + go (drop (n - 1) snocd.tail);
+  # String length attempting to handle UTF-8 characters.
+  utf8StringLength = s:
+    let go = cs:
+      if cs == [] then 0
+      else 
+        let snocd = snoc cs;
+            n = utf8CharLength snocd.head;
+        in 1 + go (drop (n - 1) snocd.tail);
     in 
-      if isASCII s' then stringLength s'
-      else go (stringToCharacters s');
+      if isASCII s then stringLength s
+      else go (stringToCharacters s);
+
+  # The length of a string after shell / printf display
+  # i.e. without ANSI escape codes, and with 2, 3 and 4-width characters counted as 1.
+  displayLength = s: 
+    if s ? __width then width s
+    else utf8StringLength (ansi.stripANSI s);
 
   # Pad a given string with spaces until it is at least n characters long
-  # If the string implements __width, this is respected instead of trying to infer using utf8StringLength.
-  padString = { to, align ? "left", emptyChar ? " ", ignoreANSI ? true, utf8 ? false, asStrings ? false, ... }: s:
-    let w = 
-          if !ignoreANSI then
-            if utf8 then utf8StringLength (toString s) else stringLength (toString s)
-
-          else if s ? __width then width s
-
-          else
-            with typed.script-utils.ansi-utils.ansi;
-            if utf8 then utf8StringLength (stripANSI s)
-            else stringLength (stripANSI s);
-        paddingSize = max 0 (to - w);
-        padding = typed.replicate paddingSize emptyChar;
-        halfPaddingL = typed.replicate (builtins.floor (paddingSize / 2.0)) emptyChar;
-        halfPaddingR = typed.replicate (builtins.ceil (paddingSize / 2.0)) emptyChar;
-        padLeft = halfPaddingL;
-        padRight = halfPaddingR;
-        padFull = padding;
-    in 
+  # If the string implements __width, this is respected instead of trying to 
+  # infer using displayLength.
+  padString =
+    { to, align ? "left", emptyChar ? " ", display ? false, asStrings ? false, ... } @ args:
+    s:
+    with (log.v 5).call "padString" args s ___;
+    let 
+      w = if display then displayLength s else stringLength s;
+      paddingSize = max 0 (to - w);
+      padding = typed.replicate paddingSize emptyChar;
+      halfPaddingL = typed.replicate (builtins.floor (paddingSize / 2.0)) emptyChar;
+      halfPaddingR = typed.replicate (builtins.ceil (paddingSize / 2.0)) emptyChar;
+      padLeft = halfPaddingL;
+      padRight = halfPaddingR;
+      padFull = padding;
+    in return (
       if asStrings then switch align {
         left = Strings_ { w = w + paddingSize;} [s padFull];
         right = Strings_ { w = w + paddingSize;} [padFull s];
         center = Strings_ { w = w + paddingSize;} [padLeft s padRight];
       }
       else switch align {
-        left = join [s padFull];
-        right = join [padFull s];
-        center = join [padLeft s padRight];
-      };
+        left = "${s}${padFull}";
+        right = "${padFull}${s}";
+        center = "${padLeft}${s}${padRight}";
+      }
+    );
 
-  diffStrings_ = {aLabel ? "first", bLabel ? "second", ignoreANSI ? true} @ args: a: b:
-    with typed.script-utils.ansi-utils;
-  if ignoreANSI then diffStrings_ (args // {ignoreANSI = false;}) (ansi.stripANSI a) (ansi.stripANSI b)
-  else if a == b then {__equal = a;}
-  else let
-    ab = padLongest_ {emptyElem = "";} (mapAttrs (_: stringToCharacters) {inherit a b;});
-    state =
-      typed.fold 
-        ({current, segments}: {a, b}:
-          if current == null then {
-            current = 
-              if a == b
-              then { __equal = a; } 
-              else { __unequal = { ${aLabel} = a; ${bLabel} = b;}; };
-            inherit segments;
-          }
-          else if a == b then
-            if current ? __equal then {
-              current = { __equal = current.__equal + a; };
+
+  diffStrings = diffStrings_ {};
+  diffStrings_ =
+    {aLabel ? "first", bLabel ? "second", display ? true} @ args:
+    a: b:
+    if display then 
+      diffStrings_ (args // {display = false;}) (ansi.stripANSI a) (ansi.stripANSI b)
+    else if a == b then 
+      {__equal = a;}
+    else let
+      ab = padLongest_ {emptyElem = "";} (mapAttrs (_: stringToCharacters) {inherit a b;});
+      state =
+        typed.fold 
+          ({current, segments}: {a, b}:
+            if current == null then {
+              current = 
+                if a == b
+                then { __equal = a; } 
+                else { __unequal = { ${aLabel} = a; ${bLabel} = b;}; };
               inherit segments;
             }
-            else {
-              current = { __equal = a; };
-              segments = segments ++ [current];
-            }
-          else
-            if current ? __unequal then {
-              current = { __unequal = { ${aLabel} = current.__unequal.${aLabel} + a; ${bLabel} = current.__unequal.${bLabel} + b; }; };
-              inherit segments;
-            }
-            else {
-              current = { __unequal = { ${aLabel} = a; ${bLabel} = b; }; };
-              segments = segments ++ [current];
-            })
-        {current = null; segments = [];}
-        (zipListsWith (a: b: { inherit a b; }) ab.a ab.b);
-  in {__unequal.__stringDiff = state.segments ++ [state.current];};
-
-diffStrings = diffStrings_ {};
+            else if a == b then
+              if current ? __equal then {
+                current = { __equal = current.__equal + a; };
+                inherit segments;
+              }
+              else {
+                current = { __equal = a; };
+                segments = segments ++ [current];
+              }
+            else
+              if current ? __unequal then {
+                current = {
+                  __unequal = { 
+                    ${aLabel} = current.__unequal.${aLabel} + a;
+                    ${bLabel} = current.__unequal.${bLabel} + b;
+                  };
+                };
+                inherit segments;
+              }
+              else {
+                current = { 
+                  __unequal = { 
+                    ${aLabel} = a;
+                    ${bLabel} = b;
+                  };
+                };
+                segments = segments ++ [current];
+              })
+          {current = null; segments = [];}
+          (zipListsWith (a: b: { inherit a b; }) ab.a ab.b);
+    in {__unequal.__stringDiff = state.segments ++ [state.current];};
 
 # Strings + __width typeclass
 
@@ -675,7 +691,6 @@ Strings_ = {w ? null} @ args: ss:
       concatMapLines = f: joinLines (map f (this.lines {}));
 
       debug = 
-        with typed.script-utils.ansi-utils;
         { v ? 0 } @ args: _b_ ''
         (Strings:${toString this.__width}
           >>>${_h_ this.__repr}${ansi.end}<<<
@@ -712,13 +727,16 @@ NonEmptyLines = ls:
   Lines (filter (l: toString l != "") ls);
 
 width = x:
-  if x ? __width then x.__width
-  else if isList x then if x == [] then 0 else maximum (map width x)
-  # If a regular string, infer its width using utf8StringLength
-  else if isString x then 
-    let ls = splitLines x;
-    in if size ls == 1 then utf8StringLength (head ls) else maximum (map utf8StringLength ls)
-  else throw "Invalid argument to width: ${typeOf x}";
+  let go = intOkay: x:
+    if intOkay && isInt x then x
+    else if x ? __width then x.__width
+    else if isList x then if x == [] then 0 else maximum (map (go true) x)
+    # If a regular string, infer its width using displayLength
+    else if isString x then 
+      let ls = splitLines x;
+      in go false (map displayLength ls)
+    else throw "Invalid argument to width: ${typeOf x}";
+  in go false x;
 
 flattenToStrings1 = dispatch {
   string = String1;

@@ -11,6 +11,7 @@
 
 let
   typed = collective-lib.typed;
+  inherit (typed.Types.TS) String;
   toShellValue =
     if overrideToShellValue != null
     then overrideToShellValue

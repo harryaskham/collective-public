@@ -321,11 +321,11 @@ let
       aLabel ? "first",
       bLabel ? "second",
       allLambdasEqual ? false,
-      ignoreANSI ? true,
+      display ? true,
       enableStringDiff ? false  # Disabled by default as too slow.
     }: a: b:
       if enableStringDiff && isString a && isString b
-        then diffStrings_ {inherit ignoreANSI aLabel bLabel;} a b
+        then diffStrings_ {inherit display aLabel bLabel;} a b
       else if isFunction a && isFunction b then
         if allLambdasEqual
         then { __equal = "<both lambda>"; }
