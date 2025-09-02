@@ -1,4 +1,9 @@
-{ lib ? import <nixpkgs/lib>, collective-lib ? import ./. { inherit lib; }, ... }:
+{ lib ? import <nixpkgs/lib>,
+  collective-lib ? import ./. { inherit lib; },
+  enableStringDiff ? (
+    !(builtins.elem (builtins.getEnv "CLTV_ENABLE_STRING_DIFF") ["" "0" "false"])
+  ),
+  ... }:
 
 with collective-lib.attrsets;
 with collective-lib.collections;
@@ -313,6 +318,7 @@ in rec {
                     showDivider = false;
                     body = _p_ (
                       diffShort_ {
+                        inherit enableStringDiff;
                         maxDepth = 10;
                         aLabel = "expected";
                         bLabel = "actual";

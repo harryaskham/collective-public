@@ -5047,11 +5047,18 @@ let
 
   # Final module
   typelib = 
-    let 
-      module = Types.TS // {
+    let
+      # Access as typelib.Types.x
+      elidedInExport = [
+        # Remove the unwrappers from public export due to frequent name-clash 
+        "nil" "bool" "string" "int" "float" "path" "list" "set" "lambda"
+        # Remove other common name clashes
+        "String"
+      ];
+      module = removeAttrs
         # Embed the whole of Types for isolated typelib.Types access.
-        inherit Types;
-      };
+        (Types.TS // { inherit Types; })
+        elidedInExport;
     in
       module
       // {

@@ -44,6 +44,20 @@ in suite {
         "    }"
       ];
     };
+    by3 = {
+      expr = indent.by 3 (joinLines [
+        " line1"
+        " def fn() {"
+        "   line2"
+        " }"
+      ]);
+      expected = joinLines [
+        "    line1"
+        "    def fn() {"
+        "      line2"
+        "    }"
+      ];
+    };
     get = {
       expr = indent.get (joinLines [
         "            line1"
@@ -299,7 +313,7 @@ in suite {
     simple = expect.eq (toString (Strings ["a" "b"])) "ab";
     Join = expect.eq (toString (Join [(Strings ["a" "b"]) (Strings ["c" "d"])])) "abcd";
     Char = expect.eq (toString (Char "a")) "a";
-    Lines = expect.eq (toString (Lines ["a" "b"])) "a\nb\n";
+    Lines = expect.eq (toString (Lines ["a" "b"])) "a\nb";
     Line = expect.eq (toString (Line "a")) "a\n";
     replicate = expect.eq ((Char "a").replicate 3) "aaa";
   };
