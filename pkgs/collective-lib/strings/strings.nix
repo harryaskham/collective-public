@@ -647,7 +647,9 @@ in rec {
               })
           {current = null; segments = [];}
           (zipListsWith (a: b: { inherit a b; }) ab.a ab.b);
-    in {__unequal.__stringDiff = map mkSegment (state.segments ++ [state.current]);};
+    in {__unequal.__stringDiff =
+          if prettyStringDiff then join (map mkSegment (state.segments ++ [state.current]))
+          else state.segments ++ [state.current];};
 
 # Strings + __width typeclass
 
