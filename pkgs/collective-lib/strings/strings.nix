@@ -7,6 +7,7 @@
 
 with lib;
 with lib.strings;
+with collective-lib.attrsets;
 with collective-lib.collections;
 with collective-lib.dispatchlib;
 with collective-lib.lists;
@@ -586,34 +587,49 @@ in rec {
     );
 
 
-  mkPrettyStringDiff = segments: 
-    join (map mkSegment (state.segments ++ [state.current]));
-
   diffStrings = diffStrings_ {};
   diffStrings_ =
     {
       aLabel ? "first",
       bLabel ? "second",
-      linewise ? false,
-      display ? true,
+      diffDisplayStrings ? true,
       enableStringDiff ? true,
-      prettyStringDiff ? true
+      prettyStringDiff ? false,
+      linewiseStringDiff ? false
     } @ args:
     a: b:
-    let mkSegment = s:
-          if prettyStringDiff then
-            s.__equal or (
-              join [
-                (with ansi; style [bg.red fg.brightwhite] s.__unequal.${aLabel})
-                (with ansi; style [bg.green fg.brightwhite] s.__unequal.${bLabel})
-              ])
-          else s;
+    with (log.v 0).call "diffStrings" args a b ___;
+    let 
+      mkDiffSegmentSep = sep: segment:
+        with (log.v 0).call "mkDiffSegmentSep" sep segment ___;
+        return (
+          segment.__equal or (
+            joinSep sep [
+              (with ansi; style [bg.red fg.brightwhite] (segment.${aLabel} or "<x>"))
+              (with ansi; style [bg.green fg.brightwhite] (segment.${bLabel} or "<x>"))
+            ]
+          )
+        );
+      mkPrettyStringDiff = d: 
+        with (log.v 0).call "mkPrettyStringDiff" d ___;
+        return (
+          if d ? __equal then d.__equal
+          else 
+            let t = d.__diffType or null; 
+            in
+              if t == "segment" then mkDiffSegmentSep "" d.__unequal
+              else if t == "lines" then joinLines (map mkPrettyStringDiff d.__unequal)
+              else if t == "string" then join (map mkPrettyStringDiff d.__unequal)
+              else throw (_b_ ''
+                Invalid argument to mkPrettyStringDiff:
+                  ${_ph_ d}
+              '')
+        );
     in
-    if display then
-      diffStrings_ (args // {display = false;}) (ansi.stripANSI a) (ansi.stripANSI b)
+    if diffDisplayStrings then
+      diffStrings_ (args // {diffDisplayStrings = false;}) (ansi.stripANSI a) (ansi.stripANSI b)
 
-    else if a == b then
-      {__equal = a;}
+    else if a == b then {__equal = a; __diffType = "string";}
 
     else let
       ab = padLongest_ {emptyElem = "";} (mapAttrs (_: stringToCharacters) {inherit a b;});
@@ -660,22 +676,28 @@ in rec {
 
       linewiseDiff = 
         let 
+          go = diffStrings_ (args // {linewiseStringDiff = false; prettyStringDiff = false;});
+          padLines = pad {to = max (size la) (size lb); emptyElem = "";};
           la = splitLines a;
           lb = splitLines b;
-          lineDiffs = diff_ (args // {linewise = false; prettyStringDiff = false;}) la lb;
-        in
-          if prettyStringDiff then map mkPrettyStringDiff lineDiffs
-          else lineDiffs;
-
-      fullStringDiff = 
-        let 
-          result = {__unequal = state.segments ++ [state.current];};
+          lineDiffs = zipListsWith go (padLines la) (padLines lb);
         in 
-          if prettyStringDiff then mkPrettyStringDiff result
-          else result;
+          {
+            __diffType = "lines";
+            __unequal = lineDiffs;
+          };
 
+      fullStringDiff = {
+        __diffType = "string";
+        __unequal = 
+          map (d: d // { __diffType = "segment"; })
+          (state.segments ++ [state.current]);
+      };
+
+      rawDiff = if linewiseStringDiff then linewiseDiff else fullStringDiff;
+      finalDiff = if prettyStringDiff then mkPrettyStringDiff rawDiff else rawDiff;
     in 
-      if linewise then linewiseDiff else fullStringDiff;
+      return finalDiff;
 
 # Strings + __width typeclass
 

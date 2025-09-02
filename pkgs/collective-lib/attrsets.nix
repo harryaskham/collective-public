@@ -321,12 +321,13 @@ let
       aLabel ? "first",
       bLabel ? "second",
       allLambdasEqual ? false,
-      display ? true,
+      diffDisplayStrings ? true,
       enableStringDiff ? true,
-      prettyStringDiff ? true
-    }: a: b:
+      prettyStringDiff ? false,
+      linewiseStringDiff ? false
+    } @ args: a: b:
       if enableStringDiff && isString a && isString b
-        then diffStrings_ {inherit display aLabel bLabel prettyStringDiff;} a b
+        then diffStrings_ {inherit diffDisplayStrings aLabel bLabel prettyStringDiff linewiseStringDiff;} a b
       else if isFunction a && isFunction b then
         if allLambdasEqual
         then { __equal = "<both lambda>"; }
@@ -336,14 +337,11 @@ let
       else if isList a && isList b
         then
           (zipListsWith
-            (a: b: diff_ { inherit maxDepth aLabel bLabel; depth = depth + 1; } a b)
+            (a: b: diff_ (args // { depth = depth + 1; }) a b)
             a
             b)
-          ++ (if length a < length b
-              then map (x: { "missing_in_${aLabel}" = x; }) (drop (length a) b)
-              else if length b > length a
-              then map (x: { "missing_in_${bLabel}" = x; }) (drop (length b) a)
-              else [])
+          ++ (map (x: {__diffType = "missing"; __unequal = { ${bLabel} = x; }; }) (drop (length a) b))
+          ++ (map (x: {__diffType = "missing"; __unequal = { ${aLabel} = x; }; }) (drop (length b) a))
       else if isAttrs a && isAttrs b
         then
           (zipAttrsWith
@@ -356,7 +354,7 @@ let
               }
               else
                 diff_
-                  { inherit maxDepth aLabel bLabel; depth = depth + 1; }
+                  (args // { depth = depth + 1; })
                   (elemAt values 0)
                   (elemAt values 1))
             [a b])
@@ -365,7 +363,7 @@ let
 
     # Diff two attrsets, returning any divergent keys and their values.
     # Lambda-diffs only shown if they are causing diff failure.
-    diffShortNoLambdas_ = params: a: b:
+    diffShortNoLambdas_ = args: a: b:
       deepFilterCond
         (x: !(x ? __stringDiff))
         (x: 
@@ -376,17 +374,17 @@ let
           && x != "<__toString>" 
           && x != {__lambda = true;}
           && !(x ? __equal))
-        (diff_ params a b);
+        (diff_ args a b);
 
-    diffShort_ = params: a: b:
-      let dsnl = diffShortNoLambdas_ params a b;
+    diffShort_ = args: a: b:
+      let dsnl = diffShortNoLambdas_ args a b;
           ds = 
             deepConcatMap
               (k: v: if k == "__toString" then {"<__toString>" = v;} else {${k}= v;})
               (deepFilterCond
                 (x: !(x ? __stringDiff))
                 (x: x != {} && !(x ? __equal))
-                (diff_ params a b));
+                (diff_ args a b));
       in if emptyDiff dsnl then ds else dsnl;
 
     diffShort = diffShort_ {};

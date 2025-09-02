@@ -242,7 +242,7 @@ in rec {
                 bottomPadding
                 bottomBorder
               ] ++ (optionals (margin.bottom > 0) [bottomMargin]);
-          in NonEmptyLines lines_;
+          in Lines lines_;
       in 
         Strings_ {w = outerWidth;} (Lines [
           boxStrings

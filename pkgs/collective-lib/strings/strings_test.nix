@@ -303,37 +303,109 @@ in suite {
   };
 
   diffStrings = {
-    empty = expect.eq (diffStrings "" "") {__equal = "";};
-    equal = expect.eq (diffStrings "a" "a") {__equal = "a";};
+    empty = expect.eq (diffStrings "" "") {
+      __equal = "";
+      __diffType = "string";
+    };
+    equal = expect.eq (diffStrings "a" "a") {
+      __equal = "a";
+      __diffType = "string";
+    };
     unequal = {
       one = expect.eq (diffStrings "a" "b")
-        {__unequal.__stringDiff = [{
-          __unequal = {first = "a"; second = "b";};}];};
+        {
+          __diffType = "string";
+          __unequal = [{__unequal = {first = "a"; second = "b";}; __diffType = "segment";}];
+        };
       whole = expect.eq (diffStrings "abc" "def")
-        {__unequal.__stringDiff = [
-          {__unequal = {first = "abc"; second = "def";};}
-        ];};
+        {
+          __diffType = "string";
+          __unequal = [{__unequal = {first = "abc"; second = "def";}; __diffType = "segment";}];
+        };
       prefix = expect.eq (diffStrings "abcd" "abef")
-        {__unequal.__stringDiff = [
-          {__equal = "ab";}
-          {__unequal = {first = "cd"; second = "ef";};}];};
+        {
+          __diffType = "string";
+          __unequal = [
+            {__equal = "ab"; __diffType = "segment";}
+            {__unequal = {first = "cd"; second = "ef";}; __diffType = "segment";}
+          ];
+        };
       suffix = expect.eq (diffStrings "abcd" "efcd")
-        {__unequal.__stringDiff = [
-          {__unequal = {first = "ab"; second = "ef";};}
-          {__equal = "cd";}
-        ];};
-      infix = expect.eq (diffStrings "xcdex" "acdef")
-        {__unequal.__stringDiff = [
-          {__unequal = {first = "x"; second = "a";};}
-          {__equal = "cde";}
-          {__unequal = {first = "x"; second = "f";};}
-        ];};
+        {
+          __diffType = "string";
+          __unequal = [
+            {__unequal = {first = "ab"; second = "ef";}; __diffType = "segment";}
+            {__equal = "cd"; __diffType = "segment";}
+          ];
+        };
+      infix.full = expect.eq (diffStrings "xcdex" "acdef")
+        {
+          __diffType = "string";
+          __unequal = [
+            {__unequal = {first = "x"; second = "a";}; __diffType = "segment";}
+            {__equal = "cde"; __diffType = "segment";}
+            {__unequal = {first = "x"; second = "f";}; __diffType = "segment";}
+          ];
+        };
+      infix.linewise.true =
+        expect.eq
+          (diffStrings_ { linewiseStringDiff = true; } "ax\nxcde\nf\nx" "ay\nycde\nf\ny")
+          {
+            __diffType = "lines";
+            __unequal = [
+              {
+                __diffType = "string";
+                __unequal = [
+                  {__equal = "a"; __diffType = "segment";}
+                  {__unequal = {first = "x"; second = "y";}; __diffType = "segment";}
+                ];
+              }
+              {
+                __diffType = "string";
+                __unequal = [
+                  {__unequal = {first = "x"; second = "y";}; __diffType = "segment";}
+                  {__equal = "cde"; __diffType = "segment";}
+                ];
+              }
+              {
+                __diffType = "string";
+                __equal = "f";
+              }
+              {
+                __diffType = "string";
+                __unequal = [
+                  {__unequal = {first = "x"; second = "y";}; __diffType = "segment";}
+                ];
+              }
+            ];
+          };
+      infix.linewise.false =
+        expect.eq
+          (diffStrings_ { linewiseStringDiff = false; } "ax\nxcde\nf\nx" "ay\nycde\nf\ny")
+          {
+            __diffType = "string";
+            __unequal = [
+              {__equal = "a"; __diffType = "segment";}
+              {__unequal = {first = "x"; second = "y";}; __diffType = "segment";}
+              {__equal = "\n"; __diffType = "segment";}
+              {__unequal = {first = "x"; second = "y";}; __diffType = "segment";}
+              {__equal = "cde\nf\n"; __diffType = "segment";}
+              {__unequal = {first = "x"; second = "y";}; __diffType = "segment";}
+            ];
+          };
       differentLengths = expect.eq (diffStrings "xcdex" "acdefoo")
-        {__unequal.__stringDiff = [
-          {__unequal = {first = "x"; second = "a";};}
-          {__equal = "cde";}
-          {__unequal = {first = "x"; second = "foo";};}
-        ];};
+        {
+          __diffType = "string";
+          __unequal = [
+            {__unequal = {first = "x"; second = "a";}; __diffType = "segment";}
+            {__equal = "cde"; __diffType = "segment";}
+            {__unequal = {first = "x"; second = "foo";}; __diffType = "segment";}
+          ];
+        };
+      pretty =
+        expect.eq 
+          (diffStrings_ { prettyStringDiff = true; linewiseStringDiff = true; } "\nabc\ndef" "\naxx\nxxf\nxyz\n")
+          "\nabcxx\ndexxf\n<x>xyz\n<x>";
     };
   };
 

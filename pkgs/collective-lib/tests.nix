@@ -1,8 +1,9 @@
 { lib ? import <nixpkgs/lib>,
   collective-lib ? import ./. { inherit lib; },
-  enableStringDiff ? (
-    !(builtins.elem (builtins.getEnv "CLTV_ENABLE_STRING_DIFF") ["0" "false"])
-  ),
+  # Set to 0/false to disable diffing features.
+  enableStringDiff ? (!(builtins.elem (builtins.getEnv "CLTV_ENABLE_STRING_DIFF") ["0" "false"])),
+  prettyStringDiff ? (!(builtins.elem (builtins.getEnv "CLTV_PRETTY_STRING_DIFF") ["0" "false"])),
+  linewiseStringDiff ? (!(builtins.elem (builtins.getEnv "CLTV_LINEWISE_STRING_DIFF") ["0" "false"])),
   ... }:
 
 with collective-lib.attrsets;
@@ -318,7 +319,8 @@ in rec {
                     showDivider = false;
                     body = _p_ (
                       diffShort_ {
-                        inherit enableStringDiff;
+                        # From env / module args
+                        inherit enableStringDiff prettyStringDiff linewiseStringDiff;
                         maxDepth = 10;
                         aLabel = "expected";
                         bLabel = "actual";
