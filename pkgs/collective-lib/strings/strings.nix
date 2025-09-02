@@ -588,7 +588,13 @@ in rec {
 
   diffStrings = diffStrings_ {};
   diffStrings_ =
-    {aLabel ? "first", bLabel ? "second", display ? true, prettyStringDiff ? false} @ args:
+    {
+      aLabel ? "first",
+      bLabel ? "second",
+      linewise ? false,
+      display ? true,
+      prettyStringDiff ? false
+    } @ args:
     a: b:
     let mkSegment = s:
           if prettyStringDiff then
