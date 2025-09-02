@@ -203,8 +203,8 @@ in rec {
     let 
       prefix = spaces n;
       indentLine = line:
-        if (n < 0) then removePrefix (spaces (-1 * n)) line
-        else if (n > 0) then addPrefix (spaces n) line
+        if (n < 0) then removePrefix (toString (spaces (-1 * n))) line
+        else if (n > 0) then addPrefix (toString (spaces n)) line
         else line;
     in 
       concatMapLines indentLine;
