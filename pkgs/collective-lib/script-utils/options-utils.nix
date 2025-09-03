@@ -153,7 +153,7 @@ ${exportPrefix}${name}=${defaultShellValue}
   getoptCommand = args: opts:
     let shortSpecs = concatMapStrings (opt: opt.shortSpec) (filter (opt: opt.hasShort) (attrValues opts));
         longSpecs = concatStringsSep "," (map (opt: opt.longSpec) (filter (opt: opt.hasLong) (attrValues opts)));
-    in ''getopt -n ${args.name} -o ${shortSpecs} --long ${longSpecs} -- "''${@}"'';
+    in ''${pkgs.getopt}/bin/getopt -n ${args.name} -o ${shortSpecs} --long ${longSpecs} -- "''${@}"'';
 
   # Build a block setting default options
   setDefaultOptsBlock = opts:
