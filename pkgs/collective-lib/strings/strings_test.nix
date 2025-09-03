@@ -67,6 +67,30 @@ in suite {
       ]);
       expected = 12;
     };
+    syntactical = {
+      block = expect.eq
+        (_b_ ''
+          first line
+            ${_ph_ [1 2 3]}
+               ${_h_ (_l_ [4 5])}
+            and here: ${_ph_ { a = 1; b = 2; }} inline
+
+          and here:
+            ${_h_ (_l_ {c = 3; d = 4;})}
+        '')
+        (trimNewlines ''
+          first line
+            [ 1
+              2
+              3 ]
+               [ 4 5 ]
+            and here: { a = 1;
+                        b = 2; } inline
+
+          and here:
+            { c = 3; d = 4; }
+        '');
+    };
   };
 
   trimNewlines = {
