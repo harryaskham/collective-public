@@ -1,4 +1,4 @@
-{ lib, collective-lib, script-utils, ... }:
+{ pkgs, lib, collective-lib, script-utils, ... }:
 
 with lib;
 with lib.strings;
