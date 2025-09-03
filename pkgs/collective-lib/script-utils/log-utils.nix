@@ -291,6 +291,12 @@ rec {
       # No re-entry
       export __COLLECTIVE_DEBUG_CHECKED=true
 
+      # Be resilient to running outside of cltv environment with debug off
+      if ! command -v cltv-kv-check >/dev/null 2>&1; then
+        echo false
+        return 0
+      fi
+
       THIS=$(basename $0)
       if [[ "$THIS" == cltv-kv-check || "$THIS" == cltv-gv-get ]]; then
         echo false
