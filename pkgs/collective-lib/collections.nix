@@ -93,11 +93,15 @@ in rec {
 
   # Handle string replication for StringW, Strings
   replicate = n: dispatch {
-    list = xs: typed.concat.lists (lib.lists.replicate n xs);
-    string = s: lib.strings.replicate n s;
+    list = xs: 
+      if n <= 0 then []
+      else typed.concat.lists (lib.lists.replicate n xs);
+    string = s:
+      if n <= 0 then ""
+      else lib.strings.replicate n s;
     set = s:
-      if isStrings s then s.replicate n
-      else throw "Invalid set argument to replicate: ${_ph_ s} (expected Strings)";
+      if s ? replicate then s.replicate n
+      else throw "Invalid set argument to replicate: ${_ph_ s} (expected .replicate)";
   };
 
   # Prepend a collection to another collection.
