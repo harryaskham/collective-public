@@ -484,4 +484,25 @@ in suite {
     Line = expect.eq (toString (Line "a")) "a\n";
     replicate = expect.eq ((Char "a").replicate 3) "aaa";
   };
+
+  Tree = {
+    mk = solo {
+      leaf = expect.stringEq (Leaf 1) "1";
+      branch = expect.stringEq (Branch [(Leaf 1)]) "1";
+      tree = expect.stringEq (Tree 1 [(Leaf 2) (Branch [(Leaf 3) (Leaf 4)])]) "1\n2\n3\n4";
+    };
+    build = {
+      simple = expect.stringEq
+        (pipe (Leaf 1)
+          (addChild (Leaf 2))
+          (addChild 
+            (pipe (Leaf 3)
+              (addChild (Leaf 4))
+              (addChild (Branch 5 [(Leaf 6) (Leaf 7)])))))
+        "";
+    };
+    from = {
+      simple = expect.stringEq (from {a = 1; b = 2;}) "a\nb";
+    };
+  };
 }

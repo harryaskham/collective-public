@@ -688,7 +688,6 @@ in rec {
           (d: d // { __diffType = "segment"; })
           (state.segments ++ [state.current] ++ rest);
 
-
       linewiseDiff = 
         let 
           splitWithEmpty = s: if s == "" then [missingElem] else splitLines s;
@@ -799,6 +798,7 @@ isStrings = x: x ? __isStrings;
 String1 = s: Strings [s];
 StringW = w: s: Strings_ { inherit w; } [s];
 Char = StringW 1;
+EmptyStrings = Strings_ {w = 0;} [];
 
 Line = s: Strings_ {w = width s;} [s "\n"];
 
@@ -834,4 +834,76 @@ flattenToStrings1 = dispatch {
     if isStrings s then s.flatten {}
     else throw "Invalid argument to flattenToStrings1: ${typeOf s}";
 };
+
+# Convert a value that supports a __toStrings method to a Strings object.
+toStrings = x: x.__toStrings x;
+
+  # Trees
+
+  Tree = value: children: Tree_ { inherit value children; };
+  Branch = Tree null;
+  Leaf = flip Tree [];
+  Tree_ = {
+    __functor = self: {
+      chars ? {
+        space = Char " ";
+        vline = Char "│";
+        hline = Char "─";
+        knee = Char "└";
+        tee = Char "├";
+      },
+      atoms ? (with chars; rec {
+        treeRootPrefix = EmptyStrings;
+        firstChildPrefix = Join [tee hline space];
+        midChildPrefix = firstChildPrefix;
+        lastChildPrefix = Join [knee hline space];
+        onlyChildPrefix = lastChildPrefix;
+      }),
+      isRoot ? true,
+      value ? null,
+      children ? [],
+      getParent ? {}: null,
+      depth ? 0
+    } @ args: with chars; with atoms; lib.fix (this: {
+      __isTree = true;
+      inherit chars atoms isRoot value children getParent depth;
+      setParent = parent: self (args // { getParent = {}: parent; });
+      setDepth = depth: self (args // { inherit depth; });
+      addChild = child:
+        self (args // { children = children ++ [(child.setParent this)]; });
+      addChildLeaf = value: 
+        this.addChild (Tree_ (args // { inherit value; isRoot = false; getParent = {}: this; }));
+      printValue = {}: 
+        if value == null then EmptyStrings else String1 (_p_ value);
+      childPrefixes = {}:
+        if size children == 1 then [onlyChildPrefix]
+        else 
+          [firstChildPrefix]
+          ++ (replicate (size children - 2) [midChildPrefix])
+          ++ [lastChildPrefix];
+      printChildren = {}:
+        Lines 
+          (zipListsWith 
+            (prefix: child: Join [prefix (toStrings child)])
+            (this.childPrefixes {}) children);
+      print = {}: NonEmptyLines [
+        (this.printValue {})
+        (this.printChildren {})
+      ];
+      __toStrings = _: this.print {};
+      __toString = compose toString toStrings;
+    });
+
+    from = self.from_ {};
+    from_ = { isRoot ? true } @ args: dispatch.def (self.Leaf args) {
+      set = mapAttrsToList (k: v: self.Branch {} k (self.from_ (args // { isRoot = false; }) v));
+      list = imap (i: v: self.Branch {} i (self.from_ (args // { isRoot = false; }) v));
+    };
+  };
+
+  isTree = x: x ? __isTree;
+  isLeaf = x: isTree x && x.children == [];
+  isBranch = x: isTree x && x.children != [];
+  addChild = tree: tree.addChild;
+  addChildLeaf = tree: tree.addChildLeaf;
 }
