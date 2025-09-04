@@ -2,15 +2,13 @@
   description = "Public subset of Nix configurations.";
 
   inputs = {
-    self.submodules = true;
-
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     nixpkgs-stable.url = "github:nixos/nixpkgs/release-25.05";
 
     nix-parsec.url = "github:nprindle/nix-parsec";
 
     nix-reflect = {
-      url = "path:./flakes/nix-reflect";
+      url = "github:harryaskham/nix-reflect";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };

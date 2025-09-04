@@ -1382,14 +1382,18 @@
         ]
       },
       "locked": {
-        "path": "./flakes/nix-reflect",
-        "type": "path"
+        "lastModified": 1757020731,
+        "narHash": "sha256-5uZ7CGMFt2AdG/bo2fD9z961XZIJrexdYbnNDIR6hrs=",
+        "owner": "harryaskham",
+        "repo": "nix-reflect",
+        "rev": "c6bddf9272e365fa1b22f99d81c02e06bf096b3d",
+        "type": "github"
       },
       "original": {
-        "path": "./flakes/nix-reflect",
-        "type": "path"
-      },
-      "parent": []
+        "owner": "harryaskham",
+        "repo": "nix-reflect",
+        "type": "github"
+      }
     },
     "nix-reflect_10": {
       "inputs": {
