@@ -10,6 +10,7 @@
     nix-reflect = {
       url = "github:harryaskham/nix-reflect";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.collective-public.inputs.nix-reflect.follows = "";
     };
   };
 
