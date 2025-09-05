@@ -502,7 +502,12 @@ in suite {
               (addChild (Branch [(Leaf 5) (Leaf 6)]))
               ___))
           ___)
-        "";
+        "├─ 5
+├─ 6
+├─ 4
+└─ 3
+└─ 2
+└─ 1";
     };
     from = {
       simple = expect.stringEq (attrsToTree {a = 1; b = 2;}) "a\nb";

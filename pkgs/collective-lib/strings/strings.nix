@@ -895,9 +895,13 @@ toStrings = x: x.__toStrings x;
     });
 
     from = self.from_ {};
-    from_ = { isRoot ? true } @ args: dispatch.def (Leaf args) {
-      set = Tree null (mapAttrsToList (k: v: Tree k (self.from_ (args // { isRoot = false; }) v)));
-      list = Tree null (imap (i: v: Tree i (self.from_ (args // { isRoot = false; }) v)));
+    from_ = { isRoot ? true } @ args: dispatch.def (v: Leaf v) {
+      set = xs: self (args // {
+        children = mapAttrsToList (k: v: Tree_ { value = k; children = [ (self.from_ { isRoot = false; } v) ]; })  xs;
+      });
+      list = xs: self (args // {
+        children = imap0 (i: v: Tree_ { value = i; children = [ (self.from_ { isRoot = false; } v) ]; })  xs;
+      });
     };
   });
 
