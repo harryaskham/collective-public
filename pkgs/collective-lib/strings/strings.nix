@@ -874,7 +874,7 @@ toStrings = x: x.__toStrings x;
       addChildLeaf = value: 
         this.addChild (Tree_ (args // { inherit value; isRoot = false; getParent = {}: this; }));
       printValue = {}: 
-        if value == null then EmptyStrings else String1 (_p_ value);
+        if value == null then EmptyStrings else String1 (log.show value);
       childPrefixes = {}:
         if size children == 1 then [onlyChildPrefix]
         else 
@@ -895,12 +895,14 @@ toStrings = x: x.__toStrings x;
     });
 
     from = self.from_ {};
-    from_ = { isRoot ? true } @ args: dispatch.def (v: Leaf v) {
-      set = xs: self (args // {
-        children = mapAttrsToList (k: v: Tree_ { value = k; children = [ (self.from_ { isRoot = false; } v) ]; })  xs;
+    from_ =
+      let maybeList = xs: if isList xs then xs else [xs];
+      in { isRoot ? true } @ args: dispatch.def (v: [(Leaf v)]) {
+      set = xs: Tree_ (args // {
+        children = mapAttrsToList (k: v: Tree_ { value = k; children = maybeList (self.from_ { isRoot = false; } v); }) xs;
       });
-      list = xs: self (args // {
-        children = imap0 (i: v: Tree_ { value = i; children = [ (self.from_ { isRoot = false; } v) ]; })  xs;
+      list = xs: Tree_ (args // {
+        children = imap0 (k: v: Tree_ { value = k; children = maybeList (self.from_ { isRoot = false; } v); }) xs;
       });
     };
   });

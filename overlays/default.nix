@@ -9,7 +9,11 @@
 let
   overlays = {
     python3Overlay = final: prev: 
-      let stable = import nixpkgs-stable { inherit (prev) system; };
+      let
+        stable = import nixpkgs-stable {
+          inherit (prev) system;
+          config.allowUnfree = true;
+        };
       in rec {
       python3 = prev.python3.override {
         packageOverrides = (self: super:
