@@ -4,6 +4,7 @@
   ... }:
 
 with strings;
+with collective-lib.functions;
 with collective-lib.syntax;
 with collective-lib.tests;
 let ansi = collective-lib.script-utils.ansi-utils.ansi;
@@ -485,11 +486,11 @@ in suite {
     replicate = expect.eq ((Char "a").replicate 3) "aaa";
   };
 
-  Tree = {
-    mk = solo {
+  Tree = solo {
+    mk = {
       leaf = expect.stringEq (Leaf 1) "1";
-      branch = expect.stringEq (Branch [(Leaf 1)]) "1";
-      tree = expect.stringEq (Tree 1 [(Leaf 2) (Branch [(Leaf 3) (Leaf 4)])]) "1\n2\n3\n4";
+      branch = expect.stringEq (Branch [(Leaf 1)]) "└─ 1";
+      tree = expect.stringEq (Tree 1 [(Leaf 2) (Branch [(Leaf 3) (Leaf 4)])]) "1\n├─ 2\n└─ ├─ 3\n└─ 4";
     };
     build = {
       simple = expect.stringEq
@@ -498,11 +499,13 @@ in suite {
           (addChild 
             (pipe (Leaf 3)
               (addChild (Leaf 4))
-              (addChild (Branch 5 [(Leaf 6) (Leaf 7)])))))
+              (addChild (Branch [(Leaf 5) (Leaf 6)]))
+              ___))
+          ___)
         "";
     };
     from = {
-      simple = expect.stringEq (from {a = 1; b = 2;}) "a\nb";
+      simple = expect.stringEq (attrsToTree {a = 1; b = 2;}) "a\nb";
     };
   };
 }

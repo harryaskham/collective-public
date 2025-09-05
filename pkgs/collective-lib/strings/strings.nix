@@ -843,7 +843,7 @@ toStrings = x: x.__toStrings x;
   Tree = value: children: Tree_ { inherit value children; };
   Branch = Tree null;
   Leaf = flip Tree [];
-  Tree_ = {
+  Tree_ = lib.fix (self: {
     __functor = self: {
       chars ? {
         space = Char " ";
@@ -895,15 +895,16 @@ toStrings = x: x.__toStrings x;
     });
 
     from = self.from_ {};
-    from_ = { isRoot ? true } @ args: dispatch.def (self.Leaf args) {
-      set = mapAttrsToList (k: v: self.Branch {} k (self.from_ (args // { isRoot = false; }) v));
-      list = imap (i: v: self.Branch {} i (self.from_ (args // { isRoot = false; }) v));
+    from_ = { isRoot ? true } @ args: dispatch.def (Leaf args) {
+      set = Tree null (mapAttrsToList (k: v: Tree k (self.from_ (args // { isRoot = false; }) v)));
+      list = Tree null (imap (i: v: Tree i (self.from_ (args // { isRoot = false; }) v)));
     };
-  };
+  });
 
   isTree = x: x ? __isTree;
   isLeaf = x: isTree x && x.children == [];
   isBranch = x: isTree x && x.children != [];
   addChild = tree: tree.addChild;
   addChildLeaf = tree: tree.addChildLeaf;
+  attrsToTree = Tree_.from;
 }
