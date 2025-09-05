@@ -3,7 +3,6 @@
   description = "Public subset of Nix configurations.";
 
   inputs = {
-    self.submodules = true;
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     nixpkgs-stable.url = "github:nixos/nixpkgs/release-25.05";
 
@@ -34,13 +33,8 @@
         in {
           lib = collective-lib;
           packages = import ./pkgs { inherit pkgs inputs; };
-          devShells = rec { 
-            default = test;
-            test = pkgs.mkShell (rec {
-              shellHook = ''
-                source ./scripts/eval.sh
-              '';
-            });
+          devShells = {
+            default = pkgs.mkShell {};
           };
           inherit testedModules;
           modules = 
