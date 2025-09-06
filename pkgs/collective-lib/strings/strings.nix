@@ -934,8 +934,13 @@ toStrings = x: x.__toStrings x;
       set = xs_:
         let value = xs_.${valueKey} or args.value or null;
             xs = removeAttrs xs_ [valueKey];
-        in Tree_ (args // { 
+        in 
+        if xs_ ? __treeValue
+        then Tree_ (args // { 
           inherit value; 
+          children = toForest_ args xs;
+        })
+        else Tree_ (args // {
           children = toForest_ args xs;
         });
       list = xs: self.from_ args (concatMapAttrs (imap0 (i: x: { "${toString i}" = x; })) xs);
@@ -950,8 +955,11 @@ toStrings = x: x.__toStrings x;
   attrsToTree = Tree_.from;
   attrsToTree_ = Tree_.from_;
   toForest = toForest_ {};
-  toForest_ = args: dispatch.def (v: [(Leaf v)]) {
+  toForest_ = { valueKey ? "__treeValue", ... } @ args: dispatch.def (v: [(Leaf v)]) {
     list = imap0 (i: v: Tree_ (args // { value = i; children = toForest_ args v; }));
-    set = mapAttrsToList (k: v: Tree_ (args // { value = k; children = toForest_ args v; }));
+    set = xs:
+      if xs ? ${valueKey}
+      then [Tree_ (args // { value = xs.${valueKey}; children = toForest_ args (removeAttrs xs [valueKey]); })]
+      else mapAttrsToList (k: v: Tree_ (args // { value = k; children = toForest_ args v; })) xs;
   };
 }
