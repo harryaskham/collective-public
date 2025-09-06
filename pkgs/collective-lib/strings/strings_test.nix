@@ -544,7 +544,7 @@ in suite {
              └─ 2
        '');
       nested = expect.stringEq
-        ((attrsToTree {__treeValue = "root"; a = 1; b = {c = 2; d = 3;}; e = { f = 4; g = 5; };}))
+        ((attrsToTree {__treeValue = "root"; a = 1; b = { c = 2; d = 3;}; e = { f = 4; g = 5; };}))
         (_b_ ''
           root
           ├─ a
