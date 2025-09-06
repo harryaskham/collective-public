@@ -929,10 +929,11 @@ toStrings = x: x.__toStrings x;
       __toString = compose toString toStrings;
     });
 
-    from = dispatch.def (v: (Leaf v)) {
+    from = self.from_ {};
+    from_ = { valueKey ? "__treeValue" }: dispatch.def (v: (Leaf v)) {
       set = xs:
-        let t = Tree null (toForest (removeAttrs xs ["__treeValue"]));
-        in if xs ? __treeValue then t.setValue xs.__treeValue else t;
+        let t = Tree null (toForest (removeAttrs xs [valueKey]));
+        in if xs ? ${valueKey} then t.setValue xs.${valueKey} else t;
       list = xs: Tree null (toForest xs);
     };
   });
