@@ -489,12 +489,28 @@ in suite {
   Tree = solo {
     mk = {
       leaf = expect.stringEq (Leaf 1) "1";
-      branch = expect.stringEq (Branch [(Leaf 1)]) "└─ 1";
-      tree = expect.stringEq (Tree 1 [(Leaf 2) (Branch [(Leaf 3) (Leaf 4)])]) (_b_ ''
-        1
+      branch1 = expect.stringEq (Branch [(Leaf 1)]) (_b_ ''
+        ·
+        └─ 1
+      '');
+      branch12 = expect.stringEq (Branch [(Leaf 1) (Leaf 2)]) (_b_ ''
+        ·
+        ├─ 1
         └─ 2
-           ├─ 3
-           └─ 4
+      '');
+      tree12 = expect.stringEq (Tree null [(Leaf 1) (Leaf 2)]) (_b_ ''
+        ·
+        ├─ 1
+        └─ 2
+      '');
+      tree = expect.stringEq (Tree 1 [(Leaf 2) (Branch [(Branch [(Leaf 3) (Leaf 4)]) (Leaf 5)])]) (_b_ ''
+        1
+        ├─ 2
+        └─ ·
+           ├─ ·
+           │  ├─ 3
+           │  └─ 4
+           └─ 5
       '');
     };
     build = {
@@ -508,22 +524,41 @@ in suite {
               ___))
           ___)
         (_b_ ''
-          └─ 1
-             ├─ 2
-             └─ 3
-                └─ 4
-                   ├─ 5
-                   └─ 6
+          1
+          ├─ 2
+          └─ 3
+             ├─ 4
+             └─ ·
+                ├─ 5
+                └─ 6
         '');
     };
     from = {
       simple = expect.stringEq
-        (attrsToTree {a = 1; b = 2;})
+        (attrsToTree {__treeValue = "root"; a = 1; b = 2;})
         (_b_ ''
+          root
           ├─ a
           │  └─ 1
           └─ b
              └─ 2
+       '');
+      nested = expect.stringEq
+        ((attrsToTree {__treeValue = "root"; a = 1; b = {c = 2; d = 3;}; e = { f = 4; g = 5; };}))
+        (_b_ ''
+          root
+          ├─ a
+          │  └─ 1
+          ├─ b
+          │  ├─ c
+          │  │  └─ 2
+          │  └─ d
+          │     └─ 3
+          └─ e
+             ├─ f
+             │  └─ 4
+             └─ g
+                └─ 5
        '');
     };
   };

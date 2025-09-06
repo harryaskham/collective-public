@@ -739,13 +739,16 @@ Strings = x:
   if isStrings x then x
   else Strings_ {} x;
 
-Join = ss:
-  let pieces = if isList ss then ss else [ss]; in
-  Strings_ {w = sum (map width pieces);} pieces;
-
 # A longer string that can be composed of other StringWs, chars, etc.
 # Can override width of whole string if known to contain UTF-8.
-Strings_ = {w ? null} @ args: ss:
+Strings_ =
+  {
+    # Precalculated string screen-width, or null to infer.
+    w ? null,
+    # Function used to convert pieces to the final string representation.
+    repr ? (pieces: join (map toString pieces)),
+  } @ args:
+  ss:
   # Only re-wrap if the width differs.
   if isStrings ss && (w == null || w == width ss) then ss
   else let 
@@ -757,7 +760,7 @@ Strings_ = {w ? null} @ args: ss:
   in 
     lib.fix (this: {
       __isStrings = true;
-      __repr = join (map toString this.__pieces);
+      __repr = repr this.__pieces;
       __pieces = pieces;
       __toString = _: this.__repr;
       __width = if w == null then width this.__pieces else w;
@@ -794,6 +797,11 @@ Strings_ = {w ? null} @ args: ss:
          '')})
       '';
     });
+
+Join = Join_ {};
+Join_ = args: ss:
+  let pieces = if isList ss then ss else [ss]; in
+  Strings_ (args // {w = sum (map width pieces);}) pieces;
 
 isStrings = x: x ? __isStrings;
 
@@ -851,17 +859,21 @@ toStrings = x: x.__toStrings x;
         space = Char " ";
         vline = Char "│";
         hline = Char "─";
-        knee = Char "└";
+        kneeSW = Char "└";
+        kneeNE = Char "┐";
         tee = Char "├";
       },
       atoms ? (with chars; rec {
+        emptyNode = Char "·";
         treeRootPrefix = EmptyStrings;
         firstChildPrefix = Join [tee hline space];
         midChildPrefix = firstChildPrefix;
-        lastChildPrefix = Join [knee hline space];
+        lastChildPrefix = Join [kneeSW hline space];
         onlyChildPrefix = lastChildPrefix;
+        continuationPrefix = Join [vline space space];
+        lastContinuationPrefix = Join [space space space];
       }),
-      isRoot ? true,
+      isRoot ? false,
       value ? null,
       children ? [],
       getParent ? {}: null,
@@ -871,57 +883,68 @@ toStrings = x: x.__toStrings x;
 
       inherit chars atoms isRoot value children getParent depth;
 
+      setValue = value: self (args // { inherit value; });
       setParent = parent: self (args // { getParent = {}: parent; });
 
       setDepth = depth: self (args // { inherit depth; });
 
       addChild = child:
-        self (args // { children = children ++ [(child.setParent this)]; });
+        self (args // { children = children ++ [((child.setParent this).setDepth (this.depth + 1))]; });
 
-      addChildLeaf = value: 
-        this.addChild (Tree_ (args // { inherit value; isRoot = false; getParent = {}: this; }));
-
-      printValue = {}: 
-        if value == null then EmptyStrings else String1 (log.show value);
+      printValue = {}:
+        if value == null then emptyNode
+        else log.show value;
 
       childPrefixes = {}:
-        if size children == 1 then [onlyChildPrefix]
+        if size children == 1 then [{first = onlyChildPrefix; rest = lastContinuationPrefix;}]
         else 
-          [firstChildPrefix]
-          ++ (replicate (size children - 2) [midChildPrefix])
-          ++ [lastChildPrefix];
+          [{first = firstChildPrefix; rest = continuationPrefix;}]
+          ++ (replicate (size children - 2) [{first = midChildPrefix; rest = continuationPrefix;}])
+          ++ [{first = lastChildPrefix; rest = lastContinuationPrefix;}];
 
       printChildren = {}:
-        Lines (zipListsWith 
-          (prefix: child: Join [prefix (toStrings child)])
-          (this.childPrefixes {}) children);
+        Lines 
+          (zipListsWith 
+            (prefixes: child: child.printPrefixed prefixes)
+            (this.childPrefixes {})
+            children);
 
       print = {}: NonEmptyLines [
-        (Join [treeRootPrefix (this.printValue {})])
+        (this.printValue {})
         (this.printChildren {})
       ];
+
+      printPrefixed = prefixes:
+        let ls = (this.print {}).lines {};
+        in 
+          if ls == [] then EmptyStrings
+          else let s = snoc ls;
+          in
+            Lines (
+              [(Join [prefixes.first s.head])]
+              ++ (map (l: Join [prefixes.rest l]) s.tail)
+            );
 
       __toStrings = _: this.print {};
       __toString = compose toString toStrings;
     });
 
-    from = self.from_ {};
-    from_ =
-      let maybeList = xs: if isList xs then xs else [xs];
-      in { isRoot ? true } @ args: dispatch.def (v: [(Leaf v)]) {
-      set = xs: Tree_ (args // {
-        children = mapAttrsToList (k: v: Tree_ { value = k; children = maybeList (self.from_ { isRoot = false; } v); }) xs;
-      });
-      list = xs: Tree_ (args // {
-        children = imap0 (k: v: Tree_ { value = k; children = maybeList (self.from_ { isRoot = false; } v); }) xs;
-      });
+    from = dispatch.def (v: (Leaf v)) {
+      set = xs:
+        let t = Tree null (toForest (removeAttrs xs ["__treeValue"]));
+        in if xs ? __treeValue then t.setValue xs.__treeValue else t;
+      list = xs: Tree null (toForest xs);
     };
   });
 
   isTree = x: x ? __isTree;
   isLeaf = x: isTree x && x.children == [];
   isBranch = x: isTree x && x.children != [];
-  addChild = tree: tree.addChild;
-  addChildLeaf = tree: tree.addChildLeaf;
+  addChild = child: tree: tree.addChild child;
+  addChildLeaf = child: tree: tree.addChildLeaf child;
   attrsToTree = Tree_.from;
+  toForest = dispatch.def (v: [(Leaf v)]) {
+    list = imap0 (i: v: Tree i (toForest v));
+    set = mapAttrsToList (k: v: Tree k (toForest v));
+  };
 }
