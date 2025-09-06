@@ -935,7 +935,7 @@ toStrings = x: x.__toStrings x;
         let xs = removeAttrs xs_ [valueKey];
             value = xs_.${valueKey} or null;
         in Tree_ (args // { inherit value; children = toForest xs; });
-      list = xs: Tree_ (args // { value = null; children = toForest xs; });
+      list = xs: Tree_ (args // { value = null; children = map (self.from_ args) xs; });
     };
   });
 
