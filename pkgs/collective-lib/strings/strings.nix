@@ -776,6 +776,8 @@ Strings_ = {w ? null} @ args: ss:
 
       lines = {}: splitLines this.__repr;
       mapLines = f: map f (this.lines {});
+      imapLines = f: imapLines f (this.lines {});
+      mapTailLines = f: mapTailLines f (this.lines {});
       concatMapLines = f: joinLines (map f (this.lines {}));
 
       debug = 
@@ -858,38 +860,50 @@ toStrings = x: x.__toStrings x;
         midChildPrefix = firstChildPrefix;
         lastChildPrefix = Join [knee hline space];
         onlyChildPrefix = lastChildPrefix;
+        linePrefix1 = Join [vline space space];
       }),
       isRoot ? true,
       value ? null,
       children ? [],
       getParent ? {}: null,
-      depth ? 0
+      depth ? 0,
     } @ args: with chars; with atoms; lib.fix (this: {
       __isTree = true;
+
       inherit chars atoms isRoot value children getParent depth;
+
       setParent = parent: self (args // { getParent = {}: parent; });
+
       setDepth = depth: self (args // { inherit depth; });
+
       addChild = child:
         self (args // { children = children ++ [(child.setParent this)]; });
+
       addChildLeaf = value: 
         this.addChild (Tree_ (args // { inherit value; isRoot = false; getParent = {}: this; }));
+
       printValue = {}: 
         if value == null then EmptyStrings else String1 (log.show value);
+
+      linePrefix = replicate depth linePrefix1;
+
       childPrefixes = {}:
         if size children == 1 then [onlyChildPrefix]
         else 
           [firstChildPrefix]
           ++ (replicate (size children - 2) [midChildPrefix])
           ++ [lastChildPrefix];
+
       printChildren = {}:
-        Lines 
-          (zipListsWith 
-            (prefix: child: Join [prefix (toStrings child)])
-            (this.childPrefixes {}) children);
+        Lines (zipListsWith 
+          (prefix: child: Join [this.linePrefix prefix (toStrings child)])
+          (this.childPrefixes {}) children);
+
       print = {}: NonEmptyLines [
-        (this.printValue {})
+        (Join [treeRootPrefix (this.printValue {})])
         (this.printChildren {})
       ];
+
       __toStrings = _: this.print {};
       __toString = compose toString toStrings;
     });
