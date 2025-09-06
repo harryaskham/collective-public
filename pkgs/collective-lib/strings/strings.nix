@@ -932,10 +932,13 @@ toStrings = x: x.__toStrings x;
     from = self.from_ {};
     from_ = { valueKey ? "__treeValue", ... } @ args: dispatch.def (v: (Leaf v)) {
       set = xs_:
-        let xs = removeAttrs xs_ [valueKey];
-            value = xs_.${valueKey} or null;
-        in Tree_ (args // { inherit value; children = toForest_ args xs; });
-      list = xs: Tree_ (args // { value = null; children = toForest_ args xs; });
+        let value = xs_.${valueKey} or args.value or null;
+            xs = removeAttrs xs_ [valueKey];
+        in Tree_ (args // { 
+          inherit value; 
+          children = toForest_ args xs;
+        });
+      list = xs: self.from_ args (concatMapAttrs (imap0 (i: x: { "${toString i}" = x; })) xs);
     };
   });
 
