@@ -860,7 +860,6 @@ toStrings = x: x.__toStrings x;
         midChildPrefix = firstChildPrefix;
         lastChildPrefix = Join [knee hline space];
         onlyChildPrefix = lastChildPrefix;
-        linePrefix1 = Join [vline space space];
       }),
       isRoot ? true,
       value ? null,
@@ -885,8 +884,6 @@ toStrings = x: x.__toStrings x;
       printValue = {}: 
         if value == null then EmptyStrings else String1 (log.show value);
 
-      linePrefix = replicate depth linePrefix1;
-
       childPrefixes = {}:
         if size children == 1 then [onlyChildPrefix]
         else 
@@ -896,7 +893,7 @@ toStrings = x: x.__toStrings x;
 
       printChildren = {}:
         Lines (zipListsWith 
-          (prefix: child: Join [this.linePrefix prefix (toStrings child)])
+          (prefix: child: Join [prefix (toStrings child)])
           (this.childPrefixes {}) children);
 
       print = {}: NonEmptyLines [
