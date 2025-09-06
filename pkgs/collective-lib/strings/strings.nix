@@ -945,8 +945,10 @@ toStrings = x: x.__toStrings x;
   addChild = child: tree: tree.addChild child;
   addChildLeaf = child: tree: tree.addChildLeaf child;
   attrsToTree = Tree_.from;
-  toForest = dispatch.def (v: [(Leaf v)]) {
-    list = imap0 (i: v: Tree i (toForest v));
-    set = mapAttrsToList (k: v: Tree k (toForest v));
+  attrsToTree_ = Tree_.from_;
+  toForest = toForest_ {};
+  toForest_ = args: dispatch.def (v: [(Leaf v)]) {
+    list = imap0 (i: v: Tree_ (args // { value = i; children = toForest_ args v; }));
+    set = mapAttrsToList (k: v: Tree_ (args // { value = k; children = toForest_ args v; }));
   };
 }
