@@ -490,7 +490,12 @@ in suite {
     mk = {
       leaf = expect.stringEq (Leaf 1) "1";
       branch = expect.stringEq (Branch [(Leaf 1)]) "└─ 1";
-      tree = expect.stringEq (Tree 1 [(Leaf 2) (Branch [(Leaf 3) (Leaf 4)])]) "1\n├─ 2\n└─ ├─ 3\n└─ 4";
+      tree = expect.stringEq (Tree 1 [(Leaf 2) (Branch [(Leaf 3) (Leaf 4)])]) (_b_ ''
+        1
+        └─ 2
+           ├─ 3
+           └─ 4
+      '');
     };
     build = {
       simple = expect.stringEq
