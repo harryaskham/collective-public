@@ -587,6 +587,7 @@ in rec {
     );
 
 
+  missingElem = {__missing = true;};
   diffStrings = diffStrings_ {};
   diffStrings_ =
     {
@@ -600,8 +601,6 @@ in rec {
     a: b:
     with (log.v 5).call "diffStrings" args a b ___;
     let 
-      missingElem = {__missing = true;};
-
       mkDiffSegmentSep = sep: segment:
         with (log.v 6).call "mkDiffSegmentSep" sep segment ___;
         return (
@@ -727,14 +726,22 @@ in rec {
       return finalDiff;
 
 reprDiff = reprDiff_ {};
-reprDiff_ = args: a: b:
-  diffStrings_ 
+reprDiff_ = 
+  {
+    aLabel ? "first",
+    bLabel ? "second",
+    short ? false,
+    ...
+  } @ args:
+  a: b:
+  let repr = x: if x == missingElem then "" else _p_ x;
+  in diffStrings_
     (args // {
       diffDisplayStrings = true;
       enableStringDiff = true;
       prettyStringDiff = true;
       linewiseStringDiff = true;
-    }) (_p_ a) (_p_ b);
+    }) (repr a) (repr b);
 
 # Strings + __width typeclass
 

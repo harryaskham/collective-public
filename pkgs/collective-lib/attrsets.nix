@@ -7,6 +7,7 @@ with collective-lib.dispatchlib;
 with collective-lib.errors;
 with collective-lib.functions;
 with collective-lib.strings;
+with collective-lib.syntax;
 
 let
   log = collective-lib.log;
@@ -325,7 +326,8 @@ let
       diffDisplayStrings ? true,
       enableStringDiff ? true,
       prettyStringDiff ? false,
-      linewiseStringDiff ? false
+      linewiseStringDiff ? false,
+      ...
     } @ args: a: b:
       if enableStringDiff && isString a && isString b
         then diffStrings_ {inherit diffDisplayStrings aLabel bLabel prettyStringDiff linewiseStringDiff;} a b
@@ -341,17 +343,16 @@ let
             (a: b: diff_ (args // { depth = depth + 1; }) a b)
             a
             b)
-          ++ (map (x: {__diffType = "missing"; __unequal = { ${bLabel} = x; }; }) (drop (length a) b))
-          ++ (map (x: {__diffType = "missing"; __unequal = { ${aLabel} = x; }; }) (drop (length b) a))
+          ++ (map (x: {__diffType = "missing"; __unequal = { ${aLabel} = missingElem; ${bLabel} = x; }; }) (drop (length a) b))
+          ++ (map (x: {__diffType = "missing"; __unequal = { ${aLabel} = x; ${bLabel} = missingElem; }; }) (drop (length b) a))
       else if isAttrs a && isAttrs b
         then
           (zipAttrsWith
             (name: values:
               if length values == 1
               then {
-                missing = {
-                  value = elemAt values 0;
-                };
+                __diffType = "missing";
+                __unequal = if a ? ${name} then { ${aLabel} = a.${name}; ${bLabel} = missingElem; } else { ${aLabel} = missingElem; ${bLabel} = b.${name}; };
               }
               else
                 diff_
@@ -373,7 +374,6 @@ let
       deepFilterCond
         (x: !(x ? __stringDiff))
         (x: 
-          # x != {} (disabled - hides diffs like {a = 1;} vs {a = 2; b = {};})
           !(builtins.isFunction x) 
           && x != "<both lambda>" 
           && x != "<uncomparable lambda>" 
@@ -395,14 +395,17 @@ let
     diffShortWithEq = a: b:
       deepFilterCond (x: !(x ? __stringDiff)) (x: !(x ? __equal)) (diffWithEq a b);
 
-    toReprDiff =
+    toReprDiff = toReprDiff_ {};
+    toReprDiff_ = {
+        aLabel ? "first",
+        bLabel ? "second",
+        ...
+      } @ args:
       deepConcatMapCond
         (k: v: !(v ? __unequal))
         (k: v:
           if v ? __unequal
-          then 
-            let values = attrValues (soloValue v);
-            in { ${k} = reprDiff (elemAt values 0) (elemAt values 1); }
+          then { ${k} = reprDiff_ args v.__unequal.${aLabel} v.__unequal.${bLabel}; }
           else { ${k} = v; });
 
     # Whether a diff is empty i.e. two objects were equal.
@@ -695,10 +698,24 @@ let
           expect.eq 
             (diffShort {a = 1; b = 2;} {a = 1; b = 3;})
             {b = { __unequal = {first = 2; second = 3;}; };};
-        toRepr = 
+        reprDiff.different = 
+          expect.eqOn ansi.stripANSI
+            (reprDiff {a = 1; b = 2;} {a = 1; b = 3;})
+            (_b_ ''
+              { a = 1;
+                b = 23; }
+            '');
+        reprDiffShort.different = 
+          expect.eqOn ansi.stripANSI
+            (reprDiff {a = 1; b = 2;} {a = 1; b = 3;})
+            (_b_ ''
+              { a = 1;
+                b = 23; }
+            '');
+        toReprShort.missing = 
           expect.eqOn ansi.deepStripANSI
-            (toReprDiff (diffShort {a = 1; b = 2;} {a = 1; b = 3;}))
-            {b = "23";};
+            (toReprDiff (diffShort {a = 1;} {a = 1; b = 3;}))
+            {b = "_3";};
       };
     };
 
