@@ -405,7 +405,7 @@ let
         (k: v: !(v ? __unequal))
         (k: v:
           if v ? __unequal
-          then { ${k} = reprDiff_ args v.__unequal.${aLabel} v.__unequal.${bLabel}; }
+          then { ${k} = { __toString = self: reprDiff_ args v.__unequal.${aLabel} v.__unequal.${bLabel}; }; }
           else { ${k} = v; });
 
     # Whether a diff is empty i.e. two objects were equal.
@@ -713,9 +713,9 @@ let
                 b = 23; }
             '');
         toReprShort.missing = 
-          expect.eqOn ansi.deepStripANSI
+          expect.eqOn (compose ansi.deepStripANSI log.show)
             (toReprDiff (diffShort {a = 1;} {a = 1; b = 3;}))
-            {b = "_3";};
+            ''{ b = _3; }'';
       };
     };
 
