@@ -98,6 +98,12 @@ in rec {
         toString (text.mapPieces stripANSI)
       else throw "Invalid argument to stripANSI: ${typeOf text} (expected String or Strings)";
 
+    deepStripANSI = dispatch.def id {
+      set = xs: if isStrings xs then stripANSI xs else mapAttrs (_: deepStripANSI) xs;
+      list = map deepStripANSI;
+      string = stripANSI;
+    };
+
     boxes = {
       single = {
         vLine = Char "│";

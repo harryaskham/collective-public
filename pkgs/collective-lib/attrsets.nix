@@ -12,6 +12,7 @@ let
   log = collective-lib.log;
   lists = collective-lib.lists;
   typed = collective-lib.typed;
+  ansi = collective-lib.script-utils.ansi-utils.ansi;
   attrsets = rec {
     # Convert a list of attrs single attrset using a function of the attrs to compute the key
     keyByF = f: xs: mergeAttrsList (map (x: { ${f x} = x; }) xs);
@@ -361,6 +362,11 @@ let
       else if a == b then { __equal = a; }
       else { __unequal = { ${aLabel} = a; ${bLabel} = b; }; };
 
+    hideEmptyDiffs = 
+      deepFilterCond
+        (x: !(x ? __stringDiff) && !(x ? __unequal))
+        (x: x != {} && !(x ? __equal));
+
     # Diff two attrsets, returning any divergent keys and their values.
     # Lambda-diffs only shown if they are causing diff failure.
     diffShortNoLambdas_ = args: a: b:
@@ -374,23 +380,30 @@ let
           && x != "<__toString>" 
           && x != {__lambda = true;}
           && !(x ? __equal))
-        (diff_ args a b);
+        (hideEmptyDiffs (diff_ args a b));
 
     diffShort_ = args: a: b:
       let dsnl = diffShortNoLambdas_ args a b;
           ds = 
             deepConcatMap
               (k: v: if k == "__toString" then {"<__toString>" = v;} else {${k}= v;})
-              (deepFilterCond
-                (x: !(x ? __stringDiff))
-                (x: x != {} && !(x ? __equal))
-                (diff_ args a b));
+              (hideEmptyDiffs (diff_ args a b));
       in if emptyDiff dsnl then ds else dsnl;
 
     diffShort = diffShort_ {};
 
     diffShortWithEq = a: b:
       deepFilterCond (x: !(x ? __stringDiff)) (x: !(x ? __equal)) (diffWithEq a b);
+
+    toReprDiff =
+      deepConcatMapCond
+        (k: v: !(v ? __unequal))
+        (k: v:
+          if v ? __unequal
+          then 
+            let values = attrValues (soloValue v);
+            in { ${k} = reprDiff (elemAt values 0) (elemAt values 1); }
+          else { ${k} = v; });
 
     # Whether a diff is empty i.e. two objects were equal.
     emptyDiff = dispatch.def (_: false) {
@@ -675,6 +688,17 @@ let
         #resolves.throw = expect.error (resolve (LazyAttrs {a = throw "no";}));
         fmap.retains = expect.True (isLazyAttrs (thunkFmap (LazyAttrs {a = 123;}) (xs: xs // {a = xs.a + 1;})));
         fmap.resolves = expect.eq (resolve (thunkFmap (LazyAttrs {a = 123;}) (xs: xs // {a = xs.a + 1;}))) { a = 124; };
+      };
+
+      diff = {
+        short = 
+          expect.eq 
+            (diffShort {a = 1; b = 2;} {a = 1; b = 3;})
+            {b = { __unequal = {first = 2; second = 3;}; };};
+        toRepr = 
+          expect.eqOn ansi.deepStripANSI
+            (toReprDiff (diffShort {a = 1; b = 2;} {a = 1; b = 3;}))
+            {b = "23";};
       };
     };
 

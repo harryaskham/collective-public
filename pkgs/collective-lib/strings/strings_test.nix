@@ -464,7 +464,7 @@ in suite {
         expect.eqOn ansi.stripANSI
           (diffStrings_ { prettyStringDiff = true; linewiseStringDiff = false; } "\nabc\ndef" "\naxx\nxxf\nxyz\n")
           "\nabcxx\ndexxf\nxyz\n";
-      repr = solo {
+      repr = {
         attrs = 
           expect.eqOn ansi.stripANSI
             (reprDiff {a = { b = 1; };} {a = { c = 2; };})
