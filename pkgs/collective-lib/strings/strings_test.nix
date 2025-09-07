@@ -464,6 +464,15 @@ in suite {
         expect.eqOn ansi.stripANSI
           (diffStrings_ { prettyStringDiff = true; linewiseStringDiff = false; } "\nabc\ndef" "\naxx\nxxf\nxyz\n")
           "\nabcxx\ndexxf\nxyz\n";
+      repr = solo {
+        attrs = 
+          expect.eqOn ansi.stripANSI
+            (reprDiff {a = { b = 1; };} {a = { c = 2; };})
+            (_b_ ''
+              { a = { bc = 12; }; }
+            '');
+
+      };
     };
   };
 
@@ -486,7 +495,7 @@ in suite {
     replicate = expect.eq ((Char "a").replicate 3) "aaa";
   };
 
-  Tree = solo {
+  Tree = {
     mk = {
       leaf = expect.stringEq (Leaf 1) "1";
       branch1 = expect.stringEq (Branch [(Leaf 1)]) (_b_ ''

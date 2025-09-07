@@ -726,6 +726,16 @@ in rec {
 
       return finalDiff;
 
+reprDiff = reprDiff_ {};
+reprDiff_ = args: a: b:
+  diffStrings_ 
+    (args // {
+      diffDisplayStrings = true;
+      enableStringDiff = true;
+      prettyStringDiff = true;
+      linewiseStringDiff = true;
+    }) (_p_ a) (_p_ b);
+
 # Strings + __width typeclass
 
 stringArg = arg:
