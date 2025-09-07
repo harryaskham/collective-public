@@ -702,15 +702,19 @@ let
           expect.eqOn ansi.stripANSI
             (reprDiff {a = 1; b = 2;} {a = 1; b = 3;})
             (_b_ ''
-              { a = 1;
-                b = 23; }
+              {
+                a = 1;
+                b = 23;
+              }
             '');
         reprDiffShort.different = 
           expect.eqOn ansi.stripANSI
             (reprDiff {a = 1; b = 2;} {a = 1; b = 3;})
             (_b_ ''
-              { a = 1;
-                b = 23; }
+              {
+                a = 1;
+                b = 23;
+              }
             '');
         toReprShort.missing = 
           expect.eqOn (compose ansi.deepStripANSI log.show)

@@ -272,6 +272,7 @@ let
         };
         hide = names: { hideAttrNames = names; };
         filter = f: { attrsFilter = f; };
+        nocompact = { compact = false; };
       };
       _safe = using.safe;
       _unsafe = using.unsafe;
@@ -283,6 +284,7 @@ let
       _mask = using.mask;
       _hide = using.hide;
       _filter = using.filter;
+      _nocompact = using.nocompact;
     };
     vprint = x: with prints; put x using.raw using.safe ___;
 

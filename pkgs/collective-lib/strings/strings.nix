@@ -734,7 +734,9 @@ reprDiff_ =
     ...
   } @ args:
   a: b:
-  let repr = x: if x == missingElem then "" else _p_ x;
+  let repr = x: 
+    if x == missingElem then "" 
+    else with log.prints; put x _nocompact ___;
   in diffStrings_
     (args // {
       diffDisplayStrings = true;
