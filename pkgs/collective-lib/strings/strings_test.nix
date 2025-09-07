@@ -535,18 +535,18 @@ in suite {
     };
     from = {
       simple = expect.stringEq
-        (attrsToTree {__treeValue = "root"; a = 1; b = 2;})
+        (attrsToTree {a = 1; b = 2;})
         (_b_ ''
-          root
+          ·
           ├─ a
           │  └─ 1
           └─ b
              └─ 2
        '');
       nested = expect.stringEq
-        ((attrsToTree {__treeValue = "root"; a = 1; b = { c = 2; d = 3;}; e = { f = 4; g = 5; };}))
+        ((attrsToTree {a = 1; b = { c = 2; d = 3;}; e = { f = 4; g = 5; };}))
         (_b_ ''
-          root
+          ·
           ├─ a
           │  └─ 1
           ├─ b
