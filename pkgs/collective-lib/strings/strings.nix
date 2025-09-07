@@ -926,7 +926,8 @@ toStrings = x: x.__toStrings x;
             );
 
       __toStrings = _: this.print {};
-      __toString = compose toString toStrings;
+      __toString = self: self.__repr;
+      __repr = toString (toStrings this);
     });
 
     from = self.from_ {};
