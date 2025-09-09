@@ -596,7 +596,9 @@ in rec {
       diffDisplayStrings ? true,
       enableStringDiff ? true,
       prettyStringDiff ? false,
-      linewiseStringDiff ? false
+      linewiseStringDiff ? false,
+      elementwiseSetDiff ? false,
+      ...
     } @ args:
     a: b:
     with (log.v 5).call "diffStrings" args a b ___;
@@ -721,8 +723,6 @@ in rec {
 
       finalDiff = if prettyStringDiff then mkPrettyStringDiff rawDiff else rawDiff;
     in 
-
-
       return finalDiff;
 
 reprDiff = reprDiff_ {};
@@ -743,6 +743,7 @@ reprDiff_ =
       enableStringDiff = true;
       prettyStringDiff = true;
       linewiseStringDiff = true;
+      elementwiseSetDiff = true;
     }) (repr a) (repr b);
 
 # Strings + __width typeclass

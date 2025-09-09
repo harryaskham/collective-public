@@ -327,10 +327,11 @@ let
       enableStringDiff ? true,
       prettyStringDiff ? false,
       linewiseStringDiff ? false,
+      elementwiseSetDiff ? false,
       ...
     } @ args: a: b:
       if enableStringDiff && isString a && isString b
-        then diffStrings_ {inherit diffDisplayStrings aLabel bLabel prettyStringDiff linewiseStringDiff;} a b
+        then diffStrings_ {inherit diffDisplayStrings aLabel bLabel prettyStringDiff linewiseStringDiff elementwiseSetDiff;} a b
       else if isFunction a && isFunction b then
         if allLambdasEqual
         then { __equal = "<both lambda>"; }
@@ -346,7 +347,9 @@ let
           ++ (map (x: {__diffType = "missing"; __unequal = { ${aLabel} = missingElem; ${bLabel} = x; }; }) (drop (length a) b))
           ++ (map (x: {__diffType = "missing"; __unequal = { ${aLabel} = x; ${bLabel} = missingElem; }; }) (drop (length b) a))
       else if isAttrs a && isAttrs b
-        then
+        then if elementwiseSetDiff
+        then reprDiff_ args a b
+        else
           (zipAttrsWith
             (name: values:
               if length values == 1

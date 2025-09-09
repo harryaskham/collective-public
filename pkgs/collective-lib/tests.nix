@@ -4,6 +4,7 @@
   enableStringDiff ? (!(builtins.elem (builtins.getEnv "CLTV_ENABLE_STRING_DIFF") ["0" "false"])),
   prettyStringDiff ? (!(builtins.elem (builtins.getEnv "CLTV_PRETTY_STRING_DIFF") ["0" "false"])),
   linewiseStringDiff ? (!(builtins.elem (builtins.getEnv "CLTV_LINEWISE_STRING_DIFF") ["0" "false"])),
+  elementwiseSetDiff ? (!(builtins.elem (builtins.getEnv "CLTV_ELEMENTWISE_SET_DIFF") ["0" "false"])),
   ... }:
 
 with collective-lib.attrsets;
@@ -317,10 +318,10 @@ in rec {
                     styles = [bg.black];
                     showBorder = false;
                     showDivider = false;
-                    body = _p_ (
-                      diffShort_ {
+                    body = (
+                      reprDiff_ {
                         # From env / module args
-                        inherit enableStringDiff prettyStringDiff linewiseStringDiff;
+                        inherit enableStringDiff prettyStringDiff linewiseStringDiff elementwiseSetDiff;
                         maxDepth = 10;
                         aLabel = "expected";
                         bLabel = "actual";
