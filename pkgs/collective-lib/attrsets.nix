@@ -335,7 +335,7 @@ let
       else if isFunction a && isFunction b then
         if allLambdasEqual
         then { __equal = "<both lambda>"; }
-        else { __unequal = "<uncomparable lambda>"; }
+        else { __unequal = { ${aLabel} = "<uncomparable lambda>"; ${bLabel} = "<uncomparable lambda>"; }; }
       else if depth == maxDepth 
         then { __maxDepth = true; }
       else if isList a && isList b
