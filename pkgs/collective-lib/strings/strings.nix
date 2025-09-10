@@ -563,7 +563,7 @@ in rec {
   padString =
     { to, align ? "left", emptyChar ? " ", display ? false, asStrings ? false, ... } @ args:
     s:
-    with (log.v 5).call "padString" args s ___;
+    with (log.v 10).call "padString" args s ___;
     let 
       w = if display then displayLength s else stringLength s;
       paddingSize = max 0 (to - w);
