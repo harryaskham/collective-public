@@ -87,6 +87,9 @@ in rec {
   # Evaluate 'a' strictly, forcing all of its components, and return the final value.
   strict = a: deepSeq a a;
 
+  # Evaluate 'a' seq-strictly, forcing it one layer deep.
+  seqId = a: seq a a;
+
   # Functional 'not' for composition.
   not = x: !x;
 
