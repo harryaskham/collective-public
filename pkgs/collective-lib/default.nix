@@ -57,6 +57,7 @@ let
           lists
           modulelib
           rebinds
+          shell
           strings
           syntax
           ;
@@ -151,6 +152,7 @@ let
       rebinds = import ./rebinds.nix args;
       nix-reflect = nix-reflect.lib.${pkgs.system};
       script-utils = import ./script-utils (args // { inherit pkgs; });
+      shell = import ./shell.nix args;
       strings = import ./strings args;
       syntax = import ./syntax.nix args;
       tests = import ./tests.nix args;
