@@ -27,11 +27,9 @@ in rec {
         '';
         mainWrapped = if runMain then mainWrappedEnabled else mainWrappedDisabled;
         runMainWrapped = codeBlock ''
-          __main-wrapped "$@"
-          if [[ $? -ne 0 ]]; then
+          if ! __main-wrapped "$@"; then
             ${log.fatal "main() failed"}
           fi
-          ${log.debug "main() completed successfully"}
         '';
     in codeBlocks [
       mainWrapped
