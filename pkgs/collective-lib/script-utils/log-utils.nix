@@ -321,7 +321,7 @@ rec {
       case "$LEVEL" in
         debug)
           if [[ "$(__collective_log_debug_check)" != true ]]; then
-            return 1
+            return 0
           fi
           PREFIX=${toShellValue log.shell.prefix.debug}
           LOGINE=${toShellValue (log.shell.text.debug "$MSG")}
