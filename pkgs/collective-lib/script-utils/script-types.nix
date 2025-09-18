@@ -57,6 +57,7 @@ rec {
   #   summary = "Runs some script";      # Summary to appear in helptext
   #   usage = "somescript -a ARG_A -b";  # Usage text to appear in helptext
   #   opts = { ... };                    # Defined below
+  #   allowUnrecognisedOptions = false;  # If true, unrecognised options will not error
   #   sourceSubcommand = false;          # If true, the script will be sourced when run as a subcommand
   #   preamble = ""                      # Script body to appear before opt parsing (optional)
   #   body = ''                          # Script body (optional; all logic can be in opt bodies)

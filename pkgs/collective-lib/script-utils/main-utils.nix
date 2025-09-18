@@ -19,8 +19,7 @@ in rec {
         mainWrappedEnabled = codeBlock ''
           function __main-wrapped() {
             if [[ $(type -t main) == function ]]; then
-              ${log.debug "Running main()"}
-              main $@
+              main "$@"
             else
               ${log.fatal "main() not defined"}
             fi
@@ -28,15 +27,11 @@ in rec {
         '';
         mainWrapped = if runMain then mainWrappedEnabled else mainWrappedDisabled;
         runMainWrapped = codeBlock ''
-          __MAIN_RT=$(__main-wrapped $@)
+          __main-wrapped "$@"
           if [[ $? -ne 0 ]]; then
             ${log.fatal "main() failed"}
           fi
           ${log.debug "main() completed successfully"}
-          if [[ -n "$__MAIN_RT" ]]; then
-            ${log.debug "main() returned: $__MAIN_RT"}
-            ${ansi.echo "$__MAIN_RT"}
-          fi
         '';
     in codeBlocks [
       mainWrapped
