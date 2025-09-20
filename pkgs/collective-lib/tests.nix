@@ -319,16 +319,21 @@ in rec {
                     styles = [bg.black];
                     showBorder = false;
                     showDivider = false;
-                    body = (
-                      reprDiff_ {
-                        # From env / module args
-                        inherit enableStringDiff prettyStringDiff linewiseStringDiff elementwiseSetDiff;
-                        maxDepth = 10;
-                        aLabel = "expected";
-                        bLabel = "actual";
-                      }
-                      test.expected result);
+                    body = 
+                      if cltvPretty then 
+                        reprDiff_ {
+                          # From env / module args
+                          inherit enableStringDiff prettyStringDiff linewiseStringDiff elementwiseSetDiff;
+                          maxDepth = 10;
+                          aLabel = "expected";
+                          bLabel = "actual";
+                        }
+                        test.expected
+                        result
+                      else
+                        _p_ (diffShortWithEq test.expected result);
                     })
+
                 ]);
               });
         };
