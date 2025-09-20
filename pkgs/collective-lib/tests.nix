@@ -1,10 +1,11 @@
 { lib ? import <nixpkgs/lib>,
   collective-lib ? import ./. { inherit lib; },
   # Set to 0/false to disable diffing features.
-  enableStringDiff ? (!(builtins.elem (builtins.getEnv "CLTV_ENABLE_STRING_DIFF") ["0" "false"])),
-  prettyStringDiff ? (!(builtins.elem (builtins.getEnv "CLTV_PRETTY_STRING_DIFF") ["0" "false"])),
-  linewiseStringDiff ? (!(builtins.elem (builtins.getEnv "CLTV_LINEWISE_STRING_DIFF") ["0" "false"])),
-  elementwiseSetDiff ? (!(builtins.elem (builtins.getEnv "CLTV_ELEMENTWISE_SET_DIFF") ["0" "false"])),
+  cltvPretty ? (!(builtins.elem (builtins.getEnv "CLTV_PRETTY") ["0" "false"])),
+  enableStringDiff ? cltvPretty && (!(builtins.elem (builtins.getEnv "CLTV_ENABLE_STRING_DIFF") ["0" "false"])),
+  prettyStringDiff ? cltvPretty && (!(builtins.elem (builtins.getEnv "CLTV_PRETTY_STRING_DIFF") ["0" "false"])),
+  linewiseStringDiff ? cltvPretty && (!(builtins.elem (builtins.getEnv "CLTV_LINEWISE_STRING_DIFF") ["0" "false"])),
+  elementwiseSetDiff ? cltvPretty && (!(builtins.elem (builtins.getEnv "CLTV_ELEMENTWISE_SET_DIFF") ["0" "false"])),
   ... }:
 
 with collective-lib.attrsets;
