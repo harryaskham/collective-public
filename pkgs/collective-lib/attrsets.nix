@@ -24,6 +24,9 @@ let
     # Convert a list of strings to an attrset from self to self.
     selfAttrs = keyByF id;
 
+    # Get the values of an attrset in sorted order of the names.
+    sortedAttrValues = xs: map soloValue (sortOn soloName (solos xs));
+
     # Flatten an attribute with params
     # - pathToString: a function from path and value to key.
     # - deep: If true, traverse into lists too.
@@ -443,6 +446,11 @@ let
     NamedLazyAttrs = name: LazyAttrs_ (NamedThunk name);
 
     _tests = with collective-lib.tests; suite {
+      sortedAttrValues = {
+        ordered = expect.eq (sortedAttrValues {a = 1; b = 2; c = 3;}) [1 2 3];
+        unordered = expect.eq (sortedAttrValues {c = 3; a = 1; b = 2;}) [1 2 3];
+      };
+
       flatten = {
         sep = {
           expr = flattenSep "-" {
