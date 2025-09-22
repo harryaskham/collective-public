@@ -61,12 +61,12 @@ rec {
       then base * (self base (power - 1))
       else 1
     );
-
   trunc = d: x: let e = pow 10 d; in x - ((x * e - round (x * e)) / e);
   round = x: 
     let f = builtins.floor (x + 0.0);
         d = x - f;
     in if d >= 0.5 then f + 1 else f;
+  abs = x: if x < 0 then -x else x;
 
   _tests = with typed.tests; suite {
     round = {
@@ -81,6 +81,11 @@ rec {
       neg = expect.eq (trunc 2 (-1.8345)) (-1.83);
       int = expect.eq (trunc 2 1) 1;
       zero = expect.eq (trunc 0 1.2345) 1;
+    };
+    abs = {
+      pos = expect.eq (abs 1) 1;
+      neg = expect.eq (abs (-1)) 1;
+      zero = expect.eq (abs 0) 0;
     };
   };
 }

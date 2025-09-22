@@ -1,5 +1,6 @@
 { lib ? import <nixpkgs/lib>, collective-lib ? import ./. { inherit lib; }, ... }:
 
+with collective-lib.clib;
 with collective-lib.collections;
 with collective-lib.dispatchlib;
 with collective-lib.functions;
@@ -221,6 +222,22 @@ in rec {
       center = halfPaddingL ++ xs ++ halfPaddingR;
     };
 
+  # The default 'lib.sort' always requires e.g. (a: b: a < b) as a key function.
+  LT = a: b: a < b;
+  LTE = a: b: a <= b;
+  GT = a: b: a > b;
+  GTE = a: b: a >= b;
+  EQ = a: b: a == b;
+
+  sorted = lib.fix (self: {
+    # default to LT for 'sorted [3 2 1]' etc.
+    __functor = self: self.up;
+    up = self.by LT;
+    down = self.by GT;
+    by = lib.sort;
+    on = lib.sortOn;
+  });
+
   _tests = with collective-lib.tests; suite {
     fold.list.default = {
       sum = expect.eq 10 (fold.list (a: b: a + b) 4 [1 2 3]);
@@ -335,6 +352,15 @@ in rec {
       center.roundUp = expect.eq (padList {to = 10; align = "center";} [0 1 2 3 4]) [null null 0 1 2 3 4 null null null];
       center.roundDown = expect.eq (padList {to = 8; align = "center";} [0 1 2 3 4]) [null 0 1 2 3 4 null null];
       withValue = expect.eq (padList {to = 8; emptyElem = "ok";} [0 1 2 3 4]) [0 1 2 3 4 "ok" "ok" "ok"];
+    };
+
+    sorted = {
+      default = expect.eq (sorted [3 2 1]) [1 2 3];
+      up = expect.eq (sorted.up [3 2 1]) [1 2 3];
+      down.id = expect.eq (sorted.down [3 2 1]) [3 2 1];
+      down.rev = expect.eq (sorted.down [1 2 3]) [3 2 1];
+      by = expect.eq (sorted.by (a: b: if abs (a - b) == 1 then true else false) [1 4 5]) [1 5 4];
+      on = expect.eq (sorted.on (a: a.x) [{x=2;} {x=1;}]) [{x=1;} {x=2;}];
     };
   };
 
