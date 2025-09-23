@@ -62,9 +62,9 @@ function eval-expr() {
   expr="$1"
   shift 1
   with-lib "$expr" --raw 2>&1 \
-    | sed "s/trace: start_trace(\(.\+\)): /\\\\e[90m[\\1] \\\\e[0m/" \
-    | sed '/warning.*dirty/d' \
-    | grep -v "^trace: end_trace$" \
+    | sed -u "s/trace: start_trace(\(.\+\)): /\\\\e[90m[\\1] \\\\e[0m/" \
+    | sed -u '/warning.*dirty/d' \
+    | grep --line-buffered -v "^trace: end_trace$" \
     | color
 }
 
