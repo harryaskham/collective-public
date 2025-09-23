@@ -172,7 +172,7 @@ ${exportPrefix}${name}=${defaultShellValue}
     codeBlockLines (mapAttrsToList (_: opt: opt.handleCaseBlock) opts);
 
   # Build a block for handling the options
-  handleOptsBlock = opts:
+  handleOptsBlock = args: opts:
     codeBlockHeader "### Handle options" ''
 while true; do
   case "''${1}" in
@@ -210,7 +210,7 @@ done'';
   optsBlock = args: opts: codeBlocks [
     (parseOptsBlock args opts)
     (setDefaultOptsBlock opts)
-    (handleOptsBlock opts)
+    (handleOptsBlock args opts)
     (checkRequiredOptsBlock opts)
   ];
 
