@@ -181,9 +181,11 @@ ${handleOptCasesBlock opts}
 shift
 break
 ;;
-*)
-${log.fatalWithUsage ''Unrecognised option: ''${1}''}
-;;
+*) ${
+    if (args.allowUnrecognisedOptions or false)
+    then log.debug "Ignoring unrecognised arg ${args.name}"
+    log.fatalWithUsage ''Unrecognised option: ''${1}''
+  } ;;
   esac
 done'';
 
