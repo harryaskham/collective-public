@@ -194,9 +194,9 @@ done'';
       case "$?" in
         0) ;;
         1) ${
-          if (args.allowUnrecognisedOptions or false) then
-          log.fatalWithUsage "Invalid options provided to ${args.name}"
-          else log.debug "Ignoring unrecognised arg ${args.name}"} ;;
+          if (args.allowUnrecognisedOptions or false)
+          then log.debug "Ignoring unrecognised arg ${args.name}"
+          else log.fatalWithUsage "Invalid options provided to ${args.name}"} ;;
         2) ${log.fatal "Bad parameters to getopt"} ;;
         3) ${log.fatal "Internal error in getopt"} ;;
         *) ${log.fatal "Unknown error in getopt"} ;;
