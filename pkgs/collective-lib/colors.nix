@@ -109,7 +109,7 @@ rec {
       # This loses a lot of color-space 
       let ordering = [1 11 14 13 9 15 8 5 3 11 14 13 9 15 7 6];
       in _ls_ (mapAttrsToList (k: v: "${k} ${v}") (mapSchemeReordered ihex ordering scheme))}
-  ''
+  '';
 
   forAlacritty = scheme: {
     primary = {
