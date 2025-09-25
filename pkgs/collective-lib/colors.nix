@@ -224,7 +224,7 @@ rec {
     };
 
     # Just reverses colors 0-6
-    nord-light = {
+    nord-light = rec {
       ordering = "nord";
       color0 = "#ECEFF4";
       color1 = "#E5E9F0";
@@ -248,6 +248,95 @@ rec {
       selection_foreground = color0;
       selection_background = color6;
       cursor = color4;
+    };
+
+    # from https://github.com/e-ink-colorscheme/e-ink.kitty/blob/main/E-Ink.conf
+    imitate-eink-light = rec {
+      ordering = "ansi";
+      color0 = "#CCCCCC";
+      color1 = "#333333";
+      color2 = "#9A9A9A";
+      color3 = "#868686";
+      color4 = "#727272";
+      color5 = "#AEAEAE";
+      color6 = "#4A4A4A";
+      color7 = "#5E5E5E";
+      color8 = "#5E5E5E";
+      color9 = "#333333";
+      color10 = "#9A9A9A";
+      color11 = "#868686";
+      color12 = "#727272";
+      color13 = "#AEAEAE";
+      color14 = "#4A4A4A";
+      color15 = "#7C7C7C";
+      foreground = "#474747";
+      background = "#CCCCCC";
+      selection_foreground = foreground;
+      selection_background = color5;
+      cursor = color4;
+    };
+
+    # from https://github.com/e-ink-colorscheme/e-ink.kitty/blob/main/E-Ink-Dark.conf
+    imitate-eink-dark = rec {
+      ordering = "ansi";
+      color0 = "#333333";
+      color1 = "#CCCCCC";
+      color2 = "#686868";
+      color3 = "#7C7C7C";
+      color4 = "#868686";
+      color5 = "#5E5E5E";
+      color6 = "#B8B8B8";
+      color7 = "#A4A4A4";
+      color8 = "#A4A4A4";
+      color9 = "#CCCCCC";
+      color10 = "#686868";
+      color11 = "#7C7C7C";
+      color12 = "#868686";
+      color13 = "#5E5E5E";
+      color14 = "#B8B8B8";
+      color15 = "#868686";
+      foreground = "#C2C2C2";
+      background = "#333333";
+      selection_foreground = foreground;
+      selection_background = "#545454";
+      cursor = color4;
+    };
+
+    # Based on Base16 Grayscale with white/black fg bg
+    # Scheme: Alexandre Gavioli (https://github.com/Alexx2/)
+    # https://github.com/chriskempson/base16-xresources/blob/master/base16-grayscale.light.256.xresources
+    eink-light = rec {
+      color0 = "#101010";
+      color1 = "#7c7c7c";
+      color2 = "#8e8e8e";
+      color3 = "#a0a0a0";
+      color4 = "#686868";
+      color5 = "#747474";
+      color6 = "#868686";
+      color7 = "#b9b9b9";
+      color8 = "#525252";
+      color9 = "#7c7c7c";
+      color10 = "#8e8e8e";
+      color11 = "#a0a0a0";
+      color12 = "#686868";
+      color13 = "#747474";
+      color14 = "#868686";
+      color15 = "#f7f7f7";
+      # Not used here
+      # color16=#999999
+      # color17=#5e5e5e
+      # color18=#252525
+      # color19=#464646
+      # color20=#ababab
+      # color21=#e3e3e3
+      # Override with higher contrast
+      foreground = "#000000";
+      background = "#ffffff";
+      #foreground= "#464646";
+      #background= "#f7f7f7";
+      selection_foreground = "#464646";
+      selection_background = "#f7f7f7";
+      cursor = "#464646";
     };
   };
 
