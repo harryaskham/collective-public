@@ -252,6 +252,33 @@ rec {
       cursor = color4;
     };
 
+    # Just reverses fg/bg
+    nord-eink = rec {
+      ordering = "nord";
+      color0 = "#2E3440";
+      color1 = "#3B4252";
+      color2 = "#434C5E";
+      color3 = "#4C566A";
+      color4 = "#D8DEE9";
+      color5 = "#E5E9F0";
+      color6 = "#ECEFF4";
+      color7 = "#8FBCBB";
+      color8 = "#88C0D0";
+      color9 = "#81A1C1";
+      color10 = "#5E81AC";
+      color11 = "#BF616A";
+      color12 = "#D08770";
+      color13 = "#EBCB8B";
+      color14 = "#A3BE8C";
+      color15 = "#B48EAD";
+      foreground = color4;
+      background = "#ffffff";
+      url_color = color10;
+      selection_foreground = color4;
+      selection_background = color3;
+      cursor = color4;
+    };
+
     # from https://github.com/e-ink-colorscheme/e-ink.kitty/blob/main/E-Ink.conf
     imitate-eink-light = rec {
       ordering = "ansi";
@@ -455,12 +482,6 @@ rec {
         { background = "#2E3440";
           color0 = "#3B4252";
           color1 = "#BF616A";
-          color10 = "#A3BE8C";
-          color11 = "#EBCB8B";
-          color12 = "#81A1C1";
-          color13 = "#B48EAD";
-          color14 = "#8FBCBB";
-          color15 = "#ECEFF4";
           color2 = "#A3BE8C";
           color3 = "#EBCB8B";
           color4 = "#81A1C1";
@@ -469,8 +490,37 @@ rec {
           color7 = "#E5E9F0";
           color8 = "#4C566A";
           color9 = "#BF616A";
+          color10 = "#A3BE8C";
+          color11 = "#EBCB8B";
+          color12 = "#81A1C1";
+          color13 = "#B48EAD";
+          color14 = "#8FBCBB";
+          color15 = "#ECEFF4";
           cursor = "#D8DEE9";
           foreground = "#D8DEE9"; };
+
+    forNixOnDroidNordLight =
+      expect.eq
+        (forNixOnDroid schemes.nord-light)
+        { background = "#ECEFF4";
+          color0 = "#E5E9F0";
+          color1 = "#BF616A";
+          color2 = "#A3BE8C";
+          color3 = "#EBCB8B";
+          color4 = "#81A1C1";
+          color5 = "#B48EAD";
+          color6 = "#88C0D0";
+          color7 = "#3B4252";
+          color8 = "#4C566A";
+          color9 = "#BF616A";
+          color10 = "#A3BE8C";
+          color11 = "#EBCB8B";
+          color12 = "#81A1C1";
+          color13 = "#B48EAD";
+          color14 = "#8FBCBB";
+          color15 = "#2E3440";
+          cursor = "#434C5E";
+          foreground = "#434C5E"; };
 
     forNixOnDroidEink =
       expect.eq
