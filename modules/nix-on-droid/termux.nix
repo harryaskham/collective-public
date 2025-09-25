@@ -62,7 +62,6 @@ in {
             '';
           }) 
           cfg.sharedDir.copy;
-      home.file."shared".source = config.lib.file.mkOutOfStoreSymlink cfg.sharedDir;
     })
 
     # Fresh Termux installation using .termux defined by NOD.
