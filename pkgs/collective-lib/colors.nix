@@ -276,6 +276,7 @@ rec {
       selection_foreground = foreground;
       selection_background = color5;
       cursor = color4;
+      url_color = color10;
     };
 
     # from https://github.com/e-ink-colorscheme/e-ink.kitty/blob/main/E-Ink-Dark.conf
@@ -302,6 +303,7 @@ rec {
       selection_foreground = foreground;
       selection_background = "#545454";
       cursor = color4;
+      url_color = color10;
     };
 
     # Based on Base16 Grayscale with white/black fg bg
@@ -340,6 +342,7 @@ rec {
       selection_foreground = "#464646";
       selection_background = "#f7f7f7";
       cursor = "#464646";
+      url_color = color10;
     };
   };
 
