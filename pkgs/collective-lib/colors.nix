@@ -35,7 +35,7 @@ rec {
   # Formatting for configs
   rawHex = c:
     if c == null then null
-    else if substring 0 1 c == "#" then substring 1 (length c) c
+    else if substring 0 1 c == "#" then substring 1 (size c) c
     else c;
   withHash = c:
     if c == null then null
@@ -55,7 +55,7 @@ rec {
     assert that (length ordering == 16) "Invalid ordering length: ${toString (length ordering)} (${_l_ ordering})";
     mergeAttrsList (imap0 (i: j: { "color${toString i}" = colorF scheme j; }) ordering);
 
-  toOrderedHashedColorList = scheme: (genList (ihex scheme) 15);
+  toOrderedHashedColorList = scheme: (genList (ihex scheme) 16);
 
   # Scheme conversion for various systems
 
@@ -99,12 +99,12 @@ rec {
   # some colors are reused and bg/fg are not reused in the scheme
   # I then alter the cursor/url/selections to be from the scheme too
   forKitty = scheme: ''
-    foreground ${def (ihex scheme 4) (ihex scheme.foreground)}
-    background ${def (ihex scheme 0) (ihex scheme.background)}
-    selection_foreground ${def (ihex scheme 0) (ihex scheme.selection_foreground)}
-    selection_background ${def (ihex scheme 6) (ihex scheme.selection_background)}
-    url_color ${def (ihex scheme 15) (ihex scheme.url_color)}
-    cursor ${def (ihex scheme 4) (ihex scheme.cursor)}
+    foreground ${def (ihex scheme 4) (withHex scheme.foreground)}
+    background ${def (ihex scheme 0) (withHex scheme.background)}
+    selection_foreground ${def (ihex scheme 0) (withHex scheme.selection_foreground)}
+    selection_background ${def (ihex scheme 6) (withHex scheme.selection_background)}
+    url_color ${def (ihex scheme 15) (withHex scheme.url_color)}
+    cursor ${def (ihex scheme 4) (withHex scheme.cursor)}
     ${ # Include all other colors in expected order, not nord order
       # This loses a lot of color-space 
       let ordering = [1 11 14 13 9 15 8 5 3 11 14 13 9 15 7 6];
@@ -113,21 +113,21 @@ rec {
 
   forAlacritty = scheme: {
     primary = {
-      background = def (ihex scheme 0) (ihex scheme.background);
-      foreground = def (i0x scheme 4) (i0x scheme.foreground);
+      background = def (i0x scheme 0) (with0x scheme.background);
+      foreground = def (i0x scheme 4) (with0x scheme.foreground);
       dim_foreground = "0xa5abb6";  # TODO: in theme?
     };
     cursor = {
       text = i0x scheme 0;
-      cursor = def (i0x scheme 4) (i0x scheme.cursor);
+      cursor = def (i0x scheme 4) (with0x scheme.cursor);
     };
     vi_mode_cursor = {
       text = i0x scheme 0;
-      cursor = def (i0x scheme 4) (i0x scheme.cursor);
+      cursor = def (i0x scheme 4) (with0x scheme.cursor);
     };
     selection = {
-      text = def (i0x scheme 0) (i0x scheme.selection_foreground);
-      background = def (i0x scheme 3) (i0x scheme.selection_background);
+      text = def (i0x scheme 0) (with0x scheme.selection_foreground);
+      background = def (i0x scheme 3) (with0x scheme.selection_background);
     };
     search = {
       matches = {
@@ -175,9 +175,9 @@ rec {
   };
 
   forNixOnDroid = scheme: {
-     background = def (ihex scheme 0) (ihex scheme.background);
-     foreground = def (ihex scheme 4) (ihex scheme.foreground);
-     cursor = def (ihex scheme 4) (ihex scheme.cursor);
+     background = def (ihex scheme 0) (withHex scheme.background);
+     foreground = def (ihex scheme 4) (withHex scheme.foreground);
+     cursor = def (ihex scheme 4) (withHex scheme.cursor);
   } // (mapSchemeReordered ihex [1 11 14 13 9 15 8 5 3 11 14 13 9 15 7 6] scheme);
 
   schemes = {
@@ -231,5 +231,74 @@ rec {
       selection_background = color6;
       cursor = color4;
     };
+  };
+
+  _tests = with tests; suite {
+    toOrderedHashedColorList = 
+      expect.eq
+        (toOrderedHashedColorList schemes.nord) 
+        [ "#2E3440" "#3B4252" "#434C5E" "#4C566A" "#D8DEE9" "#E5E9F0" "#ECEFF4" "#8FBCBB"
+          "#88C0D0" "#81A1C1" "#5E81AC" "#BF616A" "#D08770" "#EBCB8B" "#A3BE8C" "#B48EAD" ];
+
+    mapSchemeReordered =
+      expect.eq
+        (mapSchemeReordered i0x [1 11 14 13 9 15 8 5 3 11 14 13 9 15 7 6] schemes.nord)
+        { 
+           color0 = "0x3B4252";
+           color1 = "0xBF616A";
+           color2 = "0xA3BE8C";
+           color3 = "0xEBCB8B";
+           color4 = "0x81A1C1";
+           color5 = "0xB48EAD";
+           color6 = "0x88C0D0";
+           color7 = "0xE5E9F0";
+           color8 = "0x4C566A";
+           color9 = "0xBF616A";
+           color10 = "0xA3BE8C";
+           color11 = "0xEBCB8B";
+           color12 = "0x81A1C1";
+           color13 = "0xB48EAD";
+           color14 = "0x8FBCBB";
+           color15 = "0xECEFF4";
+        };
+
+    forAlacritty =
+      expect.eq
+        (forAlacritty schemes.nord)
+        { bright = { black = "0x4C566A";
+                    blue = "0x81A1C1";
+                    cyan = "0x8FBCBB";
+                    green = "0xA3BE8C";
+                    magenta = "0xB48EAD";
+                    red = "0xBF616A";
+                    white = "0xECEFF4";
+                    yellow = "0xEBCB8B"; };
+          cursor = { cursor = "0xD8DEE9";
+                    text = "0x2E3440"; };
+          dim = { black = "0x373e4d";
+                  blue = "0x68809a";
+                  cyan = "0x6d96a5";
+                  green = "0x809575";
+                  magenta = "0x8c738c";
+                  red = "0x94545d";
+                  white = "0xaeb3bb";
+                  yellow = "0xb29e75"; };
+          normal = { black = "0x3B4252";
+                    blue = "0x81A1C1";
+                    cyan = "0x88C0D0";
+                    green = "0xA3BE8C";
+                    magenta = "0xB48EAD";
+                    red = "0xBF616A";
+                    white = "0xE5E9F0";
+                    yellow = "0xEBCB8B"; };
+          primary = { background = "0x2E3440";
+                      dim_foreground = "0xa5abb6";
+                      foreground = "0xD8DEE9"; };
+          search = { matches = { background = "0x8FBCBB";
+                                foreground = "0x2E3440"; }; };
+          selection = { background = "0xECEFF4";
+                        text = "0x2E3440"; };
+          vi_mode_cursor = { cursor = "0xD8DEE9";
+                            text = "0x2E3440"; }; };
   };
 }
