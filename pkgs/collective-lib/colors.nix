@@ -121,7 +121,7 @@ rec {
     url_color ${withHash scheme.url_color}
     cursor ${withHash scheme.cursor}
     ${# Include all other colors in expected order, not nord order
-      ls_ (mapAttrsToList (k: v: "${k} ${v}") (toAnsiOrderedSchemeLossy scheme))}
+      _ls_ (mapAttrsToList (k: v: "${k} ${v}") (toAnsiOrderedSchemeLossy scheme))}
   '';
 
   forAlacritty = scheme: 
