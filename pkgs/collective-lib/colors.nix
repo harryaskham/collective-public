@@ -71,6 +71,7 @@ rec {
     mergeAttrsList (imap0 (i: j: { "color${toString i}" = colorF scheme j; }) ordering);
 
   toOrderedHashedColorList = scheme: (genList (ihex scheme) 16);
+  toHashedColorSet = scheme: mergeAttrsList (genList (i: let k = "color${toString i}"; in { ${k} = scheme.${k}; }) 16);
 
   # Scheme conversion for various systems
 
@@ -113,7 +114,7 @@ rec {
   # At least for https://github.com/connorholyday/nord-kitty/blob/master/nord.conf
   # some colors are reused and bg/fg are not reused in the scheme
   # I then alter the cursor/url/selections to be from the scheme too
-  forKitty = scheme: ''
+  forKitty = scheme: _b_ ''
     foreground ${withHash scheme.foreground}
     background ${withHash scheme.background}
     selection_foreground ${withHash scheme.selection_foreground}
@@ -121,7 +122,7 @@ rec {
     url_color ${withHash scheme.url_color}
     cursor ${withHash scheme.cursor}
     ${# Include all other colors in expected order, not nord order
-      _ls_ (mapAttrsToList (k: v: "${k} ${v}") (toAnsiOrderedSchemeLossy scheme))}
+      _ls_ (mapAttrsToList (k: v: "${k} ${v}") (toHashedColorSet (toAnsiOrderedSchemeLossy scheme)))}
   '';
 
   forAlacritty = scheme: 
@@ -192,9 +193,8 @@ rec {
     };
 
   forNixOnDroid = scheme:
-    removeAttrs 
-      (toAnsiOrderedSchemeLossy scheme)
-      ["selection_foreground" "selection_background" "url_color" "ordering"];
+    { inherit (scheme) foreground background cursor; }
+    // toHashedColorSet (toAnsiOrderedSchemeLossy scheme);
 
   schemes = {
     nord = rec {
@@ -279,6 +279,34 @@ rec {
            color14 = "0x8FBCBB";
            color15 = "0xECEFF4";
         };
+
+    forKitty =
+      expect.eq
+        (forKitty schemes.nord)
+        (_b_ ''
+          foreground #D8DEE9
+          background #2E3440
+          selection_foreground #2E3440
+          selection_background #ECEFF4
+          url_color #5E81AC
+          cursor #D8DEE9
+          color0 #3B4252
+          color1 #BF616A
+          color10 #A3BE8C
+          color11 #EBCB8B
+          color12 #81A1C1
+          color13 #B48EAD
+          color14 #8FBCBB
+          color15 #ECEFF4
+          color2 #A3BE8C
+          color3 #EBCB8B
+          color4 #81A1C1
+          color5 #B48EAD
+          color6 #88C0D0
+          color7 #E5E9F0
+          color8 #4C566A
+          color9 #BF616A
+        '');
 
     forAlacritty =
       expect.eq
