@@ -4,6 +4,7 @@ with lib;
 with collective-lib.typed;
 
 rec {
+  # All colors in "#RRGGBB" format
   schemeType = types.submodule {
     options = {
       foreground = mkOption { type = types.nullOr types.str; default = null; };
@@ -99,12 +100,12 @@ rec {
   # some colors are reused and bg/fg are not reused in the scheme
   # I then alter the cursor/url/selections to be from the scheme too
   forKitty = scheme: ''
-    foreground ${def (ihex scheme 4) (withHex scheme.foreground)}
-    background ${def (ihex scheme 0) (withHex scheme.background)}
-    selection_foreground ${def (ihex scheme 0) (withHex scheme.selection_foreground)}
-    selection_background ${def (ihex scheme 6) (withHex scheme.selection_background)}
-    url_color ${def (ihex scheme 15) (withHex scheme.url_color)}
-    cursor ${def (ihex scheme 4) (withHex scheme.cursor)}
+    foreground ${def (ihex scheme 4) (withHash scheme.foreground)}
+    background ${def (ihex scheme 0) (withHash scheme.background)}
+    selection_foreground ${def (ihex scheme 0) (withHash scheme.selection_foreground)}
+    selection_background ${def (ihex scheme 6) (withHash scheme.selection_background)}
+    url_color ${def (ihex scheme 15) (withHash scheme.url_color)}
+    cursor ${def (ihex scheme 4) (withHash scheme.cursor)}
     ${ # Include all other colors in expected order, not nord order
       # This loses a lot of color-space 
       let ordering = [1 11 14 13 9 15 8 5 3 11 14 13 9 15 7 6];
@@ -175,9 +176,9 @@ rec {
   };
 
   forNixOnDroid = scheme: {
-     background = def (ihex scheme 0) (withHex scheme.background);
-     foreground = def (ihex scheme 4) (withHex scheme.foreground);
-     cursor = def (ihex scheme 4) (withHex scheme.cursor);
+     background = def (ihex scheme 0) (withHash scheme.background);
+     foreground = def (ihex scheme 4) (withHash scheme.foreground);
+     cursor = def (ihex scheme 4) (withHash scheme.cursor);
   } // (mapSchemeReordered ihex [1 11 14 13 9 15 8 5 3 11 14 13 9 15 7 6] scheme);
 
   schemes = {
