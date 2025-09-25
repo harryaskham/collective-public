@@ -60,8 +60,10 @@ rec {
     if scheme.ordering == "ansi"
       then scheme
     else if scheme.ordering == "nord"
-      then 
-        mapSchemeReordered icol [1 11 14 13 9 15 8 5 3 11 14 13 9 15 7 6] scheme // {
+      then
+        scheme
+        // (mapSchemeReordered icol [1 11 14 13 9 15 8 5 3 11 14 13 9 15 7 6] scheme)
+        // {
           ordering = "ansi";
         }
     else throw "Invalid ordering type: ${scheme.ordering}";
@@ -306,6 +308,7 @@ rec {
     # Scheme: Alexandre Gavioli (https://github.com/Alexx2/)
     # https://github.com/chriskempson/base16-xresources/blob/master/base16-grayscale.light.256.xresources
     eink-light = rec {
+      ordering = "ansi";
       color0 = "#101010";
       color1 = "#7c7c7c";
       color2 = "#8e8e8e";
@@ -442,5 +445,53 @@ rec {
         { background-color = "#ECEFF4";
           text-color = "#3B4252";
           border-color = "#81A1C1"; };
+
+    forNixOnDroidNord =
+      expect.eq
+        (forNixOnDroid schemes.nord)
+        { background = "#2E3440";
+          color0 = "#3B4252";
+          color1 = "#BF616A";
+          color10 = "#A3BE8C";
+          color11 = "#EBCB8B";
+          color12 = "#81A1C1";
+          color13 = "#B48EAD";
+          color14 = "#8FBCBB";
+          color15 = "#ECEFF4";
+          color2 = "#A3BE8C";
+          color3 = "#EBCB8B";
+          color4 = "#81A1C1";
+          color5 = "#B48EAD";
+          color6 = "#88C0D0";
+          color7 = "#E5E9F0";
+          color8 = "#4C566A";
+          color9 = "#BF616A";
+          cursor = "#D8DEE9";
+          foreground = "#D8DEE9"; };
+
+    forNixOnDroidEink =
+      expect.eq
+        (forNixOnDroid schemes.eink-light)
+        { background = "#ffffff";
+          color0 = "#101010";
+          color1 = "#7c7c7c";
+          color10 = "#8e8e8e";
+          color11 = "#a0a0a0";
+          color12 = "#686868";
+          color13 = "#747474";
+          color14 = "#868686";
+          color15 = "#f7f7f7";
+          color2 = "#8e8e8e";
+          color3 = "#a0a0a0";
+          color4 = "#686868";
+          color5 = "#747474";
+          color6 = "#868686";
+          color7 = "#b9b9b9";
+          color8 = "#525252";
+          color9 = "#7c7c7c";
+          cursor = "#464646";
+          foreground = "#000000"; };
+
+
   };
 }
