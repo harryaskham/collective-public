@@ -7,6 +7,10 @@ rec {
   # All colors in "#RRGGBB" format
   schemeType = types.submodule {
     options = {
+      ordering = mkOption { 
+        type = types.enum [ "ansi" "nord" ];
+        description = "The ordering of the colors in the scheme (ansi is in standard 0-15 order, nord has all darks then all lights then colors)";
+      };
       foreground = mkOption { type = types.nullOr types.str; default = null; };
       background = mkOption { type = types.nullOr types.str; default = null; };
       selection_foreground = mkOption { type = types.nullOr types.str; default = null; };
@@ -51,6 +55,16 @@ rec {
   ihex = scheme: i: withHash (icol scheme i);
   irgb = scheme: i: asRGB (icol scheme i);
   igrad = scheme: i: j: angle: "${irgb scheme i} ${irgb scheme j} ${toString angle}deg";
+
+  toAnsiOrderedSchemeLossy = scheme:
+    if scheme.ordering == "ansi"
+      then scheme
+    else if scheme.ordering == "nord"
+      then 
+        mapSchemeReordered icol [1 11 14 13 9 15 8 5 3 11 14 13 9 15 7 6] scheme // {
+          ordering = "ansi";
+        }
+    else throw "Invalid ordering type: ${scheme.ordering}";
 
   mapSchemeReordered = colorF: ordering: scheme:
     assert that (length ordering == 16) "Invalid ordering length: ${toString (length ordering)} (${_l_ ordering})";
@@ -100,89 +114,91 @@ rec {
   # some colors are reused and bg/fg are not reused in the scheme
   # I then alter the cursor/url/selections to be from the scheme too
   forKitty = scheme: ''
-    foreground ${def (ihex scheme 4) (withHash scheme.foreground)}
-    background ${def (ihex scheme 0) (withHash scheme.background)}
-    selection_foreground ${def (ihex scheme 0) (withHash scheme.selection_foreground)}
-    selection_background ${def (ihex scheme 6) (withHash scheme.selection_background)}
-    url_color ${def (ihex scheme 15) (withHash scheme.url_color)}
-    cursor ${def (ihex scheme 4) (withHash scheme.cursor)}
-    ${ # Include all other colors in expected order, not nord order
-      # This loses a lot of color-space 
-      let ordering = [1 11 14 13 9 15 8 5 3 11 14 13 9 15 7 6];
-      in _ls_ (mapAttrsToList (k: v: "${k} ${v}") (mapSchemeReordered ihex ordering scheme))}
+    foreground ${withHash scheme.foreground}
+    background ${withHash scheme.background}
+    selection_foreground ${withHash scheme.selection_foreground}
+    selection_background ${withHash scheme.selection_background}
+    url_color ${withHash scheme.url_color}
+    cursor ${withHash scheme.cursor}
+    ${# Include all other colors in expected order, not nord order
+      ls_ (mapAttrsToList (k: v: "${k} ${v}") (toAnsiOrderedSchemeLossy scheme))}
   '';
 
-  forAlacritty = scheme: {
-    primary = {
-      background = def (i0x scheme 0) (with0x scheme.background);
-      foreground = def (i0x scheme 4) (with0x scheme.foreground);
-      dim_foreground = "0xa5abb6";  # TODO: in theme?
-    };
-    cursor = {
-      text = i0x scheme 0;
-      cursor = def (i0x scheme 4) (with0x scheme.cursor);
-    };
-    vi_mode_cursor = {
-      text = i0x scheme 0;
-      cursor = def (i0x scheme 4) (with0x scheme.cursor);
-    };
-    selection = {
-      text = def (i0x scheme 0) (with0x scheme.selection_foreground);
-      background = def (i0x scheme 3) (with0x scheme.selection_background);
-    };
-    search = {
-      matches = {
-        foreground = i0x scheme 0;
-        background = i0x scheme 7;
+  forAlacritty = scheme: 
+    let ansiScheme = toAnsiOrderedSchemeLossy scheme;
+    in {
+      primary = {
+        background = with0x scheme.background;
+        foreground = with0x scheme.foreground;
+        dim_foreground = "0xa5abb6";  # TODO: in theme?
+      };
+      cursor = {
+        text = i0x scheme 0;
+        cursor = with0x scheme.cursor;
+      };
+      vi_mode_cursor = {
+        text = i0x scheme 0;
+        cursor = with0x scheme.cursor;
+      };
+      selection = {
+        text = with0x scheme.selection_foreground;
+        background = with0x scheme.selection_background;
+      };
+      search = {
+        matches = {
+          foreground = i0x scheme 0;
+          background = i0x scheme 7;
+        };
+      };
+      normal = {
+        black = i0x ansiScheme 0;
+        red = i0x ansiScheme 1;
+        green = i0x ansiScheme 2;
+        yellow = i0x ansiScheme 3;
+        blue = i0x ansiScheme 4;
+        magenta = i0x ansiScheme 5;
+        cyan = i0x ansiScheme 6;
+        white = i0x ansiScheme 7;
+      };
+      bright = {
+        black = i0x ansiScheme 8;
+        red = i0x ansiScheme 9;
+        green = i0x ansiScheme 10;
+        yellow = i0x ansiScheme 11;
+        blue = i0x ansiScheme 12;
+        magenta = i0x ansiScheme 13;
+        cyan = i0x ansiScheme 14;
+        white = i0x ansiScheme 15;
+      };
+      dim = {  # TODO: Not standard but from nord.yaml
+        black = "0x373e4d";
+        red = "0x94545d";
+        green = "0x809575";
+        yellow = "0xb29e75";
+        blue = "0x68809a";
+        magenta = "0x8c738c";
+        cyan = "0x6d96a5";
+        white = "0xaeb3bb";
       };
     };
-    normal = {
-      black = i0x scheme 1;
-      red = i0x scheme 11;
-      green = i0x scheme 14;
-      yellow = i0x scheme 13;
-      blue = i0x scheme 9;
-      magenta = i0x scheme 15;
-      cyan = i0x scheme 8;
-      white = i0x scheme 5;
-    };
-    bright = {
-      black = i0x scheme 3;
-      red = i0x scheme 11;
-      green = i0x scheme 14;
-      yellow = i0x scheme 13;
-      blue = i0x scheme 9;
-      magenta = i0x scheme 15;
-      cyan = i0x scheme 7;
-      white = i0x scheme 6;
-    };
-    dim = {  # TODO: Not standard but from nord.yaml
-      black = "0x373e4d";
-      red = "0x94545d";
-      green = "0x809575";
-      yellow = "0xb29e75";
-      blue = "0x68809a";
-      magenta = "0x8c738c";
-      cyan = "0x6d96a5";
-      white = "0xaeb3bb";
-    };
-  };
 
   #services.mako.settings.*
-  forMako = scheme: {
-    background-color = ihex scheme 6;
-    text-color = ihex scheme 1;
-    border-color = ihex scheme 9;
-  };
+  forMako = scheme: 
+    let ansiScheme = toAnsiOrderedSchemeLossy scheme;
+    in {
+      background-color = withHash ansiScheme.color15;
+      text-color = withHash ansiScheme.color0;
+      border-color = withHash ansiScheme.color12;
+    };
 
-  forNixOnDroid = scheme: {
-     background = def (ihex scheme 0) (withHash scheme.background);
-     foreground = def (ihex scheme 4) (withHash scheme.foreground);
-     cursor = def (ihex scheme 4) (withHash scheme.cursor);
-  } // (mapSchemeReordered ihex [1 11 14 13 9 15 8 5 3 11 14 13 9 15 7 6] scheme);
+  forNixOnDroid = scheme:
+    removeAttrs 
+      (toAnsiOrderedSchemeLossy scheme)
+      ["selection_foreground" "selection_background" "url_color" "ordering"];
 
   schemes = {
     nord = rec {
+      ordering = "nord";
       color0 = "#2E3440";
       color1 = "#3B4252";
       color2 = "#434C5E";
@@ -209,6 +225,7 @@ rec {
 
     # Just reverses colors 0-6
     nord-light = {
+      ordering = "nord";
       color0 = "#ECEFF4";
       color1 = "#E5E9F0";
       color2 = "#D8DEE9";
@@ -301,5 +318,12 @@ rec {
                         text = "0x2E3440"; };
           vi_mode_cursor = { cursor = "0xD8DEE9";
                             text = "0x2E3440"; }; };
+
+    forMako =
+      expect.eq
+        (forMako schemes.nord)
+        { background-color = "#ECEFF4";
+          text-color = "#3B4252";
+          border-color = "#81A1C1"; };
   };
 }
