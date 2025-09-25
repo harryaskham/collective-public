@@ -128,7 +128,7 @@ in {
       };
 
       landscapeArgs = {
-        gap = 12;
+        gap = 8;
         paddingL = 0.5;
         paddingR = 0.5;
       };
