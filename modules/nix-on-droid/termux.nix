@@ -17,7 +17,15 @@ in {
     enable = mkEnable ''
       Whether to enable extra Termux-specific integration.
     '';
-    x11 = mkNestedEnable "Whether to enable x11 and associated scripts";
+    x11 = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = config.bootstrap.desktop.enable;
+        description = ''
+          Whether to enable x11 and associated scripts.
+        '';
+      };
+    };
     sharedDir = {
       enable = mkEnable "Whether to enable shared directory";
       path = lib.mkOption {
@@ -54,6 +62,7 @@ in {
             '';
           }) 
           cfg.sharedDir.copy;
+      home.file."shared".source = config.lib.file.mkOutOfStoreSymlink cfg.sharedDir;
     })
 
     # Fresh Termux installation using .termux defined by NOD.
@@ -71,7 +80,9 @@ in {
       };
 
       termux.sharedDir.copy = {
+        # Export our NOD-managed .termux dir
         ".termux" = "/data/data/com.termux.nix/files/home/.termux";
+        # Export our Termux bootstrap script installing .termux etc in fresh Termux
         ".bootstrap-from-nixondroid.sh" = "/etc/termux/bootstrap-from-nixondroid.sh";
       };
     }

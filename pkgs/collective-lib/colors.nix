@@ -1,11 +1,17 @@
 { lib ? import <nixpkgs/lib>, collective-lib ? import ./. { inherit lib; }, ... }:
 
 with lib;
-with collective-lib.clib;
+with collective-lib.typed;
 
 rec {
   schemeType = types.submodule {
     options = {
+      foreground = mkOption { type = types.nullOr types.str; default = null; };
+      background = mkOption { type = types.nullOr types.str; default = null; };
+      selection_foreground = mkOption { type = types.nullOr types.str; default = null; };
+      selection_background = mkOption { type = types.nullOr types.str; default = null; };
+      url_color = mkOption { type = types.nullOr types.str; default = null; };
+      cursor = mkOption { type = types.nullOr types.str; default = null; };
       color0 = mkOption { type = types.str; };
       color1 = mkOption { type = types.str; };
       color2 = mkOption { type = types.str; };
@@ -27,10 +33,16 @@ rec {
   mkSchemeOption = mkOption { type = schemeType; };
 
   # Formatting for configs
-  toList = scheme: (genList (i: scheme."color${toString i}") 15);
-  withHash = c: "#${c}";
-  with0x = c: "0x${c}";
-  asRGB = c: "rgb(${c})";
+  rawHex = c:
+    if c == null then null
+    else if substring 0 1 c == "#" then substring 1 (length c) c
+    else c;
+  withHash = c:
+    if c == null then null
+    else if substring 0 1 c == "#" then c 
+    else "#${c}";
+  with0x = c: "0x${rawHex c}";
+  asRGB = c: "rgb(${rawHex c})";
 
   # Indexing into themes with formatting
   icol = scheme: i: scheme."color${toString i}";
@@ -39,12 +51,18 @@ rec {
   irgb = scheme: i: asRGB (icol scheme i);
   igrad = scheme: i: j: angle: "${irgb scheme i} ${irgb scheme j} ${toString angle}deg";
 
+  mapSchemeReordered = colorF: ordering: scheme:
+    assert that (length ordering == 16) "Invalid ordering length: ${toString (length ordering)} (${_l_ ordering})";
+    mergeAttrsList (imap0 (i: j: { "color${toString i}" = colorF scheme j; }) ordering);
+
+  toOrderedHashedColorList = scheme: (genList (ihex scheme) 15);
+
   # Scheme conversion for various systems
 
   fori3 = forSway;
 
   forSway = lighten: scheme: strings.concatLines(
-    imap0 (i: c: ''set $color${toString i} ${c}'') (map withHash (toList scheme)));
+    imap0 (i: c: ''set $color${toString i} ${c}'') (toOrderedHashedColorList scheme));
 
   forHyprland = (lighten: scheme: {
     misc = {
@@ -80,46 +98,41 @@ rec {
   # At least for https://github.com/connorholyday/nord-kitty/blob/master/nord.conf
   # some colors are reused and bg/fg are not reused in the scheme
   # I then alter the cursor/url/selections to be from the scheme too
-  forKitty = scheme: (
-      let
-        ix = i: withHash (icol scheme i);
-        order = [1 11 14 13 9 15 8 5 3 11 14 13 9 15 7 6];
-      in (
-        ''
-          foreground ${ix 4}
-          background ${ix 0}
-          selection_foreground ${ix 0}
-          selection_background ${ix 6}
-          url_color ${ix 15}
-          cursor ${ix 4}
-        ''
-        + strings.concatLines(
-          imap0 (i: cix: 
-          ''color${toString i} ${ix cix}'')
-          order)));
+  forKitty = scheme: ''
+    foreground ${def (ihex scheme 4) (ihex scheme.foreground)}
+    background ${def (ihex scheme 0) (ihex scheme.background)}
+    selection_foreground ${def (ihex scheme 0) (ihex scheme.selection_foreground)}
+    selection_background ${def (ihex scheme 6) (ihex scheme.selection_background)}
+    url_color ${def (ihex scheme 15) (ihex scheme.url_color)}
+    cursor ${def (ihex scheme 4) (ihex scheme.cursor)}
+    ${ # Include all other colors in expected order, not nord order
+      # This loses a lot of color-space 
+      let ordering = [1 11 14 13 9 15 8 5 3 11 14 13 9 15 7 6];
+      in _ls_ (mapAttrsToList (k: v: "${k} ${v}") (mapSchemeReordered ihex ordering scheme))}
+  ''
 
   forAlacritty = scheme: {
     primary = {
-      background = i0x scheme 0;
-      foreground = i0x scheme 4;
+      background = def (ihex scheme 0) (ihex scheme.background);
+      foreground = def (i0x scheme 4) (i0x scheme.foreground);
       dim_foreground = "0xa5abb6";  # TODO: in theme?
     };
     cursor = {
       text = i0x scheme 0;
-      cursor = i0x scheme 4;
+      cursor = def (i0x scheme 4) (i0x scheme.cursor);
     };
     vi_mode_cursor = {
       text = i0x scheme 0;
-      cursor = i0x scheme 4;
+      cursor = def (i0x scheme 4) (i0x scheme.cursor);
     };
     selection = {
-      text = i0x scheme 0;
-      background = i0x scheme 3;
+      text = def (i0x scheme 0) (i0x scheme.selection_foreground);
+      background = def (i0x scheme 3) (i0x scheme.selection_background);
     };
     search = {
       matches = {
         foreground = i0x scheme 0;
-        background = i0x scheme 0;
+        background = i0x scheme 7;
       };
     };
     normal = {
@@ -162,35 +175,61 @@ rec {
   };
 
   forNixOnDroid = scheme: {
-     background = ihex scheme 0;
-     foreground = ihex scheme 4;
-     cursor = ihex scheme 4;
-  } // (let
-          ix = i: ihex scheme i;
-          order = [1 11 14 13 9 15 8 5 3 11 14 13 9 15 7 6];
-         in listToAttrs (imap0 (i: cix: {
-           name = "color${toString i}";
-           value = ix cix;
-         }) order));
+     background = def (ihex scheme 0) (ihex scheme.background);
+     foreground = def (ihex scheme 4) (ihex scheme.foreground);
+     cursor = def (ihex scheme 4) (ihex scheme.cursor);
+  } // (mapSchemeReordered ihex [1 11 14 13 9 15 8 5 3 11 14 13 9 15 7 6] scheme);
 
   schemes = {
-    nord = {
-      color0 = "2E3440";
-      color1 = "3B4252";
-      color2 = "434C5E";
-      color3 = "4C566A";
-      color4 = "D8DEE9";
-      color5 = "E5E9F0";
-      color6 = "ECEFF4";
-      color7 = "8FBCBB";
-      color8 = "88C0D0";
-      color9 = "81A1C1";
-      color10 = "5E81AC";
-      color11 = "BF616A";
-      color12 = "D08770";
-      color13 = "EBCB8B";
-      color14 = "A3BE8C";
-      color15 = "B48EAD";
+    nord = rec {
+      color0 = "#2E3440";
+      color1 = "#3B4252";
+      color2 = "#434C5E";
+      color3 = "#4C566A";
+      color4 = "#D8DEE9";
+      color5 = "#E5E9F0";
+      color6 = "#ECEFF4";
+      color7 = "#8FBCBB";
+      color8 = "#88C0D0";
+      color9 = "#81A1C1";
+      color10 = "#5E81AC";
+      color11 = "#BF616A";
+      color12 = "#D08770";
+      color13 = "#EBCB8B";
+      color14 = "#A3BE8C";
+      color15 = "#B48EAD";
+      foreground = color4;
+      background = color0;
+      url_color = color10;
+      selection_foreground = color0;
+      selection_background = color6;
+      cursor = color4;
+    };
+
+    # Just reverses colors 0-6
+    nord-light = {
+      color0 = "#ECEFF4";
+      color1 = "#E5E9F0";
+      color2 = "#D8DEE9";
+      color3 = "#4C566A";
+      color4 = "#434C5E";
+      color5 = "#3B4252";
+      color6 = "#2E3440";
+      color7 = "#8FBCBB";
+      color8 = "#88C0D0";
+      color9 = "#81A1C1";
+      color10 = "#5E81AC";
+      color11 = "#BF616A";
+      color12 = "#D08770";
+      color13 = "#EBCB8B";
+      color14 = "#A3BE8C";
+      color15 = "#B48EAD";
+      foreground = color4;
+      background = color0;
+      url_color = color10;
+      selection_foreground = color0;
+      selection_background = color6;
+      cursor = color4;
     };
   };
 }
