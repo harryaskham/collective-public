@@ -17,6 +17,87 @@ in {
     enable = mkEnable ''
       Whether to enable extra Termux-specific integration.
     '';
+    colors = mkOption {
+      type = typed.colors.schemeType;
+      default = typed.colors.schemes.nord;
+      description = "Colors for the terminal";
+    };
+    settings = {
+      hideExtraKeys = mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Whether to hide extra keys.
+        '';
+      };
+      useBlackUI = mkOption {
+        type = lib.types.nullOr lib.types.bool;
+        default = null;
+        description = ''
+          Whether to use force black UI. Null for default.
+        '';
+      };
+      allowExternalApps = mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Whether to allow external apps.
+        '';
+      };
+      fullscreen = mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Whether to allow fullscreen.
+        '';
+      };
+      margin = {
+        vertical = mkOption {
+          type = lib.types.int;
+          default = 8;
+          description = ''
+            The vertical margin.
+          '';
+        };
+        horizontal = mkOption {
+          type = lib.types.int;
+          default = 8;
+          description = ''
+            The horizontal margin.
+          '';
+        };
+      };
+      shortcut = {
+        createSession = mkOption {
+          type = lib.types.str;
+          default = "ctrl + alt + c";
+          description = ''
+            The shortcut to create a new session.
+          '';
+        };
+        nextSession = mkOption {
+          type = lib.types.str;
+          default = "ctrl + alt + n";
+          description = ''
+            The shortcut to go to the next session.
+          '';
+        };
+        previousSession = mkOption {
+          type = lib.types.str;
+          default = "ctrl + alt + p";
+          description = ''
+            The shortcut to go to the previous session.
+          '';
+        };
+      };
+      bellCharacter = mkOption {
+        type = lib.types.str;
+        default = "ignore";
+        description = ''
+          The character to use for the bell.
+        '';
+      };
+    };
     x11 = {
       enable = lib.mkOption {
         type = lib.types.bool;
@@ -63,6 +144,30 @@ in {
           }) 
           cfg.sharedDir.copy;
     })
+
+    # Make settings that can be symlinked to home.
+    {
+      # NOD manages the .termux colors.properties and font.ttf for us.
+      terminal.font =
+        "${pkgs.nerd-fonts.fira-code}/share/fonts/truetype/NerdFonts/FiraCode/FiraCodeNerdFont-Regular.ttf";
+      terminal.colors = with untyped.colors; forNixOnDroid config.bootstrap.colors;
+
+      # Write our own settings out.
+      environment.etc."termux/termux.properties" = {
+        text = joinOptionalLines [
+          (optionalString cfg.settings.hideExtraKeys "extra-keys=[]")
+          (optionalString (cfg.settings.useBlackUI != null) "use-black-ui=${boolToString cfg.settings.useBlackUI}")
+          "allow-external-apps=${boolToString cfg.settings.allowExternalApps}"
+          "fullscreen=${boolToString cfg.settings.fullscreen}"
+          "shortcut.create-session=${cfg.settings.shortcut.createSession}"
+          "shortcut.next-session=${cfg.settings.shortcut.nextSession}"
+          "shortcut.previous-session=${cfg.settings.shortcut.previousSession}"
+          "bell-character=${cfg.settings.bellCharacter}"
+          "terminal-margin-horizontal=${cfg.settings.margin.horizontal}"
+          "terminal-margin-vertical=${cfg.settings.margin.vertical}"
+        ];
+      };
+    }
 
     # Fresh Termux installation using .termux defined by NOD.
     {
