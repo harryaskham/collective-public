@@ -151,7 +151,7 @@ in {
       # NOD manages the .termux colors.properties and font.ttf for us.
       terminal.font =
         "${pkgs.nerd-fonts.fira-code}/share/fonts/truetype/NerdFonts/FiraCode/FiraCodeNerdFont-Regular.ttf";
-      terminal.colors = with untyped.colors; forNixOnDroid config.bootstrap.colors;
+      terminal.colors = with untyped.colors; forNixOnDroid cfg.colors;
 
       # Write our own settings out.
       environment.etc."termux/termux.properties" = {
