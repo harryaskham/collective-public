@@ -164,8 +164,8 @@ in {
           "shortcut.next-session=${cfg.settings.shortcut.nextSession}"
           "shortcut.previous-session=${cfg.settings.shortcut.previousSession}"
           "bell-character=${cfg.settings.bellCharacter}"
-          "terminal-margin-horizontal=${cfg.settings.margin.horizontal}"
-          "terminal-margin-vertical=${cfg.settings.margin.vertical}"
+          "terminal-margin-horizontal=${toString cfg.settings.margin.horizontal}"
+          "terminal-margin-vertical=${toString cfg.settings.margin.vertical}"
         ];
       };
     }
