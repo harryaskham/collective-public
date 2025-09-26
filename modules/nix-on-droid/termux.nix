@@ -7,7 +7,8 @@
 # they are instead copied to the clipboard and NOD is switched to for 
 # a manual paste.
 
-with untyped.clib;
+with lib;
+with typed;
 
 let
   cfg = config.termux;
