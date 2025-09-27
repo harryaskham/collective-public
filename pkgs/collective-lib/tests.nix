@@ -307,7 +307,7 @@ in rec {
             if result == null then msg
             else toString (with ansi; box { 
               header = atom.h1 "Actual";
-              borderStyles = [fg.brightblack];
+              showBorder = false;
               body = [
                 (if isTryEvalFailure result 
                  then style [fg.red bold] "<tryEval failure>"
