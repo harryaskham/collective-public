@@ -13,5 +13,5 @@ rec {
       collective-pythonPackages.handheld-daemon-adjustor;
 
   # Vast.ai CLI
-  vastai = pkgs.callPackage ./vastai { };
+  vastai-cli = (pkgs.callPackage ./vastai { }).vastai-cli;
 }
