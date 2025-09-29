@@ -13,12 +13,10 @@
   home.sessionVariables = {
   };
 
-  programs.home-manager.enable = true;
-
-  programs.zsh.enable = true;
-
-  services.ollama = {
-    enable = true;
-    acceleration = "cuda";
+  programs = {
+    home-manager.enable = true;
+    bash.enable = true;
+    zsh.enable = true;
+    #ollama.enable = true;
   };
 }
