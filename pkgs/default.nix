@@ -11,4 +11,7 @@ rec {
   handheld-daemon-adjustor =
     pkgs.python3Packages.toPythonApplication
       collective-pythonPackages.handheld-daemon-adjustor;
+
+  # Vast.ai CLI
+  vastai-cli = pkgs.callPackage ./vastai-cli.nix { };
 }
