@@ -15,10 +15,10 @@
 
   programs.home-manager.enable = true;
 
-  programs.zsh = {
+  programs.zsh.enable = true;
+
+  services.ollama = {
     enable = true;
-    enableCompletions = true;
-    autosuggestions.enable = true;
-    syntaxHighlighting.enable = true;
-  };
+    acceleration = "cuda";
+  }
 }
