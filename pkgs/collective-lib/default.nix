@@ -152,7 +152,7 @@ let
       rebinds = import ./rebinds.nix args;
       nix-reflect = nix-reflect.lib.${pkgs.system};
       script-utils = import ./script-utils (args // { inherit pkgs; });
-      shell = import ./shell.nix args;
+      shell = import ./shell.nix (args // { inherit pkgs; });
       strings = import ./strings args;
       syntax = import ./syntax.nix args;
       tests = import ./tests.nix args;
