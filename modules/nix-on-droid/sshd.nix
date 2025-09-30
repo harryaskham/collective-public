@@ -79,7 +79,7 @@ in {
 
   config = lib.mkIf cfg.enable (lib.mkMerge [
     (lib.mkIf cfg.includeCollectiveSSHKeys {
-      environment.etc."ssh/collective_keys".text = concatLines cssh.authorizedKeys;
+      environment.etc."ssh/collective_keys".text = concatLines (lib.attrValues cssh.authorizedKeys);
     })
 
     {
