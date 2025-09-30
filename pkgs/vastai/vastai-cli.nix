@@ -8,7 +8,7 @@ stdenv.mkDerivation rec {
   ];
   src = fetchurl {
     url = "https://raw.githubusercontent.com/vast-ai/vast-cli/refs/tags/v${version}/vast.py";
-    hash = "sha256-LmtGAzwUXsbUwlmdhG1hwiZqWUP7o+l+jZ5Nx2RNhW4=";
+    hash = "sha256-mqgE8VwPJAbn+s+G8pI0mzouE0MX/2ikHBjNHVrP0ac=";
   };
   dontUnpack = true;
   installPhase = ''
