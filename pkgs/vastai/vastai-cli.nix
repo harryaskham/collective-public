@@ -10,7 +10,7 @@ stdenv.mkDerivation rec {
     owner = "vast-ai";
     repo = "vast-cli";
     rev = "refs/tags/v${version}";
-    hash = "sha256-vtYSOfUmOvULLBULtabL15D82QxC2I00RbvCDrCoI3w=";
+    hash = "sha256-imzzAOOGdn4xoZEOd1KQRMNlOpZtenWgp58g6AqBK+I=";
   };
   installPhase = ''
     install -Dm755 $src/vast.py $out/bin/vast
