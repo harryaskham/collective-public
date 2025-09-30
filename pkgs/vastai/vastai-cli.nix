@@ -6,7 +6,7 @@ stdenv.mkDerivation rec {
   buildInputs = [
     (python3.withPackages (ps: [ ps.requests ]))
   ];
-  src = fetchFromGitHub {
+  src = pkgs.fetchFromGitHub {
     owner = "vast-ai";
     repo = "vast-cli";
     rev = "refs/tags/v${version}";
