@@ -57,7 +57,7 @@ in {
         '';
       });
 
-    in rec {
+    in {
       services.handheld-daemon.package = handheld-daemon-with-adjustor;
       # Adjustor assumes it can talk PPD protocol over dbus
       services.power-profiles-daemon.enable = true;
