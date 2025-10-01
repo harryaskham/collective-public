@@ -43,7 +43,11 @@ in {
           ${attrs.postPatch or ""}
 
           substituteInPlace usr/lib/udev/rules.d/83-hhd.rules \
-            --replace-fail "/bin/chmod" "${lib.getExe' pkgs.coreutils "chmod"}"
+            --replace-fail "/bin/chmod" "${lib.getExe' pkgs.coreutils "chmod"}" \
+            --replace-fail "chmod" "${lib.getExe' pkgs.coreutils "chmod"}"
+          substituteInPlace usr/lib/udev/rules.d/83-hhd-user.rules \
+            --replace-fail "/bin/chmod" "${lib.getExe' pkgs.coreutils "chmod"}" \
+            --replace-fail "chmod" "${lib.getExe' pkgs.coreutils "chmod"}"
         '';
 
         # Override removing $src to install the patched versions of the rules.
