@@ -37,25 +37,6 @@ in {
             --prefix PYTHONPATH : "$PYTHONPATH" \
             --prefix PATH : "${hhdPython}/bin"
         '';
-
-        # Substitutions don't handle the udev rules at least in nixos-unstable 2025-08-25
-        postPatch = ''
-          ${attrs.postPatch or ""}
-
-          substituteInPlace usr/lib/udev/rules.d/83-hhd.rules \
-            --replace-fail "/bin/chmod" "${lib.getExe' pkgs.coreutils "chmod"}"
-          # Replate s.t. /bin/sh 'chmod...' and chmod are both replaced
-          # Leading quotes requiered b.c. otherwise /nix/store/.../bin/chmod would be matched after the first replacement
-          substituteInPlace usr/lib/udev/rules.d/83-hhd-user.rules \
-            --replace-fail "/bin/chmod" "${lib.getExe' pkgs.coreutils "chmod"}" \
-            --replace-fail "/bin/chgrp" "${lib.getExe' pkgs.coreutils "chgrp"}"
-        '';
-
-        # Override removing $src to install the patched versions of the rules.
-        postInstall = ''
-          install -Dm644 usr/lib/udev/rules.d/83-hhd.rules -t $out/lib/udev/rules.d/
-          install -Dm644 usr/lib/udev/hwdb.d/83-hhd.hwdb -t $out/lib/udev/hwdb.d/
-        '';
       });
 
     in {
