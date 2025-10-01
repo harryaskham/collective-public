@@ -45,8 +45,9 @@ in {
           substituteInPlace usr/lib/udev/rules.d/83-hhd.rules \
             --replace-fail "/bin/chmod" "${lib.getExe' pkgs.coreutils "chmod"}"
           # Replate s.t. /bin/sh 'chmod...' and chmod are both replaced
+          # Leading quotes requiered b.c. otherwise /nix/store/.../bin/chmod would be matched after the first replacement
           substituteInPlace usr/lib/udev/rules.d/83-hhd-user.rules \
-            --replace-fail "/bin/chmod" "${lib.getExe' pkgs.coreutils "chmod"}" \
+            --replace-fail "\"/bin/chmod" "\"${lib.getExe' pkgs.coreutils "chmod"}" \
             --replace-fail "'chmod" "'${lib.getExe' pkgs.coreutils "chmod"}"
         '';
 
