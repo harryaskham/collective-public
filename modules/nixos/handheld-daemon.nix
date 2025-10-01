@@ -47,9 +47,8 @@ in {
           # Replate s.t. /bin/sh 'chmod...' and chmod are both replaced
           # Leading quotes requiered b.c. otherwise /nix/store/.../bin/chmod would be matched after the first replacement
           substituteInPlace usr/lib/udev/rules.d/83-hhd-user.rules \
-            --replace-fail '"/bin/chmod' '"${lib.getExe' pkgs.coreutils "chmod"}' \
-            --replace-fail "'chmod" "'${lib.getExe' pkgs.coreutils "chmod"}" \
-            --replace-fail '"/bin/chgrp' '"${lib.getExe' pkgs.coreutils "chgrp"}'
+            --replace-fail "/bin/chmod" "${lib.getExe' pkgs.coreutils "chmod"}" \
+            --replace-fail "/bin/chgrp" "${lib.getExe' pkgs.coreutils "chgrp"}"
         '';
 
         # Override removing $src to install the patched versions of the rules.
