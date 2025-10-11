@@ -21,14 +21,14 @@ in rec {
             if [[ $(type -t main) == function ]]; then
               main "$@"
             else
-              ${log.fatal "main() not defined"}
+              ${log.fatal "main not defined"}
             fi
           }
         '';
         mainWrapped = if runMain then mainWrappedEnabled else mainWrappedDisabled;
         runMainWrapped = codeBlock ''
           if ! __main-wrapped "$@"; then
-            ${log.fatal "main() failed"}
+            ${log.fatal "main failed"}
           fi
         '';
     in codeBlocks [
