@@ -8,7 +8,7 @@
       url = "github:harryaskham/nix-reflect";
       # url = ./collective-public/flakes/nix-reflect;
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.collective-public.follows = "collective-public";
+      inputs.collective-public.follows = "";
     };
 
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";

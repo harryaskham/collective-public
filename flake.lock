@@ -75,14 +75,18 @@
         ]
       },
       "locked": {
-        "path": "flakes/nix-reflect",
-        "type": "path"
+        "lastModified": 1760461147,
+        "narHash": "sha256-tNshPoFxpbaGDtlnATzUrh81Pd0EqV0O5dWmPx1YTdE=",
+        "owner": "harryaskham",
+        "repo": "nix-reflect",
+        "rev": "a23f38f79f8a747352bb4b63865f8095ef0310dc",
+        "type": "github"
       },
       "original": {
-        "path": "flakes/nix-reflect",
-        "type": "path"
-      },
-      "parent": []
+        "owner": "harryaskham",
+        "repo": "nix-reflect",
+        "type": "github"
+      }
     },
     "nixpkgs": {
       "locked": {
