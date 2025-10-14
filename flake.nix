@@ -10,9 +10,12 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    nixpkgs-stable.url = "github:nixos/nixpkgs/release-25.05";
-    nix-parsec.url = "github:nprindle/nix-parsec";
+    #nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    #nixpkgs-stable.url = "github:nixos/nixpkgs/release-25.05";
+    #nix-parsec.url = "github:nprindle/nix-parsec";
+    nixpkgs.url = "git+https://git@github.com/nixos/nixpkgs?ref=nixos-unstable";
+    nixpkgs-stable.url = "git+https://git@github.com/nixos/nixpkgs?ref=release-25.05";
+    nix-parsec.url = "git+https://git@github.com/nprindle/nix-parsec";
   };
 
   outputs = {
