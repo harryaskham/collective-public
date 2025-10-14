@@ -208,7 +208,7 @@ in {
       _
         "∞" nw.toggle_persistence   ne."0"
               c.p
-                                    "➟" se.floating_enable_passthrough
+        "⎋" sw.esc  "➟" se.floating_enable_passthrough
       K;
   }
 
@@ -250,7 +250,7 @@ in {
       _
                       ne."\""
                 c.l
-
+        "⌥" sw.alt
       _
         nw.shift     ne.del
                 c.bsp
