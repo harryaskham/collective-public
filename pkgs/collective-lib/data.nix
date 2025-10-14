@@ -52,6 +52,10 @@ in rec {
     };
   };
 
+  NamedSystem = systemName: system: {
+    inherit systemName system;
+  };
+
   # <nix> data._tests.run {} </nix>
   _tests = with typed.tests; suite {
     SystemType = {
