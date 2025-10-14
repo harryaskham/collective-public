@@ -105,6 +105,7 @@ let
 
     addShift = s: modify "shift" (s': s + s');
     addWidth = w: modify "width" (w': w + w');
+    shrinkWidth = w: modify "width" (w': w' - w);
 
     _4dp = x: trunc 4 x;
 

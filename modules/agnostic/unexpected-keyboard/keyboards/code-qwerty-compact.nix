@@ -3,20 +3,30 @@
 with typed;
 with uklib;
 
-with codes.withAliases {
-  switch_to_base = "switch_to_layout_Code_QWERTY_Compact";
-  switch_to_C0Mods = "switch_to_layout_Code_QWERTY_Compact_0_C0Mods";
-  switch_to_splitPG = "switch_to_layout_Code_QWERTY_Compact_1_splitPE";
-  switch_to_splitPE = "switch_to_layout_Code_QWERTY_Compact_2_splitPG";
-  switch_to_splitLG = "switch_to_layout_Code_QWERTY_Compact_3_splitLE";
-  switch_to_splitLE = "switch_to_layout_Code_QWERTY_Compact_4_splitLG";
-};
+let
+  codes' = codes.withAliases {
+    switch_to_base = "switch_to_layout_Code_QWERTY_Compact";
+    # Note: These rely on the order of the variants as emitted by `indexPrefixedAttrs`
+    # to switch to imported layout by index.
+    switch_to_C0Mods = "switch_to_layout_Code_QWERTY_Compact_0_C0Mods";
+    switch_to_splitPG = "switch_to_layout_Code_QWERTY_Compact_1_splitPE";
+    switch_to_splitPE = "switch_to_layout_Code_QWERTY_Compact_2_splitPG";
+    switch_to_splitLG = "switch_to_layout_Code_QWERTY_Compact_3_splitLE";
+    switch_to_splitLE = "switch_to_layout_Code_QWERTY_Compact_4_splitLG";
+    switch_to_keys29T = "switch_to_layout_Code_QWERTY_Compact_5_keys29T";
+    switch_to_keys29R = "switch_to_layout_Code_QWERTY_Compact_5_keys29R";
+  };
+in
 
-let macros = typed.recursiveMergeAttrsList [
-  (mkCardinal "show_termux_sidebar" (with _; with kv; m "⌁" [(k ctrl) (k alt) (k shift) (k right)]))
-];
+with codes';
 
-in {
+let
+  macros = typed.recursiveMergeAttrsList [
+    (mkCardinal "show_termux_sidebar" (with _; with kv; m "⌁" [(k ctrl) (k alt) (k shift) (k right)]))
+  ];
+in
+
+{
   name = "Code QWERTY Compact";
   bottomRow = false;
   includeDefaultVariants = false;  # Added back manually as part of the ordered variants below.
@@ -59,24 +69,24 @@ in {
       ];
 
       movePuncuationToL = updateKey 1 8 (precompose [
-        (setCardinal.se ";")
-        (setCardinal.sw ":")
+        (setCardinal.se (kv.k _.";"))
+        (setCardinal.sw (kv.k _.":"))
       ]);
 
-      movePunctuationToM = updateKey 1 6 (precompose [
-        (setCardinal.se ",")
-        (setCardinal.sw ".")
-        (setCardinal.ne "?")
+      movePunctuationToM = updateKey 2 6 (precompose [
+        (setCardinal.se (kv.k _.","))
+        (setCardinal.sw (kv.k _."."))
+        (setCardinal.ne (kv.k _."?"))
       ]);
 
-      movePunctuationToN = updateKey 1 5 (precompose [
-        (setCardinal.se "<")
-        (setCardinal.sw ">")
+      movePunctuationToN = updateKey 2 5 (precompose [
+        (setCardinal.se (kv.k _."<"))
+        (setCardinal.sw (kv.k _.">"))
         clearCardinal.ne
       ]);
 
-      movePunctuationToB = updateKey 1 4 (precompose [
-        (setCardinal.ne "/")
+      movePunctuationToB = updateKey 2 4 (precompose [
+        (setCardinal.ne (kv.k _."/"))
       ]);
 
       withSplitSpace = {gap, paddingL, paddingR, ...} @ args:
@@ -165,23 +175,23 @@ in {
       }: precompose ([
         addSwitchToBase
         withoutModRow
-        movePuncuationToL
-        movePunctuationToM
-        movePunctuationToN
-        movePunctuationToB
-        withSplitSpace { gap = 2; paddingL = 0; paddingR = 0; }
+        #movePuncuationToL
+        #movePunctuationToM
+        #movePunctuationToN
+        #movePunctuationToB
+        (withSplitSpace { gap = 2; paddingL = 0; paddingR = 0; })
         removeCursorAndPunctuationKeys
       ]
       ++ (optionals (cursorMode == "trackball") [
-        (updateKey 2 8 (setWidth (1.0 - trackballWidth)))
+        (updateKey 2 8 (shrinkWidth trackballWidth))
         (insertKey 2 8 (K trackballWidth "⊙" c.removed " " n.up " " w.left " " e.right " " s.down))
       ])
       ++ (optionals (cursorMode == "return") [
         (updateKey 2 8 (precompose [
-          (setCardinal.n "up")
-          (setCardinal.s "down")
-          (setCardinal.e "right")
-          (setCardinal.w "left")
+          (setCardinal.n (kv.k _.up))
+          (setCardinal.s (kv.k _.down))
+          (setCardinal.e (kv.k _.right))
+          (setCardinal.w (kv.k _.left))
         ]))
       ]));
 
@@ -300,11 +310,11 @@ in {
   {
     keys =
       K
-                        ne."|"
+        "⊙" nw.switch_to_keys29T ne."|"
               c.z
         sw."\\"         "⇝" macros.se.show_termux_sidebar
       _
-                      ne.cut
+        "⊡" nw.switch_to_keys29R ne.cut
               c.x
         sw.bwd       se.fwd
       _
