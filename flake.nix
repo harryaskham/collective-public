@@ -3,7 +3,6 @@
   description = "Public subset of Nix configurations.";
 
   inputs = {
-    self.submodules = true;
     nix-reflect = {
       url = ./flakes/nix-reflect;
       inputs.collective-public.follows = "";
