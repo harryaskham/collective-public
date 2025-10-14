@@ -24,31 +24,13 @@ in {
     let
       addSwitchToBase = setKey 2 4 (K "⟲" se.switch_to_base c.b K);
 
-      clearEscAdjacent = precompose [
-        (setKey 0 0 (K c.q ne."1" sw."!" K)) # Clears Q
-        (setKey 0 1 (K c.w ne."2" sw."@" K)) # Clears W
-      ];
-
-      clearHomeRowMods = precompose [
-        (setKey 1 0 (K c.a K))
-        (setKey 1 1 (K c.s K))
-        (setKey 1 2 (K c.d K))
-        (setKey 1 3 (K c.f K))
-      ];
-
-      clearModsAndEsc = precompose [
-        clearEscAdjacent
-        #clearHomeRowMods
-      ];
-
-      modCol = 
+      modCol =
         K "⎋" c.esc nw.tab ne."`" sw."~"
         _ "✲" c.ctrl "❖" sw.meta "⌥" ne.alt "▤" nw.fn
         _ c.shift
         K;
 
       withModCol = colI: precompose [
-        clearModsAndEsc
         (insertCol colI modCol)
       ];
 
@@ -64,10 +46,38 @@ in {
           _ 1 centralGap c.shift
           K;
 
-      returnOverCursor = precompose [
-        (deleteKey 2 9)
+      removeCursorKey = deleteKey 2 9;
+
+      removeCursorAndPunctuationKeys = precompose [
+        removeCursorKey
+        (deleteKey 2 8)
+      ];
+
+      returnOverCursorKey = precompose [
+        removeCursorKey
         (updateKey 2 9 (addWidth 1))
       ];
+
+      movePuncuationToL = updateKey 1 8 (precompose [
+        (setCardinal.se ";")
+        (setCardinal.sw ":")
+      ]);
+
+      movePunctuationToM = updateKey 1 6 (precompose [
+        (setCardinal.se ",")
+        (setCardinal.sw ".")
+        (setCardinal.ne "?")
+      ]);
+
+      movePunctuationToN = updateKey 1 5 (precompose [
+        (setCardinal.se "<")
+        (setCardinal.sw ">")
+        clearCardinal.ne
+      ]);
+
+      movePunctuationToB = updateKey 1 4 (precompose [
+        (setCardinal.ne "/")
+      ]);
 
       withSplitSpace = {gap, paddingL, paddingR, ...} @ args:
         precompose [
@@ -92,13 +102,13 @@ in {
         ];
 
         Grid = {gap, paddingL, paddingR, ...} @ args: precompose [
-          clearModsAndEsc
-          returnOverCursor
+          returnOverCursorKey
           (updateKey 0 5 (addShift paddingR))
           (updateKey 1 5 (addShift paddingR))
           (insertCol 5 (modGridL args))
           (insertCol 6 (modGridR args))
         ];
+
       };
 
       mkSplit = {gap, paddingL, paddingR, mods} @ args:
@@ -148,6 +158,33 @@ in {
         (Variants.righty 2.0)
       ];
 
+      # 29-key gherkin-like layout with 1.8-u spacebar and tiny trackball key or cursored enter key
+      Keys29 = {
+        cursorMode,  # "trackball" or "return"
+        trackballWidth ? 0.2,
+      }: precompose ([
+        addSwitchToBase
+        withoutModRow
+        movePuncuationToL
+        movePunctuationToM
+        movePunctuationToN
+        movePunctuationToB
+        withSplitSpace { gap = 2; paddingL = 0; paddingR = 0; }
+        removeCursorAndPunctuationKeys
+      ]
+      ++ (optionals (cursorMode == "trackball") [
+        (updateKey 2 8 (setWidth (1.0 - trackballWidth)))
+        (insertKey 2 8 (K trackballWidth "⊙" c.removed " " n.up " " w.left " " e.right " " s.down))
+      ])
+      ++ (optionals (cursorMode == "return") [
+        (updateKey 2 8 (precompose [
+          (setCardinal.n "up")
+          (setCardinal.s "down")
+          (setCardinal.e "right")
+          (setCardinal.w "left")
+        ]))
+      ]));
+
     in 
 
     # Emit the variants in the order below.
@@ -157,7 +194,9 @@ in {
       { splitPG = mkPortraitSplit Mods.Grid; } # Portrait split layout with modifier keys centre.
       { splitLE = mkLandscapeSplit Mods.Empty; } # Landscape split layout with empty centre.
       { splitLG = mkLandscapeSplit Mods.Grid; } # Landscape split layout with modifier keys centre.
-      # Below: disabled layout variants.
+      { keys29T =  Keys29 { cursorMode = "trackball"; }; } # 29-key layout with trackball key.
+      { keys29R = Keys29 { cursorMode = "return"; }; } # 29-key layout with cursored return key.
+      # Below: disabled generation of layout variants to avoid clutter.
       # { L = applyLefty id; } # Left-aligned one-handed layout.
       # { R = applyRighty id; } # Right-aligned one-handed layout.
       # { C0ModsL = applyLefty C0Mods; } # Left-aligned layout with modifier keys in column 0.
