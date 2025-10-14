@@ -3,16 +3,16 @@
   description = "Public subset of Nix configurations.";
 
   inputs = {
+    self.submodules = true;
+    nix-reflect = {
+      url = ./flakes/nix-reflect;
+      inputs.collective-public.follows = "";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     nixpkgs-stable.url = "github:nixos/nixpkgs/release-25.05";
-
     nix-parsec.url = "github:nprindle/nix-parsec";
-
-    nix-reflect = {
-      url = "github:harryaskham/nix-reflect";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.collective-public.follows = "";
-    };
   };
 
   outputs = {
