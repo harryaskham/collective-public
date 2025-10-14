@@ -1375,6 +1375,12 @@ rec {
               k = l.keyboard;
               tl_key = getKey 0 0 k;
           in expect.eq [tl_key.c.k tl_key.width] [ "esc" (_4dp (10.0 / 11.0)) ];
+
+        variants.keys29T =
+          let l = getLayout "Code QWERTY Compact (5_keys29T)";
+              k = l.keyboard;
+              trackball = getKey 2 8 k;
+          in with trackball; expect.eq [n.k s.k w.k e.k trackball.width] ["up" "down" "left" "right" 0.2];
       };
   };
 })

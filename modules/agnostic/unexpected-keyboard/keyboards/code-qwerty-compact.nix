@@ -68,7 +68,7 @@ in
         (updateKey 2 9 (addWidth 1))
       ];
 
-      movePuncuationToL = updateKey 1 8 (precompose [
+      movePunctuationToL = updateKey 1 8 (precompose [
         (setCardinal.se (kv.k _.";"))
         (setCardinal.sw (kv.k _.":"))
       ]);
@@ -175,10 +175,10 @@ in
       }: precompose ([
         addSwitchToBase
         withoutModRow
-        #movePuncuationToL
-        #movePunctuationToM
-        #movePunctuationToN
-        #movePunctuationToB
+        movePunctuationToL
+        movePunctuationToM
+        movePunctuationToN
+        movePunctuationToB
         (withSplitSpace { gap = 2; paddingL = 0; paddingR = 0; })
         removeCursorAndPunctuationKeys
       ]
