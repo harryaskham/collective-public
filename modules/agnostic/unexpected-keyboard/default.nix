@@ -1311,8 +1311,8 @@ rec {
     defaults = 
       let config = _evalModule (mkConfig true []);
       in with config.services.unexpected-keyboard.lib; {
-        etc.size = expect.eq (size config.agnostic.environment.etc) 8;
-        layouts.size = expect.eq (size config.services.unexpected-keyboard.layouts) 8;
+        etc.size = expect.eq (size config.agnostic.environment.etc) 10;
+        layouts.size = expect.eq (size config.services.unexpected-keyboard.layouts) 10;
         layouts.golden = 
           expect.eq
             config.services.unexpected-keyboard.layouts."QWERTY (US)".xmlSource

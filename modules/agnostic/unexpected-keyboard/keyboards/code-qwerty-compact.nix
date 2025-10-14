@@ -184,7 +184,7 @@ in
       ]
       ++ (optionals (cursorMode == "trackball") [
         (updateKey 2 8 (shrinkWidth trackballWidth))
-        (insertKey 2 8 (K trackballWidth "⊙" c.removed " " n.up " " w.left " " e.right " " s.down))
+        (insertKey 2 8 (K trackballWidth "⊙" c.removed " " n.up " " w.left " " e.right " " s.down K))
       ])
       ++ (optionals (cursorMode == "return") [
         (updateKey 2 8 (precompose [
