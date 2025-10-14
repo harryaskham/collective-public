@@ -1,28 +1,20 @@
 {
   description = "Public subset of Nix configurations.";
 
-  inputs =
-    let
-      githubCollectiveDependencies = false;
-      nix-reflect-url =
-        if githubCollectiveDependencies
-          then "github:harryaskham/nix-reflect"
-          else ./collective-public/flakes/nix-reflect;
-      inputsPreamble =
-        if githubCollectiveDependencies
-        then {}
-        else { self.submodules = true; };
-    in inputsPreamble // {
-      nix-reflect = {
-        url = nix-reflect-url;
-        inputs.collective-public.follows = "";
-        inputs.nixpkgs.follows = "nixpkgs";
-      };
+  inputs = {
+    # self.submodules = true;
 
-      nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-      nixpkgs-stable.url = "github:nixos/nixpkgs/release-25.05";
-      nix-parsec.url = "github:nprindle/nix-parsec";
+    nix-reflect = {
+      url = "github:harryaskham/nix-reflect";
+      # url = ./collective-public/flakes/nix-reflect;
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.collective-public.follows = "collective-public";
     };
+
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    nixpkgs-stable.url = "github:nixos/nixpkgs/release-25.05";
+    nix-parsec.url = "github:nprindle/nix-parsec";
+  };
 
   outputs = {
     self,
