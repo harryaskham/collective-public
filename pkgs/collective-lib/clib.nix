@@ -25,7 +25,19 @@ rec {
 
     propagate = {
       __functor = self: self.option;
-      option = module: getOption: getOption module.options;
+
+      # Propagate an option block from a module verbatim
+      option = getModule: getOption: { pkgs, outputs, ... } @ args:
+        let ms =  outputs.modules.${pkgs.system};
+            m = pkgs.callPackage (getModule ms) args;
+        in getOption m.options;
+
+      # Make a default-enabled version of the propagated option block
+      enabled = getModule: getOption: args:
+        let opt = Opt.propagate getModule getOption args;
+        in opt // {
+          enable = opt.enable // { default = true; };
+        };
     };
   };
 
