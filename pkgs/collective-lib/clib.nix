@@ -22,6 +22,14 @@ rec {
         default = mkNestedDefaultEnable;
       };
     };
+
+    propagate = {
+      __functor = self: self.option;
+      option = module: getOption: mkConfig: getOption module.options // {
+        __mkConfig = mkConfig;
+        __mkEnabledConfig = mkConfig // { enable = true; };
+      };
+    };
   };
 
   # Legacy options factories
