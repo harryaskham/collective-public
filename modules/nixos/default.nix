@@ -1,4 +1,4 @@
 {...}:
 {
-  handheld-daemon = import ./handheld-daemon.nix;
+  # handheld-daemon = import ./handheld-daemon.nix;
 }
