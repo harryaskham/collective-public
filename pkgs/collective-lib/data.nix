@@ -11,10 +11,7 @@ in rec {
     inherit id;
     value = if value == {} then id else value;
     functor = self: {}: self.value;
-    switch = {
-      __functor = self: self.def (throw ''Enum "${name}" does not have member "${id}"'');
-      def = default: opts: opts.${id} or opts._ or default;
-    };
+    switch = opts: opts.${id} or opts._ or (throw ''Enum "${name}" does not have member "${id}"'');
     __toString = self: "${name}.${id}${lib.optionalString (value != {}) "(${self.value})"}";
   });
 
