@@ -8,7 +8,6 @@ with collective-lib.clib;
 let
   types = lib.types;
   mkOption = lib.mkOption;
-  mkOptionDefault = lib.mkOptionDefault;
 in rec {
   typeWMOption = boundCommand types.anything;
   typeWMOptions = types.listOf typeWMOption;
@@ -139,6 +138,8 @@ in rec {
     brightnessDown = { tag = "brightnessDown"; };
     nextWorkspace = { tag = "nextWorkspace"; };
     previousWorkspace = { tag = "previousWorkspace"; };
+    rotateCW = { tag = "rotateCW"; };
+    flip = { tag = "flip"; };
   };
   impl = wm: bc:
     (let
@@ -181,6 +182,8 @@ in rec {
         brightnessDown = runs ''exec "light -U 10"'';
         nextWorkspace = runs "workspace next";
         previousWorkspace = runs "workspace previous";
+        rotateCW = runs ''exec "echo unimplemented"'';
+        flip = runs ''exec "echo unimplemented"'';
       };
       sway = {
         goToWorkspace = runs "workspace number ${toString args.n}";
@@ -217,6 +220,8 @@ in rec {
         brightnessDown = runs ''exec "light -U 10"'';
         nextWorkspace = runs "workspace next";
         previousWorkspace = runs "workspace previous";
+        rotateCW = runs ''exec "echo unimplemented"'';
+        flip = runs ''exec "echo unimplemented"'';
       };
       hyprland = {
         goToWorkspace = runs "workspace, ${toString args.n}";
@@ -253,6 +258,8 @@ in rec {
         brightnessDown = runs "exec, light -U 10";
         nextWorkspace = runs "workspace, +1";
         previousWorkspace = runs "workspace, -1";
+        rotateCW = runs ''exec "hypr --rotate"'';
+        flip = runs ''exec "hypr --flip"'';
       };
     }.${wm}.${bc.cmd.tag});
   toConfig = impl;
