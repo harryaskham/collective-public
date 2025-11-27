@@ -258,8 +258,8 @@ in rec {
         brightnessDown = runs "exec, light -U 10";
         nextWorkspace = runs "workspace, +1";
         previousWorkspace = runs "workspace, -1";
-        rotateCW = runs ''exec "hypr --rotate"'';
-        flip = runs ''exec "hypr --flip"'';
+        rotateCW = runs ''exec, hypr --rotate'';
+        flip = runs ''exec, hypr --flip'';
       };
     }.${wm}.${bc.cmd.tag});
   toConfig = impl;
