@@ -64,7 +64,7 @@ in
       ];
 
       build.activationAfter.dbus = ''
-        mkdir -p $XDG_RUNTIME_DIR
+        mkdir -p ''${XDG_RUNTIME_DIR:-/tmp/run}
         DBUS_PID=$(${pkgs.procps}/bin/ps -a | ${pkgs.toybox}/bin/grep dbus || true)
         if [ -z "$DBUS_PID" ]; then
           $DRY_RUN_CMD ${dbus-start}/bin/${dbus-start-bin}
