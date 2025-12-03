@@ -1,10 +1,10 @@
-{ config, lib, pkgs, outputs, untyped, ...}:
+{ config, lib, pkgs, outputs, typed, ...}:
 
-with untyped.clib;
+with typed;
 
 let
   cfg = config.sshd;
-  cssh = untyped.ssh;
+  cssh = typed.ssh;
   concatLines = list: builtins.concatStringsSep "\n" list;
   prefixLines = mapper: list: concatLines (map mapper list);
   configPath = "ssh/sshd_config";
