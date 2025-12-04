@@ -47,7 +47,7 @@ let
       ${lib.optionalString cfg.includeCollectiveSSHKeys (prefixLines appendAuthorizedKeysFiles ["/etc/ssh/collective_keys"])}
     fi
 
-    ${pkgs.openssh}/bin/sshd -f "/etc/${configPath}"
+    ${pkgs.openssh}/bin/sshd -f "/etc/${configPath}" -E /etc/ssh/sshd.log
   '';
 in {
   options.sshd = {
@@ -104,9 +104,9 @@ in {
       ];
 
       build.activationAfter.sshd = ''
-        SERVER_PID=$(${pkgs.procps}/bin/ps -a | ${pkgs.toybox}/bin/grep sshd || true)
+        SERVER_PID=$(${pkgs.toybox}/bin/pgrep sshd)
         if [ -z "$SERVER_PID" ]; then
-          $DRY_RUN_CMD ${sshd-start}/bin/${sshd-start-bin}
+          $DRY_RUN_CMD ${sshd-start}/bin/sshd-start
         fi
       '';
 
