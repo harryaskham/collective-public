@@ -30,8 +30,8 @@ let
   sshd-start = pkgs.writeScriptBin "sshd-start" ''
     #!${pkgs.runtimeShell}
 
-    if pgrep sshd; then
-      echo "sshd is already running"
+    PID=$(pgrep sshd)
+    if [ -n "$PID" ]; then
       exit 0
     fi
 
