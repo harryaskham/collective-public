@@ -14,7 +14,6 @@ let
     "rsa"
     "ed25519"
   ];
-  sshd-start-bin = "sshd-start";
   pathOfKeyOf = type: "${keysFolder}/ssh_host_${type}_key";
   generateKeyOf = type: ''
     ${pkgs.openssh}/bin/ssh-keygen \
@@ -32,8 +31,14 @@ let
     cat ${authorizedKeysFile} >${authorizedKeysFolder}/${config.user.userName}
   '';
 
-  sshd-start = pkgs.writeScriptBin sshd-start-bin ''
+  sshd-start = pkgs.writeScriptBin "sshd-start" ''
     #!${pkgs.runtimeShell}
+
+    if pgrep sshd; then
+      echo "sshd is already running"
+      exit 0
+    fi
+
     ${prefixLines generateKeyWhenNeededOf supportedKeysTypes}
 
     if [ ! -f "${authorizedKeysFolder}/${config.user.userName}" ]; then
@@ -42,8 +47,7 @@ let
       ${lib.optionalString cfg.includeCollectiveSSHKeys (prefixLines appendAuthorizedKeysFiles ["/etc/ssh/collective_keys"])}
     fi
 
-    ${pkgs.openssh}/bin/sshd \
-      -f "/etc/${configPath}"
+    ${pkgs.openssh}/bin/sshd -f "/etc/${configPath}"
   '';
 in {
   options.sshd = {
@@ -108,10 +112,10 @@ in {
 
       session.actions.sshd = {
         checkRunning = ''
-          ${pkgs.procps}/bin/ps -a | ${pkgs.toybox}/bin/grep sshd
+          ${pkgs.toybox}/bin/pgrep sshd
         '';
         start = ''
-          ${sshd-start}/bin/${sshd-start-bin}
+          ${sshd-start}/bin/sshd-start
         '';
       };
     }
