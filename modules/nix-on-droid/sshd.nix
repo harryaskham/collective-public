@@ -27,6 +27,7 @@ let
       ${generateKeyOf type}
     fi
   '';
+  authorizedKeysFolder = "/etc/ssh/authorized_keys.d";
   appendAuthorizedKeysFiles = authorizedKeysFile: ''
     cat ${authorizedKeysFile} >${authorizedKeysFolder}/${config.user.userName}
   '';
@@ -40,12 +41,6 @@ let
     fi
 
     ${prefixLines generateKeyWhenNeededOf supportedKeysTypes}
-
-    if [ ! -f "${authorizedKeysFolder}/${config.user.userName}" ]; then
-      mkdir --parents "${authorizedKeysFolder}"
-      ${prefixLines appendAuthorizedKeysFiles cfg.authorizedKeysFiles}
-      ${lib.optionalString cfg.includeCollectiveSSHKeys (prefixLines appendAuthorizedKeysFiles ["/etc/ssh/collective_keys"])}
-    fi
 
     ${pkgs.openssh}/bin/sshd -f "/etc/${configPath}" -E /etc/ssh/sshd.log
   '';
