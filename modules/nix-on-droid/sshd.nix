@@ -53,29 +53,9 @@ in {
         Specifies on which ports the SSH daemon listens.
       '';
     };
-
-    includeCollectiveSSHKeys = mkDefaultEnable "Include the clib ssh keys";
-
-    authorizedKeysFiles = lib.mkOption {
-      type = lib.types.listOf (lib.types.oneOf [ lib.types.path lib.types.str ]);
-      default = [ ];
-      description = ''
-        Specify the rules for which files to read on the host.
-
-        This is an advanced option.
-
-        These are paths relative to the host root file system or home
-        directories and they are subject to certain token expansion rules.
-        See AuthorizedKeysFile in man sshd_config for details.
-      '';
-    };
   };
 
   config = lib.mkIf cfg.enable (lib.mkMerge [
-    (lib.mkIf cfg.includeCollectiveSSHKeys {
-      environment.etc."ssh/collective_keys".text = concatLines (lib.attrValues cssh.authorizedKeys);
-    })
-
     {
       environment.etc = {
         "${configPath}".text = ''
