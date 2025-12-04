@@ -95,6 +95,7 @@ in {
           X11Forwarding yes
 
           LogLevel VERBOSE
+          PidFile /etc/ssh/sshd.pid
         '';
       };
 
