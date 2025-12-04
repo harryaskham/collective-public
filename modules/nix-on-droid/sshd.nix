@@ -30,14 +30,9 @@ let
   sshd-start = pkgs.writeScriptBin "sshd-start" ''
     #!${pkgs.runtimeShell}
 
-    if pgrep sshd; then
-      echo "sshd is already running"
-      exit 0
-    fi
-
     ${prefixLines generateKeyWhenNeededOf supportedKeysTypes}
 
-    ${pkgs.openssh}/bin/sshd -f "/etc/${configPath}" -E /etc/ssh/sshd.log
+    ${pkgs.openssh}/bin/sshd -f "/etc/${configPath}" -E /etc/ssh/sshd.log &
   '';
 in {
   options.sshd = {
@@ -81,20 +76,6 @@ in {
           $DRY_RUN_CMD ${sshd-start}/bin/sshd-start
         fi
       '';
-
-      session.actions.sshd = {
-        checkRunning = ''
-          SERVER_PID=$(${pkgs.toybox}/bin/pgrep sshd)
-          if [ -z "$SERVER_PID" ]; then
-            return 0
-          else
-            return 1
-          fi
-        '';
-        start = ''
-          ${sshd-start}/bin/sshd-start
-        '';
-      };
     }
   ]);
 }
