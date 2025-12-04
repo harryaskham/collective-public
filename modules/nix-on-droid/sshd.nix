@@ -9,7 +9,6 @@ let
   prefixLines = mapper: list: concatLines (map mapper list);
   configPath = "ssh/sshd_config";
   keysFolder = "/etc/ssh";
-  authorizedKeysFolder = "/etc/ssh/authorized_keys.d";
   supportedKeysTypes = [
     "rsa"
     "ed25519"
@@ -26,10 +25,6 @@ let
       mkdir --parents ${keysFolder}
       ${generateKeyOf type}
     fi
-  '';
-  authorizedKeysFolder = "/etc/ssh/authorized_keys.d";
-  appendAuthorizedKeysFiles = authorizedKeysFile: ''
-    cat ${authorizedKeysFile} >${authorizedKeysFolder}/${config.user.userName}
   '';
 
   sshd-start = pkgs.writeScriptBin "sshd-start" ''
@@ -86,7 +81,7 @@ in {
         "${configPath}".text = ''
           ${prefixLines (port: "Port ${toString port}") cfg.ports}
 
-          AuthorizedKeysFile ${authorizedKeysFolder}/%u
+          AuthorizedKeysFile /etc/ssh/authorized_keys.d/%u
           X11Forwarding yes
 
           LogLevel VERBOSE
