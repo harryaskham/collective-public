@@ -26,7 +26,7 @@ let
   actionScriptPath = name: "/etc/${actionScriptName name}";
 in {
   options.session = {
-    enable = mkEnable "Whether to enable session management";
+    enable = mkDefaultEnable "Whether to enable session management";
     actions = mkOption {
       type = types.attrsOf types.action;
       default = {};
