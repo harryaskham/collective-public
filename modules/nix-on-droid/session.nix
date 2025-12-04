@@ -1,4 +1,4 @@
-{ config, lib, pkgs, outputs, typed, ...}:
+{ config, lib, pkgs, typed, ...}:
 
 # Since NOD can be preempted by system restart, OOM, etc, anything started in
 # build.activationAfter may no longer be running. Instead, idempotently check for and start up
@@ -26,9 +26,9 @@ let
   actionScriptPath = name: "/etc/${actionScriptName name}";
 in {
   options.session = {
-    enable = mkEnable "Whether to enable session management";
+    enable = mkDefaultEnable "Whether to enable session management";
     actions = mkOption {
-      type = types.attrsOf types.action;
+      type = types.attrsOf action;
       default = {};
       description = ''
         Actions to check and run on session start.

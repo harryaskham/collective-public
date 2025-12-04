@@ -90,6 +90,7 @@ in {
           X11Forwarding yes
 
           LogLevel VERBOSE
+          SysLogFacility USER
           PidFile /etc/ssh/sshd.pid
         '';
       };
@@ -108,7 +109,12 @@ in {
 
       session.actions.sshd = {
         checkRunning = ''
-          ${pkgs.toybox}/bin/pgrep sshd
+          SERVER_PID=$(${pkgs.toybox}/bin/pgrep sshd)
+          if [ -z "$SERVER_PID" ]; then
+            return 0
+          else
+            return 1
+          fi
         '';
         start = ''
           ${sshd-start}/bin/sshd-start
