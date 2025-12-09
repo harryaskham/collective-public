@@ -37,7 +37,7 @@ let
 
     ${prefixLines generateKeyWhenNeededOf supportedKeysTypes}
 
-    ${pkgs.openssh}/bin/sshd -f "/etc/${configPath}" -E /etc/ssh/sshd.log &
+    ${pkgs.openssh}/bin/sshd -f "/etc/ssh/sshd_config" -E "/etc/ssh/sshd.log"
   '';
 in {
   options.sshd = {
