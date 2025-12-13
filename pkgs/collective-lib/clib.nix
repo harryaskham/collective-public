@@ -25,8 +25,8 @@ rec {
 
     mk = 
       let 
-        bind = mapAttrs (_: x: dispatch.def x {
-          lambda = f: f xs;
+        bind = self: mapAttrs (_: x: dispatch.def x {
+          lambda = f: f self;
         } x);
         unbound = {
           def = self: default: bind (self // { inherit default; }) ;
