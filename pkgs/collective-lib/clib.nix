@@ -46,9 +46,9 @@ rec {
               ]));
           });
       in class "Opt.mk" { opt = {}; } {
-        def = self: default: self // { opt = self.opt // { inherit default; }; } ;
-        of = self: type: self // { opt = self.opt // { inherit type; }; };
-        desc = self: description: self // { opt = self.opt // { inherit description; }; };
+        def = self: default: self.modify.opt (opt: opt // { inherit default; });
+        of = self: type: self.modify.opt (opt: opt // { inherit type; });
+        desc = self: description: self.modify.opt (opt: opt // { inherit description; });
         done = self: {}: self.opt;
       };
 
