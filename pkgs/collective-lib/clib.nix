@@ -30,9 +30,9 @@ rec {
         } x);
         unbound = {
           opt = {};
-          def = self: default: bind (self // { opt = self.opt // { inherit default; } }) ;
-          of = self: type: bind (self // { opt = self.opt // { inherit type; } });
-          desc = self: description: bind (self // { opt = self.opt // { inherit description; } });
+          def = self: default: bind (self // { opt = self.opt // { inherit default; }; }) ;
+          of = self: type: bind (self // { opt = self.opt // { inherit type; }; });
+          desc = self: description: bind (self // { opt = self.opt // { inherit description; }; });
         };
       in bind unbound;
 
