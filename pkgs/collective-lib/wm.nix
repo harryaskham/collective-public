@@ -263,7 +263,7 @@ in rec {
         flip = runs ''exec, hypr --flip'';
       };
       skhd = {
-        goToWorkspace = runs "yabai -m space ${toString args.n} --focus";
+        goToWorkspace = runs "yabai -m space --focus ${toString args.n}";
         exec = runs ''${toString args.execCmd}'';
         toggleOutput = runs ''echo unimplemented'';
         currentToWorkspace = runs ''yabai -m window --space ${toString args.n}'';
@@ -285,14 +285,14 @@ in rec {
         pseudofloatCurrent = runs "echo unimplemented";
         pinCurrent = runs "yabai -m window --toggle sticky";
         toggleSplit = runs "yabai -m window --toggle split";
-        growLeft = runs "yabai -m window --resize left:-100:0";
-        growRight = runs "yabai -m window --resize right:100:0";
-        growUp = runs "yabai -m window --resize top:0:-100";
-        growDown = runs "yabai -m window --resize bottom:0:100";
+        growLeft = runs "yabai -m window --resize left:-50:0";
+        growRight = runs "yabai -m window --resize right:50:0";
+        growUp = runs "yabai -m window --resize top:0:-50";
+        growDown = runs "yabai -m window --resize bottom:0:50";
         screenshot = runs ''screencapture -s ~/Pictures/screenshot-"$(date '+%F %H.%M.%S')".png'';
-        volumeUp = runs ''m volume --set $(( $(m volume | rg -o '\d+' ) + 5 ))'';
-        volumeDown = runs ''m volume --set $(( $(m volume | rg -o '\d+' ) - 5 ))'';
-        volumeMute = runs ''m volume $((m volume | rg Muted) && echo "--unmute") || echo "--mute")'';
+        volumeUp = runs ''VOL=$(m volume | rg -o '\d+' 2>&1 | xargs echo -n) m volume --set $(( VOL + 5 ))'';
+        volumeDown = runs ''VOL=$(m volume | rg -o '\d+' 2>&1 | xargs echo -n) m volume --set $(( VOL - 5 ))'';
+        volumeMute = runs ''FLAG=$(((m volume | rg Muted 2>&1 | xargs echo -n) && echo "--unmute") || echo "--mute") m volume $FLAG'';
         brightnessUp = runs "m display --up";
         brightnessDown = runs "m display --down";
         nextWorkspace = runs ''skhd -k "ctrl + right"'';
