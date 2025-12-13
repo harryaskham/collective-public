@@ -90,6 +90,9 @@ in rec {
         "${binding.mkBind.hypr bind}, ${cmd}"
       ];
     };
+    skhd = {
+      config = "${binding.mkBind.skhd bind} : ${cmd}";
+    };
   }.${wm};
   actions = {
     goToWorkspace = workspaceIndex: {
@@ -261,6 +264,44 @@ in rec {
         rotateCW = runs ''exec, hypr --rotate'';
         flip = runs ''exec, hypr --flip'';
       };
+      yabai = {
+        goToWorkspace = runs "yabai -m space ${toString args.n} --focus";
+        exec = runs ''${toString args.execCmd}'';
+        toggleOutput = runs ''echo unimplemented'';
+        currentToWorkspace = runs ''yabai -m window --space ${toString args.n}'';
+        killCurrent = runs "yabai -m window --close";
+        fullscreen = runs "yabai -m window --toggle zoom-fullscreen";
+        exitSession = runs ''echo unimplemented'';
+        focusUp = runs "yabai -m window --focus north";
+        focusDown = runs "yabai -m window --focus south";
+        focusLeft = runs "yabai -m window --focus west";
+        focusRight = runs "yabai -m window --focus east";
+        moveWindowUp = runs "yabai -m window --swap north";
+        moveWindowDown = runs "yabai -m window --swap south";
+        moveWindowLeft = runs "yabai -m window --swap west";
+        moveWindowRight = runs "yabai -m window --swap east";
+        openTerminal = runs ''open -n /Applications/kitty.app'';
+        openLauncher = runs ''echo unimplemented'';
+        reloadConfig = runs "yabai --restart-service; skhd --reload";
+        floatCurrent = runs "yabai -m window --toggle float; yabai -m window --grid 4:4:1:1:2:2togglefloating";
+        pseudofloatCurrent = runs "echo unimplemented";
+        pinCurrent = runs "yabai -m window --toggle sticky";
+        toggleSplit = runs "yabai -m window --toggle split";
+        growLeft = runs "yabai -m window --resize left:-100:0";
+        growRight = runs "yabai -m window --resize right:100:0";
+        growUp = runs "yabai -m window --resize top:0:-100";
+        growDown = runs "yabai -m window --resize bottom:0:100";
+        screenshot = runs ''screencapture -s ~/Pictures/screenshot-"$(date '+%F %H.%M.%S')".png'';
+        volumeUp = runs ''m volume --set $(( $(m volume | rg -o '\d+' ) + 5 ))'';
+        volumeDown = runs ''m volume --set $(( $(m volume | rg -o '\d+' ) - 5 ))'';
+        volumeMute = runs ''m volume $((m volume | rg Muted) && echo "--unmute") || echo "--mute")'';
+        brightnessUp = runs "m display --up";
+        brightnessDown = runs "m display --down";
+        nextWorkspace = runs ''skhd -k "ctrl + right"'';
+        previousWorkspace = runs ''skhd -k "ctrl + left"'';
+        rotateCW = runs ''echo unimplemented'';
+        flip = runs ''echo unimplemented'';
+      };
     }.${wm}.${bc.cmd.tag});
   toConfig = impl;
   toi3Config = toConfig "i3";
@@ -270,4 +311,6 @@ in rec {
   toi3Configs = toConfigs "i3";
   toSwayConfigs = toConfigs "sway";
   toHyprlandSettings = toConfigs "hyprland";
+  toSkhdConfig = toConfig "skhd";
+  toSkhdSettings = toConfigs "skhd";
 }
