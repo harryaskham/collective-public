@@ -29,6 +29,14 @@ rec {
     mods = ["super"];
     keys = [k];
   };
+  fnAnd = k: {
+    mods = ["fn"];
+    keys = [k];
+  };
+  modFnAnd = k: {
+    mods = ["$mod" "fn"];
+    keys = [k];
+  };
   superShiftAnd = k: {
     mods = ["super" "shift"];
     keys = [k];
@@ -52,20 +60,40 @@ rec {
   swayMod = m: if (m == "super") then "Mod4" else m;
   swayMods = ms: map swayMod ms;
   skhdMod = m: if (m == "super") then "cmd" else if (m == "$mod") then "alt" else m;
-  skhdMods = ms: map skhdMod ms;
+  skhdMods = b:
+    (map skhdMod b.mods)
+    ++ (optionals (any (k: elem k [ "f1" "f2" "f3" "f4" "f5" "f6" "f7" "f8" "f9" "f10" "f11" "f12" ]) (skhdKeys b.keys))
+      [ "fn" ]);
+  skhdKeys = b: map skhdKey b.ks;
+  skhdKey = k: {
+    F1 = "f1";
+    F2 = "f2";
+    F3 = "f3";
+    F4 = "f4";
+    F5 = "f5";
+    F6 = "f6";
+    F7 = "f7";
+    F8 = "f8";
+    F9 = "f9";
+    F10 = "f10";
+    F11 = "f11";
+    F12 = "f12";
+    Return = "return";
+  }.${k} or k;
   modPrefix = rec {
     # sway has "mod+mod+mod+key", empty mods are "key"
     sway = b: optionalString (b.mods != null && length b.mods > 0) "${strings.concatStringsSep "+" (swayMods b.mods)}+";
     i3 = sway;
     # Hyprland has "mod mod mod, keys", empty mods are ", keys"
     hypr = b: "${optionalString (b.mods != null && length b.mods > 0) (strings.concatStringsSep " " b.mods)}, ";
-    skhd = b: optionalString (b.mods != null && length b.mods > 0) "${strings.concatStringsSep " + " (skhdMods b.mods)} - ";
-  };
+    skhd = b: 
+      let mods = skhdMods b;
+      in optionalString (mods != null && length mods > 0) "${strings.concatStringsSep " + " mods} - "; };
   keySuffix = rec {
     sway = b: strings.concatStringsSep "+" b.keys;
     i3 = sway;
     hypr = b: strings.concatStringsSep " " b.keys;
-    skhd = b: strings.concatStringsSep " " b.keys;
+    skhd = b: strings.concatStringsSep " " (skhdKeys b);
   };
   mkBind = rec {
     sway = b: "${modPrefix.sway b}${keySuffix.sway b}";
