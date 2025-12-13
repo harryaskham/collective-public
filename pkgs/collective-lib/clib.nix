@@ -31,6 +31,16 @@ rec {
         });
   };
 
+  # i.e. config = ((((Option.new {}).of types.lines).def "").desc "Skhd configuration file contents").done {};
+  Option = class "Option"
+    { opt = {}; }
+    {
+      def = self: default: self.modify.opt (opt: opt // { inherit default; });
+      of = self: type: self.modify.opt (opt: opt // { inherit type; });
+      desc = self: description: self.modify.opt (opt: opt // { inherit description; });
+      done = self: {}: mkOption self.opt;
+    };
+
   # Options factories
   Opt = {
     def = mkDefaultOption;
@@ -48,15 +58,6 @@ rec {
         default = mkNestedDefaultEnable;
       };
     };
-
-    mk = class "Opt.mk"
-      { opt = {}; }
-      {
-        def = self: default: self.modify.opt (opt: opt // { inherit default; });
-        of = self: type: self.modify.opt (opt: opt // { inherit type; });
-        desc = self: description: self.modify.opt (opt: opt // { inherit description; });
-        done = self: {}: self.opt;
-      };
 
     propagate = {
       __functor = self: self.option;
