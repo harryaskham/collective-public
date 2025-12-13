@@ -292,7 +292,7 @@ in rec {
         screenshot = runs ''screencapture -s ~/Pictures/screenshot-"$(date '+%F %H.%M.%S')".png'';
         volumeUp = runs ''VOL=$(m volume | rg -o '\d+' 2>&1 | xargs echo -n) m volume --set $(( VOL + 5 ))'';
         volumeDown = runs ''VOL=$(m volume | rg -o '\d+' 2>&1 | xargs echo -n) m volume --set $(( VOL - 5 ))'';
-        volumeMute = runs ''FLAG=$(((m volume | rg Muted 2>&1 | xargs echo -n) && echo "--unmute") || echo "--mute") m volume $FLAG'';
+        volumeMute = runs ''m volume $((m volume 2>&1 | rg Unmuted >/dev/null && echo "--mute") || echo "--unmute")'';
         brightnessUp = runs "m display --up";
         brightnessDown = runs "m display --down";
         nextWorkspace = runs ''skhd -k "ctrl + right"'';
