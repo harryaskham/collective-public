@@ -62,9 +62,8 @@ rec {
   skhdMod = m: if (m == "super") then "cmd" else if (m == "$mod") then "alt" else m;
   skhdMods = b:
     (map skhdMod b.mods)
-    ++ (optionals (any (k: elem k [ "f1" "f2" "f3" "f4" "f5" "f6" "f7" "f8" "f9" "f10" "f11" "f12" ]) (skhdKeys b.keys))
-      [ "fn" ]);
-  skhdKeys = b: map skhdKey b.ks;
+    ++ (optionals (any (k: elem k [ "f1" "f2" "f3" "f4" "f5" "f6" "f7" "f8" "f9" "f10" "f11" "f12" ]) (skhdKeys b)) [ "fn" ]);
+  skhdKeys = b: map skhdKey b.keys;
   skhdKey = k: {
     F1 = "f1";
     F2 = "f2";
