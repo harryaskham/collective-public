@@ -26,20 +26,20 @@ rec {
     mk = 
       let 
         bind = self:
-          if self ? __type__ then
-            self // (mapAttrs (_: method: bind (method self)) self.__type__.methods)
+          if self ? __class__ then
+            self // (mapAttrs (_: method: bind (method self)) self.__class__.methods)
           else
             self;
         setters = {
-          set = mapAttrs self.__type__.fields (field: _: value: bind (self // { ${field} = value; } ));
-          modify = mapAttrs self.__type__.fields (field: _: f: self.set.${field} (f self.${field}));
+          set = mapAttrs self.__class__.fields (field: _: value: bind (self // { ${field} = value; } ));
+          modify = mapAttrs self.__class__.fields (field: _: f: self.set.${field} (f self.${field}));
         };
         class = name: fields: methods: 
           lib.fix (cls: {
             inherit name fields methods;
             new = values:
               lib.fix (self: bind (mergeAttrsList [
-                {__type__ = cls;}
+                {__class__ = cls;}
                 fields
                 values
                 setters
