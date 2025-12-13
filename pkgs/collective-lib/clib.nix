@@ -19,9 +19,7 @@ rec {
       __set = self: field: value: self // { ${field} = value; };
       __modify = self: field: f: self // { ${field} = f (self.${field}); };
     };
-    __functor =
-      classSelf:
-      name: fields: methods: 
+    __functor = classSelf: name: fields: methods: 
         lib.fix (cls: {
           inherit name fields;
           methods = class.defaultMethods // methods;
