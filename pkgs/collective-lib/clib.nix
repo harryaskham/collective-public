@@ -25,16 +25,32 @@ rec {
 
     mk = 
       let 
-        bind = self: mapAttrs (_: x: dispatch.def x {
-          lambda = f: f self;
-        } x);
-        unbound = {
-          opt = {};
-          def = self: default: bind (self // { opt = self.opt // { inherit default; }; }) ;
-          of = self: type: bind (self // { opt = self.opt // { inherit type; }; });
-          desc = self: description: bind (self // { opt = self.opt // { inherit description; }; });
+        bind = self:
+          if self ? __type__ then
+            self // (mapAttrs (_: method: bind (method self)) self.__type__.methods);
+          else
+            self;
+        setters = {
+          set = mapAttrs self.__type__.fields (field: _: value: bind (self // { ${field} = value; } ));
+          modify = mapAttrs self.__type__.fields (field: _: f: self.set.${field} (f self.${field}));
         };
-      in bind unbound;
+        class = name: fields: methods: 
+          lib.fix (cls: {
+            inherit name fields methods;
+            new = values:
+              lib.fix (self: bind (mergeAttrsList [
+                {__type__ = cls;}
+                fields
+                values
+                setters
+              ]));
+          });
+      in class "Opt.mk" { opt = {}; } {
+        def = self: default: self // { opt = self.opt // { inherit default; }; } ;
+        of = self: type: self // { opt = self.opt // { inherit type; }; };
+        desc = self: description: self // { opt = self.opt // { inherit description; }; };
+        done = self: self.opt;
+      };
 
     propagate = {
       __functor = self: self.option;
