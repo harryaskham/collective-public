@@ -53,8 +53,9 @@ rec {
       };
     };
 
-    mk = 
-      in class "Opt.mk" { opt = {}; } {
+    mk = class "Opt.mk"
+      { opt = {}; }
+      {
         def = self: default: self.modify.opt (opt: opt // { inherit default; });
         of = self: type: self.modify.opt (opt: opt // { inherit type; });
         desc = self: description: self.modify.opt (opt: opt // { inherit description; });
