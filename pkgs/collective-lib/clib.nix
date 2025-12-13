@@ -6,12 +6,13 @@ with collective-lib;
 # Misc library fns
 rec {
   class = {
-    bind = prevSelf: 
-      lib.fix (self: prevSelf // (
-        optionalAttrs (prevSelf ? __class__) (mergeAttrsList [
-          (forAttrs self.__class__.methods (_: method: method self))
-          (class.accessors self)
-        ])));
+    bind = prev:
+      if prev ? __class__
+      then lib.fix (self: prev // (mergeAttrsList [
+        (forAttrs self.__class__.methods (_: method: Varidic.compose bind (method self)))
+        (class.accessors self)
+      ]))
+      else prev;
     accessors = self: {
       set = forAttrs self.__class__.fields (field: _: value: self.__set field value);
       modify = forAttrs self.__class__.fields (field: _: value: self.__modify field value);
