@@ -27,16 +27,18 @@ rec {
       let 
         bind = self:
           if self ? __class__ then
-            self // (mapAttrs (_: method: bind (method self)) self.__class__.methods)
+            self // (forAttrs self.__class__.methods (_: method: method self))
           else
             self;
+        makeBinding = Variadic.compose bind;
         setters = {
-          set = mapAttrs self.__class__.fields (field: _: value: bind (self // { ${field} = value; } ));
-          modify = mapAttrs self.__class__.fields (field: _: f: self.set.${field} (f self.${field}));
+          set = forAttrs self.__class__.fields (field: _: value: bind (self // { ${field} = value; } ));
+          modify = forAttrs self.__class__.fields (field: _: f: self.set.${field} (f self.${field}));
         };
         class = name: fields: methods: 
           lib.fix (cls: {
-            inherit name fields methods;
+            inherit name fields;
+            methods = mapAttrs (_: makeBinding) methods;
             new = values:
               lib.fix (self: bind (mergeAttrsList [
                 {__class__ = cls;}
