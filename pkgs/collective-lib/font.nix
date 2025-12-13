@@ -48,5 +48,24 @@ rec {
       style = "Bold Italic";
     };
   };
+  defaultMacOSTermSpec = {
+    size = 12.0;
+    regular = {
+      family = "FiraCode Nerd Font Mono";
+      style = "Regular";
+    };
+    bold = {
+      family = "FiraCode Nerd Font Mono";
+      style = "Bold";
+    };
+    italic = {
+      family = "JetBrains Mono";
+      style = "Italic";
+    };
+    boldItalic = {
+      family = "JetBrains Mono";
+      style = "Bold Italic";
+    };
+  };
   fullName = f: "${f.family} ${f.style}";
 }
