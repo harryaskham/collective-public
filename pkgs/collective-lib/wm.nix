@@ -90,9 +90,7 @@ in rec {
         "${binding.mkBind.hypr bind}, ${cmd}"
       ];
     };
-    skhd = {
-      config = "${binding.mkBind.skhd bind} : ${cmd}";
-    };
+    skhd = "${binding.mkBind.skhd bind} : ${cmd}";
   }.${wm};
   actions = {
     goToWorkspace = workspaceIndex: {
