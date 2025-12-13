@@ -8,7 +8,7 @@ rec {
   class = {
     bind = prev: lib.fix (self: 
       prev 
-      // (forAttrs prev.__class__.methods (_: method: arg: (Variadic.compose class.bind (method self) arg)))
+      // (forAttrs prev.__class__.methods (_: method: arg: (Variadic.compose class.maybeBind (method self) arg)))
       // (class.accessors self));
     maybeBind = self: if prev ? __class__ then class.bind self else self;
     accessors = self: {
