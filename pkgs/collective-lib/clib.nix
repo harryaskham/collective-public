@@ -31,20 +31,24 @@ rec {
           else
             self;
         makeBinding = Variadic.compose bind;
-        setters = {
-          set = forAttrs self.__class__.fields (field: _: value: bind (self // { ${field} = value; } ));
-          modify = forAttrs self.__class__.fields (field: _: f: self.set.${field} (f self.${field}));
+        accessors = self: {
+          set = forAttrs self.__class__.fields (field: _: value: self.__set field value);
+          modify = forAttrs self.__class__.fields (field: _: value: self.__modify field value);
+        };
+        defaultMethods = {
+          __set = self: field: value: self // { ${field} = value; };
+          __modify = self: field: f: self // { ${field} = f (self.${field}); };
         };
         class = name: fields: methods: 
           lib.fix (cls: {
             inherit name fields;
-            methods = mapAttrs (_: makeBinding) methods;
+            methods = mapAttrs (_: makeBinding) (defaultMethods // methods);
             new = values:
               lib.fix (self: bind (mergeAttrsList [
                 {__class__ = cls;}
                 fields
                 values
-                setters
+                (accessors self)
               ]));
           });
       in class "Opt.mk" { opt = {}; } {
