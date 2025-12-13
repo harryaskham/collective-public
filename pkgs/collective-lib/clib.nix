@@ -27,7 +27,7 @@ rec {
       let 
         bind = self:
           if self ? __type__ then
-            self // (mapAttrs (_: method: bind (method self)) self.__type__.methods);
+            self // (mapAttrs (_: method: bind (method self)) self.__type__.methods)
           else
             self;
         setters = {
@@ -49,7 +49,7 @@ rec {
         def = self: default: self // { opt = self.opt // { inherit default; }; } ;
         of = self: type: self // { opt = self.opt // { inherit type; }; };
         desc = self: description: self // { opt = self.opt // { inherit description; }; };
-        done = self: self.opt;
+        done = self: {}: self.opt;
       };
 
     propagate = {
