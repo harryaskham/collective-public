@@ -5,6 +5,36 @@ with collective-lib;
 
 # Misc library fns
 rec {
+  class = {
+    bind = prevSelf: 
+      lib.fix (self: prevSelf // (
+        optionalAttrs (prevSelf ? __class__) (mergeAttrsList [
+          (forAttrs self.__class__.methods (_: method: method self))
+          (class.accessors self)
+        ])));
+    accessors = self: {
+      set = forAttrs self.__class__.fields (field: _: value: self.__set field value);
+      modify = forAttrs self.__class__.fields (field: _: value: self.__modify field value);
+    };
+    defaultMethods = {
+      __set = self: field: value: self // { ${field} = value; };
+      __modify = self: field: f: self // { ${field} = f (self.${field}); };
+    };
+    mkMethods = methods: mapAttrs (_: Variadic.compose class.bind) (class.defaultMethods // methods);
+    __functor =
+      classSelf:
+      name: fields: methods: 
+        lib.fix (cls: {
+          inherit name fields;
+          methods = mkMethods methods;
+          new = values: class.bind (mergeAttrsList [
+            {__class__ = cls;}
+            fields
+            values
+          ]);
+        });
+  };
+
   # Options factories
   Opt = {
     def = mkDefaultOption;
@@ -24,33 +54,6 @@ rec {
     };
 
     mk = 
-      let 
-        bind = self:
-          if self ? __class__ then
-            self // (forAttrs self.__class__.methods (_: method: method self))
-          else
-            self;
-        makeBinding = Variadic.compose bind;
-        accessors = self: {
-          set = forAttrs self.__class__.fields (field: _: value: self.__set field value);
-          modify = forAttrs self.__class__.fields (field: _: value: self.__modify field value);
-        };
-        defaultMethods = {
-          __set = self: field: value: self // { ${field} = value; };
-          __modify = self: field: f: self // { ${field} = f (self.${field}); };
-        };
-        class = name: fields: methods: 
-          lib.fix (cls: {
-            inherit name fields;
-            methods = mapAttrs (_: makeBinding) (defaultMethods // methods);
-            new = values:
-              lib.fix (self: bind (mergeAttrsList [
-                {__class__ = cls;}
-                fields
-                values
-                (accessors self)
-              ]));
-          });
       in class "Opt.mk" { opt = {}; } {
         def = self: default: self.modify.opt (opt: opt // { inherit default; });
         of = self: type: self.modify.opt (opt: opt // { inherit type; });
