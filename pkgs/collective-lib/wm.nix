@@ -264,7 +264,7 @@ in rec {
         rotateCW = runs ''exec, hypr --rotate'';
         flip = runs ''exec, hypr --flip'';
       };
-      yabai = {
+      skhd = {
         goToWorkspace = runs "yabai -m space ${toString args.n} --focus";
         exec = runs ''${toString args.execCmd}'';
         toggleOutput = runs ''echo unimplemented'';
