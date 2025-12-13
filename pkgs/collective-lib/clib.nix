@@ -23,6 +23,23 @@ rec {
       };
     };
 
+    mk = 
+      let 
+        bind = mapAttrs (_: x: dispatch.def x {
+          lambda = f: f xs;
+        } x);
+        unbound = {
+          def = self: default: bind (self // { inherit default; }) ;
+          of = self: type: bind (self // { inherit type; });
+          desc = self: description: bind (self // { inherit description; });
+          done = self: mergeAttrsList [
+            (optionalAttrs (self ? type) { inherit (self) type; })
+            (optionalAttrs (self ? default) { inherit (self) default; })
+            (optionalAttrs (self ? description) { inherit (self) description; })
+          ];
+        };
+      in bind unbound;
+
     propagate = {
       __functor = self: self.option;
 
