@@ -10,7 +10,7 @@ rec {
       prev 
       // (forAttrs prev.__class__.methods (_: method: arg: (Variadic.compose class.maybeBind (method self) arg)))
       // (class.accessors self));
-    maybeBind = self: if prev ? __class__ then class.bind self else self;
+    maybeBind = self: if self ? __class__ then class.bind self else self;
     accessors = self: {
       set = forAttrs self.__class__.fields (field: _: value: self.__set field value);
       modify = forAttrs self.__class__.fields (field: _: value: self.__modify field value);
