@@ -6,13 +6,11 @@ with collective-lib;
 # Misc library fns
 rec {
   class = {
-    bind = prev:
-      if prev ? __class__
-      then lib.fix (self: prev // (mergeAttrsList [
-        (forAttrs self.__class__.methods (_: method: Varidic.compose bind (method self)))
-        (class.accessors self)
-      ]))
-      else prev;
+    bind = prev: lib.fix (self: 
+      prev 
+      // (forAttrs prev.__class__.methods (_: method: arg: (Variadic.compose class.bind (method self) arg)))
+      // (class.accessors self));
+    maybeBind = self: if prev ? __class__ then class.bind self else self;
     accessors = self: {
       set = forAttrs self.__class__.fields (field: _: value: self.__set field value);
       modify = forAttrs self.__class__.fields (field: _: value: self.__modify field value);
@@ -21,13 +19,12 @@ rec {
       __set = self: field: value: self // { ${field} = value; };
       __modify = self: field: f: self // { ${field} = f (self.${field}); };
     };
-    mkMethods = methods: mapAttrs (_: Variadic.compose class.bind) (class.defaultMethods // methods);
     __functor =
       classSelf:
       name: fields: methods: 
         lib.fix (cls: {
           inherit name fields;
-          methods = mkMethods methods;
+          methods = class.defaultMethods // methods;
           new = values: class.bind (mergeAttrsList [
             {__class__ = cls;}
             fields
