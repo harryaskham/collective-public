@@ -4,7 +4,7 @@ with collective-lib;
 with collective-lib.clib;
 
 # Utilities for configuring window management intents and bindings independently from the WM.
-# i.e. maps desktop manipulation in a way that can be shared across sway/i3/hyprland/etc
+# Maps desktop manipulation in a way that can be shared across sway/i3/hyprland/etc
 let
   types = lib.types;
   mkOption = lib.mkOption;
