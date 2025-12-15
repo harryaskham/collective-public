@@ -293,10 +293,10 @@ in rec {
           pseudofloatCurrent = runs "echo unimplemented";
           pinCurrent = runs "yabai -m window --toggle sticky";
           toggleSplit = runs "yabai -m window --toggle split";
-          growLeft = runs "yabai -m window --resize left:-${resizeBy}:0 || yabai -m window --resize right:-${resizeBy}:0";
-          growRight = runs "yabai -m window --resize right:${resizeBy}:0 || yabai -m window --resize left:${resizeBy}:0";
-          growUp = runs "yabai -m window --resize top:0:-${resizeBy} || yabai -m window --resize bottom:0:-${resizeBy}";
-          growDown = runs "yabai -m window --resize bottom:0:${resizeBy} || yabai -m window --resize top:0:${resizeBy}";
+          growLeft = runs "yabai -m window --resize left:-${toString resizeBy}:0 || yabai -m window --resize right:-${toString resizeBy}:0";
+          growRight = runs "yabai -m window --resize right:${toString resizeBy}:0 || yabai -m window --resize left:${toString resizeBy}:0";
+          growUp = runs "yabai -m window --resize top:0:-${toString resizeBy} || yabai -m window --resize bottom:0:-${toString resizeBy}";
+          growDown = runs "yabai -m window --resize bottom:0:${toString resizeBy} || yabai -m window --resize top:0:${toString resizeBy}";
           balanceWindows = runs "yabai -m space --equalize";
           screenshot = runs ''screencapture -s ~/Pictures/screenshot-"$(date '+%F %H.%M.%S')".png'';
           volumeUp = runs ''VOL=$(m volume | rg -o '\d+' 2>&1 | xargs echo -n) m volume --set $(( VOL + 5 ))'';
