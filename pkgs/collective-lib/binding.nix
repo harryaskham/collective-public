@@ -62,9 +62,16 @@ rec {
   skhdMod = m: if (m == "super") then "cmd" else if (m == "$mod") then "alt" else m;
   skhdMods = b:
     (map skhdMod b.mods)
-    ++ (optionals (any (k: elem k [ "f1" "f2" "f3" "f4" "f5" "f6" "f7" "f8" "f9" "f10" "f11" "f12" ]) (skhdKeys b)) [ "fn" ]);
-  skhdKeys = b: map skhdKey b.keys;
-  skhdKey = k: {
+    ++ (optionals (any (k: elem k [ "f1" "f2" "f3" "f4" "f5" "f6" "f7" "f8" "f9" "f10" "f11" "f12" ]) (skhdKeys b.keys)) [ "fn" ]);
+
+  swayKeys = map (k: {
+    "=" = "equal";
+  }.${k} or k);
+  hyprKeys = map (k: {
+    "=" = "equal";
+  }.${k} or k);
+  skhdKeys = map (k: {
+    "=" = "0x18";
     F1 = "f1";
     F2 = "f2";
     F3 = "f3";
@@ -78,7 +85,7 @@ rec {
     F11 = "f11";
     F12 = "f12";
     Return = "return";
-  }.${k} or k;
+  }.${k} or k);
   modPrefix = rec {
     # sway has "mod+mod+mod+key", empty mods are "key"
     sway = b: optionalString (b.mods != null && length b.mods > 0) "${strings.concatStringsSep "+" (swayMods b.mods)}+";
@@ -89,10 +96,10 @@ rec {
       let mods = skhdMods b;
       in optionalString (mods != null && length mods > 0) "${strings.concatStringsSep " + " mods} - "; };
   keySuffix = rec {
-    sway = b: strings.concatStringsSep "+" b.keys;
+    sway = b: strings.concatStringsSep "+" (swayKeys b.keys);
     i3 = sway;
-    hypr = b: strings.concatStringsSep " " b.keys;
-    skhd = b: strings.concatStringsSep " " (skhdKeys b);
+    hypr = b: strings.concatStringsSep " " (hyprKeys b.keys);
+    skhd = b: strings.concatStringsSep " " (skhdKeys b.keys);
   };
   mkBind = rec {
     sway = b: "${modPrefix.sway b}${keySuffix.sway b}";

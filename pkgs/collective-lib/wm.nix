@@ -40,6 +40,7 @@ in rec {
           "growDown"
           "growLeft"
           "growRight"
+          "balanceWindows"
           "screenshot"
           "volumeUp"
           "volumeDown"
@@ -131,6 +132,7 @@ in rec {
     growRight = { tag = "growRight"; };
     growUp = { tag = "growUp"; };
     growDown = { tag = "growDown"; };
+    balanceWindows = { tag = "balanceWindows"; };
     screenshot = { tag = "screenshot"; };
     volumeUp = { tag = "volumeUp"; };
     volumeDown = { tag = "volumeDown"; };
@@ -175,6 +177,7 @@ in rec {
         growRight = runs "resize grow width 5 px or 5 ppt";
         growUp = runs "resize grow height 5 px or 5 ppt";
         growDown = runs "resize shrink height 5 px or 5 ppt";
+        balanceWindows = runs ''exec "echo unimplemented"'';
         screenshot = runs ''exec "xfce4-screenshooter -c -r"'';
         volumeUp = runs ''exec "pactl set-sink-volume @DEFAULT_SINK@ +5%"'';
         volumeDown = runs ''exec "pactl set-sink-volume @DEFAULT_SINK@ -5%"'';
@@ -213,6 +216,7 @@ in rec {
         growRight = runs "resize grow height 5 px or 5 ppt";
         growUp = runs "resize grow width 5 px or 5 ppt";
         growDown = runs "resize shrink height 5 px or 5 ppt";
+        balanceWindows = runs ''exec "echo unimplemented"'';
         screenshot = runs ''exec "grim -g \"$(slurp)\" ~/Pictures/$(date +\"screenshot-%Y-%m-%d-%H%M%S\").png"'';
         volumeUp = runs ''exec "pactl set-sink-volume @DEFAULT_SINK@ +5%"'';
         volumeDown = runs ''exec "pactl set-sink-volume @DEFAULT_SINK@ -5%"'';
@@ -251,6 +255,7 @@ in rec {
         growRight = runs "resizeactive, 100 0";
         growUp = runs "resizeactive, 0 -100";
         growDown = runs "resizeactive, 0 100";
+        balanceWindows = runs "exec, echo unimplemented";
         screenshot = runs ''exec, grim -g "$(slurp)" ~/Pictures/$(date +'screenshot-%Y-%m-%d-%H%M%S').png'';
         volumeUp = runs "exec, pactl set-sink-volume @DEFAULT_SINK@ +5%";
         volumeDown = runs "exec, pactl set-sink-volume @DEFAULT_SINK@ -5%";
@@ -262,44 +267,48 @@ in rec {
         rotateCW = runs ''exec, hypr --rotate'';
         flip = runs ''exec, hypr --flip'';
       };
-      skhd = {
-        goToWorkspace = runs "yabai -m space --focus ${toString args.n}";
-        exec = runs ''${toString args.execCmd}'';
-        toggleOutput = runs ''echo unimplemented'';
-        currentToWorkspace = runs ''yabai -m window --space ${toString args.n}'';
-        killCurrent = runs "yabai -m window --close";
-        fullscreen = runs "yabai -m window --toggle zoom-fullscreen";
-        exitSession = runs ''echo unimplemented'';
-        focusUp = runs "yabai -m window --focus north";
-        focusDown = runs "yabai -m window --focus south";
-        focusLeft = runs "yabai -m window --focus west";
-        focusRight = runs "yabai -m window --focus east";
-        moveWindowUp = runs "yabai -m window --swap north";
-        moveWindowDown = runs "yabai -m window --swap south";
-        moveWindowLeft = runs "yabai -m window --swap west";
-        moveWindowRight = runs "yabai -m window --swap east";
-        openTerminal = runs ''open -n /Applications/Ghostty.app'';
-        openLauncher = runs ''echo unimplemented'';
-        reloadConfig = runs "yabai --restart-service; skhd --reload";
-        floatCurrent = runs "yabai -m window --toggle float; yabai -m window --grid 4:4:1:1:2:2togglefloating";
-        pseudofloatCurrent = runs "echo unimplemented";
-        pinCurrent = runs "yabai -m window --toggle sticky";
-        toggleSplit = runs "yabai -m window --toggle split";
-        growLeft = runs "yabai -m window --resize left:-50:0";
-        growRight = runs "yabai -m window --resize right:50:0";
-        growUp = runs "yabai -m window --resize top:0:-50";
-        growDown = runs "yabai -m window --resize bottom:0:50";
-        screenshot = runs ''screencapture -s ~/Pictures/screenshot-"$(date '+%F %H.%M.%S')".png'';
-        volumeUp = runs ''VOL=$(m volume | rg -o '\d+' 2>&1 | xargs echo -n) m volume --set $(( VOL + 5 ))'';
-        volumeDown = runs ''VOL=$(m volume | rg -o '\d+' 2>&1 | xargs echo -n) m volume --set $(( VOL - 5 ))'';
-        volumeMute = runs ''m volume $((m volume 2>&1 | rg Unmuted >/dev/null && echo "--mute") || echo "--unmute")'';
-        brightnessUp = runs "m display --up";
-        brightnessDown = runs "m display --down";
-        nextWorkspace = runs ''skhd -k "ctrl + right"'';
-        previousWorkspace = runs ''skhd -k "ctrl + left"'';
-        rotateCW = runs ''echo unimplemented'';
-        flip = runs ''echo unimplemented'';
-      };
+      skhd = 
+        let
+          resizeBy = 50;
+        in {
+          goToWorkspace = runs "yabai -m space --focus ${toString args.n}";
+          exec = runs ''${toString args.execCmd}'';
+          toggleOutput = runs ''echo unimplemented'';
+          currentToWorkspace = runs ''yabai -m window --space ${toString args.n}'';
+          killCurrent = runs "yabai -m window --close";
+          fullscreen = runs "yabai -m window --toggle zoom-fullscreen";
+          exitSession = runs ''echo unimplemented'';
+          focusUp = runs "yabai -m window --focus north";
+          focusDown = runs "yabai -m window --focus south";
+          focusLeft = runs "yabai -m window --focus west";
+          focusRight = runs "yabai -m window --focus east";
+          moveWindowUp = runs "yabai -m window --swap north";
+          moveWindowDown = runs "yabai -m window --swap south";
+          moveWindowLeft = runs "yabai -m window --swap west";
+          moveWindowRight = runs "yabai -m window --swap east";
+          openTerminal = runs ''open -n /Applications/Ghostty.app'';
+          openLauncher = runs ''echo unimplemented'';
+          reloadConfig = runs "yabai --restart-service; skhd --reload";
+          floatCurrent = runs "yabai -m window --toggle float; yabai -m window --grid 4:4:1:1:2:2togglefloating";
+          pseudofloatCurrent = runs "echo unimplemented";
+          pinCurrent = runs "yabai -m window --toggle sticky";
+          toggleSplit = runs "yabai -m window --toggle split";
+          growLeft = runs "yabai -m window --resize left:-${resizeBy}:0 || yabai -m window --resize right:-${resizeBy}:0";
+          growRight = runs "yabai -m window --resize right:${resizeBy}:0 || yabai -m window --resize left:${resizeBy}:0";
+          growUp = runs "yabai -m window --resize top:0:-${resizeBy} || yabai -m window --resize bottom:0:-${resizeBy}";
+          growDown = runs "yabai -m window --resize bottom:0:${resizeBy} || yabai -m window --resize top:0:${resizeBy}";
+          balanceWindows = runs "yabai -m space --equalize";
+          screenshot = runs ''screencapture -s ~/Pictures/screenshot-"$(date '+%F %H.%M.%S')".png'';
+          volumeUp = runs ''VOL=$(m volume | rg -o '\d+' 2>&1 | xargs echo -n) m volume --set $(( VOL + 5 ))'';
+          volumeDown = runs ''VOL=$(m volume | rg -o '\d+' 2>&1 | xargs echo -n) m volume --set $(( VOL - 5 ))'';
+          volumeMute = runs ''m volume $((m volume 2>&1 | rg Unmuted >/dev/null && echo "--mute") || echo "--unmute")'';
+          brightnessUp = runs "m display --up";
+          brightnessDown = runs "m display --down";
+          nextWorkspace = runs ''skhd -k "ctrl + right"'';
+          previousWorkspace = runs ''skhd -k "ctrl + left"'';
+          rotateCW = runs ''echo unimplemented'';
+          flip = runs ''echo unimplemented'';
+        };
     }.${wm}.${bc.cmd.tag});
   toConfig = impl;
   toi3Config = toConfig "i3";
