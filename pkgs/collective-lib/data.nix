@@ -56,6 +56,20 @@ in rec {
     inherit systemName system systemExtra;
   };
 
+  WSL = system: {
+    taggedSystem = true;
+    inherit system;
+    systemExtra = {
+      tags = [VM];
+      modules = [ 
+        nixos-wsl.nixosModules.default 
+        { system.stateVersion = "25.05"; wsl.enable = true; }
+      ];
+    };
+  };
+
+  VM = { tag = "vm"; };
+
   # <nix> data._tests.run {} </nix>
   _tests = with typed.tests; suite {
     SystemType = {
