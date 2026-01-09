@@ -52,8 +52,8 @@ in rec {
     };
   };
 
-  NamedSystem = systemName: system: {
-    inherit systemName system;
+  NamedSystem = systemName: system: systemExtra: {
+    inherit systemName system systemExtra;
   };
 
   # <nix> data._tests.run {} </nix>
