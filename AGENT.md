@@ -5,13 +5,13 @@ This document is a detailed guide to the public flake "collective-public". It ex
 ## Overview
 
 - Purpose: Share reusable Nix modules, a comprehensive functional library (`collective-lib`), and overlays that can be consumed in any flake.
-- Packaging: Exposed via a Nix flake with minimal assumptions and few dependencies beyond `nixpkgs` and `nix-parsec`.
+- Packaging: Exposed via a Nix flake with minimal assumptions and few dependencies beyond `nixpkgs`, `nix-parsec`, and `nix-reflect`.
 - Design goals: Composability, type-driven utilities, script-building ergonomics, and high signal-to-noise logging.
 
 ## Flake structure and outputs
 
 - `collective-public/flake.nix`
-  - Inputs: `nixpkgs`, `nix-parsec` (for parser utilities)
+  - Inputs: `nixpkgs`, `nixpkgs-stable`, `nix-parsec` (for parser utilities), `nix-reflect` (for Nix parsing/evaluation)
   - Outputs (per supported system):
     - `lib`: The instantiated `collective-lib`
     - `packages`:
@@ -159,14 +159,10 @@ The library lives at `pkgs/collective-lib/`. It is built by merging a set of mod
 - `data.nix`: data manipulation helpers
 - `dispatchlib.nix`: predicate-based dispatch helpers
 - `errors.nix`: structured error helpers and propagation
-- `debuglib.nix`: debugging aids and structured tracing
 - `typelib.nix`: runtime type system; `typed` view exposes its overrides (e.g., `isType`, `isNull`)
-- `eval/`: evaluation framework
-  - `ast.nix`: expression AST
-  - `monad.nix`: evaluation monad
-  - `store.nix`: functional stores
-  - `fn.nix`: function evaluation helpers
-- `parser/`: parser combinators built on `nix-parsec`
+- `binding.nix`: binding utilities
+- `clib.nix`: core library utilities
+- `shell.nix`: shell-related helpers
 - `script-utils/`: CLI-building framework
   - `script-types.nix`: script type model (command trees, scripts)
   - `options-utils.nix`: declarative option schemas (required/defaults/switches)
