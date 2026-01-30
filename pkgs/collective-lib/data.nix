@@ -61,6 +61,7 @@ in rec {
     inherit system tags;
   };
 
+  HomeOnly = { tag = "home_only"; };
   WSL = { tag = "wsl"; };
   VM = { tag = "vm"; };
 
