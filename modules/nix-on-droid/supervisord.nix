@@ -172,7 +172,6 @@ in {
     environment.packages = [
       supervisord-start
       supervisorctl-wrapped
-      supervisor
     ];
 
     # Start supervisord during nix-on-droid activation
