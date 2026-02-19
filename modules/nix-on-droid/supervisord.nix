@@ -174,8 +174,24 @@ in {
       supervisorctl-wrapped
     ];
 
-    # Start supervisord during nix-on-droid activation
+    # Start/restart supervisord during nix-on-droid activation.
+    # Always restart to pick up config changes (new programs, etc).
     build.activationAfter.supervisord = ''
+      PIDFILE="${pidFile}"
+      if [ -f "$PIDFILE" ]; then
+        OLD_PID=$(cat "$PIDFILE" 2>/dev/null)
+        if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+          echo "[supervisord] Stopping old instance (pid $OLD_PID) to pick up config changes..."
+          kill "$OLD_PID" 2>/dev/null || true
+          # Wait for it to stop
+          for i in $(seq 1 10); do
+            kill -0 "$OLD_PID" 2>/dev/null || break
+            sleep 0.5
+          done
+          kill -9 "$OLD_PID" 2>/dev/null || true
+        fi
+        rm -f "$PIDFILE"
+      fi
       $DRY_RUN_CMD ${supervisord-start}/bin/supervisord-start
     '';
 
