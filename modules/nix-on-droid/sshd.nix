@@ -27,17 +27,14 @@ let
     fi
   '';
 
+  # Foreground sshd for supervisord management.
+  # Generates host keys if missing, then exec's sshd with -D (no daemonize).
   sshd-start = pkgs.writeScriptBin "sshd-start" ''
     #!${pkgs.runtimeShell}
 
-    PID=$(pgrep sshd)
-    if [ -n "$PID" ]; then
-      exit 0
-    fi
-
     ${prefixLines generateKeyWhenNeededOf supportedKeysTypes}
 
-    ${pkgs.openssh}/bin/sshd -f "/etc/ssh/sshd_config" -E "/etc/ssh/sshd.log"
+    exec ${pkgs.openssh}/bin/sshd -D -f "/etc/ssh/sshd_config" -E "/etc/ssh/sshd.log"
   '';
 in {
   options.sshd = {
@@ -75,12 +72,13 @@ in {
         pkgs.openssh
       ];
 
-      build.activationAfter.sshd = ''
-        SERVER_PID=$(${pkgs.toybox}/bin/pgrep sshd)
-        if [ -z "$SERVER_PID" ]; then
-          $DRY_RUN_CMD ${sshd-start}/bin/sshd-start
-        fi
-      '';
+      # Managed by supervisord — auto-restarts on app restart
+      supervisord.programs.sshd = {
+        command = "${sshd-start}/bin/sshd-start";
+        autostart = true;
+        autorestart = true;
+        startsecs = 1;
+      };
     }
   ]);
 }

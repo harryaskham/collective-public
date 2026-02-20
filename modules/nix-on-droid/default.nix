@@ -7,5 +7,6 @@ collective-lib.tests.collectTestableModules {
   fonts-fontdir = import ./fonts/fontdir.nix;
   session = import ./session.nix;
   sshd = import ./sshd.nix;
+  supervisord = import ./supervisord.nix;
   termux = import ./termux.nix;
 }

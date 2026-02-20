@@ -8,9 +8,11 @@ with untyped.clib;
 let
   cfg = config.dbus;
   dbus-start-bin = "dbus-start";
+  # Foreground dbus-daemon for supervisord management.
   dbus-start = pkgs.writeScriptBin dbus-start-bin ''
     #!${pkgs.runtimeShell}
-    ${pkgs.dbus}/bin/dbus-daemon --session &
+    mkdir -p ''${XDG_RUNTIME_DIR:-/tmp/run}
+    exec ${pkgs.dbus}/bin/dbus-daemon --session --nofork
   '';
   inherit (untyped) mkOption mkEnableOption mkIf mkMerge types;
 in
@@ -63,13 +65,13 @@ in
         pkgs.dbus
       ];
 
-      build.activationAfter.dbus = ''
-        mkdir -p ''${XDG_RUNTIME_DIR:-/tmp/run}
-        DBUS_PID=$(${pkgs.procps}/bin/ps -a | ${pkgs.toybox}/bin/grep dbus || true)
-        if [ -z "$DBUS_PID" ]; then
-          $DRY_RUN_CMD ${dbus-start}/bin/${dbus-start-bin}
-        fi
-      '';
+      # Managed by supervisord — auto-restarts on app restart
+      supervisord.programs.dbus = {
+        command = "${dbus-start}/bin/${dbus-start-bin}";
+        autostart = true;
+        autorestart = true;
+        startsecs = 1;
+      };
     }
 
   ]);
