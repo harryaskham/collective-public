@@ -21,12 +21,13 @@ in
 with codes';
 
 let
-  macros = typed.recursiveMergeAttrsList [
-    (mkCardinal "show_termux_sidebar" (with _; with kv; m "⌁" [(k ctrl) (k alt) (k shift) (k right)]))
-  ];
-in
-
-{
+  macros = typed.recursiveMergeAttrsList (mapAttrsToList mkCardinal {
+    show_termux_sidebar = (m "⌁" [(k ctrl) (k alt) (k shift) (k right)]);
+    new_termux_terminal = (m "⎙" [(k ctrl) (k alt) (k c)]);
+    next_termux_terminal = (m "⏭" [(k ctrl) (k alt) (k n)]);
+    prev_termux_terminal = (m "⏮" [(k ctrl) (k alt) (k p)]);
+  });
+in {
   name = "Code QWERTY Compact";
   bottomRow = false;
   includeDefaultVariants = false;  # Added back manually as part of the ordered variants below.
@@ -320,7 +321,7 @@ in
       _
                     ne.copy
               c.c
-        sw.config  #se.toggle_floating_docked 
+        sw.config  "⎙" macros.se.new_termux_terminal
       _
                   ne.paste
               c.v
@@ -328,11 +329,11 @@ in
       _
 
               c.b
-
+        "⏮" macros.sw.prev_termux_terminal
       _
                     ne."?"
               c.n
-        sw."/"
+        sw."/"      "⏭" macros.se.next_termux_terminal
       _
                     ne.":"
               c.m

@@ -53,6 +53,7 @@ let
           data
           dispatchlib
           errors
+          file
           functions
           lists
           modulelib
@@ -144,6 +145,7 @@ let
       errors = import ./errors.nix args;
       ext = import ./ext.nix;
       fan = import ./fan.nix args;
+      file = import ./file.nix args;
       font = import ./font.nix args;
       functions = import ./functions.nix args;
       lists = import ./lists.nix args;
