@@ -14,4 +14,7 @@ rec {
 
   # Vast.ai CLI
   vastai-cli = (pkgs.callPackage ./vastai { }).vastai-cli;
+
+  # termux-exec: TCP client for running native Termux commands from proot
+  termux-exec-collective = pkgs.callPackage ./termux-exec.nix {};
 }

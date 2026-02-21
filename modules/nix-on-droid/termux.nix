@@ -1,11 +1,15 @@
 { config, lib, pkgs, outputs, untyped, typed, ...}:
 
-# Convenience scripts for exposing actions from Nix-on-Droid to Termux.
-# Enables easier composition with Tasker for one-click actions like
-# starting X11 and switching between NOD, Termux and Termux-X11.
-# Where commands can't be run as actions (i.e. sending commands to NOD),
-# they are instead copied to the clipboard and NOD is switched to for 
-# a manual paste.
+# Termux integration for Nix-on-Droid.
+#
+# Provides:
+#   - Termux settings (colors, font, properties)
+#   - Shared directory for copying files to regular Termux
+#   - Bootstrap script for fresh Termux installs
+#   - termux-exec: TCP client/daemon for running native Termux commands from proot
+#   - rish: Shizuku remote shell wrappers via termux-exec
+#   - Termux:Boot scripts for auto-starting services on device boot
+#   - X11 scripts for Termux-X11 desktop mode
 
 with lib;
 with typed;
@@ -13,6 +17,100 @@ with typed;
 let
   cfg = config.termux;
   toShellValue = typed.toShellValueUnsafe;
+
+  port = toString cfg.exec.port;
+  host = cfg.exec.host;
+
+  termux-exec-pkg = pkgs.termux-exec-collective.override {
+    inherit port host;
+  };
+
+  # rish wrapper: sends a self-contained dex-loading command to termux-exec
+  rish-pkg = pkgs.stdenvNoCC.mkDerivation {
+    pname = "rish-collective";
+    version = "0.4.0";
+    dontUnpack = true;
+    installPhase = ''
+      mkdir -p $out/bin
+
+      cat > $out/bin/rish <<'RISH'
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      RISH_PKG="''${1:?Usage: rish <package-name> [args...]}"
+      shift
+
+      [ -z "''${RISH_APPLICATION_ID:-}" ] && RISH_APPLICATION_ID="$RISH_PKG"
+
+      # Everything inside the heredoc runs daemon-side in native Termux.
+      exec @termux_exec@/bin/termux-exec bash -c "$(cat <<'DAEMON_CMD'
+      set -euo pipefail
+
+      # Positional args from caller: $1=RISH_PKG $2=RISH_APPLICATION_ID $3..=user args
+      export RISH_PKG="$1" RISH_APPLICATION_ID="$2"
+      shift 2
+
+      # Find the dex (Termux-side paths only)
+      DEX=""
+      for candidate in \
+        /data/data/com.termux/files/home/rish/rish_shizuku.dex \
+        /storage/emulated/0/shared/rish/rish_shizuku.dex; do
+        if [ -f "$candidate" ]; then
+          DEX="$candidate"
+          break
+        fi
+      done
+
+      if [ -z "$DEX" ]; then
+        echo "rish: cannot find rish_shizuku.dex" >&2
+        echo "Place it in one of:" >&2
+        echo "  /data/data/com.termux/files/home/rish/" >&2
+        echo "  /storage/emulated/0/shared/rish/" >&2
+        exit 1
+      fi
+
+      # Android 14+ (SDK 34+): dex must not be writable
+      SDK="$(getprop ro.build.version.sdk 2>/dev/null || echo 0)"
+      if [ "$SDK" -ge 34 ] && [ -w "$DEX" ]; then
+        chmod 400 "$DEX" 2>/dev/null || true
+        if [ -w "$DEX" ]; then
+          # Can't chmod (shared storage / FAT) - copy to Termux private dir
+          PRIVATE_DEX="/data/data/com.termux/files/home/rish/rish_shizuku.dex"
+          mkdir -p "$(dirname "$PRIVATE_DEX")"
+          cp "$DEX" "$PRIVATE_DEX"
+          chmod 400 "$PRIVATE_DEX"
+          DEX="$PRIVATE_DEX"
+          if [ -w "$DEX" ]; then
+            echo "rish: cannot make dex non-writable (required for Android 14+)" >&2
+            exit 1
+          fi
+        fi
+      fi
+
+      exec /system/bin/app_process \
+        -Djava.class.path="$DEX" \
+        /system/bin \
+        --nice-name=rish \
+        rikka.shizuku.shell.ShizukuShellLoader "$@"
+      DAEMON_CMD
+      )" rish "$RISH_PKG" "$RISH_APPLICATION_ID" "$@"
+      RISH
+
+      substituteInPlace $out/bin/rish \
+        --replace-warn '@termux_exec@' '${termux-exec-pkg}'
+      chmod +x $out/bin/rish
+
+      # Convenience aliases - daemon runs as com.termux, so Shizuku
+      # identity must always be com.termux regardless of caller.
+      for name in rish-nix rish-termux; do
+        cat > "$out/bin/$name" <<ALIAS
+      #!/usr/bin/env bash
+      exec $out/bin/rish "com.termux" "\$@"
+      ALIAS
+        chmod +x "$out/bin/$name"
+      done
+    '';
+  };
 in {
   options.termux = {
     enable = mkEnable ''
@@ -27,85 +125,109 @@ in {
       hideExtraKeys = mkOption {
         type = lib.types.bool;
         default = true;
-        description = ''
-          Whether to hide extra keys.
-        '';
+        description = "Whether to hide extra keys.";
       };
       useBlackUI = mkOption {
         type = lib.types.nullOr lib.types.bool;
         default = null;
-        description = ''
-          Whether to use force black UI. Null for default.
-        '';
+        description = "Whether to use force black UI. Null for default.";
       };
       allowExternalApps = mkOption {
         type = lib.types.bool;
         default = true;
-        description = ''
-          Whether to allow external apps.
-        '';
+        description = "Whether to allow external apps.";
       };
       fullscreen = mkOption {
         type = lib.types.bool;
         default = true;
-        description = ''
-          Whether to allow fullscreen.
-        '';
+        description = "Whether to allow fullscreen.";
       };
       margin = {
         vertical = mkOption {
           type = lib.types.int;
           default = 8;
-          description = ''
-            The vertical margin.
-          '';
+          description = "The vertical margin.";
         };
         horizontal = mkOption {
           type = lib.types.int;
           default = 8;
-          description = ''
-            The horizontal margin.
-          '';
+          description = "The horizontal margin.";
         };
       };
       shortcut = {
         createSession = mkOption {
           type = lib.types.str;
           default = "ctrl + alt + c";
-          description = ''
-            The shortcut to create a new session.
-          '';
+          description = "The shortcut to create a new session.";
         };
         nextSession = mkOption {
           type = lib.types.str;
           default = "ctrl + alt + n";
-          description = ''
-            The shortcut to go to the next session.
-          '';
+          description = "The shortcut to go to the next session.";
         };
         previousSession = mkOption {
           type = lib.types.str;
           default = "ctrl + alt + p";
-          description = ''
-            The shortcut to go to the previous session.
-          '';
+          description = "The shortcut to go to the previous session.";
         };
       };
       bellCharacter = mkOption {
         type = lib.types.str;
         default = "ignore";
-        description = ''
-          The character to use for the bell.
-        '';
+        description = "The character to use for the bell.";
       };
     };
+
+    # termux-exec: TCP client/daemon for running native Termux commands from proot
+    exec = {
+      enable = mkEnableOption "termux-exec for running native Termux commands from proot";
+      port = mkOption {
+        type = lib.types.port;
+        default = 18356;
+        description = "TCP port for the termux-command-daemon";
+      };
+      host = mkOption {
+        type = lib.types.str;
+        default = "127.0.0.1";
+        description = "Bind address for the termux-command-daemon";
+      };
+    };
+
+    # rish: Shizuku remote shell wrappers
+    rish = {
+      enable = mkEnable "rish (Shizuku remote shell) wrappers via termux-exec";
+    };
+
+    # Termux:Boot auto-start scripts
+    boot = {
+      enable = mkEnableOption "Termux:Boot auto-start scripts";
+      wakelock = mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Acquire Termux wake-lock on boot";
+      };
+      pulseaudio = mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Start PulseAudio TCP server on boot";
+      };
+      writeSecureSettings = mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Grant WRITE_SECURE_SETTINGS to Termux packages on boot";
+      };
+      commandDaemon = mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Start termux-command-daemon on boot";
+      };
+    };
+
     x11 = {
       enable = lib.mkOption {
         type = lib.types.bool;
         default = config.bootstrap.desktop.enable;
-        description = ''
-          Whether to enable x11 and associated scripts.
-        '';
+        description = "Whether to enable x11 and associated scripts.";
       };
     };
     sharedDir = {
@@ -113,9 +235,7 @@ in {
       path = lib.mkOption {
         type = lib.types.str;
         default = "/storage/emulated/0/shared";
-        description = ''
-          The directory in shared storage to output files.
-        '';
+        description = "The directory in shared storage to output files.";
       };
       copy = lib.mkOption {
         type = lib.types.attrsOf lib.types.str;
@@ -131,9 +251,10 @@ in {
 
   config = (lib.mkIf cfg.enable (lib.mkMerge [
 
+    # --- Shared directory activation ---
     (lib.mkIf cfg.sharedDir.enable {
-      build.activationAfter = 
-        lib.concatMapAttrs 
+      build.activationAfter =
+        lib.concatMapAttrs
           (dst: src: {
             "copy-to-shared-dir__${src}" = ''
               SRC=${toShellValue src}
@@ -142,18 +263,16 @@ in {
               mkdir -p "${toShellValue cfg.sharedDir.path}"
               cp -Lr "$SRC" "$DEST"
             '';
-          }) 
+          })
           cfg.sharedDir.copy;
     })
 
-    # Make settings that can be symlinked to home.
+    # --- Terminal settings (colors, font, properties) ---
     {
-      # NOD manages the .termux colors.properties and font.ttf for us.
       terminal.font =
         "${pkgs.nerd-fonts.fira-code}/share/fonts/truetype/NerdFonts/FiraCode/FiraCodeNerdFont-Regular.ttf";
       terminal.colors = with untyped.colors; forNixOnDroid cfg.colors;
 
-      # Write our own settings out.
       environment.etc."termux/termux.properties" = {
         text = joinOptionalLines [
           (optionalString cfg.settings.hideExtraKeys "extra-keys=[]")
@@ -170,28 +289,164 @@ in {
       };
     }
 
-    # Fresh Termux installation using .termux defined by NOD.
+    # --- Bootstrap script ---
     {
       environment.etc."termux/bootstrap-from-nixondroid.sh" = {
         text = ''
+          #!/data/data/com.termux/files/usr/bin/bash
           # Run in fresh Termux install after Nix-on-Droid is set up to
           # install Termux themes/settings from the NOD home-manager config:
-          # 
+          #
           # $ ${cfg.sharedDir.path}/bootstrap-from-nixondroid.sh
 
-          rm -rf ~/.termux
-          cp -Lr ${cfg.sharedDir.path}/.termux ~/.termux
+          set -euo pipefail
+
+          SHARED="${cfg.sharedDir.path}"
+
+          # --- .termux settings (colors, font, properties) ---
+          # Merge NOD-managed .termux into existing, preserving any
+          # manual additions (e.g. boot/ scripts added by other means).
+          if [ -d "$SHARED/.termux" ]; then
+            mkdir -p ~/.termux
+            cp -Lr "$SHARED/.termux/." ~/.termux/
+            echo "Installed .termux settings from NOD"
+          fi
+
+          # --- Termux:Boot scripts ---
+          if [ -d "$SHARED/termux-boot" ]; then
+            mkdir -p ~/.termux/boot
+            for script in "$SHARED/termux-boot/"*.sh; do
+              [ -f "$script" ] || continue
+              name="$(basename "$script")"
+              cp -f "$script" "$HOME/.termux/boot/$name"
+              chmod +x "$HOME/.termux/boot/$name"
+            done
+            echo "Installed boot scripts: $(ls ~/.termux/boot/)"
+          fi
+
+          echo "Bootstrap complete. Run 'termux-reload-settings' to apply."
         '';
       };
 
       termux.sharedDir.copy = {
-        # Export our NOD-managed .termux dir
         ".termux" = "/data/data/com.termux.nix/files/home/.termux";
-        # Export our Termux bootstrap script installing .termux etc in fresh Termux
         ".bootstrap-from-nixondroid.sh" = "/etc/termux/bootstrap-from-nixondroid.sh";
       };
     }
 
+    # --- termux-exec: TCP daemon + client ---
+    (lib.mkIf cfg.exec.enable {
+      environment.packages = [ termux-exec-pkg ];
+
+      environment.etc."termux-exec/termux-command-daemon.sh" = {
+        text = ''
+          #!/data/data/com.termux/files/usr/bin/bash
+          # termux-command-daemon: TCP relay for running native Termux commands
+          # from inside nix-on-droid's proot (where bionic/app_process can't run).
+          #
+          # Runs in regular Termux. Requires: socat (pkg install socat)
+          #
+          # Usage:
+          #   bash termux-command-daemon.sh              # foreground
+          #   nohup bash termux-command-daemon.sh &      # background
+          set -euo pipefail
+
+          PORT="''${TERMUX_CMD_PORT:-${port}}"
+          HOST="''${TERMUX_CMD_HOST:-${host}}"
+
+          # Per-connection helper: reads the command line, then execs it.
+          HELPER="$(mktemp)"
+          trap 'rm -f "$HELPER"' EXIT
+          cat > "$HELPER" <<'INNER'
+          #!/data/data/com.termux/files/usr/bin/bash
+          IFS= read -r CMD_LINE 2>/dev/null || exit 1
+          [ -z "$CMD_LINE" ] && exit 1
+          exec bash -c "$CMD_LINE"
+          INNER
+          chmod +x "$HELPER"
+
+          echo "termux-command-daemon: listening on $HOST:$PORT"
+          echo "termux-command-daemon: protocol - connect, send one line (the command), then interactive I/O"
+
+          exec socat \
+            TCP-LISTEN:"$PORT",bind="$HOST",reuseaddr,fork \
+            EXEC:"$HELPER",pty,setsid,ctty,stderr
+        '';
+      };
+
+      termux.sharedDir.copy."termux-exec" = "/etc/termux-exec";
+    })
+
+    # --- rish: Shizuku remote shell wrappers ---
+    (lib.mkIf cfg.rish.enable {
+      termux.exec.enable = true;
+      environment.packages = [ rish-pkg ];
+    })
+
+    # --- Termux:Boot scripts ---
+    (lib.mkIf cfg.boot.enable {
+      # 00-wakelock: acquire wake-lock first to prevent sleep during boot
+      environment.etc."termux-boot/00-wakelock.sh" = mkIf cfg.boot.wakelock {
+        text = ''
+          #!/data/data/com.termux/files/usr/bin/bash
+          # Acquire Termux wake-lock to prevent Android from sleeping.
+          termux-wake-lock 2>/dev/null || true
+        '';
+      };
+
+      # 10-write-secure-settings: grant permission to Termux packages
+      environment.etc."termux-boot/10-write-secure-settings.sh" = mkIf cfg.boot.writeSecureSettings {
+        text = ''
+          #!/data/data/com.termux/files/usr/bin/bash
+          # Grant WRITE_SECURE_SETTINGS to Termux packages (idempotent).
+          # Needed for toggling WiFi debugging etc via `settings put`.
+          # Requires wireless debugging to have been enabled at least once
+          # so that ADB is available locally.
+          for pkg in com.termux com.termux.nix; do
+            if pm list packages 2>/dev/null | grep -q "$pkg"; then
+              adb shell pm grant "$pkg" android.permission.WRITE_SECURE_SETTINGS 2>/dev/null || true
+            fi
+          done
+        '';
+      };
+
+      # 20-pulseaudio: start PulseAudio TCP server
+      environment.etc."termux-boot/20-pulseaudio.sh" = mkIf cfg.boot.pulseaudio {
+        text = ''
+          #!/data/data/com.termux/files/usr/bin/bash
+          # Start PulseAudio TCP server (idempotent).
+          if pgrep pulseaudio 2>/dev/null; then
+            killall pulseaudio
+          fi
+          LD_PRELOAD="/system/lib64/libskcodec.so" pulseaudio \
+            --start \
+            --exit-idle-time=-1 \
+            --load="module-native-protocol-tcp auth-anonymous=1"
+        '';
+      };
+
+      # 30-command-daemon: start termux-command-daemon
+      environment.etc."termux-boot/30-command-daemon.sh" = mkIf (cfg.boot.commandDaemon && cfg.exec.enable) {
+        text = ''
+          #!/data/data/com.termux/files/usr/bin/bash
+          # Start termux-command-daemon (idempotent).
+          DAEMON="/storage/emulated/0/shared/termux-exec/termux-command-daemon.sh"
+          LOG="$HOME/.termux-command-daemon.log"
+
+          if pgrep -f "termux-command-daemon.sh" >/dev/null 2>&1; then
+            echo "$(date): termux-command-daemon already running" >> "$LOG"
+            exit 0
+          fi
+
+          echo "$(date): starting termux-command-daemon" >> "$LOG"
+          nohup bash "$DAEMON" >> "$LOG" 2>&1 &
+        '';
+      };
+
+      termux.sharedDir.copy."termux-boot" = "/etc/termux-boot";
+    })
+
+    # --- X11 scripts (on-demand, not in boot) ---
     (lib.mkIf cfg.x11.enable {
       environment.etc."termux-x11/x11-start-in-termux.sh" = {
         text = ''
