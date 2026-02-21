@@ -21,12 +21,15 @@ in
 with codes';
 
 let
-  macros = typed.recursiveMergeAttrsList (mapAttrsToList mkCardinal {
-    show_termux_sidebar = (m "⌁" [(k ctrl) (k alt) (k shift) (k right)]);
-    new_termux_terminal = (m "⎙" [(k ctrl) (k alt) (k c)]);
-    next_termux_terminal = (m "⏭" [(k ctrl) (k alt) (k n)]);
-    prev_termux_terminal = (m "⏮" [(k ctrl) (k alt) (k p)]);
-  });
+  macros =
+    typed.recursiveMergeAttrsList
+      (mapAttrsToList mkCardinal
+        (with _; with kv; {
+          show_termux_sidebar = (m "⌁" [(k ctrl) (k alt) (k shift) (k right)]);
+          new_termux_terminal = (m "⎙" [(k ctrl) (k alt) (k c)]);
+          next_termux_terminal = (m "⏭" [(k ctrl) (k alt) (k n)]);
+          prev_termux_terminal = (m "⏮" [(k ctrl) (k alt) (k p)]);
+        }));
 in {
   name = "Code QWERTY Compact";
   bottomRow = false;
