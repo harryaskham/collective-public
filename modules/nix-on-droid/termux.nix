@@ -221,6 +221,16 @@ in {
         default = true;
         description = "Start termux-command-daemon on boot";
       };
+      wifiDebugKeepalive = mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Run a background loop that re-asserts adb_wifi_enabled=1 every 5 minutes (fights corp policy resets)";
+      };
+      wifiDebugKeepaliveInterval = mkOption {
+        type = lib.types.int;
+        default = 300;
+        description = "Seconds between wifi debug keepalive checks";
+      };
     };
 
     x11 = {
@@ -440,6 +450,48 @@ in {
 
           echo "$(date): starting termux-command-daemon" >> "$LOG"
           nohup bash "$DAEMON" >> "$LOG" 2>&1 &
+        '';
+      };
+
+      # 40-wifi-debug-keepalive: periodically re-assert wifi debugging enabled
+      environment.etc."termux-boot/40-wifi-debug-keepalive.sh" = mkIf cfg.boot.wifiDebugKeepalive {
+        text = ''
+          #!/data/data/com.termux/files/usr/bin/bash
+          # WiFi Debug keepalive daemon (idempotent).
+          # Re-asserts adb_wifi_enabled=1 every N seconds to fight corp policy resets.
+          # Tries ADB shell first, then Shizuku/rish, then direct settings.
+          # Runs in background; skips if already running.
+          INTERVAL="${toString cfg.boot.wifiDebugKeepaliveInterval}"
+
+          if pgrep -f "wifi-debug-keepalive" >/dev/null 2>&1; then
+            exit 0
+          fi
+
+          exec -a wifi-debug-keepalive bash -c '
+            wifi_set() {
+              # ADB
+              adb shell settings put global adb_wifi_enabled 1 2>/dev/null && return 0
+              adb connect 127.0.0.1 2>/dev/null
+              adb shell settings put global adb_wifi_enabled 1 2>/dev/null && return 0
+              # Shizuku
+              RISH_DEX=""
+              for c in "$HOME/rish/rish_shizuku.dex" "/storage/emulated/0/shared/rish/rish_shizuku.dex"; do
+                [ -f "$c" ] && RISH_DEX="$c" && break
+              done
+              if [ -n "$RISH_DEX" ]; then
+                echo "settings put global adb_wifi_enabled 1" | \
+                  /system/bin/app_process -Djava.class.path="$RISH_DEX" /system/bin \
+                  --nice-name=rish rikka.shizuku.shell.ShizukuShellLoader 2>/dev/null && return 0
+              fi
+              # Direct
+              settings put global adb_wifi_enabled 1 2>/dev/null && return 0
+              return 1
+            }
+            while true; do
+              wifi_set || true
+              sleep '"$INTERVAL"'
+            done
+          ' &
         '';
       };
 
