@@ -1,5 +1,12 @@
-{ config, lib, pkgs, outputs, untyped, typed, ...}:
-
+{
+  config,
+  lib,
+  pkgs,
+  outputs,
+  untyped,
+  typed,
+  ...
+}:
 # Termux integration for Nix-on-Droid.
 #
 # Provides:
@@ -10,11 +17,8 @@
 #   - rish: Shizuku remote shell wrappers via termux-exec
 #   - Termux:Boot scripts for auto-starting services on device boot
 #   - X11 scripts for Termux-X11 desktop mode
-
 with lib;
-with typed;
-
-let
+with typed; let
   cfg = config.termux;
   toShellValue = typed.toShellValueUnsafe;
 
@@ -283,28 +287,26 @@ in {
     };
   };
 
-  config = (lib.mkIf cfg.enable (lib.mkMerge [
-
+  config = lib.mkIf cfg.enable (lib.mkMerge [
     # --- Shared directory activation ---
     (lib.mkIf cfg.sharedDir.enable {
       build.activationAfter =
         lib.concatMapAttrs
-          (dst: src: {
-            "copy-to-shared-dir__${src}" = ''
-              SRC=${toShellValue src}
-              DEST="${toShellValue cfg.sharedDir.path}/"
-              echo "Copying $SRC to $DEST"
-              mkdir -p "${toShellValue cfg.sharedDir.path}"
-              cp -Lr "$SRC" "$DEST"
-            '';
-          })
-          cfg.sharedDir.copy;
+        (dst: src: {
+          "copy-to-shared-dir__${src}" = ''
+            SRC=${toShellValue src}
+            DEST="${toShellValue cfg.sharedDir.path}/"
+            echo "Copying $SRC to $DEST"
+            mkdir -p "${toShellValue cfg.sharedDir.path}"
+            cp -Lr "$SRC" "$DEST"
+          '';
+        })
+        cfg.sharedDir.copy;
     })
 
     # --- Terminal settings (colors, font, properties) ---
     {
-      terminal.font =
-        "${pkgs.nerd-fonts.fira-code}/share/fonts/truetype/NerdFonts/FiraCode/FiraCodeNerdFont-Regular.ttf";
+      terminal.font = "${pkgs.nerd-fonts.fira-code}/share/fonts/truetype/NerdFonts/FiraCode/FiraCodeNerdFont-Regular.ttf";
       terminal.colors = with untyped.colors; forNixOnDroid cfg.colors;
 
       environment.etc."termux/termux.properties" = {
@@ -370,7 +372,7 @@ in {
 
     # --- termux-exec: TCP daemon + client ---
     (lib.mkIf cfg.exec.enable {
-      environment.packages = [ 
+      environment.packages = [
         termux-exec-pkg
         termux-exec-alias-pkg
         termux-exec-record-pkg
@@ -397,18 +399,32 @@ in {
           HOST="''${TERMUX_CMD_HOST:-${host}}"
 
           # Per-connection helper: reads the command line, then execs it.
+          # The helper runs inside a PTY allocated by socat. We suppress
+          # echo during the initial command read so that the command string
+          # is never reflected back to the client's stdout.
           HELPER="$(mktemp)"
           trap 'rm -f "$HELPER"' EXIT
           cat > "$HELPER" <<'INNER'
           #!/data/data/com.termux/files/usr/bin/bash
+
+          # Suppress PTY echo while reading the command line.
+          # This prevents the command string from appearing in the client's stdout.
+          stty -echo 2>/dev/null || true
+
           IFS= read -r CMD_LINE 2>/dev/null || exit 1
           [ -z "$CMD_LINE" ] && exit 1
+
+          # Restore sane terminal settings for the actual command.
+          # Interactive programs (bash, vim, etc.) will configure the PTY
+          # themselves; non-interactive ones just need a clean baseline.
+          stty sane 2>/dev/null || true
+
           exec bash -c "$CMD_LINE"
           INNER
           chmod +x "$HELPER"
 
-          echo "termux-command-daemon: listening on $HOST:$PORT"
-          echo "termux-command-daemon: protocol - connect, send one line (the command), then interactive I/O"
+          echo "termux-command-daemon: listening on $HOST:$PORT" >&2
+          echo "termux-command-daemon: protocol - connect, send one line (the command), then interactive I/O" >&2
 
           exec socat \
             TCP-LISTEN:"$PORT",bind="$HOST",reuseaddr,fork \
@@ -422,7 +438,7 @@ in {
     # --- rish: Shizuku remote shell wrappers ---
     (lib.mkIf cfg.rish.enable {
       termux.exec.enable = true;
-      environment.packages = [ rish-pkg ];
+      environment.packages = [rish-pkg];
     })
 
     # --- Termux:Boot scripts ---
@@ -578,6 +594,5 @@ in {
       };
       termux.sharedDir.copy."termux-x11" = "/etc/termux-x11";
     })
-
-  ]));
+  ]);
 }

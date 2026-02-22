@@ -3,16 +3,15 @@
 # Bionic/app_process cannot run under proot (ptrace breaks ART).
 # This client connects to a termux-command-daemon running in regular
 # Termux via TCP localhost, sends a command, and relays I/O.
-
-{ pkgs
-, port ? "18356"
-, host ? "127.0.0.1"
-, ...
+{
+  pkgs,
+  port ? "18356",
+  host ? "127.0.0.1",
+  ...
 }:
-
 pkgs.stdenvNoCC.mkDerivation {
   pname = "termux-exec";
-  version = "0.4.0";
+  version = "0.5.0";
   meta.mainProgram = "termux-exec";
   dontUnpack = true;
 
@@ -49,15 +48,37 @@ pkgs.stdenvNoCC.mkDerivation {
     # Build the command string - quote args for safe transport
     CMD="$(printf '%q ' "$@")"
 
-    # Open TCP connection, send command, relay I/O
-    exec 4<>/dev/tcp/"$TERMUX_CMD_HOST"/"$TERMUX_CMD_PORT"
-    printf '%s\n' "$CMD" >&4
+    # Detect if stdin is a terminal (interactive use)
+    if [ -t 0 ] && [ -t 1 ]; then
+      # Interactive mode: put local terminal into raw mode so that
+      # arrow keys, Ctrl-C, etc. are sent byte-for-byte to the
+      # remote PTY (which handles line discipline).
+      ORIG_STTY="$(stty -g)"
+      stty raw -echo icrnl
+      cleanup() {
+        stty "$ORIG_STTY" 2>/dev/null || true
+      }
+      trap cleanup EXIT
 
-    # Bidirectional relay
-    cat <&0 >&4 &
-    BG=$!
-    trap "kill $BG 2>/dev/null || true; exec 4>&-" EXIT
-    cat <&4
+      exec 4<>/dev/tcp/"$TERMUX_CMD_HOST"/"$TERMUX_CMD_PORT"
+      printf '%s\n' "$CMD" >&4
+
+      # Relay stdin -> daemon in background
+      cat <&0 >&4 &
+      BG=$!
+      trap "kill $BG 2>/dev/null || true; exec 4>&-; stty '$ORIG_STTY' 2>/dev/null || true" EXIT
+      cat <&4
+    else
+      # Piped / non-interactive mode: pure passthrough, no PTY tricks.
+      exec 4<>/dev/tcp/"$TERMUX_CMD_HOST"/"$TERMUX_CMD_PORT"
+      printf '%s\n' "$CMD" >&4
+
+      # Relay stdin -> daemon in background (in case of piped input)
+      cat <&0 >&4 &
+      BG=$!
+      trap "kill $BG 2>/dev/null || true; exec 4>&-" EXIT
+      cat <&4
+    fi
     SCRIPT
 
     substituteInPlace $out/bin/termux-exec \
