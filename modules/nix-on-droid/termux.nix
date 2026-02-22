@@ -25,6 +25,14 @@ let
     inherit port host;
   };
 
+  termux-exec-alias-pkg = pkgs.writeShellScriptBin "tx" ''
+    exec "${lib.getExe termux-exec-pkg}" "$@"
+  '';
+
+  termux-exec-record-pkg = pkgs.writeShellScriptBin "tx-rec" ''
+    exec "${lib.getExe termux-exec-pkg}" "$@"
+  '';
+
   # rish wrapper: sends a self-contained dex-loading command to termux-exec
   rish-pkg = pkgs.stdenvNoCC.mkDerivation {
     pname = "rish-collective";
@@ -346,7 +354,11 @@ in {
 
     # --- termux-exec: TCP daemon + client ---
     (lib.mkIf cfg.exec.enable {
-      environment.packages = [ termux-exec-pkg ];
+      environment.packages = [ 
+        termux-exec-pkg
+        termux-exec-alias-pkg
+        termux-exec-record-pkg
+      ];
 
       environment.etc."termux-exec/termux-command-daemon.sh" = {
         text = ''
