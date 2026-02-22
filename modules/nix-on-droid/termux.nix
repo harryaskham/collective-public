@@ -49,6 +49,44 @@ with typed; let
     exec "${lib.getExe termux-exec-player-pkg}" pause
   '';
 
+  termux-exec-restart-pkg = pkgs.writeShellScriptBin "tx-restart" ''
+    set -euo pipefail
+    TX="${lib.getExe termux-exec-pkg}"
+    DAEMON="/storage/emulated/0/shared/termux-exec/termux-command-daemon.sh"
+    PIDFILE="$HOME/.termux-command-daemon.pid"
+    LOG="$HOME/.termux-command-daemon.log"
+
+    # Schedule the new daemon to start after a short delay, then kill the old one.
+    # We use termux-exec itself to launch the restart helper in Termux, so the
+    # daemon must still be alive when we issue this command.
+    echo "Scheduling daemon restart..." >&2
+    "$TX" bash -c "
+      nohup bash -c '
+        sleep 2
+        echo \"\$(date): restarting termux-command-daemon\" >> \"$LOG\"
+        exec bash \"$DAEMON\"
+      ' >> \"$LOG\" 2>&1 &
+      disown
+      echo \"Restart scheduled (new daemon starts in ~2s)\"
+    "
+
+    # Now kill the old daemon
+    if [ -f "$PIDFILE" ]; then
+      OLD_PID="$(cat "$PIDFILE" 2>/dev/null)"
+      if [ -n "$OLD_PID" ]; then
+        echo "Killing old daemon (pid $OLD_PID)..." >&2
+        "$TX" kill "$OLD_PID" 2>/dev/null || true
+      fi
+    else
+      # No PID file; try to find socat listening on our port
+      echo "No PID file; trying to kill socat on port ${port}..." >&2
+      "$TX" bash -c "fuser ${port}/tcp 2>/dev/null | xargs -r kill" 2>/dev/null || true
+    fi
+
+    echo "Done. New daemon should be up in a moment." >&2
+    echo "Check with: tx echo ok" >&2
+  '';
+
   termux-exec-stop-pkg = pkgs.writeShellScriptBin "tx-stop" ''
     exec "${lib.getExe termux-exec-player-pkg}" stop
   '';
@@ -375,6 +413,7 @@ in {
       environment.packages = [
         termux-exec-pkg
         termux-exec-alias-pkg
+        termux-exec-restart-pkg
         termux-exec-record-pkg
         termux-exec-player-pkg
         termux-exec-play-pkg
