@@ -397,25 +397,32 @@ in {
 
           PORT="''${TERMUX_CMD_PORT:-${port}}"
           HOST="''${TERMUX_CMD_HOST:-${host}}"
+          PIDFILE="''${TERMUX_CMD_PIDFILE:-$HOME/.termux-command-daemon.pid}"
 
           # Per-connection helper: reads the command line, then execs it.
           # socat allocates a PTY with echo=0 so the command line is never
           # reflected back to the client. After reading the command, the
           # helper restores sane terminal settings before exec'ing.
           HELPER="$(mktemp)"
-          trap 'rm -f "$HELPER"' EXIT
+          cleanup() { rm -f "$HELPER" "$PIDFILE"; }
+          trap cleanup EXIT
           cat > "$HELPER" <<'INNER'
           #!/data/data/com.termux/files/usr/bin/bash
 
-          # PTY was created with echo off (socat echo=0), so the command
-          # line sent by the client will not be reflected back as output.
+          # PTY was created with echo off (socat echo=0); belt-and-braces
+          # since some socat builds ignore this flag.
           IFS= read -r CMD_LINE 2>/dev/null || exit 1
           [ -z "$CMD_LINE" ] && exit 1
 
           # Restore sane terminal settings for the actual command.
-          # Interactive programs (bash, vim, etc.) will reconfigure the PTY
-          # themselves; non-interactive ones just need a clean baseline.
-          stty sane 2>/dev/null || true
+          # Set generous dimensions so output is not truncated by the
+          # default 80x24 PTY. Interactive programs will resize via
+          # SIGWINCH / their own stty calls.
+          stty sane rows 50 cols 250 2>/dev/null || true
+
+          # Signal to the client that the command has been consumed and
+          # all subsequent output is from the actual command.
+          printf '%s\n' "__TERMUX_EXEC_READY__"
 
           exec bash -c "$CMD_LINE"
           INNER
@@ -423,6 +430,10 @@ in {
 
           echo "termux-command-daemon: listening on $HOST:$PORT" >&2
           echo "termux-command-daemon: protocol - connect, send one line (the command), then interactive I/O" >&2
+          echo "termux-command-daemon: pidfile $PIDFILE" >&2
+
+          # Write PID file (will contain socat's PID after exec)
+          echo $$ > "$PIDFILE"
 
           # echo=0: PTY starts with echo disabled to prevent the command
           # line from being reflected back. The helper restores sane
@@ -491,10 +502,17 @@ in {
           # Start termux-command-daemon (idempotent).
           DAEMON="/storage/emulated/0/shared/termux-exec/termux-command-daemon.sh"
           LOG="$HOME/.termux-command-daemon.log"
+          PIDFILE="$HOME/.termux-command-daemon.pid"
 
-          if pgrep -f "termux-command-daemon.sh" >/dev/null 2>&1; then
-            echo "$(date): termux-command-daemon already running" >> "$LOG"
-            exit 0
+          # Check if already running via PID file
+          if [ -f "$PIDFILE" ]; then
+            PID="$(cat "$PIDFILE" 2>/dev/null)"
+            if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+              echo "$(date): termux-command-daemon already running (pid $PID)" >> "$LOG"
+              exit 0
+            fi
+            # Stale PID file
+            rm -f "$PIDFILE"
           fi
 
           echo "$(date): starting termux-command-daemon" >> "$LOG"

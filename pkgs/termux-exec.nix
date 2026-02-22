@@ -3,6 +3,12 @@
 # Bionic/app_process cannot run under proot (ptrace breaks ART).
 # This client connects to a termux-command-daemon running in regular
 # Termux via TCP localhost, sends a command, and relays I/O.
+#
+# Protocol:
+#   1. Client connects via TCP, sends one line: the shell command
+#   2. Daemon reads the command, prints a sentinel line: __TERMUX_EXEC_READY__
+#   3. Client discards all output up to and including the sentinel
+#   4. Remaining I/O is pure passthrough (command stdout/stderr)
 {
   pkgs,
   port ? "18356",
@@ -11,7 +17,7 @@
 }:
 pkgs.stdenvNoCC.mkDerivation {
   pname = "termux-exec";
-  version = "0.5.0";
+  version = "0.6.0";
   meta.mainProgram = "termux-exec";
   dontUnpack = true;
 
@@ -27,6 +33,7 @@ pkgs.stdenvNoCC.mkDerivation {
 
     TERMUX_CMD_PORT="''${TERMUX_CMD_PORT:-@defaultPort@}"
     TERMUX_CMD_HOST="''${TERMUX_CMD_HOST:-@defaultHost@}"
+    SENTINEL="__TERMUX_EXEC_READY__"
 
     if [ $# -eq 0 ]; then
       echo "Usage: termux-exec <command> [args...]" >&2
@@ -63,6 +70,23 @@ pkgs.stdenvNoCC.mkDerivation {
       exec 4<>/dev/tcp/"$TERMUX_CMD_HOST"/"$TERMUX_CMD_PORT"
       printf '%s\n' "$CMD" >&4
 
+      # Wait for sentinel - discard the echoed command and any PTY preamble.
+      # Read in raw mode char-by-char to handle \r\n line endings from PTY.
+      BUF=""
+      NL="$(printf '\n')" CR="$(printf '\r')"
+      while IFS= read -r -n1 -d "" CH <&4 || [ -n "$CH" ]; do
+        if [ "$CH" = "$NL" ] || [ "$CH" = "$CR" ]; then
+          # Strip trailing \r if present
+          BUF="''${BUF%"$CR"}"
+          if [ "$BUF" = "$SENTINEL" ]; then
+            break
+          fi
+          BUF=""
+        else
+          BUF="$BUF$CH"
+        fi
+      done
+
       # Relay stdin -> daemon in background
       cat <&0 >&4 &
       BG=$!
@@ -72,6 +96,16 @@ pkgs.stdenvNoCC.mkDerivation {
       # Piped / non-interactive mode: pure passthrough, no PTY tricks.
       exec 4<>/dev/tcp/"$TERMUX_CMD_HOST"/"$TERMUX_CMD_PORT"
       printf '%s\n' "$CMD" >&4
+
+      # Wait for sentinel - discard echoed command and PTY preamble
+      CR="$(printf '\r')"
+      while IFS= read -r LINE <&4; do
+        # Strip trailing \r from PTY line endings
+        LINE="''${LINE%"$CR"}"
+        if [ "$LINE" = "$SENTINEL" ]; then
+          break
+        fi
+      done
 
       # Relay stdin -> daemon in background (in case of piped input)
       cat <&0 >&4 &
