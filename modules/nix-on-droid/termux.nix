@@ -399,23 +399,21 @@ in {
           HOST="''${TERMUX_CMD_HOST:-${host}}"
 
           # Per-connection helper: reads the command line, then execs it.
-          # The helper runs inside a PTY allocated by socat. We suppress
-          # echo during the initial command read so that the command string
-          # is never reflected back to the client's stdout.
+          # socat allocates a PTY with echo=0 so the command line is never
+          # reflected back to the client. After reading the command, the
+          # helper restores sane terminal settings before exec'ing.
           HELPER="$(mktemp)"
           trap 'rm -f "$HELPER"' EXIT
           cat > "$HELPER" <<'INNER'
           #!/data/data/com.termux/files/usr/bin/bash
 
-          # Suppress PTY echo while reading the command line.
-          # This prevents the command string from appearing in the client's stdout.
-          stty -echo 2>/dev/null || true
-
+          # PTY was created with echo off (socat echo=0), so the command
+          # line sent by the client will not be reflected back as output.
           IFS= read -r CMD_LINE 2>/dev/null || exit 1
           [ -z "$CMD_LINE" ] && exit 1
 
           # Restore sane terminal settings for the actual command.
-          # Interactive programs (bash, vim, etc.) will configure the PTY
+          # Interactive programs (bash, vim, etc.) will reconfigure the PTY
           # themselves; non-interactive ones just need a clean baseline.
           stty sane 2>/dev/null || true
 
@@ -426,9 +424,12 @@ in {
           echo "termux-command-daemon: listening on $HOST:$PORT" >&2
           echo "termux-command-daemon: protocol - connect, send one line (the command), then interactive I/O" >&2
 
+          # echo=0: PTY starts with echo disabled to prevent the command
+          # line from being reflected back. The helper restores sane
+          # settings after reading the command.
           exec socat \
             TCP-LISTEN:"$PORT",bind="$HOST",reuseaddr,fork \
-            EXEC:"$HELPER",pty,setsid,ctty,stderr
+            EXEC:"$HELPER",pty,setsid,ctty,stderr,echo=0
         '';
       };
 
