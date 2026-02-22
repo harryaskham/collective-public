@@ -21,7 +21,7 @@ let
   port = toString cfg.exec.port;
   host = cfg.exec.host;
 
-  termux-exec-pkg = pkgs.termux-exec-collective.override {
+  termux-exec-pkg = pkgs.termux-exec.override {
     inherit port host;
   };
 
@@ -30,7 +30,23 @@ let
   '';
 
   termux-exec-record-pkg = pkgs.writeShellScriptBin "tx-rec" ''
-    exec "${lib.getExe termux-exec-pkg}" "$@"
+    exec "${lib.getExe termux-exec-pkg}" termux-microphone-record $@
+  '';
+
+  termux-exec-player-pkg = pkgs.writeShellScriptBin "tx-player" ''
+    exec "${lib.getExe termux-exec-pkg}" termux-media-player $@
+  '';
+
+  termux-exec-play-pkg = pkgs.writeShellScriptBin "tx-play" ''
+    exec "${lib.getExe termux-exec-player-pkg}" play $@
+  '';
+
+  termux-exec-pause-pkg = pkgs.writeShellScriptBin "tx-pause" ''
+    exec "${lib.getExe termux-exec-player-pkg}" pause
+  '';
+
+  termux-exec-stop-pkg = pkgs.writeShellScriptBin "tx-stop" ''
+    exec "${lib.getExe termux-exec-player-pkg}" stop
   '';
 
   # rish wrapper: sends a self-contained dex-loading command to termux-exec
@@ -358,6 +374,10 @@ in {
         termux-exec-pkg
         termux-exec-alias-pkg
         termux-exec-record-pkg
+        termux-exec-player-pkg
+        termux-exec-play-pkg
+        termux-exec-pause-pkg
+        termux-exec-stop-pkg
       ];
 
       environment.etc."termux-exec/termux-command-daemon.sh" = {

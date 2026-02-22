@@ -11,7 +11,7 @@
 }:
 
 pkgs.stdenvNoCC.mkDerivation {
-  pname = "termux-exec-collective";
+  pname = "termux-exec";
   version = "0.4.0";
   dontUnpack = true;
 
