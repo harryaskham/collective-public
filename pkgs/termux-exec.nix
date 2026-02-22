@@ -13,6 +13,7 @@
 pkgs.stdenvNoCC.mkDerivation {
   pname = "termux-exec";
   version = "0.4.0";
+  meta.mainProgram = "termux-exec";
   dontUnpack = true;
 
   installPhase = let
