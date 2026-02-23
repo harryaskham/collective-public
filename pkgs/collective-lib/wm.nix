@@ -286,7 +286,7 @@ in rec {
           moveWindowDown = runs "yabai -m window --swap south";
           moveWindowLeft = runs "yabai -m window --swap west";
           moveWindowRight = runs "yabai -m window --swap east";
-          openTerminal = runs ''SPACE=$(yabai -m query --spaces --space | ${pkgs.jq}/bin/jq '.index'); open -n /Applications/Ghostty.app; sleep 0.5; yabai -m window --space "$SPACE"; yabai -m space --focus "$SPACE"'';
+          openTerminal = runs ''open -n /Applications/Ghostty.app'';
           openLauncher = runs ''echo unimplemented'';
           reloadConfig = runs "yabai --restart-service; skhd --reload";
           floatCurrent = runs "yabai -m window --toggle float; yabai -m window --grid 4:4:1:1:2:2togglefloating";
