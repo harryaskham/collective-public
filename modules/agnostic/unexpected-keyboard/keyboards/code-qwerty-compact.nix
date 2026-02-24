@@ -29,6 +29,8 @@ let
           new_termux_terminal = (m "⎙" [(k ctrl) (k alt) (k c)]);
           next_termux_terminal = (m "⏭" [(k ctrl) (k alt) (k n)]);
           prev_termux_terminal = (m "⏮" [(k ctrl) (k alt) (k p)]);
+          next_tmux_window = (m "⏩" [(k ctrl) (k a) (k n)]);
+          prev_tmux_window = (m "⏪" [(k ctrl) (k a) (k p)]);
         }));
 in {
   name = "Code QWERTY Compact";
@@ -330,13 +332,13 @@ in {
               c.v
                       se.pastePlain
       _
-
+        "⏪" macros.nw.prev_tmux_window  "⏩" macros.ne.next_tmux_window
               c.b
-        "⏮" macros.sw.prev_termux_terminal
+        "⏮" macros.sw.prev_termux_terminal"⏭" macros.se.next_termux_terminal
       _
                     ne."?"
               c.n
-        sw."/"      "⏭" macros.se.next_termux_terminal
+        sw."/"      
       _
                     ne.":"
               c.m
