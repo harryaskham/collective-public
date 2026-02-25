@@ -118,16 +118,30 @@ let
 
   supervisor = pkgs.python3Packages.supervisor;
 
+  flock = "${pkgs.util-linux}/bin/flock";
+  lockFile = "${cfg.stateDir}/run/supervisord.lock";
+
   supervisord-start = pkgs.writeScriptBin "supervisord-start" ''
     #!${pkgs.runtimeShell}
 
     # Idempotent supervisord launcher: only starts if not already running.
+    # Uses flock to serialize concurrent startup attempts (race-safe).
     PIDFILE="${pidFile}"
     STATEDIR="${cfg.stateDir}"
+    LOCKFILE="${lockFile}"
 
     mkdir -p "$STATEDIR"/{run,log}
 
-    # Check if already running
+    exec ${flock} "$LOCKFILE" ${supervisord-start-inner}/bin/supervisord-start-inner
+  '';
+
+  supervisord-start-inner = pkgs.writeScriptBin "supervisord-start-inner" ''
+    #!${pkgs.runtimeShell}
+
+    # Inner launcher, called under flock. Checks pidfile and port before starting.
+    PIDFILE="${pidFile}"
+
+    # Check if already running via pidfile
     if [ -f "$PIDFILE" ]; then
       PID=$(cat "$PIDFILE" 2>/dev/null)
       if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
@@ -135,6 +149,11 @@ let
       fi
       # Stale pidfile
       rm -f "$PIDFILE"
+    fi
+
+    # Defence-in-depth: check if port is already bound (another instance starting)
+    if ${pkgs.curl}/bin/curl -sf --max-time 1 http://127.0.0.1:${toString cfg.port}/ >/dev/null 2>&1; then
+      exit 0
     fi
 
     exec ${supervisor}/bin/supervisord -c ${configFile}
@@ -195,17 +214,20 @@ in {
       $DRY_RUN_CMD ${supervisord-start}/bin/supervisord-start
     '';
 
-    # Belt-and-suspenders: also check on every shell open
+    # Belt-and-suspenders: also check on every shell open.
+    # Uses flock to prevent races when multiple shells open simultaneously.
+    # The entire check+start runs in a background subshell so shell startup
+    # isn't blocked waiting for the lock or for supervisord to bind its port.
     shell.init = let pf = pidFile; in ''
-      # Ensure supervisord is running (survives app restarts)
-      _sd_pid=""
-      if [ -f "${pf}" ]; then
-        _sd_pid=$(cat "${pf}" 2>/dev/null)
-      fi
-      if [ -z "$_sd_pid" ] || ! kill -0 "$_sd_pid" 2>/dev/null; then
-        ${supervisord-start}/bin/supervisord-start &
-      fi
-      unset _sd_pid
+      (
+        _sd_pid=""
+        if [ -f "${pf}" ]; then
+          _sd_pid=$(cat "${pf}" 2>/dev/null)
+        fi
+        if [ -z "$_sd_pid" ] || ! kill -0 "$_sd_pid" 2>/dev/null; then
+          ${supervisord-start}/bin/supervisord-start
+        fi
+      ) &
     '';
   };
 }
