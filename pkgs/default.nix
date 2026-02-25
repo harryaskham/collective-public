@@ -17,4 +17,7 @@ rec {
 
   # termux-exec: TCP client for running native Termux commands from proot
   termux-exec = pkgs.callPackage ./termux-exec.nix {};
+
+  # nod-exec: TCP command server + clients for Nix-on-Droid
+  nod-exec = pkgs.callPackage ./nod-exec.nix {};
 }

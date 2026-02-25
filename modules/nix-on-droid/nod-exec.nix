@@ -20,8 +20,7 @@ with lib;
 let
   cfg = config.nod-exec;
 
-  nodExecPkgs = pkgs.callPackage ../../../collective-public/pkgs/nod-exec.nix {
-    inherit pkgs;
+  nodExecPkgs = pkgs.nod-exec.override {
     port = toString cfg.port;
     host = cfg.host;
   };
