@@ -35,9 +35,6 @@ let
     IFS= read -r CMD_LINE 2>/dev/null || exit 1
     [ -z "$CMD_LINE" ] && exit 1
 
-    # Restore sane terminal settings if running under PTY
-    stty sane rows 50 cols 250 2>/dev/null || true
-
     # Signal readiness
     printf '%s\n' "__NOD_EXEC_READY__"
 
@@ -56,15 +53,17 @@ let
     cleanup() { rm -f "$PIDFILE"; }
     trap cleanup EXIT
 
-    echo "nod-exec-server: listening on $HOST:$PORT" >&2
+    echo "nod-exec-server: listening on $HOST:$PORT (pipe mode)" >&2
     echo "nod-exec-server: protocol - connect, send one line (command), then I/O" >&2
     echo "nod-exec-server: pidfile $PIDFILE" >&2
 
     echo $$ > "$PIDFILE"
 
+    # Pipe mode (no PTY) — clean output for one-shot commands.
+    # Interactive terminal use (nod-exec bash) gets PTY from the client side.
     exec ${pkgs.socat}/bin/socat \
       TCP-LISTEN:"$PORT",bind="$HOST",reuseaddr,fork \
-      EXEC:"${nod-exec-handler}",pty,setsid,ctty,stderr,echo=0
+      EXEC:"${nod-exec-handler}",stderr
   '';
 
   # Client: lightweight script for sending commands to the server

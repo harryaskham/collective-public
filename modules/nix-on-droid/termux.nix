@@ -333,9 +333,9 @@ in {
         (dst: src: {
           "copy-to-shared-dir__${dst}" = ''
             SRC=${toShellValue src}
-            DEST="${toShellValue cfg.sharedDir.path}/"
+            DEST="${toShellValue cfg.sharedDir.path}/${dst}"
             echo "Copying $SRC to $DEST"
-            mkdir -p "${toShellValue cfg.sharedDir.path}"
+            mkdir -p "$(dirname "$DEST")"
             cp -Lr "$SRC" "$DEST"
           '';
         })
