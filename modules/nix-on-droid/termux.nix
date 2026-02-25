@@ -361,6 +361,15 @@ in {
           "terminal-margin-vertical=${toString cfg.settings.margin.vertical}"
         ];
       };
+
+      # TermuxService (Java) reads termux.properties from ~/.termux/
+      # on the REAL Android filesystem (outside proot). Nix store symlinks
+      # don't resolve outside proot, so we copy a real file into place.
+      # (font.ttf and colors.properties are handled by NOD's terminal.* config)
+      build.activationAfter.termuxProperties = ''
+        mkdir -p "$HOME/.termux"
+        cp -f /etc/termux/termux.properties "$HOME/.termux/termux.properties"
+      '';
     }
 
     # --- Bootstrap script ---

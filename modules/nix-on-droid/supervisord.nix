@@ -219,7 +219,8 @@ in {
     # The entire check+start runs in a background subshell so shell startup
     # isn't blocked waiting for the lock or for supervisord to bind its port.
     shell.init = let pf = pidFile; in ''
-      (
+      # Ensure supervisord is running (survives app restarts)
+      {
         _sd_pid=""
         if [ -f "${pf}" ]; then
           _sd_pid=$(cat "${pf}" 2>/dev/null)
@@ -227,7 +228,9 @@ in {
         if [ -z "$_sd_pid" ] || ! kill -0 "$_sd_pid" 2>/dev/null; then
           ${supervisord-start}/bin/supervisord-start
         fi
-      ) &
+        unset _sd_pid
+      } >/dev/null 2>&1 &
+      disown 2>/dev/null
     '';
   };
 }
