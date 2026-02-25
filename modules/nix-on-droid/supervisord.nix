@@ -197,12 +197,15 @@ in {
     # Always restart to pick up config changes (new programs, etc).
     build.activationAfter.supervisord = ''
       PIDFILE="${pidFile}"
+
+      # Kill any existing supervisord and ALL its children
       if [ -f "$PIDFILE" ]; then
         OLD_PID=$(cat "$PIDFILE" 2>/dev/null)
         if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
-          echo "[supervisord] Stopping old instance (pid $OLD_PID) to pick up config changes..."
+          echo "[supervisord] Stopping old instance (pid $OLD_PID) and children..."
+          # Kill the whole process group
+          kill -- -"$OLD_PID" 2>/dev/null || true
           kill "$OLD_PID" 2>/dev/null || true
-          # Wait for it to stop
           for i in $(seq 1 10); do
             kill -0 "$OLD_PID" 2>/dev/null || break
             sleep 0.5
@@ -211,6 +214,15 @@ in {
         fi
         rm -f "$PIDFILE"
       fi
+
+      # Also kill any orphaned supervisord/managed processes from previous generations
+      for pid in $(${pkgs.procps}/bin/pgrep -f 'supervisord.*supervisord.conf' 2>/dev/null); do
+        kill -9 "$pid" 2>/dev/null || true
+      done
+      for pid in $(${pkgs.procps}/bin/pgrep -f 'sops-watcher-supervisord' 2>/dev/null); do
+        kill -9 "$pid" 2>/dev/null || true
+      done
+
       $DRY_RUN_CMD ${supervisord-start}/bin/supervisord-start
     '';
 
