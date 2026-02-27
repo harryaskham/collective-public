@@ -42,25 +42,48 @@ let
     exec ${pkgs.bash}/bin/bash -l -c "$CMD_LINE"
   '';
 
+  # Interactive handler with PTY for shells
+  nod-exec-handler-pty = pkgs.writeScript "nod-exec-handler-pty" ''
+    #!${pkgs.bash}/bin/bash
+
+    IFS= read -r CMD_LINE 2>/dev/null || exit 1
+    [ -z "$CMD_LINE" ] && exit 1
+
+    # Restore sane terminal settings on the PTY socat created
+    stty sane 2>/dev/null || true
+
+    printf '%s\n' "__NOD_EXEC_READY__"
+
+    exec ${pkgs.bash}/bin/bash -l -c "$CMD_LINE"
+  '';
+
   nod-exec-server = pkgs.writeScriptBin "nod-exec-server" ''
     #!${pkgs.bash}/bin/bash
     set -euo pipefail
 
     PORT="''${NOD_EXEC_PORT:-${defaultPort}}"
+    PTY_PORT=$((PORT + 1))
     HOST="''${NOD_EXEC_HOST:-${defaultHost}}"
     PIDFILE="''${NOD_EXEC_PIDFILE:-/tmp/run/nod-exec-server.pid}"
 
-    cleanup() { rm -f "$PIDFILE"; }
+    cleanup() {
+      kill "$PTY_PID" 2>/dev/null || true
+      rm -f "$PIDFILE"
+    }
     trap cleanup EXIT
 
-    echo "nod-exec-server: listening on $HOST:$PORT (pipe mode)" >&2
-    echo "nod-exec-server: protocol - connect, send one line (command), then I/O" >&2
-    echo "nod-exec-server: pidfile $PIDFILE" >&2
-
+    mkdir -p "$(dirname "$PIDFILE")"
     echo $$ > "$PIDFILE"
 
-    # Pipe mode (no PTY) — clean output for one-shot commands.
-    # Interactive terminal use (nod-exec bash) gets PTY from the client side.
+    echo "nod-exec-server: pipe on $HOST:$PORT, pty on $HOST:$PTY_PORT" >&2
+
+    # PTY listener for interactive sessions (shells, TUIs)
+    ${pkgs.socat}/bin/socat \
+      TCP-LISTEN:"$PTY_PORT",bind="$HOST",reuseaddr,fork \
+      EXEC:"${nod-exec-handler-pty}",pty,setsid,ctty,stderr,echo=0 &
+    PTY_PID=$!
+
+    # Pipe listener for one-shot commands (Tasker, KWGT)
     exec ${pkgs.socat}/bin/socat \
       TCP-LISTEN:"$PORT",bind="$HOST",reuseaddr,fork \
       EXEC:"${nod-exec-handler}",stderr
