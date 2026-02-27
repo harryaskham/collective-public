@@ -407,6 +407,35 @@ in {
             echo "Installed boot scripts: $(ls ~/.termux/boot/)"
           fi
 
+          # --- nod-exec shell function ---
+          # Add a nod-exec() function to Termux's bashrc/zshrc so commands
+          # can be run in NOD from any Termux shell.
+          NOD_EXEC_FUNC='
+          # nod-exec: run commands in Nix-on-Droid via TCP
+          nod-exec() {
+            if [ $# -eq 0 ]; then
+              echo "Usage: nod-exec <command> [args...]" >&2
+              echo "       nod-exec bash   # interactive shell" >&2
+              return 1
+            fi
+            local cmd="$(printf "%q " "$@")"
+            echo "$cmd" | nc -q5 127.0.0.1 18357 2>/dev/null | {
+              local ready=0
+              while IFS= read -r line; do
+                case "$line" in
+                  *__NOD_EXEC_READY__*) ready=1; continue ;;
+                esac
+                [ "$ready" -eq 1 ] && printf "%s\n" "$line"
+              done
+            }
+          }
+          '
+          # Append to bashrc if not already present
+          if ! grep -q 'nod-exec()' "$HOME/.bashrc" 2>/dev/null; then
+            echo "$NOD_EXEC_FUNC" >> "$HOME/.bashrc"
+            echo "Added nod-exec function to .bashrc"
+          fi
+
           echo "Bootstrap complete. Run 'termux-reload-settings' to apply."
         '';
       };
