@@ -35,11 +35,23 @@ let
     IFS= read -r CMD_LINE 2>/dev/null || exit 1
     [ -z "$CMD_LINE" ] && exit 1
 
+    # Ensure NOD environment is set up
+    export HOME="''${HOME:-/home/nix-on-droid}"
+    export USER="''${USER:-nix-on-droid}"
+    cd "$HOME" 2>/dev/null || true
+
+    # Source nix-on-droid session init if available (sets PATH, etc)
+    for f in "$HOME/.nix-profile/etc/profile.d/nix-on-droid-session-init.sh" \
+             "$HOME/.nix-profile/etc/profile.d/nix.sh" \
+             /etc/profile; do
+      [ -f "$f" ] && . "$f" 2>/dev/null && break
+    done
+
     # Signal readiness
     printf '%s\n' "__NOD_EXEC_READY__"
 
-    # Execute in a login-like environment
-    exec ${pkgs.bash}/bin/bash -l -c "$CMD_LINE"
+    # Execute in the fully set up environment
+    exec ${pkgs.bash}/bin/bash -c "$CMD_LINE"
   '';
 
   # Interactive handler with PTY for shells
@@ -49,12 +61,24 @@ let
     IFS= read -r CMD_LINE 2>/dev/null || exit 1
     [ -z "$CMD_LINE" ] && exit 1
 
+    # Ensure NOD environment is set up
+    export HOME="''${HOME:-/home/nix-on-droid}"
+    export USER="''${USER:-nix-on-droid}"
+    cd "$HOME" 2>/dev/null || true
+
+    # Source nix-on-droid session init if available
+    for f in "$HOME/.nix-profile/etc/profile.d/nix-on-droid-session-init.sh" \
+             "$HOME/.nix-profile/etc/profile.d/nix.sh" \
+             /etc/profile; do
+      [ -f "$f" ] && . "$f" 2>/dev/null && break
+    done
+
     # Restore sane terminal settings on the PTY socat created
     stty sane 2>/dev/null || true
 
     printf '%s\n' "__NOD_EXEC_READY__"
 
-    exec ${pkgs.bash}/bin/bash -l -c "$CMD_LINE"
+    exec ${pkgs.bash}/bin/bash -c "$CMD_LINE"
   '';
 
   nod-exec-server = pkgs.writeScriptBin "nod-exec-server" ''
