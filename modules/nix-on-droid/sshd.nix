@@ -28,11 +28,22 @@ let
   '';
 
   # Foreground sshd for supervisord management.
-  # Generates host keys if missing, then exec's sshd with -D (no daemonize).
+  # Generates host keys if missing, kills any stale sshd, then exec's sshd with -D.
   sshd-start = pkgs.writeScriptBin "sshd-start" ''
     #!${pkgs.runtimeShell}
 
     ${prefixLines generateKeyWhenNeededOf supportedKeysTypes}
+
+    # Kill any stale sshd that might be holding our port
+    if [ -f /etc/ssh/sshd.pid ]; then
+      OLD_PID=$(cat /etc/ssh/sshd.pid 2>/dev/null)
+      if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+        kill "$OLD_PID" 2>/dev/null || true
+        sleep 1
+        kill -9 "$OLD_PID" 2>/dev/null || true
+      fi
+      rm -f /etc/ssh/sshd.pid
+    fi
 
     exec ${pkgs.openssh}/bin/sshd -D -f "/etc/ssh/sshd_config" -E "/etc/ssh/sshd.log"
   '';

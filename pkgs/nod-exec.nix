@@ -35,17 +35,24 @@ let
     IFS= read -r CMD_LINE 2>/dev/null || exit 1
     [ -z "$CMD_LINE" ] && exit 1
 
-    # Ensure NOD environment is set up
+    # Reset environment to match a fresh NOD login shell.
+    # supervisord passes a minimal PATH; we need the full user env.
     export HOME="''${HOME:-/home/nix-on-droid}"
     export USER="''${USER:-nix-on-droid}"
     cd "$HOME" 2>/dev/null || true
 
-    # Source nix-on-droid session init if available (sets PATH, etc)
-    for f in "$HOME/.nix-profile/etc/profile.d/nix-on-droid-session-init.sh" \
-             "$HOME/.nix-profile/etc/profile.d/nix.sh" \
-             /etc/profile; do
-      [ -f "$f" ] && . "$f" 2>/dev/null && break
-    done
+    # Clear supervisor's PATH and session-init guard so we get a fresh setup
+    unset PATH
+    unset __NOD_SESS_INIT_SOURCED
+    unset __ETC_PROFILE_SOURCED
+    unset __NIXOS_SET_ENVIRONMENT_DONE
+
+    # Source session init to rebuild PATH with all nix profile bins
+    if [ -f "$HOME/.nix-profile/etc/profile.d/nix-on-droid-session-init.sh" ]; then
+      . "$HOME/.nix-profile/etc/profile.d/nix-on-droid-session-init.sh"
+    elif [ -f /etc/profile ]; then
+      . /etc/profile
+    fi
 
     # Signal readiness
     printf '%s\n' "__NOD_EXEC_READY__"
@@ -61,17 +68,21 @@ let
     IFS= read -r CMD_LINE 2>/dev/null || exit 1
     [ -z "$CMD_LINE" ] && exit 1
 
-    # Ensure NOD environment is set up
+    # Reset environment to match a fresh NOD login shell
     export HOME="''${HOME:-/home/nix-on-droid}"
     export USER="''${USER:-nix-on-droid}"
     cd "$HOME" 2>/dev/null || true
 
-    # Source nix-on-droid session init if available
-    for f in "$HOME/.nix-profile/etc/profile.d/nix-on-droid-session-init.sh" \
-             "$HOME/.nix-profile/etc/profile.d/nix.sh" \
-             /etc/profile; do
-      [ -f "$f" ] && . "$f" 2>/dev/null && break
-    done
+    unset PATH
+    unset __NOD_SESS_INIT_SOURCED
+    unset __ETC_PROFILE_SOURCED
+    unset __NIXOS_SET_ENVIRONMENT_DONE
+
+    if [ -f "$HOME/.nix-profile/etc/profile.d/nix-on-droid-session-init.sh" ]; then
+      . "$HOME/.nix-profile/etc/profile.d/nix-on-droid-session-init.sh"
+    elif [ -f /etc/profile ]; then
+      . /etc/profile
+    fi
 
     # Restore sane terminal settings on the PTY socat created
     stty sane 2>/dev/null || true
