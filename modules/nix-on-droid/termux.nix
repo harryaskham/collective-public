@@ -676,7 +676,8 @@ in {
           LD_PRELOAD="$WITH_LD_PRELOAD" pulseaudio \
             --start \
             --exit-idle-time=-1 \
-            --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1"
+            --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" \
+            --load="module-sles-source"
 
           echo "Starting X11 listener"
           termux-x11 :1 -listen tcp -ac -dpi 192 \
