@@ -46,6 +46,7 @@ let
     unset __NOD_SESS_INIT_SOURCED
     unset __ETC_PROFILE_SOURCED
     unset __NIXOS_SET_ENVIRONMENT_DONE
+    export DIRENV_LOG_FORMAT=""
 
     # Source session init to rebuild PATH with all nix profile bins
     if [ -f "$HOME/.nix-profile/etc/profile.d/nix-on-droid-session-init.sh" ]; then
