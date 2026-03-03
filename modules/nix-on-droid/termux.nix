@@ -561,14 +561,13 @@ in {
       environment.etc."termux-boot/20-pulseaudio.sh" = mkIf cfg.boot.pulseaudio {
         text = ''
           #!/data/data/com.termux/files/usr/bin/bash
-          # Start PulseAudio TCP server (idempotent).
-          if pgrep pulseaudio 2>/dev/null; then
-            killall pulseaudio
-          fi
+          # Start PulseAudio TCP server
+          killall pulseaudio >/dev/null || true
           LD_PRELOAD="/system/lib64/libskcodec.so" pulseaudio \
             --start \
             --exit-idle-time=-1 \
-            --load="module-native-protocol-tcp auth-anonymous=1"
+            --load="module-native-protocol-tcp auth-anonymous=1" \
+            --load="module-sles-source"
         '';
       };
 
