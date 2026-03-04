@@ -56,7 +56,7 @@ let
     fi
 
     # Signal readiness
-    printf '%s\n' "__NOD_EXEC_READY__"
+    printf '%s\n' "__NOD_EXEC_READY__ $$"
 
     # Execute in the fully set up environment
     exec ${pkgs.bash}/bin/bash -c "$CMD_LINE"
@@ -88,7 +88,7 @@ let
     # Restore sane terminal settings on the PTY socat created
     stty sane 2>/dev/null || true
 
-    printf '%s\n' "__NOD_EXEC_READY__"
+    printf '%s\n' "__NOD_EXEC_READY__ $$"
 
     exec ${pkgs.bash}/bin/bash -c "$CMD_LINE"
   '';
