@@ -46,6 +46,8 @@ in {
       nodExecPkgs.server
       nodExecPkgs.client
       nodExecPkgs.nc
+      pkgs.nod-tmux.nod-tmux
+      pkgs.nod-tmux.nod-float
     ];
 
     # Copy the lightweight Android client to shared storage

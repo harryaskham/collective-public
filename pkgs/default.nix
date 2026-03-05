@@ -20,4 +20,7 @@ rec {
 
   # nod-exec: TCP command server + clients for Nix-on-Droid
   nod-exec = pkgs.callPackage ./nod-exec.nix {};
+
+  # nod-tmux: tmux management + floating terminal launcher for nod-term
+  nod-tmux = pkgs.callPackage ./nod-tmux.nix {};
 }
