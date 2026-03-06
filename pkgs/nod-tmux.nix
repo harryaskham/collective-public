@@ -81,7 +81,7 @@ let
     AM="am"
     command -v am >/dev/null 2>&1 || AM="termux-exec am"
 
-    ENCODED=$(${pkgs.python3}/bin/python3 -c "import urllib.parse; print(urllib.parse.quote('''$CMD'''))")
+    ENCODED=$(${pkgs.python3}/bin/python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$CMD")
     $AM start -a android.intent.action.VIEW \
       -d "nodterm://float?cmd=$ENCODED" \
       -n com.harryaskham.nodterm/.FloatingLaunchActivity 2>/dev/null
