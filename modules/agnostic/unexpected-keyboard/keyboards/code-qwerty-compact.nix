@@ -14,7 +14,7 @@ let
     switch_to_splitLG = "switch_to_layout_Code_QWERTY_Compact_3_splitLE";
     switch_to_splitLE = "switch_to_layout_Code_QWERTY_Compact_4_splitLG";
     switch_to_keys29T = "switch_to_layout_Code_QWERTY_Compact_5_keys29T";
-    switch_to_keys29R = "switch_to_layout_Code_QWERTY_Compact_5_keys29R";
+    switch_to_keys29R = "switch_to_layout_Code_QWERTY_Compact_6_keys29R";
   };
 in
 
@@ -31,6 +31,15 @@ let
           prev_termux_terminal = (m "←" [(k ctrl) (k alt) (k p)]);
           next_tmux_window = (m "▸" [(k ctrl) (k a) (k n)]);
           prev_tmux_window = (m "◂" [(k ctrl) (k a) (k p)]);
+          float_terminal = (m "⇡" [(k ctrl) (k alt) (k f)]);
+          tmux_zoom = (m "⛶" [(k ctrl) (k a) (k f)]);
+          tmux_session_picker = (m "⎆" [(k ctrl) (k a) (k g)]);
+          tmux_split_horizontal = (m "━" [(k ctrl) (k a) (k "|")]);
+          tmux_split_vertical = (m "┃" [(k ctrl) (k a) (k "S")]);
+          tmux_resize_up = (m "△" [(k ctrl) (k a) (k up)]);
+          tmux_resize_down = (m "▽" [(k ctrl) (k a) (k down)]);
+          tmux_resize_left = (m "◁" [(k ctrl) (k a) (k left)]);
+          tmux_resize_right = (m "▷" [(k ctrl) (k a) (k right)]);
         }));
 in {
   name = "Code QWERTY Compact";
@@ -38,7 +47,7 @@ in {
   includeDefaultVariants = false;  # Added back manually as part of the ordered variants below.
   variants =
     let
-      addSwitchToBase = setKey 2 4 (K "⟲" se.switch_to_base c.b K);
+      addSwitchToBase = updateKey 2 3 (setCardinal.nw ((kv.k _.switch_to_base) // {legend = "⟲";}));
 
       modCol =
         K "⎋" c.esc nw.tab ne."`" sw."~"
@@ -280,16 +289,19 @@ in {
       _
 
               c.d
-                    "❖" se.meta
+        "⛶" macros.nw.tmux_zoom  "⎆" macros.ne.tmux_session_picker  "❖" se.meta
       _
 
               c.f
-                    "▤" se.fn
+        "⇡" macros.nw.float_terminal  "▤" se.fn
 
       _
-                    ne."-"
+        "┃" macros.nw.tmux_split_vertical  ne."-"
               c.g
-        sw."_"
+                  "△" macros.n.tmux_resize_up
+         "◁" macros.w.tmux_resize_left  "▷" macros.e.tmux_resize_right
+                  "▽" macros.s.tmux_resize_down
+        sw."_"  "━" macros.se.tmux_split_horizontal
       _
                     ne."="
               c.h
