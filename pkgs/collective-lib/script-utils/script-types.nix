@@ -130,7 +130,7 @@ rec {
         logBlock
         scriptPreamble
         (usageBlock args opts)
-        (optsBlock args opts)
+        (if (args.passthroughArgs or false) then "" else (optsBlock args opts))
         scriptBody
         (maybeRunMainBlock args)
       ];
