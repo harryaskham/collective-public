@@ -1,24 +1,36 @@
-{ config, lib, pkgs, typed, untyped, ... }:
-
+{
+  config,
+  lib,
+  pkgs,
+  typed,
+  untyped,
+  ...
+}:
 # Supervisord process manager for nix-on-droid.
 # Provides a lightweight systemd-like service manager that persists
 # daemons through app restarts. Other modules declare programs via
 # supervisord.programs.NAME = { command = "..."; ... };
-
 with typed;
-with lib;
-
-let
+with lib; let
   cfg = config.supervisord;
+  homePrograms = lib.attrByPath ["home-manager" "config" "supervisord" "programs"] {} config;
+  homeProgramNames = builtins.attrNames homePrograms;
+  duplicateProgramNames = lib.intersectLists (builtins.attrNames cfg.programs) homeProgramNames;
+  allPrograms = cfg.programs // homePrograms;
 
-  boolToConf = b: if b then "true" else "false";
+  boolToConf = b:
+    if b
+    then "true"
+    else "false";
 
   autorestartToConf = v:
-    if v == true then "true"
-    else if v == false then "false"
+    if v == true
+    then "true"
+    else if v == false
+    then "false"
     else v; # "unexpected"
 
-  programOpts = { name, ... }: {
+  programOpts = {name, ...}: {
     options = {
       command = mkOption {
         type = types.str;
@@ -45,7 +57,7 @@ let
         description = "Whether to start this program when supervisord starts.";
       };
       autorestart = mkOption {
-        type = types.either types.bool (types.enum [ "unexpected" ]);
+        type = types.either types.bool (types.enum ["unexpected"]);
         default = true;
         description = "Whether to restart the program when it exits. Can be true, false, or \"unexpected\".";
       };
@@ -90,30 +102,32 @@ let
     [rpcinterface:supervisor]
     supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
 
-    ${concatStringsSep "\n" (mapAttrsToList (name: prog:
-      let
-        pathStr = concatStringsSep ":" (map (p: "${p}/bin") prog.path);
-        envPairs = mapAttrsToList (k: v: "${k}=\"${v}\"") (
-          prog.environment // optionalAttrs (prog.path != []) {
-            PATH = concatStringsSep ":" (
-              [ "%(ENV_PATH)s" pathStr ]
-              ++ optional (prog.environment ? PATH) prog.environment.PATH
-            );
-          }
-        );
-      in ''
-        [program:${name}]
-        command=${prog.command}
-        directory=${prog.directory}
-        autostart=${boolToConf prog.autostart}
-        autorestart=${autorestartToConf prog.autorestart}
-        startsecs=${toString prog.startsecs}
-        stopsignal=${prog.stopsignal}
-        stopasgroup=${boolToConf prog.stopasgroup}
-        redirect_stderr=${boolToConf prog.redirect_stderr}
-        ${optionalString (envPairs != []) "environment=${concatStringsSep "," envPairs}"}
-      ''
-    ) cfg.programs)}
+    ${concatStringsSep "\n" (mapAttrsToList (
+        name: prog: let
+          pathStr = concatStringsSep ":" (map (p: "${p}/bin") prog.path);
+          envPairs = mapAttrsToList (k: v: "${k}=\"${v}\"") (
+            prog.environment
+            // optionalAttrs (prog.path != []) {
+              PATH = concatStringsSep ":" (
+                ["%(ENV_PATH)s" pathStr]
+                ++ optional (prog.environment ? PATH) prog.environment.PATH
+              );
+            }
+          );
+        in ''
+          [program:${name}]
+          command=${prog.command}
+          directory=${prog.directory}
+          autostart=${boolToConf prog.autostart}
+          autorestart=${autorestartToConf prog.autorestart}
+          startsecs=${toString prog.startsecs}
+          stopsignal=${prog.stopsignal}
+          stopasgroup=${boolToConf prog.stopasgroup}
+          redirect_stderr=${boolToConf prog.redirect_stderr}
+          ${optionalString (envPairs != []) "environment=${concatStringsSep "," envPairs}"}
+        ''
+      )
+      allPrograms)}
   '';
 
   supervisor = pkgs.python3Packages.supervisor;
@@ -163,7 +177,6 @@ let
     #!${pkgs.runtimeShell}
     exec ${supervisor}/bin/supervisorctl -c ${configFile} "$@"
   '';
-
 in {
   options.supervisord = {
     enable = mkEnable "Whether to enable the supervisord process manager.";
@@ -187,62 +200,81 @@ in {
     };
   };
 
-  config = mkIf cfg.enable {
-    environment.packages = [
-      supervisord-start
-      supervisorctl-wrapped
-    ];
+  config = mkMerge [
+    (mkIf (homeProgramNames != []) {
+      supervisord.enable = mkDefault true;
+    })
 
-    # Start/restart supervisord during nix-on-droid activation.
-    # Always restart to pick up config changes (new programs, etc).
-    build.activationAfter.supervisord = ''
-      PIDFILE="${pidFile}"
+    (mkIf cfg.enable {
+      assertions = [
+        {
+          assertion = duplicateProgramNames == [];
+          message = ''
+            Duplicate supervisord program names were declared in both the
+            nix-on-droid system config and home-manager config:
+            ${concatStringsSep ", " duplicateProgramNames}
+          '';
+        }
+      ];
 
-      # Kill any existing supervisord and ALL its children
-      if [ -f "$PIDFILE" ]; then
-        OLD_PID=$(cat "$PIDFILE" 2>/dev/null)
-        if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
-          echo "[supervisord] Stopping old instance (pid $OLD_PID) and children..."
-          # Kill the whole process group
-          kill -- -"$OLD_PID" 2>/dev/null || true
-          kill "$OLD_PID" 2>/dev/null || true
-          for i in $(seq 1 10); do
-            kill -0 "$OLD_PID" 2>/dev/null || break
-            sleep 0.5
-          done
-          kill -9 "$OLD_PID" 2>/dev/null || true
+      environment.packages = [
+        supervisord-start
+        supervisorctl-wrapped
+      ];
+
+      # Start/restart supervisord during nix-on-droid activation.
+      # Always restart to pick up config changes (new programs, etc).
+      build.activationAfter.supervisord = ''
+        PIDFILE="${pidFile}"
+
+        # Kill any existing supervisord and ALL its children
+        if [ -f "$PIDFILE" ]; then
+          OLD_PID=$(cat "$PIDFILE" 2>/dev/null)
+          if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+            echo "[supervisord] Stopping old instance (pid $OLD_PID) and children..."
+            # Kill the whole process group
+            kill -- -"$OLD_PID" 2>/dev/null || true
+            kill "$OLD_PID" 2>/dev/null || true
+            for i in $(seq 1 10); do
+              kill -0 "$OLD_PID" 2>/dev/null || break
+              sleep 0.5
+            done
+            kill -9 "$OLD_PID" 2>/dev/null || true
+          fi
+          rm -f "$PIDFILE"
         fi
-        rm -f "$PIDFILE"
-      fi
 
-      # Also kill any orphaned supervisord/managed processes from previous generations
-      for pid in $(${pkgs.procps}/bin/pgrep -f 'supervisord.*supervisord.conf' 2>/dev/null); do
-        kill -9 "$pid" 2>/dev/null || true
-      done
-      for pid in $(${pkgs.procps}/bin/pgrep -f 'sops-watcher-supervisord' 2>/dev/null); do
-        kill -9 "$pid" 2>/dev/null || true
-      done
+        # Also kill any orphaned supervisord/managed processes from previous generations
+        for pid in $(${pkgs.procps}/bin/pgrep -f 'supervisord.*supervisord.conf' 2>/dev/null); do
+          kill -9 "$pid" 2>/dev/null || true
+        done
+        for pid in $(${pkgs.procps}/bin/pgrep -f 'sops-watcher-supervisord' 2>/dev/null); do
+          kill -9 "$pid" 2>/dev/null || true
+        done
 
-      $DRY_RUN_CMD ${supervisord-start}/bin/supervisord-start
-    '';
+        $DRY_RUN_CMD ${supervisord-start}/bin/supervisord-start
+      '';
 
-    # Belt-and-suspenders: also check on every shell open.
-    # Uses flock to prevent races when multiple shells open simultaneously.
-    # The entire check+start runs in a background subshell so shell startup
-    # isn't blocked waiting for the lock or for supervisord to bind its port.
-    shell.init = let pf = pidFile; in ''
-      # Ensure supervisord is running (survives app restarts)
-      {
-        _sd_pid=""
-        if [ -f "${pf}" ]; then
-          _sd_pid=$(cat "${pf}" 2>/dev/null)
-        fi
-        if [ -z "$_sd_pid" ] || ! kill -0 "$_sd_pid" 2>/dev/null; then
-          ${supervisord-start}/bin/supervisord-start
-        fi
-        unset _sd_pid
-      } >/dev/null 2>&1 &
-      disown 2>/dev/null
-    '';
-  };
+      # Belt-and-suspenders: also check on every shell open.
+      # Uses flock to prevent races when multiple shells open simultaneously.
+      # The entire check+start runs in a background subshell so shell startup
+      # isn't blocked waiting for the lock or for supervisord to bind its port.
+      shell.init = let
+        pf = pidFile;
+      in ''
+        # Ensure supervisord is running (survives app restarts)
+        {
+          _sd_pid=""
+          if [ -f "${pf}" ]; then
+            _sd_pid=$(cat "${pf}" 2>/dev/null)
+          fi
+          if [ -z "$_sd_pid" ] || ! kill -0 "$_sd_pid" 2>/dev/null; then
+            ${supervisord-start}/bin/supervisord-start
+          fi
+          unset _sd_pid
+        } >/dev/null 2>&1 &
+        disown 2>/dev/null
+      '';
+    })
+  ];
 }
