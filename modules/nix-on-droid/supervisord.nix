@@ -29,60 +29,7 @@ with lib; let
     else if v == false
     then "false"
     else v; # "unexpected"
-
-  programOpts = {name, ...}: {
-    options = {
-      command = mkOption {
-        type = types.str;
-        description = "The command to execute.";
-      };
-      directory = mkOption {
-        type = types.str;
-        default = "/";
-        description = "Working directory for the program.";
-      };
-      environment = mkOption {
-        type = types.attrsOf types.str;
-        default = {};
-        description = "Environment variables for the program.";
-      };
-      path = mkOption {
-        type = types.listOf types.package;
-        default = [];
-        description = "Packages to add to PATH for the program.";
-      };
-      autostart = mkOption {
-        type = types.bool;
-        default = true;
-        description = "Whether to start this program when supervisord starts.";
-      };
-      autorestart = mkOption {
-        type = types.either types.bool (types.enum ["unexpected"]);
-        default = true;
-        description = "Whether to restart the program when it exits. Can be true, false, or \"unexpected\".";
-      };
-      startsecs = mkOption {
-        type = types.int;
-        default = 1;
-        description = "Seconds the program must stay running to consider the start successful. Use 0 for oneshot.";
-      };
-      stopsignal = mkOption {
-        type = types.str;
-        default = "TERM";
-        description = "Signal to send when stopping the program.";
-      };
-      stopasgroup = mkOption {
-        type = types.bool;
-        default = true;
-        description = "Whether to send the stop signal to the whole process group.";
-      };
-      redirect_stderr = mkOption {
-        type = types.bool;
-        default = true;
-        description = "Whether to redirect stderr to stdout.";
-      };
-    };
-  };
+  programOpts = import ../supervisord-program-options.nix { inherit lib typed; };
 
   pidFile = "${cfg.stateDir}/run/supervisord.pid";
 
@@ -105,15 +52,20 @@ with lib; let
     ${concatStringsSep "\n" (mapAttrsToList (
         name: prog: let
           pathStr = concatStringsSep ":" (map (p: "${p}/bin") prog.path);
-          envPairs = mapAttrsToList (k: v: "${k}=\"${v}\"") (
-            prog.environment
-            // optionalAttrs (prog.path != []) {
-              PATH = concatStringsSep ":" (
-                ["%(ENV_PATH)s" pathStr]
-                ++ optional (prog.environment ? PATH) prog.environment.PATH
+          envLine =
+            if isString prog.environment
+            then prog.environment
+            else let
+              envPairs = mapAttrsToList (k: v: "${k}=\"${v}\"") (
+                prog.environment
+                // optionalAttrs (prog.path != []) {
+                  PATH = concatStringsSep ":" (
+                    ["%(ENV_PATH)s" pathStr]
+                    ++ optional (prog.environment ? PATH) prog.environment.PATH
+                  );
+                }
               );
-            }
-          );
+            in optionalString (envPairs != []) (concatStringsSep "," envPairs);
         in ''
           [program:${name}]
           command=${prog.command}
@@ -124,7 +76,9 @@ with lib; let
           stopsignal=${prog.stopsignal}
           stopasgroup=${boolToConf prog.stopasgroup}
           redirect_stderr=${boolToConf prog.redirect_stderr}
-          ${optionalString (envPairs != []) "environment=${concatStringsSep "," envPairs}"}
+          ${optionalString (envLine != "") "environment=${envLine}"}
+          ${optionalString (prog.stdout_logfile != null) "stdout_logfile=${prog.stdout_logfile}"}
+          ${optionalString (prog.stderr_logfile != null) "stderr_logfile=${prog.stderr_logfile}"}
         ''
       )
       allPrograms)}
