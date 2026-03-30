@@ -23,4 +23,7 @@ rec {
 
   # nod-tmux: tmux management + floating terminal launcher for nod-term
   nod-tmux = pkgs.callPackage ./nod-tmux.nix {};
+
+  # am-supervisor: generic health-check watchdog for Android apps
+  am-supervisor = pkgs.callPackage ./am-supervisor.nix {};
 }

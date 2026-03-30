@@ -6,6 +6,7 @@ collective-lib.tests.collectTestableModules {
   fonts-packages = import ./fonts/packages.nix;
   fonts-fontdir = import ./fonts/fontdir.nix;
   nod-exec = import ./nod-exec.nix;
+  pulseserver = import ./pulseserver.nix;
   session = import ./session.nix;
   sshd = import ./sshd.nix;
   supervisord = import ./supervisord.nix;
