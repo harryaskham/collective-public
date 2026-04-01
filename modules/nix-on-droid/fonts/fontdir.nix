@@ -12,9 +12,9 @@ let
     ${lib.optionalString cfg.decompressFonts ''
       ${pkgs.gzip}/bin/gunzip -f *.gz
     ''}
-    ${pkgs.xorg.mkfontscale}/bin/mkfontscale
-    ${pkgs.xorg.mkfontdir}/bin/mkfontdir
-    cat $(find ${pkgs.xorg.fontalias}/ -name fonts.alias) >fonts.alias
+    ${pkgs.mkfontscale}/bin/mkfontscale
+    ${pkgs.mkfontscale}/bin/mkfontdir
+    cat $(find ${pkgs.font-alias}/ -name fonts.alias) >fonts.alias
   '';
 
 in
