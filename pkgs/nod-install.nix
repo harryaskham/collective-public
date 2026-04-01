@@ -5,11 +5,18 @@
 # and if still failing prompts user to enable wireless debugging + Shizuku.
 #
 # Supports --host/--port for remote installation via SSH delegation.
+# Use --remote-path for an APK already on the remote device.
+# Use a bare positional path for a local file — if --host is set, it gets
+# scp'd to --apk-dir on the remote first, then installed.
 # If local and APK doesn't exist yet, waits up to 60s for it to appear.
 {
   pkgs,
   ...
 }:
+
+let
+  defaultApkDir = "/storage/emulated/0/Default Folder/apks";
+in
 
 pkgs.writeScriptBin "nod-install" ''
   #!${pkgs.bash}/bin/bash
@@ -17,32 +24,73 @@ pkgs.writeScriptBin "nod-install" ''
 
   HOST=""
   PORT=""
-  APK=""
+  REMOTE_PATH=""
+  LOCAL_PATH=""
+  APK_DIR="${defaultApkDir}"
 
   while [ $# -gt 0 ]; do
     case "$1" in
-      --host)  HOST="$2"; shift 2 ;;
-      --port)  PORT="$2"; shift 2 ;;
-      -*)      echo "nod-install: unknown flag: $1" >&2; exit 1 ;;
-      *)       APK="$1"; shift ;;
+      --host)        HOST="$2"; shift 2 ;;
+      --port)        PORT="$2"; shift 2 ;;
+      --remote-path) REMOTE_PATH="$2"; shift 2 ;;
+      --apk-dir)     APK_DIR="$2"; shift 2 ;;
+      -*)            echo "nod-install: unknown flag: $1" >&2; exit 1 ;;
+      *)             LOCAL_PATH="$1"; shift ;;
     esac
   done
 
-  if [ -z "$APK" ]; then
-    echo "Usage: nod-install [--host <host>] [--port <port>] <path/to.apk>" >&2
+  if [ -z "$REMOTE_PATH" ] && [ -z "$LOCAL_PATH" ]; then
+    cat >&2 <<USAGE
+  Usage: nod-install [options] [<local-path>]
+
+  Options:
+    --host <host>          Remote host (user@host supported)
+    --port <port>          SSH port (default: 22)
+    --remote-path <path>   APK path on remote device (skip scp)
+    --apk-dir <dir>        Remote dir for scp uploads (default: ${defaultApkDir})
+
+  If <local-path> given with --host, scp's to remote --apk-dir then installs.
+  If --remote-path given, installs directly on the target device.
+  USAGE
     exit 1
   fi
 
-  # Remote mode: delegate via SSH
+  # Build SSH args shared by ssh and scp
+  SSH_OPTS=(-o StrictHostKeyChecking=accept-new)
+  [ -n "$PORT" ] && SSH_OPTS+=(-p "$PORT")
+
+  SCP_OPTS=(-o StrictHostKeyChecking=accept-new)
+  [ -n "$PORT" ] && SCP_OPTS+=(-P "$PORT")
+
+  IS_REMOTE=false
   if [ -n "$HOST" ] && [ "$HOST" != "localhost" ] && [ "$HOST" != "127.0.0.1" ]; then
-    SSH_ARGS=(-o StrictHostKeyChecking=accept-new)
-    [ -n "$PORT" ] && SSH_ARGS+=(-p "$PORT")
-    SSH_ARGS+=("$HOST")
-    echo "nod-install: delegating to $HOST..." >&2
-    exec ${pkgs.openssh}/bin/ssh "''${SSH_ARGS[@]}" "nod-install \"$APK\" || ~/.nix-profile/bin/nod-install \"$APK\""
+    IS_REMOTE=true
   fi
 
-  # Local mode: wait up to 60s for APK to appear
+  # Remote + local file: scp then install
+  if $IS_REMOTE && [ -n "$LOCAL_PATH" ]; then
+    if [ ! -f "$LOCAL_PATH" ]; then
+      echo "nod-install: local file not found: $LOCAL_PATH" >&2
+      exit 1
+    fi
+    BASENAME="$(basename "$LOCAL_PATH")"
+    REMOTE_DEST="$APK_DIR/$BASENAME"
+    echo "nod-install: uploading $BASENAME to $HOST:$REMOTE_DEST..." >&2
+    ${pkgs.openssh}/bin/scp "''${SCP_OPTS[@]}" "$LOCAL_PATH" "$HOST:\"$REMOTE_DEST\""
+    REMOTE_PATH="$REMOTE_DEST"
+  fi
+
+  # Remote: delegate via SSH
+  if $IS_REMOTE; then
+    echo "nod-install: delegating to $HOST..." >&2
+    exec ${pkgs.openssh}/bin/ssh "''${SSH_OPTS[@]}" "$HOST" \
+      "nod-install --remote-path \"$REMOTE_PATH\" || ~/.nix-profile/bin/nod-install --remote-path \"$REMOTE_PATH\""
+  fi
+
+  # Local mode
+  APK="''${REMOTE_PATH:-$LOCAL_PATH}"
+
+  # Wait up to 60s for APK to appear
   if [ ! -f "$APK" ]; then
     echo "nod-install: waiting for $APK to appear..." >&2
     WAITED=0
