@@ -27,6 +27,7 @@ pkgs.writeScriptBin "nod-install" ''
   REMOTE_PATH=""
   LOCAL_PATH=""
   APK_DIR="${defaultApkDir}"
+  SCP_EXTRA_ARGS=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -34,6 +35,7 @@ pkgs.writeScriptBin "nod-install" ''
       --port)        PORT="$2"; shift 2 ;;
       --remote-path) REMOTE_PATH="$2"; shift 2 ;;
       --apk-dir)     APK_DIR="$2"; shift 2 ;;
+      --scp-args)    SCP_EXTRA_ARGS="$2"; shift 2 ;;
       -*)            echo "nod-install: unknown flag: $1" >&2; exit 1 ;;
       *)             LOCAL_PATH="$1"; shift ;;
     esac
@@ -47,6 +49,7 @@ pkgs.writeScriptBin "nod-install" ''
     --host <host>          Remote host (user@host supported)
     --port <port>          SSH port (default: 22)
     --remote-path <path>   APK path on remote device (skip scp)
+    --scp-args <args>     Extra scp args, e.g. "-O" for legacy protocol
     --apk-dir <dir>        Remote dir for scp uploads (default: ${defaultApkDir})
 
   If <local-path> given with --host, scp's to remote --apk-dir then installs.
@@ -76,7 +79,7 @@ pkgs.writeScriptBin "nod-install" ''
     BASENAME="$(basename "$LOCAL_PATH")"
     REMOTE_DEST="$APK_DIR/$BASENAME"
     echo "nod-install: uploading $BASENAME to $HOST:$REMOTE_DEST..." >&2
-    ${pkgs.openssh}/bin/scp "''${SCP_OPTS[@]}" "$LOCAL_PATH" "$HOST:\"$REMOTE_DEST\""
+    ${pkgs.openssh}/bin/scp "''${SCP_OPTS[@]}" $SCP_EXTRA_ARGS "$LOCAL_PATH" "$HOST:\"$REMOTE_DEST\""
     REMOTE_PATH="$REMOTE_DEST"
   fi
 
