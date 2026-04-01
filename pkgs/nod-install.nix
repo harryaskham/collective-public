@@ -3,6 +3,9 @@
 # Copies APK to /data/local/tmp (required by SELinux) then runs pm install
 # via rish-nix. On failure, starts termux-command-daemon via am, retries,
 # and if still failing prompts user to enable wireless debugging + Shizuku.
+#
+# Supports --host/--port for remote installation via SSH delegation.
+# If local and APK doesn't exist yet, waits up to 60s for it to appear.
 {
   pkgs,
   ...
@@ -12,16 +15,46 @@ pkgs.writeScriptBin "nod-install" ''
   #!${pkgs.bash}/bin/bash
   set -euo pipefail
 
-  if [ $# -eq 0 ]; then
-    echo "Usage: nod-install <path/to.apk>" >&2
+  HOST=""
+  PORT=""
+  APK=""
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --host)  HOST="$2"; shift 2 ;;
+      --port)  PORT="$2"; shift 2 ;;
+      -*)      echo "nod-install: unknown flag: $1" >&2; exit 1 ;;
+      *)       APK="$1"; shift ;;
+    esac
+  done
+
+  if [ -z "$APK" ]; then
+    echo "Usage: nod-install [--host <host>] [--port <port>] <path/to.apk>" >&2
     exit 1
   fi
 
-  APK="$1"
+  # Remote mode: delegate via SSH
+  if [ -n "$HOST" ] && [ "$HOST" != "localhost" ] && [ "$HOST" != "127.0.0.1" ]; then
+    SSH_ARGS=(-o StrictHostKeyChecking=accept-new)
+    [ -n "$PORT" ] && SSH_ARGS+=(-p "$PORT")
+    SSH_ARGS+=("$HOST")
+    echo "nod-install: delegating to $HOST..." >&2
+    exec ${pkgs.openssh}/bin/ssh "''${SSH_ARGS[@]}" "nod-install \"$APK\" || ~/.nix-profile/bin/nod-install \"$APK\""
+  fi
 
+  # Local mode: wait up to 60s for APK to appear
   if [ ! -f "$APK" ]; then
-    echo "nod-install: file not found: $APK" >&2
-    exit 1
+    echo "nod-install: waiting for $APK to appear..." >&2
+    WAITED=0
+    while [ ! -f "$APK" ] && [ "$WAITED" -lt 60 ]; do
+      sleep 1
+      WAITED=$((WAITED + 1))
+    done
+    if [ ! -f "$APK" ]; then
+      echo "nod-install: file not found after 60s: $APK" >&2
+      exit 1
+    fi
+    echo "nod-install: file appeared after ''${WAITED}s" >&2
   fi
 
   BASENAME="$(basename "$APK")"
