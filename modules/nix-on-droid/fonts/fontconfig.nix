@@ -41,7 +41,9 @@ let
     let
       makeCache = fontconfig: pkgs.makeFontsCache { inherit fontconfig; fontDirectories = config.fonts.packages; };
       cache     = makeCache pkgs.fontconfig;
-      cache32   = makeCache pkgs.pkgsi686Linux.fontconfig;
+      want32 = pkgs.stdenv.hostPlatform.isx86_64 && cfg.cache32Bit
+               && pkgs.stdenv.hostPlatform == pkgs.stdenv.buildPlatform;
+      cache32   = if want32 then makeCache pkgs.pkgsi686Linux.fontconfig else null;
     in
     pkgs.writeText "fc-00-nixos-cache.conf" ''
       <?xml version='1.0'?>
@@ -52,7 +54,7 @@ let
         ${lib.optionalString (pkgs.stdenv.hostPlatform == pkgs.stdenv.buildPlatform) ''
         <!-- Pre-generated font caches -->
         <cachedir>${cache}</cachedir>
-        ${lib.optionalString (pkgs.stdenv.hostPlatform.isx86_64 && cfg.cache32Bit) ''
+        ${lib.optionalString (cache32 != null) ''
           <cachedir>${cache32}</cachedir>
         ''}
         ''}
