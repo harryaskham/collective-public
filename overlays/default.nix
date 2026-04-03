@@ -14,16 +14,17 @@ let
           inherit (prev) system;
           config.allowUnfree = true;
         };
-      in rec {
-      python3 = prev.python3.override {
-        packageOverrides = (self: super:
-          (import ../pkgs/pythonPackages { pkgs = prev; })
-          // {
+      in {
+        python3 = prev.python3.override {
+          packageOverrides = self: super: {
             image-go-nord = stable.python3Packages.image-go-nord;
-          }
-        );
-      };
-      python3Packages = prev.python3Packages // final.python3.pkgs;
+          };
+        };
+        python3Packages = prev.python3Packages.override {
+          overrides = self: super: {
+            image-go-nord = stable.python3Packages.image-go-nord;
+          };
+        };
     };
     packagesOverlay = final: prev: import ../pkgs { pkgs = prev; inherit inputs; };
   };
