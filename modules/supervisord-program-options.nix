@@ -49,6 +49,11 @@ with lib;
       default = true;
       description = "Whether to send the stop signal to the whole process group.";
     };
+    killasgroup = mkOption {
+      type = types.bool;
+      default = true;
+      description = "Whether to send SIGKILL to the whole process group when stopping.";
+    };
     redirect_stderr = mkOption {
       type = types.bool;
       default = true;

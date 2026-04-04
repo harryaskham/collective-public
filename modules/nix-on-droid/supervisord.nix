@@ -75,6 +75,7 @@ with lib; let
           startsecs=${toString prog.startsecs}
           stopsignal=${prog.stopsignal}
           stopasgroup=${boolToConf prog.stopasgroup}
+          killasgroup=${boolToConf prog.killasgroup}
           redirect_stderr=${boolToConf prog.redirect_stderr}
           ${optionalString (envLine != "") "environment=${envLine}"}
           ${optionalString (prog.stdout_logfile != null) "stdout_logfile=${prog.stdout_logfile}"}
@@ -186,24 +187,32 @@ in {
           OLD_PID=$(cat "$PIDFILE" 2>/dev/null)
           if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
             echo "[supervisord] Stopping old instance (pid $OLD_PID) and children..."
-            # Kill the whole process group
-            kill -- -"$OLD_PID" 2>/dev/null || true
-            kill "$OLD_PID" 2>/dev/null || true
-            for i in $(seq 1 10); do
+            # Ask supervisord to stop all programs first (cleanest path)
+            ${supervisorctl-wrapped}/bin/supervisorctl shutdown 2>/dev/null || true
+            for i in $(seq 1 15); do
               kill -0 "$OLD_PID" 2>/dev/null || break
               sleep 0.5
             done
+            # Force kill if still around
             kill -9 "$OLD_PID" 2>/dev/null || true
           fi
           rm -f "$PIDFILE"
         fi
 
-        # Also kill any orphaned supervisord/managed processes from previous generations
-        for pid in $(${pkgs.procps}/bin/pgrep -f 'supervisord.*supervisord.conf' 2>/dev/null); do
-          kill -9 "$pid" 2>/dev/null || true
-        done
-        for pid in $(${pkgs.procps}/bin/pgrep -f 'sops-watcher-supervisord' 2>/dev/null); do
-          kill -9 "$pid" 2>/dev/null || true
+        # Kill any orphaned managed processes from previous generations.
+        # Under proot, process groups don't work reliably, so we kill by
+        # matching the nix store paths of known managed commands.
+        for pattern in \
+          'supervisord.*supervisord.conf' \
+          'sops-watcher-supervisord' \
+          'am-supervisor' \
+          'caco-supervise' \
+          'litellm-proxy-start' \
+          'nod-exec-server' \
+          'dbus-start'; do
+          for pid in $(${pkgs.procps}/bin/pgrep -f "$pattern" 2>/dev/null); do
+            kill -9 "$pid" 2>/dev/null || true
+          done
         done
 
         $DRY_RUN_CMD ${supervisord-start}/bin/supervisord-start
