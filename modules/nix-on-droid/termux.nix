@@ -274,8 +274,8 @@ in {
       };
       pulseaudio = mkOption {
         type = lib.types.bool;
-        default = true;
-        description = "Start PulseAudio TCP server on boot";
+        default = false;
+        description = "Start PulseAudio TCP server on boot (deprecated — use dedicated PulseAudio app)";
       };
       writeSecureSettings = mkOption {
         type = lib.types.bool;
@@ -646,38 +646,15 @@ in {
       environment.etc."termux-x11/x11-start-in-termux.sh" = {
         text = ''
           # Run in Termux (manually or via Tasker shortcut)
-          # Starts X11 server and switches to NOD in order to launch desktop.
+          # Starts X11 server for use by nix-on-droid desktop session.
 
           if ! [ -x "$(command -v termux-x11)" ]; then
             echo "Installing termux-x11-nightly"
             pkg i x11-repo && pkg i termux-x11-nightly
           fi
 
-          if ! [ -x "$(command -v pulseaudio)" ]; then
-            echo "Installing pulseaudio"
-            pkg i pulseaudio
-          fi
-
           echo "Acquiring wake-lock"
           termux-wake-lock
-
-          echo "Launching nix-on-droid in 3s"
-          (sleep 3; am start --user 0 -n com.termux.nix/com.termux.app.TermuxActivity) &
-
-          echo "Starting PulseAudio server"
-          WITH_LD_PRELOAD="$LD_PRELOAD"
-          if [ -f /system/lib64/libskcodec.so ]; then
-            echo "Using skcodec for PulseAudio"
-            WITH_LD_PRELOAD="/system/lib64/libskcodec.so"
-          else
-            echo "No skcodec found, using default PulseAudio"
-          fi
-
-          LD_PRELOAD="$WITH_LD_PRELOAD" pulseaudio \
-            --start \
-            --exit-idle-time=-1 \
-            --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" \
-            --load="module-sles-source"
 
           echo "Starting X11 listener"
           termux-x11 :1 -listen tcp -ac -dpi 192 \

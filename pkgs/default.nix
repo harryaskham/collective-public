@@ -29,4 +29,7 @@ rec {
 
   # am-supervisor: generic health-check watchdog for Android apps
   am-supervisor = pkgs.callPackage ./am-supervisor.nix {};
+
+  # tasker-run: trigger named Tasker tasks via am broadcast
+  tasker-run = pkgs.callPackage ./tasker-run.nix {};
 }
