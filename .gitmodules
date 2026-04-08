@@ -1,3 +1,4 @@
 [submodule "flakes/nix-reflect"]
 	path = flakes/nix-reflect
-	url = git@github.com:harryaskham/nix-reflect.git
+  url = git@github.com:harryaskham/nix-reflect.git
+  branch = "main"
