@@ -17,7 +17,7 @@
 
     nix-parsec = {
       url = "github:nprindle/nix-parsec";
-      inputs.nixpkgs.follows = "nixpkgs";
+      # No nixpkgs input
     };
   };
 
