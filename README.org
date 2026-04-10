@@ -1,6 +1,6 @@
 * NixOS configs
 
-Public subset of personal NixOS config.
+Public subset of personal NixOS config flake.
 
 Heavily experimental; strongly suggest not depending directly on the flake.
 My actual usage of these libraries is in a separate private repo with my machine configurations.
