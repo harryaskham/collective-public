@@ -1,4 +1,4 @@
-* NixOS configs
+* NixOS config
 
 Public subset of personal NixOS config flake.
 
