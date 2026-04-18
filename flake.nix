@@ -1,6 +1,8 @@
 {
   description = "Public subset of Nix configurations.";
 
+  submodules = true;
+
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
 
