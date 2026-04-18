@@ -9,10 +9,11 @@
     self.submodules = true;
 
     nix-reflect = {
-      url = "github:harryaskham/nix-reflect";
-      # url = ./collective-public/flakes/nix-reflect;
+      url = ./flakes/nix-reflect;
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nixpkgs-stable.follows = "nixpkgs-stable";
       inputs.collective-public.follows = "";
+      inputs.collective-public.submodules = false;
     };
 
     nix-parsec = {
