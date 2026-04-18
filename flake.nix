@@ -11,7 +11,7 @@
     nix-reflect = {
       url = ./flakes/nix-reflect;
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.collective-public.follows = "self";
+      inputs.collective-public.follows = "collective-public";
       inputs.collective-public.inputs.nix-reflect.follows = "";
     };
 
