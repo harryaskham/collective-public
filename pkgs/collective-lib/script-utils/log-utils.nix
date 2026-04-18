@@ -298,12 +298,16 @@ rec {
       fi
 
       THIS=$(basename $0)
-      if [[ "$THIS" == cltv-kv-check || "$THIS" == cltv-gv-get ]]; then
+      if [[ "$THIS" == cltv-kv-check || "$THIS" == cltv-kv-get ]]; then
         echo false
         return 1
       fi
 
-      if [[ cltv-kv-check && "$(cltv-kv-get --key __COLLECTIVE_DEBUG)" == true ]]; then
+      # Only consult the KV store if it already exists. cltv-kv-check exits 0
+      # iff the store file is present; we no longer call cltv-kv-get
+      # unconditionally because that used to auto-create the store via a
+      # `confirm` prompt and hang non-interactive shells (bd-3742e3).
+      if cltv-kv-check >/dev/null 2>&1 && [[ "$(cltv-kv-get --key __COLLECTIVE_DEBUG --or false 2>/dev/null)" == true ]]; then
         export __COLLECTIVE_DEBUG_ENABLED_BY_KV=true
         echo true
         return 0
