@@ -256,6 +256,21 @@ in rec {
 
   traceTestSummary = testResult:
     with log.trace;
+    # Defensive: surface a helpful error when called with something that
+    # isn't a runOneTest-shaped result. The natural mistake is calling
+    # `traceTestSummary (withMergedSuites modules)`, which returns the
+    # modules attrset (with an added `_tests` key) — not a test result —
+    # and would otherwise crash with the obscure `attribute 'msg' missing`
+    # at this callsite (bd-470fb8).
+    assert assertMsg (testResult ? msg && testResult ? test && testResult ? status) ''
+      traceTestSummary expects a single runOneTest-style result with
+      attributes { test, status, msg, ... }. Got attrs:
+        ${concatStringsSep ", " (attrNames testResult)}
+
+      To run a whole suite, use `<lib>._tests.run {}` (or the
+      `run-tests` shell helper / `./collective-public/test.sh`)
+      rather than passing a module set into traceTestSummary directly.
+    '';
     let test = testResult.test;
         # TODO: unicode syms
         status = with Status; switch testResult.status {
