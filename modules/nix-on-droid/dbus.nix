@@ -8,11 +8,21 @@ with untyped.clib;
 let
   cfg = config.dbus;
   dbus-start-bin = "dbus-start";
+  # Pinned session bus socket: stable path so shell.init can export
+  # DBUS_SESSION_BUS_ADDRESS, preventing glib/gtk apps from autolaunching
+  # their own dbus-daemon (which leaks one process + tmpfs inodes per call,
+  # eventually filling /tmp and breaking nix-on-droid switch).
+  dbus-socket-path = "/tmp/run/dbus-session.socket";
+  dbus-bus-address = "unix:path=${dbus-socket-path}";
   # Foreground dbus-daemon for supervisord management.
   dbus-start = pkgs.writeScriptBin dbus-start-bin ''
     #!${pkgs.runtimeShell}
     mkdir -p ''${XDG_RUNTIME_DIR:-/tmp/run}
-    exec ${pkgs.dbus}/bin/dbus-daemon --session --nofork
+    rm -f ${dbus-socket-path}
+    exec ${pkgs.dbus}/bin/dbus-daemon \
+      --session \
+      --nofork \
+      --address=${dbus-bus-address}
   '';
   inherit (untyped) mkOption mkEnableOption mkIf mkMerge types;
 in
@@ -72,6 +82,10 @@ in
         autorestart = true;
         startsecs = 1;
       };
+
+      # Export the pinned bus address so glib/gtk/qt apps connect to the
+      # supervisord-managed daemon instead of autolaunching their own.
+      shell.env.DBUS_SESSION_BUS_ADDRESS = dbus-bus-address;
     }
 
   ]);
