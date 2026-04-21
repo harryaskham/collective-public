@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+source $NIX_REFLECT_DIR/scripts/init
+compare-lazy-strict "$@"
