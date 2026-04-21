@@ -7,7 +7,7 @@
     nixpkgs-stable.url = "github:nixos/nixpkgs/release-25.05";
 
     nix-reflect = {
-      url = ./flakes/nix-reflect;
+      url = "github:harryaskham/nix-reflect";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.collective-public.follows = "";
     };
