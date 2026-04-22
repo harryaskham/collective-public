@@ -8,8 +8,17 @@
 
 lib.fix (self:
 let
-  nix-reflect = inputs.nix-reflect or { 
-    lib.${pkgs.system} = import ../../flakes/nix-reflect/lib {
+  # nix-reflect is now an external flake (github:harryaskham/nix-reflect).
+  # When used via flakes, callers pass `inputs.nix-reflect`. For ad-hoc imports
+  # (e.g. parent collective-lib without flake inputs, REPL use), fall back to
+  # fetching the repo directly.
+  nix-reflect = inputs.nix-reflect or {
+    lib.${pkgs.system} = import (builtins.fetchTree {
+      type = "github";
+      owner = "harryaskham";
+      repo = "nix-reflect";
+      ref = "main";
+    } + "/lib") {
       inherit pkgs lib;
       inputs.collective-public.lib.${pkgs.system} = self;
     };

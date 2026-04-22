@@ -25,7 +25,12 @@
       # nix eval --raw .#inputs.nix-parsec.outPath 2>/dev/null
       inputs.nix-parsec = import /nix/store/nlawm43dvjgaz5q9bj45vwk6a3rfddbn-source;
       inputs.collective-public.lib.${system} = collective-lib-public;
-      inputs.nix-reflect.lib.${system} = import ../../flakes/nix-reflect/lib args;
+      inputs.nix-reflect.lib.${system} = import (builtins.fetchTree {
+        type = "github";
+        owner = "harryaskham";
+        repo = "nix-reflect";
+        ref = "main";
+      } + "/lib") args;
     };
     in args;
 }
