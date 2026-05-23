@@ -30,7 +30,7 @@ rec {
   };
 
   defaultTermSpec = {
-    size = 12.0;
+    size = 10.0;
     regular = {
       family = "FiraCode Nerd Font";
       style = "Regular";
@@ -49,7 +49,7 @@ rec {
     };
   };
   defaultMacOSTermSpec = {
-    size = 12.0;
+    size = 10.0;
     regular = {
       family = "FiraCode Nerd Font Mono";
       style = "Regular";
