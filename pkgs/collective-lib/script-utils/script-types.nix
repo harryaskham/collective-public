@@ -142,6 +142,10 @@ rec {
         (addContextFrom (args.summary or ""))
         (addContextFrom (args.preamble or ""))
         (addContextFrom (args.usage or ""))
+        # optsBlock injects an absolute getopt path, but building the script via
+        # string combinators can drop that path context. Re-add it explicitly so
+        # remote/copied script closures include getopt at runtime.
+        (addContextFrom (optionalString (opts != {}) "${pkgs.getopt}"))
         (addContextFrom (args.main or ""))
         (addContextFrom (args.body or ""))
       ]
