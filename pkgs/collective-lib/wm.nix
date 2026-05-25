@@ -250,7 +250,7 @@ in rec {
         floatCurrent = runs "togglefloating";
         pseudofloatCurrent = runs "pseudo";
         pinCurrent = runs "pin";
-        toggleSplit = runs "swapsplit";
+        toggleSplit = runs "layoutmsg, togglesplit";
         growLeft = runs "resizeactive, -100 0";
         growRight = runs "resizeactive, 100 0";
         growUp = runs "resizeactive, 0 -100";
