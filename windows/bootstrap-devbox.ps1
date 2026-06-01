@@ -15,6 +15,7 @@
 param(
   [string]$DevboxHost,
   [string]$KeyPath,
+  [switch]$KeyFromClipboard,
   [string]$Distro = "NixOS",
   [string]$InstallRoot,
   [string]$NixOSWSLVersion = "latest",
@@ -66,20 +67,28 @@ if (-not $DevboxHost) { Die "A hostname is required." }
 if ($DevboxHost -notmatch '^[a-zA-Z0-9._-]+$') { Die "Invalid hostname: $DevboxHost" }
 
 # The shared devbox id_ed25519 is both the host SSH identity AND the credential
-# used to clone the private collective repo over SSH. Accept a path or pasted text.
+# used to clone the private collective repo over SSH. Accept a path, the
+# clipboard (most reliable for multi-line keys over RDP), or line-by-line paste.
 $KeyMaterial = $null
 if ($KeyPath -and (Test-Path $KeyPath)) {
   $KeyMaterial = Get-Content -Raw -Path $KeyPath
   Info "Read SSH key from $KeyPath"
+} elseif ($KeyFromClipboard) {
+  $KeyMaterial = Get-Clipboard -Raw
+  Info "Read SSH key from clipboard"
 } else {
   Write-Host ""
   Write-Host "Provide the shared devbox SSH private key (id_ed25519)." -ForegroundColor Cyan
-  Write-Host "  1) Enter a path to the key file, or"           -ForegroundColor Cyan
-  Write-Host "  2) Leave blank to paste the key contents."     -ForegroundColor Cyan
-  $answer = Read-Host "Path to id_ed25519 (blank to paste)"
+  Write-Host "  1) Enter a path to the key file (most reliable), or"  -ForegroundColor Cyan
+  Write-Host "  2) Type 'clip' to read it from the clipboard, or"       -ForegroundColor Cyan
+  Write-Host "  3) Leave blank to paste line-by-line."                  -ForegroundColor Cyan
+  $answer = Read-Host "Path / 'clip' / blank"
   if ($answer -and (Test-Path $answer)) {
     $KeyMaterial = Get-Content -Raw -Path $answer
     Info "Read SSH key from $answer"
+  } elseif ($answer -eq "clip") {
+    $KeyMaterial = Get-Clipboard -Raw
+    Info "Read SSH key from clipboard"
   } elseif ($answer) {
     Die "Path not found: $answer"
   } else {
