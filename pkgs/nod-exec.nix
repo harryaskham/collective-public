@@ -102,11 +102,19 @@ let
     HOST="''${NOD_EXEC_HOST:-${defaultHost}}"
     PIDFILE="''${NOD_EXEC_PIDFILE:-/tmp/run/nod-exec-server.pid}"
 
+    PTY_PID=""
+    PIPE_PID=""
+
     cleanup() {
-      kill "$PTY_PID" 2>/dev/null || true
+      # Kill BOTH socat listeners so neither port is left bound on restart.
+      # This trap must actually run on every exit path, so the script must NOT
+      # exec into socat (exec would discard the trap and orphan the PTY socat,
+      # which is exactly what used to require a manual `killall socat`).
+      [ -n "$PIPE_PID" ] && kill "$PIPE_PID" 2>/dev/null || true
+      [ -n "$PTY_PID" ] && kill "$PTY_PID" 2>/dev/null || true
       rm -f "$PIDFILE"
     }
-    trap cleanup EXIT
+    trap cleanup EXIT INT TERM
 
     mkdir -p "$(dirname "$PIDFILE")"
     echo $$ > "$PIDFILE"
@@ -119,10 +127,17 @@ let
       EXEC:"${nod-exec-handler-pty}",pty,setsid,ctty,stderr,echo=0 &
     PTY_PID=$!
 
-    # Pipe listener for one-shot commands (Tasker, KWGT)
-    exec ${pkgs.socat}/bin/socat \
+    # Pipe listener for one-shot commands (Tasker, KWGT).
+    # Run backgrounded (NOT exec'd) so the EXIT/TERM trap above survives and can
+    # tear down both listeners cleanly when supervisord stops/restarts us.
+    ${pkgs.socat}/bin/socat \
       TCP-LISTEN:"$PORT",bind="$HOST",reuseaddr,fork \
-      EXEC:"${nod-exec-handler}",stderr
+      EXEC:"${nod-exec-handler}",stderr &
+    PIPE_PID=$!
+
+    # If either listener dies, exit (supervisord autorestart will bring us back),
+    # and the trap will reap/kill the surviving listener so no socat is orphaned.
+    wait -n "$PTY_PID" "$PIPE_PID" 2>/dev/null || wait "$PTY_PID" "$PIPE_PID" 2>/dev/null || true
   '';
 
   # Client: lightweight script for sending commands to the server
