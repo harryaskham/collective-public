@@ -188,18 +188,17 @@ if ($existing -match [Regex]::Escape($Distro)) {
 Info "Installing the devbox SSH key inside WSL..."
 # Normalize CRLF -> LF; ssh refuses keys with carriage returns.
 $KeyMaterialLF = $KeyMaterial -replace "`r`n", "`n" -replace "`r", "`n"
-$keyTmpWin = Join-Path $env:TEMP ("id_ed25519_" + [guid]::NewGuid().ToString("N").Substring(0,8))
-# Write without BOM.
-[System.IO.File]::WriteAllText($keyTmpWin, $KeyMaterialLF, (New-Object System.Text.UTF8Encoding($false)))
-
-# Determine the default WSL user's home and copy the key into ~/.ssh/id_ed25519.
-$keyTmpWsl = (wsl.exe -d $Distro -- wslpath -u "$keyTmpWin").Trim()
+# Avoid all Windows<->WSL path translation (wslpath mangles backslashes when a
+# Windows path is passed through wsl.exe). Instead, base64-encode the key and
+# pipe it into the distro over stdin, decoding inside WSL.
+$keyB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($KeyMaterialLF))
 $installKey = @"
 set -euo pipefail
 HOME_DIR="`$HOME"
 mkdir -p "`$HOME_DIR/.ssh"
 chmod 700 "`$HOME_DIR/.ssh"
-cp "$keyTmpWsl" "`$HOME_DIR/.ssh/id_ed25519"
+# The base64 of the key is passed as the first argument.
+printf '%s' "`$1" | base64 -d > "`$HOME_DIR/.ssh/id_ed25519"
 chmod 600 "`$HOME_DIR/.ssh/id_ed25519"
 # Derive the public key for convenience (matches the shared ms-dev key).
 ssh-keygen -y -f "`$HOME_DIR/.ssh/id_ed25519" > "`$HOME_DIR/.ssh/id_ed25519.pub" 2>/dev/null || true
@@ -208,8 +207,7 @@ chmod 644 "`$HOME_DIR/.ssh/id_ed25519.pub" 2>/dev/null || true
 ssh-keyscan -t ed25519,rsa github.com >> "`$HOME_DIR/.ssh/known_hosts" 2>/dev/null || true
 echo "SSH key installed at `$HOME_DIR/.ssh/id_ed25519"
 "@
-wsl.exe -d $Distro -- bash -lc "$installKey" 2>&1 | Out-Host
-Remove-Item -Force $keyTmpWin -ErrorAction SilentlyContinue
+wsl.exe -d $Distro -- bash -lc "$installKey" "_" "$keyB64" 2>&1 | Out-Host
 Ok "Shared devbox SSH key in place."
 
 # ---------------------------------------------------------------------------
