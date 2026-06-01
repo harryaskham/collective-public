@@ -1,46 +1,19 @@
-#Requires -Version 5.1
-<#
-.SYNOPSIS
-  Bootstrap a new Microsoft WSL devbox (ms-dev-N) end to end from the Windows host.
+# bootstrap-devbox.ps1 — provision a Microsoft WSL devbox (ms-dev-N) end to end.
+#
+# RECOMMENDED (supports a key file, keeps the window open on error):
+#   $u = "https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/bootstrap-devbox.ps1"
+#   irm $u -OutFile "$env:TEMP\bootstrap-devbox.ps1"
+#   & "$env:TEMP\bootstrap-devbox.ps1" -DevboxHost ms-dev-2 -KeyPath C:\path\to\id_ed25519
+#
+# QUICK (fully interactive; prompts for hostname + key):
+#   & ([scriptblock]::Create((irm "$u"))) -DevboxHost ms-dev-2
+#
+# Note: do NOT run as a bare `irm $u | iex` if you need to pass parameters —
+# iex cannot bind params. The scriptblock form above can.
 
-.DESCRIPTION
-  Installs WSL2 + NixOS-WSL, imports the NixOS distro, places the shared devbox
-  SSH key, clones the (private) collective flake over SSH, and runs the first
-  `cltv switch` for the given hostname. After this completes the box joins the
-  tailnet non-interactively (devbox-pool auth key) and converges its Windows
-  host declaratively from inside WSL.
-
-  Designed to be run via:
-
-    irm https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/bootstrap-devbox.ps1 | iex
-
-  When piped to iex you cannot pass parameters, so the script prompts
-  interactively for everything it needs (hostname + SSH private key). To run
-  non-interactively, download it first and invoke with -HostName / -KeyPath.
-
-.PARAMETER HostName
-  The collective machine name to switch to, e.g. ms-dev-2. Prompted if omitted.
-
-.PARAMETER KeyPath
-  Path to the shared devbox id_ed25519 private key on the Windows side. If
-  omitted you are prompted to either give a path or paste the key contents.
-
-.PARAMETER Distro
-  WSL distro name to import the NixOS rootfs as. Defaults to NixOS.
-
-.PARAMETER InstallRoot
-  Directory on the Windows side to store the imported WSL disk. Defaults to
-  $env:LOCALAPPDATA\WSL\<Distro>.
-
-.PARAMETER NixOSWSLVersion
-  NixOS-WSL release tag to import. Defaults to "latest".
-
-.PARAMETER SkipWSLInstall
-  Skip the `wsl --install` step (use if WSL2 is already present).
-#>
 [CmdletBinding()]
 param(
-  [string]$HostName,
+  [string]$DevboxHost,
   [string]$KeyPath,
   [string]$Distro = "NixOS",
   [string]$InstallRoot,
@@ -54,7 +27,20 @@ Set-StrictMode -Version Latest
 function Info($m)  { Write-Host "[bootstrap] $m" -ForegroundColor Cyan }
 function Ok($m)    { Write-Host "[bootstrap] $m" -ForegroundColor Green }
 function Warn($m)  { Write-Host "[bootstrap] $m" -ForegroundColor Yellow }
-function Die($m)   { Write-Host "[bootstrap] ERROR: $m" -ForegroundColor Red; exit 1 }
+# Die throws instead of `exit` so that, when this script is run via `irm | iex`
+# in an interactive window, a failure does not silently close the host window.
+function Die($m)   { throw "[bootstrap] ERROR: $m" }
+
+# Surface any terminating error (including Die) and keep the window open so the
+# message is visible. When piped to iex, `exit` would close the whole window.
+trap {
+  Write-Host ""
+  Write-Host "[bootstrap] FAILED: $($_.Exception.Message)" -ForegroundColor Red
+  Write-Host "[bootstrap] $($_.ScriptStackTrace)" -ForegroundColor DarkGray
+  Write-Host ""
+  try { Read-Host "Press Enter to close" | Out-Null } catch { }
+  break
+}
 
 # ---------------------------------------------------------------------------
 # 0. Preconditions
@@ -73,11 +59,11 @@ if (-not $InstallRoot -or $InstallRoot -eq "") {
 # ---------------------------------------------------------------------------
 # 1. Gather inputs (interactive-friendly for `irm | iex`)
 # ---------------------------------------------------------------------------
-if (-not $HostName -or $HostName -eq "") {
-  $HostName = Read-Host "Collective hostname for this devbox (e.g. ms-dev-2)"
+if (-not $DevboxHost -or $DevboxHost -eq "") {
+  $DevboxHost = Read-Host "Collective hostname for this devbox (e.g. ms-dev-2)"
 }
-if (-not $HostName) { Die "A hostname is required." }
-if ($HostName -notmatch '^[a-zA-Z0-9._-]+$') { Die "Invalid hostname: $HostName" }
+if (-not $DevboxHost) { Die "A hostname is required." }
+if ($DevboxHost -notmatch '^[a-zA-Z0-9._-]+$') { Die "Invalid hostname: $DevboxHost" }
 
 # The shared devbox id_ed25519 is both the host SSH identity AND the credential
 # used to clone the private collective repo over SSH. Accept a path or pasted text.
@@ -97,19 +83,25 @@ if ($KeyPath -and (Test-Path $KeyPath)) {
   } elseif ($answer) {
     Die "Path not found: $answer"
   } else {
-    Write-Host "Paste the private key now. Finish with a line containing only: END" -ForegroundColor Yellow
+    Write-Host "Paste the private key now (right-click to paste in this window)." -ForegroundColor Yellow
+    Write-Host "Finish with a line containing only: END" -ForegroundColor Yellow
     $lines = @()
     while ($true) {
       $line = Read-Host
-      if ($line -eq "END") { break }
-      $lines += $line
+      # Tolerate a pasted END with stray whitespace/CR.
+      if ($line.Trim() -eq "END") { break }
+      $lines += ($line -replace "`r", "")
     }
-    $KeyMaterial = ($lines -join "`n") + "`n"
+    $KeyMaterial = ($lines -join "`n").TrimEnd() + "`n"
   }
 }
 if (-not $KeyMaterial -or $KeyMaterial.Trim() -eq "") { Die "No SSH key provided." }
-if ($KeyMaterial -notmatch "BEGIN OPENSSH PRIVATE KEY") {
-  Warn "Key does not look like an OpenSSH private key; continuing anyway."
+# Normalize to LF and ensure a trailing newline; OpenSSH rejects CRLF keys.
+$KeyMaterial = ($KeyMaterial -replace "`r`n", "`n" -replace "`r", "`n").TrimEnd() + "`n"
+if ($KeyMaterial -notmatch "BEGIN OPENSSH PRIVATE KEY" -and $KeyMaterial -notmatch "BEGIN .*PRIVATE KEY") {
+  Warn "Pasted text does not contain a PRIVATE KEY header; the clone step will likely fail."
+  $cont = Read-Host "Continue anyway? (y/N)"
+  if ($cont -notmatch '^[Yy]') { Die "Aborted: no valid private key provided." }
 }
 
 # ---------------------------------------------------------------------------
@@ -195,7 +187,7 @@ Ok "Shared devbox SSH key in place."
 # ---------------------------------------------------------------------------
 # 5. Clone the collective flake (private, over SSH) and run the first switch
 # ---------------------------------------------------------------------------
-Info "Cloning collective and running the first switch for '$HostName'..."
+Info "Cloning collective and running the first switch for '$DevboxHost'..."
 Info "This builds the system and may take a while on first run."
 
 $switch = @"
@@ -208,16 +200,16 @@ if [ ! -d "`$HOME/collective/.git" ]; then
 fi
 cd "`$HOME/collective"
 # First switch: use nixos-rebuild directly since cltv may not be on PATH yet.
-sudo nixos-rebuild switch --flake ".#$HostName" --show-trace --print-build-logs --impure || {
+sudo nixos-rebuild switch --flake ".#$DevboxHost" --show-trace --print-build-logs --impure || {
   echo "First nixos-rebuild failed; you can re-run inside WSL with:";
   echo "  cd ~/collective && cltv switch";
   exit 1;
 }
-echo "First switch complete for $HostName."
+echo "First switch complete for $DevboxHost."
 "@
 wsl.exe -d $Distro -- bash -lc "$switch" 2>&1 | Out-Host
 
-Ok "Devbox '$HostName' bootstrapped."
+Ok "Devbox '$DevboxHost' bootstrapped."
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "  - Open WSL:           wsl -d $Distro" -ForegroundColor Cyan
