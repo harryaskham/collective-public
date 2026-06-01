@@ -137,18 +137,37 @@ if ($existing -match [Regex]::Escape($Distro)) {
   Warn "WSL distro '$Distro' already exists; skipping import. Unregister it first to reimport."
 } else {
   Info "Resolving NixOS-WSL release ($NixOSWSLVersion)..."
-  if ($NixOSWSLVersion -eq "latest") {
-    $rel = Invoke-RestMethod "https://api.github.com/repos/nix-community/NixOS-WSL/releases/latest"
-  } else {
-    $rel = Invoke-RestMethod "https://api.github.com/repos/nix-community/NixOS-WSL/releases/tags/$NixOSWSLVersion"
+  # GitHub's REST API rejects requests without a User-Agent header (HTTP 403).
+  # Force TLS 1.2 and send a UA; fall back to the redirect-resolving
+  # /releases/latest/download URL if the API is rate-limited.
+  try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocol]::Tls12 } catch {}
+  $ghHeaders = @{ "User-Agent" = "collective-devbox-bootstrap"; "Accept" = "application/vnd.github+json" }
+  $asset = $null
+  try {
+    if ($NixOSWSLVersion -eq "latest") {
+      $rel = Invoke-RestMethod "https://api.github.com/repos/nix-community/NixOS-WSL/releases/latest" -Headers $ghHeaders
+    } else {
+      $rel = Invoke-RestMethod "https://api.github.com/repos/nix-community/NixOS-WSL/releases/tags/$NixOSWSLVersion" -Headers $ghHeaders
+    }
+    $asset = $rel.assets | Where-Object { $_.name -eq "nixos.wsl" } | Select-Object -First 1
+    if ($asset) { $downloadUrl = $asset.browser_download_url; $relTag = $rel.tag_name }
+  } catch {
+    Warn "GitHub API lookup failed ($_); falling back to releases/latest/download redirect."
   }
-  $asset = $rel.assets | Where-Object { $_.name -eq "nixos.wsl" } | Select-Object -First 1
-  if (-not $asset) { Die "Could not find nixos.wsl asset in release $($rel.tag_name)." }
-  Info "NixOS-WSL $($rel.tag_name): $($asset.browser_download_url)"
+  if (-not $asset) {
+    # API-free fallback: GitHub serves the asset by name under /releases/latest/download/.
+    if ($NixOSWSLVersion -eq "latest") {
+      $downloadUrl = "https://github.com/nix-community/NixOS-WSL/releases/latest/download/nixos.wsl"
+    } else {
+      $downloadUrl = "https://github.com/nix-community/NixOS-WSL/releases/download/$NixOSWSLVersion/nixos.wsl"
+    }
+    $relTag = $NixOSWSLVersion
+  }
+  Info "NixOS-WSL $relTag : $downloadUrl"
 
   $tmp = Join-Path $env:TEMP "nixos.wsl"
   Info "Downloading rootfs to $tmp ..."
-  Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $tmp
+  Invoke-WebRequest -Uri $downloadUrl -OutFile $tmp -Headers $ghHeaders
 
   New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null
   Info "Importing as WSL distro '$Distro' into $InstallRoot ..."
