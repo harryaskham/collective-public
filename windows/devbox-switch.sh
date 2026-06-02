@@ -104,24 +104,55 @@ fi
 # home-manager sops derives its per-user age key from the configured user's
 # ~/.ssh/id_ed25519 (the collective username, e.g. harryaskham), NOT the
 # default WSL user (often root/nixos). On a brand-new distro that user does not
-# exist until the first switch creates it, so activation can fail with
-# "SSH key file /home/<user>/.ssh/id_ed25519 not found for deriving private age
-# key". Propagate the shared key to every real human home so activation can
-# derive the age key, then (re)run the switch.
-propagate_key_to_user_homes() {
-  local d owner
-  for d in /root /home/*; do
-    [ -d "$d" ] || continue
-    owner="$(stat -c '%U' "$d" 2>/dev/null || echo root)"
-    install -d -m 700 -o "$owner" -g "$owner" "$d/.ssh" 2>/dev/null || mkdir -p "$d/.ssh"
-    if [ ! -f "$d/.ssh/id_ed25519" ]; then
-      cp "$KEY" "$d/.ssh/id_ed25519" 2>/dev/null || continue
-      chmod 600 "$d/.ssh/id_ed25519" 2>/dev/null || true
-      chown "$owner:$owner" "$d/.ssh/id_ed25519" 2>/dev/null || true
-      echo "[devbox] Placed shared key in $d/.ssh/id_ed25519 (owner $owner)."
-    fi
-  done
+# exist until the first switch *builds and creates* it, so activation fails on
+# the FIRST switch with:
+#   "SSH key file /home/<user>/.ssh/id_ed25519 not found for deriving private
+#    age key"
+# and, because sops-install-secrets can then block multi-user.target, the
+# distro appears to "hang" on every subsequent boot.
+#
+# Proven recovery (verified live on ms-dev-2):
+#   1. Run the switch once. It BUILDS the system generation and creates the
+#      configured user, but its activation fails on the missing key.
+#   2. With the user now present, place the shared key into that user's home
+#      (owned by the user, mode 600).
+#   3. Re-run activation directly via /nix/var/nix/profiles/system/activate
+#      (fast — no rebuild). sops derives the age key, imports it, and finishes.
+#   4. wsl --shutdown + reopen for a clean systemd boot (services start, the
+#      box joins the tailnet).
+DEVBOX_USER="${DEVBOX_USER:-harryaskham}"
+
+# Place the shared key into a specific user's home. Falls back to root ownership
+# when the user is not yet resolvable (early boot), since `activate` reads the
+# key as root and only needs it readable to derive the age key.
+place_key_for_user() {
+  user="$1"; home="/home/$user"
+  [ "$user" = root ] && home=/root
+  mkdir -p "$home/.ssh"
+  if [ ! -f "$home/.ssh/id_ed25519" ]; then
+    cp "$KEY" "$home/.ssh/id_ed25519" || return 1
+  fi
+  # chown to the user if it exists; otherwise leave root-owned (activate still
+  # derives the age key fine). `id` failing means the user is not created yet.
+  # Use the user's *primary group* (often `users` on NixOS, not a per-user
+  # group), or fall back to chowning by user only.
+  if id "$user" >/dev/null 2>&1; then
+    grp="$(id -gn "$user" 2>/dev/null || echo "")"
+    if [ -n "$grp" ]; then ownspec="$user:$grp"; else ownspec="$user"; fi
+    chown "$ownspec" "$home/.ssh" "$home/.ssh/id_ed25519" 2>/dev/null || chown "$user" "$home/.ssh" "$home/.ssh/id_ed25519" 2>/dev/null || true
+    [ -f "$home/.ssh/id_ed25519.age" ] && { chown "$ownspec" "$home/.ssh/id_ed25519.age" 2>/dev/null || chown "$user" "$home/.ssh/id_ed25519.age" 2>/dev/null || true; }
+  fi
+  chmod 700 "$home/.ssh" 2>/dev/null || true
+  chmod 600 "$home/.ssh/id_ed25519" 2>/dev/null || true
+  echo "[devbox] Placed shared key in $home/.ssh/id_ed25519 (user $user)."
 }
+
+# Place the key into every existing human home up front (best effort).
+place_key_for_user root || true
+for d in /home/*; do
+  [ -d "$d" ] || continue
+  place_key_for_user "$(basename "$d")" || true
+done
 
 do_switch() {
   # Use nixos-rebuild directly since cltv may not be on PATH yet. Pass the
@@ -134,16 +165,44 @@ do_switch() {
     --show-trace --print-build-logs --impure
 }
 
-propagate_key_to_user_homes
-if ! do_switch; then
-  echo "[devbox] First switch failed; the human user may have just been created."
-  echo "[devbox] Re-propagating the shared key to the new user home and retrying once..."
-  propagate_key_to_user_homes
-  if ! do_switch; then
-    echo "[devbox] Second switch attempt also failed; investigate, then re-run:"
+# Re-run activation directly from the built system generation. Much faster than
+# a full re-switch and exactly what unblocks the box once the key is in place.
+reactivate() {
+  if [ -x /nix/var/nix/profiles/system/activate ]; then
+    $SUDO /nix/var/nix/profiles/system/activate
+  else
+    $SUDO /nix/var/nix/profiles/system/bin/switch-to-configuration switch
+  fi
+}
+
+if do_switch; then
+  echo "[devbox] First switch complete for $DEVBOX_HOST."
+else
+  echo "[devbox] Switch did not fully activate (expected on first run: the"
+  echo "[devbox] configured user '$DEVBOX_USER' was just created and the home"
+  echo "[devbox] sops age key could not be derived). Placing the key now that"
+  echo "[devbox] the user exists, then re-activating directly..."
+  place_key_for_user "$DEVBOX_USER" || true
+  if reactivate; then
+    echo "[devbox] Re-activation succeeded after placing the key for $DEVBOX_USER."
+  else
+    echo "[devbox] Re-activation still failed. Inspect manually, then re-run:"
     echo "  cd ~/collective && cltv switch"
     exit 1
   fi
 fi
-echo "[devbox] First switch complete for $DEVBOX_HOST."
-echo "[devbox] Tailnet join + Windows convergence run automatically on switch."
+
+# Ensure the configured user owns its key + derived age key for the home-manager
+# sops generation that runs on subsequent (user) logins. Use the user's primary
+# group (e.g. `users`), not a same-named group which may not exist.
+if id "$DEVBOX_USER" >/dev/null 2>&1; then
+  grp="$(id -gn "$DEVBOX_USER" 2>/dev/null || echo "")"
+  if [ -n "$grp" ]; then ownspec="$DEVBOX_USER:$grp"; else ownspec="$DEVBOX_USER"; fi
+  for f in /home/$DEVBOX_USER/.ssh/id_ed25519 /home/$DEVBOX_USER/.ssh/id_ed25519.age; do
+    [ -e "$f" ] && { chown "$ownspec" "$f" 2>/dev/null || chown "$DEVBOX_USER" "$f" 2>/dev/null || true; }
+  done
+fi
+
+echo "[devbox] Done. Run 'wsl --shutdown' from Windows for a clean systemd boot"
+echo "[devbox] (wsl.defaultUser=$DEVBOX_USER takes effect; tailscale joins),"
+echo "[devbox] then reopen the distro. Windows convergence runs on switch."

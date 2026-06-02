@@ -65,11 +65,19 @@ cp "$SRC_KEY" "$DST_KEY"
 # Copy the matching pubkey if present (harmless if missing).
 if [ -f "${SRC_KEY}.pub" ]; then cp "${SRC_KEY}.pub" "${DST_KEY}.pub" || true; fi
 
-# Ownership: chown to the target user. Use numeric fallback if the name is not
-# yet resolvable, but the user exists post-first-switch so the name should work.
-chown "${TARGET_USER}:${TARGET_USER}" "$DST_KEY" 2>/dev/null || \
+# Ownership: chown to the target user using its PRIMARY GROUP (e.g. `users` on
+# NixOS, not a same-named group which usually does not exist). Fall back to
+# user-only chown, then leave root-owned if the user is not resolvable yet.
+if id "$TARGET_USER" >/dev/null 2>&1; then
+  TGRP="$(id -gn "$TARGET_USER" 2>/dev/null || echo '')"
+  if [ -n "$TGRP" ]; then OWNSPEC="${TARGET_USER}:${TGRP}"; else OWNSPEC="${TARGET_USER}"; fi
+else
+  OWNSPEC="${TARGET_USER}"
+fi
+chown "$OWNSPEC" "$DST_KEY" 2>/dev/null || \
   chown "${TARGET_USER}" "$DST_KEY" 2>/dev/null || true
-chown "${TARGET_USER}:${TARGET_USER}" "$DST_DIR" 2>/dev/null || true
+chown "$OWNSPEC" "$DST_DIR" 2>/dev/null || \
+  chown "${TARGET_USER}" "$DST_DIR" 2>/dev/null || true
 chmod 700 "$DST_DIR"
 chmod 600 "$DST_KEY"
 [ -f "${DST_KEY}.pub" ] && chmod 644 "${DST_KEY}.pub" || true
