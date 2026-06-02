@@ -20,14 +20,40 @@ The Windows devbox user is typically a **non-admin domain account** (e.g.
 - **Admin half (ONE interactive UAC consent):** machine-scope installs whose
   installers self-elevate (e.g. **Google Chrome**) and `powercfg /hibernate
   off`. These are bundled into a single command. After your first switch, run
-  it once at the Windows desktop and approve the single UAC prompt:
+  it once **inside the RDP / Cloud PC desktop's WSL terminal** and approve the
+  single UAC prompt:
 
   ```bash
   devbox-windows-admin
   ```
 
+  > **Important — must be run in the interactive RDP session, not over SSH.**
+  > UAC uses the *secure desktop*. A prompt triggered from an SSH/systemd
+  > context renders on session 0's invisible desktop and can never be clicked.
+  > Run `devbox-windows-admin` (or `ps-sudo ...`) from the WSL terminal *inside*
+  > the Cloud PC desktop (Windows 365 web client or the Windows App) so the
+  > prompt paints in your live session where you can approve it. With
+  > `ConsentPromptBehaviorUser=3` (non-admin domain default) you'll be asked
+  > for credentials, not just Yes/No.
+
 A non-admin user cannot avoid the UAC consent for the admin half; everything
 else is fully automated.
+
+## Waking the Cloud PC (Windows 365)
+
+These devboxes are Windows 365 Cloud PCs. The WSL2 VM can be killed by host
+memory pressure, and the Cloud PC itself deallocates when idle. If the node
+shows `offline` on the tailnet and SSH times out, **reconnect to wake it**:
+
+- **Windows App** (formerly Remote Desktop): open the `harryaskham` / Cloud PC
+  entry, or
+- **Web client:** `https://windows.cloud.microsoft/webclient/...` (authed as
+  `harryaskham@microsoft.com`).
+
+Connecting reboots/reattaches the Cloud PC; WSL restarts and rejoins the
+tailnet within ~1 minute. (Hibernate-off + sleep-never, applied by the admin
+and headless convergence, reduce — but on a Cloud PC do not fully eliminate —
+idle deallocation.)
 
 ## One-liner (run in an elevated PowerShell on the Windows host)
 
