@@ -5,7 +5,29 @@ one command. The script installs WSL2 + NixOS-WSL, places the shared devbox SSH
 key, clones the (private) `collective` flake over SSH, and runs the first
 `cltv switch`. After that the box joins the tailnet non-interactively
 (devbox-pool auth key) and converges its Windows host declaratively from inside
+WSL and converges its Windows host declaratively from inside
 WSL (Chrome, Slack, etc. via winget; power settings via `powercfg`).
+
+## Windows convergence: headless vs admin (UAC)
+
+The Windows devbox user is typically a **non-admin domain account** (e.g.
+`REDMOND\you`). Windows convergence is therefore split into two halves:
+
+- **Headless half (no UAC, automatic on every switch + timer):** user-scope
+  winget installs (Slack, PowerShell, Windows Terminal, **Git via MinGit** —
+  the portable zip variant) and per-user `powercfg` sleep/monitor timeouts.
+  This runs entirely over SSH/systemd with no prompts.
+- **Admin half (ONE interactive UAC consent):** machine-scope installs whose
+  installers self-elevate (e.g. **Google Chrome**) and `powercfg /hibernate
+  off`. These are bundled into a single command. After your first switch, run
+  it once at the Windows desktop and approve the single UAC prompt:
+
+  ```bash
+  devbox-windows-admin
+  ```
+
+A non-admin user cannot avoid the UAC consent for the admin half; everything
+else is fully automated.
 
 ## One-liner (run in an elevated PowerShell on the Windows host)
 
@@ -35,7 +57,10 @@ irm $u -OutFile bootstrap-devbox.ps1
 
 - A new `ms-dev-N` must be registered in `collective`:
   - `machines/ms-dev-N/nixos/configuration.nix` (copy `ms-dev-2` as a template;
-    opt into `devbox.windows` for declarative Windows app provisioning)
+    opt into `devbox.windows` for declarative Windows app provisioning — put
+    user-scope/portable packages in `winget.userPackages` (headless) and only
+    machine-scope/self-elevating ones like `Google.Chrome` in
+    `winget.adminPackages` (run `devbox-windows-admin` once for those))
   - `flake.nix`: `ms-dev-N = Tagged [VM WSL] System.NixOS.X86;`
   - `pkgs/collective-lib/ssh.nix`: duplicate the `ms-dev` pubkey + age key lines
     under `ms-dev-N` (shared key → identical age recipient → no sops changes)
