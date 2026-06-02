@@ -43,11 +43,35 @@ if [ ! -f "$KEY" ]; then
 fi
 chmod 600 "$KEY" 2>/dev/null || true
 
+# Fresh NixOS-WSL may not have git on PATH until the first switch. Provide it
+# via nix-shell if missing so the clone works on a brand-new distro.
+GIT_BIN="$(command -v git || true)"
+if [ -z "$GIT_BIN" ]; then
+  echo "[devbox] git not found; providing it via nix-shell for the clone..."
+  if command -v nix-shell >/dev/null 2>&1; then
+    GIT="nix-shell -p git --run"
+  else
+    echo "ERROR: neither git nor nix-shell is available." >&2
+    exit 1
+  fi
+else
+  GIT=""
+fi
+
+# A fresh NixOS-WSL runs as root and its sudo is not yet setuid-wrapped
+# ("sudo must be owned by uid 0 and have the setuid bit set"). Only use sudo
+# when we are not already root.
+if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo"; fi
+
 cd "$HOME_DIR"
 if [ ! -d "$HOME_DIR/collective/.git" ]; then
   echo "[devbox] Cloning collective over SSH..."
-  GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" \
+  export GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+  if [ -n "$GIT" ]; then
+    $GIT "git clone git@github.com:harryaskham/collective.git '$HOME_DIR/collective'"
+  else
     git clone git@github.com:harryaskham/collective.git "$HOME_DIR/collective"
+  fi
 else
   echo "[devbox] collective already cloned; using existing checkout."
 fi
@@ -55,7 +79,7 @@ fi
 cd "$HOME_DIR/collective"
 echo "[devbox] Running first switch for '$DEVBOX_HOST' (this builds the system; may take a while)..."
 # Use nixos-rebuild directly since cltv may not be on PATH yet.
-sudo nixos-rebuild switch --flake ".#$DEVBOX_HOST" --show-trace --print-build-logs --impure || {
+$SUDO nixos-rebuild switch --flake ".#$DEVBOX_HOST" --show-trace --print-build-logs --impure || {
   echo "[devbox] First nixos-rebuild failed; you can re-run with:"
   echo "  cd ~/collective && cltv switch"
   exit 1
