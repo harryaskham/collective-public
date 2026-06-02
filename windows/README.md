@@ -47,3 +47,19 @@ irm $u -OutFile bootstrap-devbox.ps1
 Safe to re-run: WSL install, distro import, key install, and clone are all
 idempotent. To reimport the distro cleanly, first
 `wsl --unregister NixOS`.
+
+## WSL-side only (already at the "WSL imported + key placed" checkpoint)
+
+If the NixOS-WSL distro is already imported and the shared key is already at
+`~/.ssh/id_ed25519`, you can skip the Windows half entirely and run just the
+clone + first switch from *inside* the distro:
+
+```bash
+# inside NixOS-WSL (wsl -d NixOS)
+curl -fsSL https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/devbox-switch.sh | bash -s -- ms-dev-2
+```
+
+`devbox-switch.sh` is the WSL-side half of the bootstrap (the same clone +
+`nixos-rebuild switch` logic the PowerShell script runs over `wsl.exe`). It is
+idempotent and resolves `$HOME` robustly on a fresh distro where the env var
+may be empty.
