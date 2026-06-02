@@ -101,17 +101,49 @@ if command -v nix >/dev/null 2>&1; then
   nix "${NIX_FEATURE_ARGS[@]}" flake archive . || true
 fi
 
-# Use nixos-rebuild directly since cltv may not be on PATH yet. Pass the
-# experimental-features flag and binary caches through so flake eval + CUDA
-# fetches work pre-first-switch.
-$SUDO nixos-rebuild switch --flake ".#$DEVBOX_HOST" \
-  --option extra-experimental-features "nix-command flakes" \
-  --option extra-substituters "$SUBS" \
-  --option extra-trusted-public-keys "$KEYS" \
-  --show-trace --print-build-logs --impure || {
-  echo "[devbox] First nixos-rebuild failed; you can re-run with:"
-  echo "  cd ~/collective && cltv switch"
-  exit 1
+# home-manager sops derives its per-user age key from the configured user's
+# ~/.ssh/id_ed25519 (the collective username, e.g. harryaskham), NOT the
+# default WSL user (often root/nixos). On a brand-new distro that user does not
+# exist until the first switch creates it, so activation can fail with
+# "SSH key file /home/<user>/.ssh/id_ed25519 not found for deriving private age
+# key". Propagate the shared key to every real human home so activation can
+# derive the age key, then (re)run the switch.
+propagate_key_to_user_homes() {
+  local d owner
+  for d in /root /home/*; do
+    [ -d "$d" ] || continue
+    owner="$(stat -c '%U' "$d" 2>/dev/null || echo root)"
+    install -d -m 700 -o "$owner" -g "$owner" "$d/.ssh" 2>/dev/null || mkdir -p "$d/.ssh"
+    if [ ! -f "$d/.ssh/id_ed25519" ]; then
+      cp "$KEY" "$d/.ssh/id_ed25519" 2>/dev/null || continue
+      chmod 600 "$d/.ssh/id_ed25519" 2>/dev/null || true
+      chown "$owner:$owner" "$d/.ssh/id_ed25519" 2>/dev/null || true
+      echo "[devbox] Placed shared key in $d/.ssh/id_ed25519 (owner $owner)."
+    fi
+  done
 }
+
+do_switch() {
+  # Use nixos-rebuild directly since cltv may not be on PATH yet. Pass the
+  # experimental-features flag and binary caches through so flake eval + CUDA
+  # fetches work pre-first-switch.
+  $SUDO nixos-rebuild switch --flake ".#$DEVBOX_HOST" \
+    --option extra-experimental-features "nix-command flakes" \
+    --option extra-substituters "$SUBS" \
+    --option extra-trusted-public-keys "$KEYS" \
+    --show-trace --print-build-logs --impure
+}
+
+propagate_key_to_user_homes
+if ! do_switch; then
+  echo "[devbox] First switch failed; the human user may have just been created."
+  echo "[devbox] Re-propagating the shared key to the new user home and retrying once..."
+  propagate_key_to_user_homes
+  if ! do_switch; then
+    echo "[devbox] Second switch attempt also failed; investigate, then re-run:"
+    echo "  cd ~/collective && cltv switch"
+    exit 1
+  fi
+fi
 echo "[devbox] First switch complete for $DEVBOX_HOST."
 echo "[devbox] Tailnet join + Windows convergence run automatically on switch."
