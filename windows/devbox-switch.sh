@@ -78,8 +78,26 @@ fi
 
 cd "$HOME_DIR/collective"
 echo "[devbox] Running first switch for '$DEVBOX_HOST' (this builds the system; may take a while)..."
-# Use nixos-rebuild directly since cltv may not be on PATH yet.
-$SUDO nixos-rebuild switch --flake ".#$DEVBOX_HOST" --show-trace --print-build-logs --impure || {
+
+# A fresh NixOS-WSL nix (bootstrap profile) does not yet have flakes enabled in
+# nix.conf, and flake git operations (archive/lock) must use the repo's SSH
+# multiplex wrapper rather than the clone-time single-key GIT_SSH_COMMAND.
+# Mirror what `cltv switch` relies on so the first switch evaluates cleanly.
+export GIT_SSH_COMMAND="$HOME_DIR/collective/scripts/git-ssh-multiplex"
+NIX_FEATURE_ARGS=(--extra-experimental-features "nix-command flakes")
+
+# Pre-fetch flake inputs over SSH so nixos-rebuild's eval does not block on a
+# git remote it cannot reach with the wrong identity.
+if command -v nix >/dev/null 2>&1; then
+  echo "[devbox] Archiving flake inputs (nix flake archive)..."
+  nix "${NIX_FEATURE_ARGS[@]}" flake archive . || true
+fi
+
+# Use nixos-rebuild directly since cltv may not be on PATH yet. Pass the
+# experimental-features flag through so flake eval works pre-first-switch.
+$SUDO nixos-rebuild switch --flake ".#$DEVBOX_HOST" \
+  --option extra-experimental-features "nix-command flakes" \
+  --show-trace --print-build-logs --impure || {
   echo "[devbox] First nixos-rebuild failed; you can re-run with:"
   echo "  cd ~/collective && cltv switch"
   exit 1
