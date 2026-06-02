@@ -132,19 +132,26 @@ place_key_for_user() {
   if [ ! -f "$home/.ssh/id_ed25519" ]; then
     cp "$KEY" "$home/.ssh/id_ed25519" || return 1
   fi
-  # chown to the user if it exists; otherwise leave root-owned (activate still
-  # derives the age key fine). `id` failing means the user is not created yet.
-  # Use the user's *primary group* (often `users` on NixOS, not a per-user
-  # group), or fall back to chowning by user only.
+  # home-manager's sops activation (deriveSshPublicKey) runs `ssh-to-age` on the
+  # PUBLIC key and fails without id_ed25519.pub. Derive it from the private key.
+  if [ ! -s "$home/.ssh/id_ed25519.pub" ] && command -v ssh-keygen >/dev/null 2>&1; then
+    ssh-keygen -y -f "$home/.ssh/id_ed25519" > "$home/.ssh/id_ed25519.pub" 2>/dev/null || true
+  fi
+  # chown the WHOLE .ssh tree to the user if it exists; otherwise leave
+  # root-owned (system `activate` still derives the age key fine). The home-
+  # manager activation runs AS the user and must own .ssh and every file in it
+  # (incl. the derived id_ed25519.age) or deriveAgePrivateKey fails with
+  # "chmod: ... Operation not permitted". Use the user's *primary group*
+  # (often `users` on NixOS, not a per-user group), or fall back to user only.
   if id "$user" >/dev/null 2>&1; then
     grp="$(id -gn "$user" 2>/dev/null || echo "")"
     if [ -n "$grp" ]; then ownspec="$user:$grp"; else ownspec="$user"; fi
-    chown "$ownspec" "$home/.ssh" "$home/.ssh/id_ed25519" 2>/dev/null || chown "$user" "$home/.ssh" "$home/.ssh/id_ed25519" 2>/dev/null || true
-    [ -f "$home/.ssh/id_ed25519.age" ] && { chown "$ownspec" "$home/.ssh/id_ed25519.age" 2>/dev/null || chown "$user" "$home/.ssh/id_ed25519.age" 2>/dev/null || true; }
+    chown -R "$ownspec" "$home/.ssh" 2>/dev/null || chown -R "$user" "$home/.ssh" 2>/dev/null || true
   fi
   chmod 700 "$home/.ssh" 2>/dev/null || true
   chmod 600 "$home/.ssh/id_ed25519" 2>/dev/null || true
-  echo "[devbox] Placed shared key in $home/.ssh/id_ed25519 (user $user)."
+  [ -f "$home/.ssh/id_ed25519.pub" ] && chmod 644 "$home/.ssh/id_ed25519.pub" 2>/dev/null || true
+  echo "[devbox] Placed shared key + derived .pub in $home/.ssh (user $user)."
 }
 
 # Place the key into every existing human home up front (best effort).
@@ -192,15 +199,27 @@ else
   fi
 fi
 
-# Ensure the configured user owns its key + derived age key for the home-manager
-# sops generation that runs on subsequent (user) logins. Use the user's primary
-# group (e.g. `users`), not a same-named group which may not exist.
+# Ensure the configured user fully owns its .ssh tree (key, derived .age, and
+# .pub) so the home-manager activation (which runs AS the user) can derive its
+# age key and ssh public key without permission errors. place_key_for_user
+# already does the recursive chown + .pub derivation; call it once more in case
+# `activate` created root-owned files (e.g. id_ed25519.age) after the build.
 if id "$DEVBOX_USER" >/dev/null 2>&1; then
-  grp="$(id -gn "$DEVBOX_USER" 2>/dev/null || echo "")"
-  if [ -n "$grp" ]; then ownspec="$DEVBOX_USER:$grp"; else ownspec="$DEVBOX_USER"; fi
-  for f in /home/$DEVBOX_USER/.ssh/id_ed25519 /home/$DEVBOX_USER/.ssh/id_ed25519.age; do
-    [ -e "$f" ] && { chown "$ownspec" "$f" 2>/dev/null || chown "$DEVBOX_USER" "$f" 2>/dev/null || true; }
-  done
+  place_key_for_user "$DEVBOX_USER" || true
+
+  # Kick the home-manager activation explicitly. On the first boot it usually
+  # fails before the .ssh ownership/.pub fixes above, so a restart applies the
+  # home-file links (.zshrc etc.) and the user's sops generation now.
+  if command -v systemctl >/dev/null 2>&1; then
+    echo "[devbox] (Re)starting home-manager-$DEVBOX_USER.service to link home files..."
+    $SUDO systemctl restart "home-manager-$DEVBOX_USER.service" 2>/dev/null || true
+    if systemctl is-active --quiet "home-manager-$DEVBOX_USER.service" 2>/dev/null; then
+      echo "[devbox] home-manager-$DEVBOX_USER active; home files linked (.zshrc, etc.)."
+    else
+      echo "[devbox] WARNING: home-manager-$DEVBOX_USER not active yet. Check:"
+      echo "  journalctl -u home-manager-$DEVBOX_USER.service -n 40"
+    fi
+  fi
 fi
 
 echo "[devbox] Done. Run 'wsl --shutdown' from Windows for a clean systemd boot"
