@@ -194,7 +194,13 @@ $KeyMaterialLF = $KeyMaterial -replace "`r`n", "`n" -replace "`r", "`n"
 $keyB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($KeyMaterialLF))
 $installKey = @"
 set -euo pipefail
-HOME_DIR="`$HOME"
+# A freshly imported NixOS-WSL has no default user yet, so `$HOME may be empty
+# in this non-login `bash -lc` context. Resolve the real home directory and
+# export HOME so all downstream tools (ssh, git, nixos-rebuild) agree on it.
+HOME_DIR="`$(eval echo ~`$(id -un) 2>/dev/null)"
+if [ -z "`$HOME_DIR" ] || [ "`$HOME_DIR" = "~`$(id -un)" ]; then HOME_DIR="`$(getent passwd `$(id -un) | cut -d: -f6)"; fi
+if [ -z "`$HOME_DIR" ]; then HOME_DIR="/root"; fi
+export HOME="`$HOME_DIR"
 mkdir -p "`$HOME_DIR/.ssh"
 chmod 700 "`$HOME_DIR/.ssh"
 # The base64 of the key is passed as the first argument.
@@ -219,12 +225,16 @@ Info "This builds the system and may take a while on first run."
 $switch = @"
 set -euo pipefail
 export PATH="/run/current-system/sw/bin:`$PATH"
-cd "`$HOME"
-if [ ! -d "`$HOME/collective/.git" ]; then
-  GIT_SSH_COMMAND="ssh -i `$HOME/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" \
-    git clone git@github.com:harryaskham/collective.git "`$HOME/collective"
+HOME_DIR="`$(eval echo ~`$(id -un) 2>/dev/null)"
+if [ -z "`$HOME_DIR" ] || [ "`$HOME_DIR" = "~`$(id -un)" ]; then HOME_DIR="`$(getent passwd `$(id -un) | cut -d: -f6)"; fi
+if [ -z "`$HOME_DIR" ]; then HOME_DIR="/root"; fi
+export HOME="`$HOME_DIR"
+cd "`$HOME_DIR"
+if [ ! -d "`$HOME_DIR/collective/.git" ]; then
+  GIT_SSH_COMMAND="ssh -i `$HOME_DIR/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" \
+    git clone git@github.com:harryaskham/collective.git "`$HOME_DIR/collective"
 fi
-cd "`$HOME/collective"
+cd "`$HOME_DIR/collective"
 # First switch: use nixos-rebuild directly since cltv may not be on PATH yet.
 sudo nixos-rebuild switch --flake ".#$DevboxHost" --show-trace --print-build-logs --impure || {
   echo "First nixos-rebuild failed; you can re-run inside WSL with:";
