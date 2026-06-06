@@ -38,6 +38,22 @@ rec {
         { up = 80; down = 65; speed = 80.0; }
         { up = 85; down = 75; speed = 100.0; }
       ];
+      cool = mkCurve curveTemplates.GPD "" [
+        { up = 30; down = 0; speed = 0.0; }
+        { up = 45; down = 25; speed = 50.0; }
+        { up = 60; down = 40; speed = 70.0; }
+        { up = 70; down = 50; speed = 90.0; }
+        { up = 80; down = 65; speed = 100.0; }
+        { up = 85; down = 75; speed = 100.0; }
+      ];
+      balanced = mkCurve curveTemplates.GPD "" [
+        { up = 30; down = 0; speed = 0.0; }
+        { up = 45; down = 25; speed = 40.0; }
+        { up = 60; down = 40; speed = 60.0; }
+        { up = 70; down = 50; speed = 80.0; }
+        { up = 80; down = 65; speed = 90.0; }
+        { up = 85; down = 75; speed = 100.0; }
+      ];
     };
   };
   curveId = curve: "${curve.model} ${curve.suffix}";
