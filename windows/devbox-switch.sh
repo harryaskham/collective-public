@@ -94,11 +94,32 @@ NIX_FEATURE_ARGS=(--extra-experimental-features "nix-command flakes")
 SUBS="https://harryaskham-cache.redhill-3c400511.eastus.azurecontainerapps.io/collective https://cuda-maintainers.cachix.org https://ghc.cachix.org https://nix-community.cachix.org https://nixpkgs.cachix.org https://cache.nixos.org"
 KEYS="collective:r0dctotsGy3NnTdwb03tFA1ZENTvWGukej3jwZq5vQw= cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E= ghc.cachix.org-1:a751hwq9ydeP3Nr6h84iA9zSjxg9Z3uznqi4YBGjsiw= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= nixpkgs.cachix.org-1:q91R6hxbwFvDqTSDKwDAV4T5PxqXGxswD8vhONFMeOE= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
 
+# Materialize the corp GitHub key from sops BEFORE fetching flake inputs. Some
+# flake inputs live on corp GitHub (infinity-microsoft / gim-home / msft.ghe.com)
+# and git-ssh-multiplex routes those to ~/.ssh/corp-github-key, which home-manager
+# sops only places AFTER the first switch. Decrypt it now using the SSH key as the
+# age identity (ssh-to-age) so the very first archive / eval can reach corp
+# remotes. Verified on ms-dev-2.
+if [ ! -s "$HOME_DIR/.ssh/corp-github-key" ] && [ -f "$HOME_DIR/collective/standalone/secrets/secrets.yaml" ]; then
+  echo "[devbox] Materializing corp-github-key from sops..."
+  nix-shell -p sops ssh-to-age openssh --run '
+    set -e
+    install -d -m700 "$HOME/.ssh"
+    AGE=$(ssh-to-age -private-key -i "$HOME/.ssh/id_ed25519")
+    SOPS_AGE_KEY="$AGE" sops decrypt --extract "[\"keys\"][\"ms\"][\"ssh\"][\"private\"]" "$HOME/collective/standalone/secrets/secrets.yaml" > "$HOME/.ssh/corp-github-key"
+    chmod 600 "$HOME/.ssh/corp-github-key"
+    SOPS_AGE_KEY="$AGE" sops decrypt --extract "[\"keys\"][\"ms\"][\"ssh\"][\"public\"]" "$HOME/collective/standalone/secrets/secrets.yaml" > "$HOME/.ssh/corp-github-key.pub" 2>/dev/null || true
+  ' || echo "[devbox] WARN: corp-github-key materialization failed; corp flake inputs may not fetch."
+fi
+
 # Pre-fetch flake inputs over SSH so nixos-rebuild's eval does not block on a
-# git remote it cannot reach with the wrong identity.
+# git remote it cannot reach with the wrong identity. Run via nix-shell so a real
+# git+openssh is on PATH: a fresh bootstrap nix has no nix `git`, so nix would
+# otherwise fall through to the Windows-interop git.exe and fail with
+# `error: executing 'git': Permission denied`. GIT_SSH_COMMAND is inherited.
 if command -v nix >/dev/null 2>&1; then
   echo "[devbox] Archiving flake inputs (nix flake archive)..."
-  nix "${NIX_FEATURE_ARGS[@]}" flake archive . || true
+  nix-shell -p git openssh --run 'nix --extra-experimental-features "nix-command flakes" flake archive .' || true
 fi
 
 # home-manager sops derives its per-user age key from the configured user's
