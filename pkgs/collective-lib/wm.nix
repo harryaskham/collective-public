@@ -286,7 +286,7 @@ in rec {
           moveWindowDown = runs "yabai -m window --swap south";
           moveWindowLeft = runs "yabai -m window --swap west";
           moveWindowRight = runs "yabai -m window --swap east";
-          openTerminal = runs ''/Applications/kitty.app/Contents/MacOS/kitty -1 --detach'';
+          openTerminal = runs ''osascript -e 'tell application "Ghostty" to new window' '';
           openLauncher = runs ''echo unimplemented'';
           reloadConfig = runs "yabai --restart-service; skhd --reload";
           floatCurrent = runs "yabai -m window --toggle float; yabai -m window --grid 4:4:1:1:2:2togglefloating";
