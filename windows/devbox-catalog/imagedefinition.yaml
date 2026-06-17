@@ -1,0 +1,57 @@
+# Dev Box customization catalog — collective ms-dev-N onboarding
+#
+# Microsoft Dev Box "Configuration as Code" image definition. This catalog is the
+# PUBLIC, non-secret half: it pulls the existing public bootstrap scripts in this
+# repo and references the SSH key by Key Vault URI (resolved at provisioning by
+# the dev center's managed identity). The actual secret lives in the
+# harryaskham-sandbox Key Vault (Terranix: mono/sandbox/ops/terraform/devbox.nix);
+# the dev center MI is granted Key Vault Secrets User on it.
+#
+# Attach to a dev center (admin), e.g.:
+#   az devcenter admin catalog create --name collective-devbox \
+#     --dev-center-name <dc> --resource-group <dc-rg> \
+#     --git-hub uri="https://github.com/harryaskham/collective-public.git" \
+#              branch="main" path="windows/devbox-catalog"
+# (public repo -> no PAT/secret-identifier needed)
+#
+# Confirm the secret URI below matches the deployed vault:
+#   terraform output devbox_ssh_secret_uri   (mono/sandbox)
+
+$schema: "1.0"
+name: collective-devbox
+description: Onboard a Microsoft Dev Box as a collective ms-dev-N WSL node.
+
+tasks:
+  - name: powershell
+    description: >-
+      Bootstrap WSL2 + NixOS-WSL + collective with the shared SSH key injected
+      from Key Vault, then apply the elevated power posture (hibernate-off +
+      DevboxKeepAwake). Runs unattended via the elevated Dev Box agent (no UAC).
+    timeout: 3600
+    parameters:
+      command: |
+        $ErrorActionPreference = 'Stop'
+
+        # SSH key injected by the Dev Box agent from Key Vault (versionless URI).
+        # Confirm the vault host matches `terraform output devbox_ssh_secret_uri`.
+        $sshKey = '{{ https://harryaskham-devbox-kv.vault.azure.net/secrets/devbox-ssh-private-key }}'
+
+        # Per-box collective hostname (lower-cased COMPUTERNAME; adjust per pool).
+        $devboxHost = $env:COMPUTERNAME.ToLower()
+
+        $keyPath = Join-Path $env:TEMP 'devbox_id_ed25519'
+        Set-Content -Path $keyPath -Value $sshKey -NoNewline -Encoding ASCII
+
+        try {
+          $u  = 'https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/bootstrap-devbox.ps1'
+          $bs = Join-Path $env:TEMP 'bootstrap-devbox.ps1'
+          Invoke-RestMethod $u -OutFile $bs
+          & $bs -DevboxHost $devboxHost -KeyPath $keyPath
+
+          # Register the boot-persistent power posture (agent context is already
+          # elevated, so no UAC prompt).
+          wsl.exe -d NixOS -- /run/current-system/sw/bin/devbox-windows-admin
+        }
+        finally {
+          Remove-Item $keyPath -ErrorAction SilentlyContinue
+        }
