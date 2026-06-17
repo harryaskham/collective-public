@@ -213,7 +213,7 @@ chmod 644 "`$HOME_DIR/.ssh/id_ed25519.pub" 2>/dev/null || true
 ssh-keyscan -t ed25519,rsa github.com >> "`$HOME_DIR/.ssh/known_hosts" 2>/dev/null || true
 echo "SSH key installed at `$HOME_DIR/.ssh/id_ed25519"
 "@
-wsl.exe -d $Distro -- bash -lc "$installKey" "_" "$keyB64" 2>&1 | Out-Host
+wsl.exe -d $Distro -- bash -lc ($installKey -replace "`r","") "_" "$keyB64" 2>&1 | Out-Host
 Ok "Shared devbox SSH key in place."
 
 # ---------------------------------------------------------------------------
@@ -243,7 +243,7 @@ sudo nixos-rebuild switch --flake ".#$DevboxHost" --show-trace --print-build-log
 }
 echo "First switch complete for $DevboxHost."
 "@
-wsl.exe -d $Distro -- bash -lc "$switch" 2>&1 | Out-Host
+wsl.exe -d $Distro -- bash -lc ($switch -replace "`r","") 2>&1 | Out-Host
 
 Ok "Devbox '$DevboxHost' bootstrapped."
 Write-Host ""
