@@ -91,8 +91,8 @@ NIX_FEATURE_ARGS=(--extra-experimental-features "nix-command flakes")
 # (e.g. nvidia-cublas-cu12 pulled in by pi's tts dependency) and the build
 # fails with "no substituter that can build it". These mirror flake.nix and the
 # system nix.settings; once the first switch lands they become authoritative.
-SUBS="https://harryaskham-cache.redhill-3c400511.eastus.azurecontainerapps.io/collective https://cuda-maintainers.cachix.org https://ghc.cachix.org https://nix-community.cachix.org https://nixpkgs.cachix.org https://cache.nixos.org"
-KEYS="collective:r0dctotsGy3NnTdwb03tFA1ZENTvWGukej3jwZq5vQw= cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E= ghc.cachix.org-1:a751hwq9ydeP3Nr6h84iA9zSjxg9Z3uznqi4YBGjsiw= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= nixpkgs.cachix.org-1:q91R6hxbwFvDqTSDKwDAV4T5PxqXGxswD8vhONFMeOE= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
+SUBS="https://cuda-maintainers.cachix.org https://ghc.cachix.org https://nix-community.cachix.org https://nixpkgs.cachix.org https://cache.nixos.org"
+KEYS="cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E= ghc.cachix.org-1:a751hwq9ydeP3Nr6h84iA9zSjxg9Z3uznqi4YBGjsiw= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= nixpkgs.cachix.org-1:q91R6hxbwFvDqTSDKwDAV4T5PxqXGxswD8vhONFMeOE= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
 
 # Materialize the corp GitHub key from sops BEFORE fetching flake inputs. Some
 # flake inputs live on corp GitHub (infinity-microsoft / gim-home / msft.ghe.com)
