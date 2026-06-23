@@ -1,5 +1,10 @@
 # bootstrap-devbox.ps1 — provision a Microsoft WSL devbox (ms-dev-N) end to end.
 #
+# ONE idempotent command: run it to bring up a FRESH box, or RE-RUN it to
+# continue a partial/interrupted bringup to completion. It skips WSL install +
+# rootfs import when the distro already exists, re-places the key, and delegates
+# the switch to the canonical (also-resumable) devbox-switch.sh.
+#
 # RECOMMENDED (supports a key file, keeps the window open on error):
 #   $u = "https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/bootstrap-devbox.ps1"
 #   irm $u -OutFile "$env:TEMP\bootstrap-devbox.ps1"
@@ -217,33 +222,29 @@ wsl.exe -d $Distro -- bash -lc ($installKey -replace "`r","") "_" "$keyB64" 2>&1
 Ok "Shared devbox SSH key in place."
 
 # ---------------------------------------------------------------------------
-# 5. Clone the collective flake (private, over SSH) and run the first switch
+# 5. Run the canonical, idempotent switch (devbox-switch.sh) inside WSL
 # ---------------------------------------------------------------------------
-Info "Cloning collective and running the first switch for '$DevboxHost'..."
-Info "This builds the system and may take a while on first run."
+# Single source of truth: fetch devbox-switch.sh and run it rather than carrying
+# a divergent inline switch here. devbox-switch.sh handles clone, corp-key
+# materialization, the flake archive (with a real nix git, not Windows git.exe),
+# the first switch, and the place-key-for-user + reactivate recovery — and it is
+# idempotent/resumable, so re-running this whole bootstrap continues a partial
+# bringup to completion.
+Info "Fetching the canonical devbox-switch.sh and running the switch for '$DevboxHost'..."
+Info "This clones the collective flake, materializes the corp key, builds the system, and completes activation. May take a while on first run."
 
-$switch = @"
+$switchUrl = "https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/devbox-switch.sh"
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocol]::Tls12 } catch {}
+$switchScript = Invoke-RestMethod -Uri $switchUrl -Headers @{ "User-Agent" = "collective-devbox-bootstrap" }
+# LF-normalize + base64 so no CRLF or Windows<->WSL path translation reaches WSL.
+$switchScript = ($switchScript -replace "`r`n","`n" -replace "`r","`n")
+$switchB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($switchScript))
+$runSwitch = @"
 set -euo pipefail
-export PATH="/run/current-system/sw/bin:`$PATH"
-HOME_DIR="`$(eval echo ~`$(id -un) 2>/dev/null)"
-if [ -z "`$HOME_DIR" ] || [ "`$HOME_DIR" = "~`$(id -un)" ]; then HOME_DIR="`$(getent passwd `$(id -un) | cut -d: -f6)"; fi
-if [ -z "`$HOME_DIR" ]; then HOME_DIR="/root"; fi
-export HOME="`$HOME_DIR"
-cd "`$HOME_DIR"
-if [ ! -d "`$HOME_DIR/collective/.git" ]; then
-  GIT_SSH_COMMAND="ssh -i `$HOME_DIR/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" \
-    git clone git@github.com:harryaskham/collective.git "`$HOME_DIR/collective"
-fi
-cd "`$HOME_DIR/collective"
-# First switch: use nixos-rebuild directly since cltv may not be on PATH yet.
-sudo nixos-rebuild switch --flake ".#$DevboxHost" --show-trace --print-build-logs --impure || {
-  echo "First nixos-rebuild failed; you can re-run inside WSL with:";
-  echo "  cd ~/collective && cltv switch";
-  exit 1;
-}
-echo "First switch complete for $DevboxHost."
+printf '%s' "`$1" | base64 -d > /tmp/devbox-switch.sh
+bash /tmp/devbox-switch.sh "$DevboxHost"
 "@
-wsl.exe -d $Distro -- bash -lc ($switch -replace "`r","") 2>&1 | Out-Host
+wsl.exe -d $Distro -- bash -lc ($runSwitch -replace "`r","") "_" "$switchB64" 2>&1 | Out-Host
 
 Ok "Devbox '$DevboxHost' bootstrapped."
 Write-Host ""

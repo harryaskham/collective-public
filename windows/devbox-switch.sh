@@ -11,8 +11,12 @@
 # or:
 #   DEVBOX_HOST=ms-dev-2 bash devbox-switch.sh
 #
-# It is idempotent: re-running skips the clone if ~/collective exists and just
-# re-switches.
+# It is idempotent AND resumable: safe to re-run at any stage to CONTINUE a
+# partial bringup to completion. It self-bootstraps PATH (so it works even before
+# the system is activated), auto-locates the shared key and the collective
+# checkout wherever a prior/partial run left them, places the key for root + the
+# configured user (deriving id_ed25519.pub), runs/continues the switch, and
+# completes activation + home-manager linking. Just re-run it.
 
 set -euo pipefail
 
@@ -25,7 +29,12 @@ if [ -z "$DEVBOX_HOST" ]; then
   exit 1
 fi
 
-export PATH="/run/current-system/sw/bin:$PATH"
+# Tools must be available whether or not the system is fully activated yet.
+# /run/current-system only exists AFTER activation; the BUILT generation's tools
+# live at /nix/var/nix/profiles/system/sw/bin, and the bootstrap nix is in the
+# default profile. Without all of these a partial/resumed run hits
+# "id: command not found" / "ls: command not found" on a pre-activation distro.
+export PATH="/run/current-system/sw/bin:/nix/var/nix/profiles/system/sw/bin:/run/wrappers/bin:/nix/var/nix/profiles/default/bin:/bin:/usr/bin:$PATH"
 
 # Resolve a real home directory even in a bare login shell on a fresh distro.
 HOME_DIR="$(eval echo ~"$(id -un)" 2>/dev/null || true)"
@@ -35,11 +44,25 @@ fi
 if [ -z "$HOME_DIR" ]; then HOME_DIR="/root"; fi
 export HOME="$HOME_DIR"
 
+# Locate the shared devbox SSH key. On a resumed/partial bringup the key may live
+# in a different home than whoever runs this (bootstrap places it for the default
+# WSL user; a root-driven resume looks in /root). Adopt whichever copy exists and
+# ensure it is at $HOME_DIR/.ssh so the clone + age-key derivation can read it.
 KEY="$HOME_DIR/.ssh/id_ed25519"
 if [ ! -f "$KEY" ]; then
-  echo "ERROR: expected the shared devbox SSH key at $KEY but it is missing." >&2
-  echo "Place the shared id_ed25519 there (chmod 600), then re-run." >&2
-  exit 1
+  FOUND=""
+  for c in /root/.ssh/id_ed25519 /home/*/.ssh/id_ed25519; do
+    [ -s "$c" ] && FOUND="$c" && break
+  done
+  if [ -n "$FOUND" ]; then
+    echo "[devbox] Adopting shared key found at $FOUND -> $KEY"
+    mkdir -p "$HOME_DIR/.ssh" && chmod 700 "$HOME_DIR/.ssh"
+    cp "$FOUND" "$KEY"
+  else
+    echo "ERROR: shared devbox SSH key (id_ed25519) not found in $HOME_DIR/.ssh, /root/.ssh, or any /home/*/.ssh." >&2
+    echo "Place the shared id_ed25519 in one of those (chmod 600), then re-run." >&2
+    exit 1
+  fi
 fi
 chmod 600 "$KEY" 2>/dev/null || true
 
@@ -64,26 +87,33 @@ fi
 if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo"; fi
 
 cd "$HOME_DIR"
-if [ ! -d "$HOME_DIR/collective/.git" ]; then
-  echo "[devbox] Cloning collective over SSH..."
+# Reuse an existing collective checkout wherever a prior run left it (this home,
+# /root, or the default WSL user's home) so a resumed bringup does not re-clone.
+COLLECTIVE=""
+for c in "$HOME_DIR/collective" /root/collective /home/*/collective; do
+  [ -d "$c/.git" ] && COLLECTIVE="$c" && break
+done
+if [ -z "$COLLECTIVE" ]; then
+  COLLECTIVE="$HOME_DIR/collective"
+  echo "[devbox] Cloning collective over SSH to $COLLECTIVE..."
   export GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
   if [ -n "$GIT" ]; then
-    $GIT "git clone git@github.com:harryaskham/collective.git '$HOME_DIR/collective'"
+    $GIT "git clone git@github.com:harryaskham/collective.git '$COLLECTIVE'"
   else
-    git clone git@github.com:harryaskham/collective.git "$HOME_DIR/collective"
+    git clone git@github.com:harryaskham/collective.git "$COLLECTIVE"
   fi
 else
-  echo "[devbox] collective already cloned; using existing checkout."
+  echo "[devbox] Using existing collective checkout at $COLLECTIVE."
 fi
 
-cd "$HOME_DIR/collective"
+cd "$COLLECTIVE"
 echo "[devbox] Running first switch for '$DEVBOX_HOST' (this builds the system; may take a while)..."
 
 # A fresh NixOS-WSL nix (bootstrap profile) does not yet have flakes enabled in
 # nix.conf, and flake git operations (archive/lock) must use the repo's SSH
 # multiplex wrapper rather than the clone-time single-key GIT_SSH_COMMAND.
 # Mirror what `cltv switch` relies on so the first switch evaluates cleanly.
-export GIT_SSH_COMMAND="$HOME_DIR/collective/scripts/git-ssh-multiplex"
+export GIT_SSH_COMMAND="$COLLECTIVE/scripts/git-ssh-multiplex"
 NIX_FEATURE_ARGS=(--extra-experimental-features "nix-command flakes")
 
 # Binary caches the first switch needs. A fresh/untrusted bootstrap nix ignores
@@ -100,15 +130,17 @@ KEYS="cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E=
 # sops only places AFTER the first switch. Decrypt it now using the SSH key as the
 # age identity (ssh-to-age) so the very first archive / eval can reach corp
 # remotes. Verified on ms-dev-2.
-if [ ! -s "$HOME_DIR/.ssh/corp-github-key" ] && [ -f "$HOME_DIR/collective/standalone/secrets/secrets.yaml" ]; then
+SECRETS_FILE="$COLLECTIVE/standalone/secrets/secrets.yaml"
+if [ ! -s "$HOME_DIR/.ssh/corp-github-key" ] && [ -f "$SECRETS_FILE" ]; then
   echo "[devbox] Materializing corp-github-key from sops..."
+  export SECRETS_FILE
   nix-shell -p sops ssh-to-age openssh --run '
     set -e
     install -d -m700 "$HOME/.ssh"
     AGE=$(ssh-to-age -private-key -i "$HOME/.ssh/id_ed25519")
-    SOPS_AGE_KEY="$AGE" sops decrypt --extract "[\"keys\"][\"ms\"][\"ssh\"][\"private\"]" "$HOME/collective/standalone/secrets/secrets.yaml" > "$HOME/.ssh/corp-github-key"
+    SOPS_AGE_KEY="$AGE" sops decrypt --extract "[\"keys\"][\"ms\"][\"ssh\"][\"private\"]" "$SECRETS_FILE" > "$HOME/.ssh/corp-github-key"
     chmod 600 "$HOME/.ssh/corp-github-key"
-    SOPS_AGE_KEY="$AGE" sops decrypt --extract "[\"keys\"][\"ms\"][\"ssh\"][\"public\"]" "$HOME/collective/standalone/secrets/secrets.yaml" > "$HOME/.ssh/corp-github-key.pub" 2>/dev/null || true
+    SOPS_AGE_KEY="$AGE" sops decrypt --extract "[\"keys\"][\"ms\"][\"ssh\"][\"public\"]" "$SECRETS_FILE" > "$HOME/.ssh/corp-github-key.pub" 2>/dev/null || true
   ' || echo "[devbox] WARN: corp-github-key materialization failed; corp flake inputs may not fetch."
 fi
 
