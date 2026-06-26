@@ -90,6 +90,41 @@ with lib; let
   flock = "${pkgs.util-linux}/bin/flock";
   lockFile = "${cfg.stateDir}/run/supervisord.lock";
 
+  # Shared shell helpers (bd-63202d). A bare pidfile-alive or port-open probe
+  # cannot tell a CURRENT-generation supervisord from a wedged or
+  # old-generation one. These let the start path and the activation
+  # post-condition agree on (a) which supervisord pid is "ours" and (b) which
+  # -c config store path it was launched with, so a single source of truth
+  # decides whether to keep or replace the running instance.
+  sdRunningPidFn = ''
+    __sd_running_pid() {
+      # echo the pid of a managed supervisord: pidfile first, then pgrep so the
+      # /tmp-wiped (pidfile-gone) case is still covered. empty if none.
+      __p=""
+      if [ -f "${pidFile}" ]; then
+        __p=$(${pkgs.coreutils}/bin/cat "${pidFile}" 2>/dev/null)
+        if [ -n "$__p" ] && kill -0 "$__p" 2>/dev/null; then
+          echo "$__p"; return 0
+        fi
+      fi
+      for __p in $(${pkgs.procps}/bin/pgrep -f 'supervisord.*supervisord\.conf' 2>/dev/null); do
+        echo "$__p"; return 0
+      done
+      return 0
+    }
+  '';
+
+  sdRunningConfFn = ''
+    __sd_running_conf() {
+      # echo the -c config store path the supervisord pid in $1 was launched
+      # with, parsed from its NUL-separated /proc/PID/cmdline. empty if it
+      # cannot be determined (no pid, unreadable cmdline, or no -c token).
+      [ -n "$1" ] || return 0
+      ${pkgs.coreutils}/bin/tr '\0' '\n' < /proc/"$1"/cmdline 2>/dev/null \
+        | ${pkgs.gnused}/bin/sed -n '/^-c$/{n;p;q;}'
+    }
+  '';
+
   supervisord-start = pkgs.writeScriptBin "supervisord-start" ''
     #!${pkgs.runtimeShell}
 
@@ -107,25 +142,48 @@ with lib; let
   supervisord-start-inner = pkgs.writeScriptBin "supervisord-start-inner" ''
     #!${pkgs.runtimeShell}
 
-    # Inner launcher, called under flock. Checks pidfile and port before starting.
-    PIDFILE="${pidFile}"
+    # Inner launcher, called under flock. Only declines to start when a
+    # CURRENT-generation supervisord is positively already running. A bare
+    # pidfile-alive or port-open short-circuit used to let a wedged or
+    # OLD-generation instance persist; an old-generation instance pinned to a
+    # superseded config becomes a GC footgun once nix-collect-garbage -d deletes
+    # that generation out from under the still-running process (bd-63202d).
+    CONFIGFILE="${configFile}"
 
-    # Check if already running via pidfile
-    if [ -f "$PIDFILE" ]; then
-      PID=$(cat "$PIDFILE" 2>/dev/null)
-      if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+    ${sdRunningPidFn}
+    ${sdRunningConfFn}
+
+    _pid=$(__sd_running_pid)
+    if [ -n "$_pid" ]; then
+      _conf=$(__sd_running_conf "$_pid")
+      if [ "$_conf" = "$CONFIGFILE" ]; then
+        # Current-generation instance already running: nothing to do.
         exit 0
       fi
-      # Stale pidfile
-      rm -f "$PIDFILE"
+      if [ -n "$_conf" ]; then
+        # Confirmed mismatch: an old-generation / wrong-config supervisord is
+        # alive. Replace it so we never leave a process pinned to a GC-able gen.
+        echo "[supervisord-start-inner] running supervisord (pid $_pid) serves '$_conf' != current '$CONFIGFILE'; replacing" >&2
+        ${supervisorctl-wrapped}/bin/supervisorctl shutdown 2>/dev/null || true
+        ${pkgs.coreutils}/bin/sleep 1
+        kill -9 "$_pid" 2>/dev/null || true
+        rm -f "${pidFile}"
+      else
+        # Could not read the running instance's config (e.g. unreadable cmdline
+        # under proot). Stay conservative and do not churn a possibly-healthy
+        # instance; the activation post-condition is the stronger backstop.
+        exit 0
+      fi
+    else
+      # No managed supervisord found. Last-resort concurrent-start guard only:
+      # if the port is already bound, another instance is coming up right now --
+      # do not double-start and race on the bind.
+      if ${pkgs.curl}/bin/curl -sf --max-time 1 http://127.0.0.1:${toString cfg.port}/ >/dev/null 2>&1; then
+        exit 0
+      fi
     fi
 
-    # Defence-in-depth: check if port is already bound (another instance starting)
-    if ${pkgs.curl}/bin/curl -sf --max-time 1 http://127.0.0.1:${toString cfg.port}/ >/dev/null 2>&1; then
-      exit 0
-    fi
-
-    exec ${supervisor}/bin/supervisord -c ${configFile}
+    exec ${supervisor}/bin/supervisord -c "$CONFIGFILE"
   '';
 
   supervisorctl-wrapped = pkgs.writeScriptBin "supervisorctl" ''
@@ -216,6 +274,28 @@ in {
         done
 
         $DRY_RUN_CMD ${supervisord-start}/bin/supervisord-start
+
+        # Post-condition (bd-63202d): assert the now-running supervisord serves
+        # THIS generation's config. If a stale/old-generation instance survived
+        # the kills above (e.g. a proot session where the kill did not take),
+        # force a replacement so a switch can never silently leave the old
+        # generation pinned (the GC footgun this bead is about). Skipped on dry
+        # runs since nothing was actually (re)started.
+        if [ -z "$DRY_RUN_CMD" ]; then
+          ${sdRunningPidFn}
+          ${sdRunningConfFn}
+          _sd_pid=$(__sd_running_pid)
+          _sd_conf=$(__sd_running_conf "$_sd_pid")
+          if [ -n "$_sd_conf" ] && [ "$_sd_conf" != "${configFile}" ]; then
+            echo "[supervisord] post-activation: running config '$_sd_conf' != current '${configFile}'; forcing replacement" >&2
+            ${supervisorctl-wrapped}/bin/supervisorctl shutdown 2>/dev/null || true
+            ${pkgs.coreutils}/bin/sleep 1
+            [ -n "$_sd_pid" ] && kill -9 "$_sd_pid" 2>/dev/null || true
+            rm -f "${pidFile}"
+            ${supervisord-start}/bin/supervisord-start
+          fi
+          unset _sd_pid _sd_conf
+        fi
       '';
 
       # Belt-and-suspenders: also check on every shell open.
