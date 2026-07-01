@@ -260,18 +260,35 @@ in {
         # Kill any orphaned managed processes from previous generations.
         # Under proot, process groups don't work reliably, so we kill by
         # matching the nix store paths of known managed commands.
-        for pattern in \
-          'supervisord.*supervisord.conf' \
-          'sops-watcher-supervisord' \
-          'am-supervisor' \
-          'caco-supervise' \
-          'litellm-proxy-start' \
-          'nod-exec-server' \
-          'dbus-start'; do
-          for pid in $(${pkgs.procps}/bin/pgrep -f "$pattern" 2>/dev/null); do
-            kill -9 "$pid" 2>/dev/null || true
+        #
+        # Two-phase TERM-then-KILL: send SIGTERM first so processes with a
+        # cleanup trap get to run it -- nod-exec-server in particular reaps its
+        # two socat listeners on TERM, freeing ports 18357/18358. A bare kill -9
+        # bypasses that trap and orphans the socat listeners, which then block
+        # the next nod-exec bind with EADDRINUSE (the recurring "unstick
+        # nod-exec" footgun). We also match the socat EXEC handler path directly
+        # ('socat.*nod-exec-handler', port-agnostic) so a survivor is reaped even
+        # if its parent server already died. Patterns stay single-quoted (they
+        # contain '*') to avoid shell glob/word-split surprises.
+        __sd_sweep_orphans() {
+          for pattern in \
+            'supervisord.*supervisord.conf' \
+            'sops-watcher-supervisord' \
+            'am-supervisor' \
+            'caco-supervise' \
+            'litellm-proxy-start' \
+            'nod-exec-server' \
+            'socat.*nod-exec-handler' \
+            'dbus-start'; do
+            for pid in $(${pkgs.procps}/bin/pgrep -f "$pattern" 2>/dev/null || true); do
+              kill "-$1" "$pid" 2>/dev/null || true
+            done
           done
-        done
+        }
+        __sd_sweep_orphans TERM
+        # Give trap-based cleanups a moment, then SIGKILL any survivors.
+        sleep 1
+        __sd_sweep_orphans KILL
 
         $DRY_RUN_CMD ${supervisord-start}/bin/supervisord-start
 

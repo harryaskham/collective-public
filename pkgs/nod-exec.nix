@@ -119,6 +119,30 @@ let
     mkdir -p "$(dirname "$PIDFILE")"
     echo $$ > "$PIDFILE"
 
+    free_ports() {
+      # Reap any stale socat listeners still bound to OUR ports from a prior
+      # instance that died without running its cleanup trap (e.g. supervisord
+      # crashed with a ConnectionReset, or the process was SIGKILLed by the
+      # activation orphan-sweep). SO_REUSEADDR (the reuseaddr below) only lets a
+      # socket reuse a TIME_WAIT port -- it does NOT let a second *live* LISTEN
+      # socket share the port. So a surviving old socat makes our bind fail with
+      # EADDRINUSE and supervisord autorestart-loops forever, which is what used
+      # to require a manual `killall socat` on every supervisord restart.
+      #
+      # Match the EXEC handler store paths (unique to nod-exec, port-agnostic)
+      # so we never touch unrelated socats. Killing the old socat also makes any
+      # orphaned old nod-exec-server return from its `wait` and run its own
+      # cleanup trap, so the whole stale tree self-heals.
+      _self=$$
+      for _pid in $(${pkgs.procps}/bin/pgrep -f 'socat.*nod-exec-handler' 2>/dev/null || true); do
+        [ "$_pid" = "$_self" ] && continue
+        kill "$_pid" 2>/dev/null || true
+      done
+      # Let the kernel release the binds before we re-listen.
+      ${pkgs.coreutils}/bin/sleep 0.2 2>/dev/null || true
+    }
+    free_ports
+
     echo "nod-exec-server: pipe on $HOST:$PORT, pty on $HOST:$PTY_PORT" >&2
 
     # PTY listener for interactive sessions (shells, TUIs)
