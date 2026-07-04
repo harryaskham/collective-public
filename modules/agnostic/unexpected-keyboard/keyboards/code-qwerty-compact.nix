@@ -15,6 +15,8 @@ let
     switch_to_splitLE = "switch_to_layout_Code_QWERTY_Compact_4_splitLG";
     switch_to_keys29T = "switch_to_layout_Code_QWERTY_Compact_5_keys29T";
     switch_to_keys29R = "switch_to_layout_Code_QWERTY_Compact_6_keys29R";
+    switch_to_splitPMk2 = "switch_to_layout_Code_QWERTY_Compact_7_splitPMk2";
+    switch_to_splitLMk2 = "switch_to_layout_Code_QWERTY_Compact_8_splitLMk2";
   };
 in
 
@@ -34,8 +36,8 @@ let
           float_terminal = (m "⇡" [(k ctrl) (k alt) (k f)]);
           tmux_zoom = (m "⛶" [(k ctrl) (k a) (k f)]);
           tmux_session_picker = (m "⎆" [(k ctrl) (k a) (k g)]);
-          tmux_split_horizontal = (m "━" [(k ctrl) (k a) (k "|")]);
-          tmux_split_vertical = (m "┃" [(k ctrl) (k a) (k "S")]);
+          tmux_split_horizontal = (m "╌" [(k ctrl) (k a) (k "|")]);
+          tmux_split_vertical = (m "¦" [(k ctrl) (k a) (k "S")]);
           tmux_resize_up = (m "△" [(k ctrl) (k a) (k up)]);
           tmux_resize_down = (m "▽" [(k ctrl) (k a) (k down)]);
           tmux_resize_left = (m "◁" [(k ctrl) (k a) (k left)]);
@@ -110,6 +112,14 @@ in {
           (insertKey 2 5 (K gap paddingL w.cur_l  " " c.spc  e.cur_r K))
         ];
 
+      withUnderSpace = {gap, paddingL, paddingR, ...} @ args:
+        precompose [
+          (insertRow 3 [
+            (K 0 5 w.cur_l  " " c.spc  e.cur_r K)
+            (K (5 + gap + paddingL + paddingR) 5 w.cur_l  " " c.spc  e.cur_r K)
+          ])
+        ];
+
       withoutModRow = (deleteRow 3);
 
       # Add modifier keys to split layouts and handle padding the split if necessary
@@ -145,6 +155,15 @@ in {
           fitWidth
         ];
 
+      mkSplitMk2 = {gap, paddingL, paddingR, mods} @ args:
+        precompose [
+          addSwitchToBase
+          withoutModRow
+          (withUnderSpace args)
+          (mods args)
+          fitWidth
+        ];
+
       # Add mods down the left side and remove duplicates on the old column-0
       # Split layout with empty middle row for landscape mode.
       C0Mods = precompose [
@@ -163,13 +182,15 @@ in {
       };
 
       landscapeArgs = {
-        gap = 8;
+        gap = 6;
         paddingL = 0.5;
         paddingR = 0.5;
       };
 
       mkLandscapeSplit = mods: mkSplit (landscapeArgs // {mods = mods;});
       mkPortraitSplit = mods: mkSplit (portraitArgs // {mods = mods;});
+      mkLandscapeSplitMk2 = mods: mkSplitMk2 (landscapeArgs // {mods = mods;});
+      mkPortraitSplitMk2 = mods: mkSplitMk2 (portraitArgs // {mods = mods;});
 
       applyLefty = f: precompose [
         addSwitchToBase
@@ -221,6 +242,8 @@ in {
       { splitLG = mkLandscapeSplit Mods.Grid; } # Landscape split layout with modifier keys centre.
       { keys29T =  Keys29 { cursorMode = "trackball"; }; } # 29-key layout with trackball key.
       { keys29R = Keys29 { cursorMode = "return"; }; } # 29-key layout with cursored return key.
+      { splitPMk2 = mkPortraitSplitMk2 Mods.Empty; } # Landscape split layout with under spaces empty centre.
+      { splitLMk2 = mkLandscapeSplitMk2 Mods.Empty; } # Landscape split layout with under spaces empty centre.
       # Below: disabled generation of layout variants to avoid clutter.
       # { L = applyLefty id; } # Left-aligned one-handed layout.
       # { R = applyRighty id; } # Right-aligned one-handed layout.
@@ -254,15 +277,15 @@ in {
               c.t
         sw."%"      "⇹" se.fill_width
       _
-                    ne."6"
+        "⟷" nw.switch_to_splitPMk2   ne."6"
               c.y
         sw."^"      "⟷" se.switch_to_splitPG
       _
-        "↧" nw.snap_bottom  ne."7"
+        "⟺" nw.switch_to_splitLMk2   ne."7"
               c.u
         sw."&"      "⟺" se.switch_to_splitLG
       _
-                    ne."8"
+        "↧" nw.snap_bottom  ne."8"
               c.i
         sw."*"      "⥺" se.switch_to_C0Mods
       _
