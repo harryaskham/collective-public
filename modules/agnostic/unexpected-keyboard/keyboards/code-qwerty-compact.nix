@@ -114,10 +114,13 @@ in {
 
       withUnderSpace = {gap, paddingL, paddingR, ...} @ args:
         precompose [
-          (insertRow 3 [
-            (K 0 5 w.cur_l  " " c.spc  e.cur_r K)
-            (K (5 + gap + paddingL + paddingR) 5 w.cur_l  " " c.spc  e.cur_r K)
-          ])
+          (insertRow 3 {
+            height = 0.65;
+            keys = [
+              (K 0 5 w.cur_l  " " c.spc  e.cur_r K)
+              (K (5 + gap + paddingL + paddingR) 5 w.cur_l  " " c.spc  e.cur_r K)
+            ];
+          })
         ];
 
       withoutModRow = (deleteRow 3);
