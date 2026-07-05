@@ -117,8 +117,8 @@ in {
           (insertRow 3 {
             height = 0.65;
             keys = [
-              (K 0 5 w.cur_l  " " c.spc  e.cur_r K)
-              (K (5 + gap + paddingL + paddingR) 5 w.cur_l  " " c.spc  e.cur_r K)
+              (K 5 0 w.cur_l  " " c.spc  e.cur_r K)
+              (K 5 (gap + paddingL + paddingR) w.cur_l  " " c.spc  e.cur_r K)
             ];
           })
         ];
