@@ -114,6 +114,7 @@ in {
 
       withUnderSpace = {gap, paddingL, paddingR, ...} @ args:
         precompose [
+          (updateKey 2 5 (addShift (gap + paddingL + paddingR)))
           (insertRow 3 {
             height = 0.65;
             keys = [
