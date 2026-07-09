@@ -36,8 +36,8 @@ let
           float_terminal = (m "⇡" [(k ctrl) (k alt) (k f)]);
           tmux_zoom = (m "⛶" [(k ctrl) (k a) (k f)]);
           tmux_session_picker = (m "⎆" [(k ctrl) (k a) (k g)]);
-          tmux_split_horizontal = (m "╌" [(k ctrl) (k a) (k "|")]);
-          tmux_split_vertical = (m "¦" [(k ctrl) (k a) (k "S")]);
+          tmux_split_horizontal = (m "╌" [(k ctrl) (k a) (k "S")]);
+          tmux_split_vertical = (m "¦" [(k ctrl) (k a) (k "|")]);
           tmux_resize_up = (m "△" [(k ctrl) (k a) (k up)]);
           tmux_resize_down = (m "▽" [(k ctrl) (k a) (k down)]);
           tmux_resize_left = (m "◁" [(k ctrl) (k a) (k left)]);
@@ -285,7 +285,7 @@ in {
               c.y
         sw."^"      "⟷" se.switch_to_splitPG
       _
-        "⟺" nw.switch_to_splitLMk2   ne."7"
+        "⟺" nw.switch_to_splitLMk3   ne."7"
               c.u
         sw."&"      "⟺" se.switch_to_splitLG
       _
@@ -309,29 +309,25 @@ in {
         nw.tab     ne.shift
               c.a
         "⇤" sw.snap_left  "✲" se.ctrl
-      _
-
+      _       
+              "⎆" macros.n.tmux_session_picker  
               c.s
                     "⌥" se.alt
       _
-
+              "⛶" macros.n.tmux_zoom
               c.d
-        "⛶" macros.nw.tmux_zoom  "⎆" macros.ne.tmux_session_picker  "❖" se.meta
+                    "❖" se.meta
       _
-
+              "⇡" macros.n.float_terminal  
               c.f
-        "⇡" macros.nw.float_terminal  "▤" se.fn
-
+                     "▤" se.fn
       _
-        "┃" macros.nw.tmux_split_vertical  ne."-"
-              c.g
-                  "△" macros.n.tmux_resize_up
-         "◁" macros.w.tmux_resize_left  "▷" macros.e.tmux_resize_right
-                  "▽" macros.s.tmux_resize_down
-        sw."_"  "━" macros.se.tmux_split_horizontal
+                                        "△" macros.n.tmux_resize_up ne."-"
+         "◁" macros.w.tmux_resize_left  c.g "▷" macros.e.tmux_resize_right
+         sw."_"                         "▽" macros.s.tmux_resize_down
       _
-                    ne."="
-              c.h
+              "¦" macros.n.tmux_split_vertical ne."="
+              c.h                              "╌" macros.e.tmux_split_horizontal 
         sw."+"
       _
 
