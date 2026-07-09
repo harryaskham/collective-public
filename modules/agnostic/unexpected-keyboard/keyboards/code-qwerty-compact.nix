@@ -285,7 +285,7 @@ in {
               c.y
         sw."^"      "⟷" se.switch_to_splitPG
       _
-        "⟺" nw.switch_to_splitLMk3   ne."7"
+        "⟺" nw.switch_to_splitLMk2   ne."7"
               c.u
         sw."&"      "⟺" se.switch_to_splitLG
       _
