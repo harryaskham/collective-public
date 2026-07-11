@@ -1,19 +1,27 @@
-{ pkgs, inputs, ...}:
-
-rec {
+{
+  pkgs,
+  inputs,
+  ...
+}: rec {
   # Public subset of the Collective base library.
-  collective-lib = import ./collective-lib { inherit pkgs inputs; inherit (pkgs) lib; };
+  collective-lib = import ./collective-lib {
+    inherit pkgs inputs;
+    inherit (pkgs) lib;
+  };
 
   # Namespaced python packages.
-  collective-pythonPackages = import ./pythonPackages { inherit pkgs; };
+  collective-pythonPackages = import ./pythonPackages {inherit pkgs;};
 
   # Application wrapping of the HHD adjustor CLI
   handheld-daemon-adjustor =
     pkgs.python3Packages.toPythonApplication
-      collective-pythonPackages.handheld-daemon-adjustor;
+    collective-pythonPackages.handheld-daemon-adjustor;
+
+  # Aviator CLI
+  aviator-cli = pkgs.callPackage ./aviator-cli.nix {};
 
   # Vast.ai CLI
-  vastai-cli = (pkgs.callPackage ./vastai { }).vastai-cli;
+  vastai-cli = (pkgs.callPackage ./vastai {}).vastai-cli;
 
   # termux-exec: TCP client for running native Termux commands from proot
   termux-exec = pkgs.callPackage ./termux-exec.nix {};
