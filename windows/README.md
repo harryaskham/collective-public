@@ -5,7 +5,6 @@ one command. The script installs WSL2 + NixOS-WSL, places the shared devbox SSH
 key, clones the (private) `collective` flake over SSH, and runs the first
 `cltv switch`. After that the box joins the tailnet non-interactively
 (devbox-pool auth key) and converges its Windows host declaratively from inside
-WSL and converges its Windows host declaratively from inside
 WSL (Chrome, Slack, etc. via winget; power settings via `powercfg`).
 
 ## Windows convergence: headless vs admin (UAC)
@@ -76,7 +75,7 @@ Download first, then pass parameters:
 ```powershell
 $u = "https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/bootstrap-devbox.ps1"
 irm $u -OutFile bootstrap-devbox.ps1
-./bootstrap-devbox.ps1 -HostName ms-dev-2 -KeyPath C:\path\to\id_ed25519
+./bootstrap-devbox.ps1 -DevboxHost ms-dev-2 -KeyPath C:\path\to\id_ed25519
 ```
 
 ## Prerequisites
@@ -93,11 +92,37 @@ irm $u -OutFile bootstrap-devbox.ps1
 - The `keys/ts/devbox-pool` Tailscale auth key (tag `devbox-pool`) must be in
   sops so the new node joins the tailnet automatically.
 
+## Recover a partial bootstrap (WSL imported, key install failed)
+
+If an older bootstrap stopped with output resembling this:
+
+```text
+mkdir: cannot create directory 'ΓÇÿ/.sshΓÇÖ': Permission denied
+```
+
+**Do not unregister or reinstall the distro.** The special characters are only
+Windows PowerShell 5.1 decoding GNU's UTF-8 diagnostic quotes with an OEM code
+page; the real failing path was `/.ssh`. Download the latest bootstrap and
+re-run it with the same hostname and key:
+
+```powershell
+# Elevated Windows PowerShell
+$u = "https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/bootstrap-devbox.ps1"
+$p = Join-Path $env:TEMP "bootstrap-devbox.ps1"
+irm "$u?nocache=$([guid]::NewGuid())" -OutFile $p
+& $p -DevboxHost ms-dev-2 -KeyPath C:\path\to\id_ed25519 -SkipWSLInstall
+```
+
+Use the correct `ms-dev-N` hostname for each box. `-KeyFromClipboard` can replace
+`-KeyPath ...` if the key is already on the clipboard. The script detects the
+existing `NixOS` distro, skips import, installs the key explicitly as root, and
+continues the resumable WSL-side switch. It preserves all work already done.
+
 ## Re-running
 
 Safe to re-run: WSL install, distro import, key install, and clone are all
-idempotent. To reimport the distro cleanly, first
-`wsl --unregister NixOS`.
+idempotent. To intentionally discard and reimport the distro cleanly, first run
+`wsl --unregister NixOS`; this is not required for normal recovery.
 
 ## WSL-side only (already at the "WSL imported + key placed" checkpoint)
 

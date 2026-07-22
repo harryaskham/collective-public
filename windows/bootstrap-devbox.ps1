@@ -30,6 +30,13 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+# Windows PowerShell 5.1 otherwise writes pipeline input to native commands as
+# ASCII and decodes their UTF-8 output with the active OEM code page. The latter
+# turns GNU's diagnostic quotes into mojibake such as `ΓÇÿ...ΓÇÖ`.
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$OutputEncoding = $Utf8NoBom
+try { [Console]::OutputEncoding = $Utf8NoBom } catch { }
+
 function Info($m)  { Write-Host "[bootstrap] $m" -ForegroundColor Cyan }
 function Ok($m)    { Write-Host "[bootstrap] $m" -ForegroundColor Green }
 function Warn($m)  { Write-Host "[bootstrap] $m" -ForegroundColor Yellow }
@@ -194,31 +201,41 @@ Info "Installing the devbox SSH key inside WSL..."
 # Normalize CRLF -> LF; ssh refuses keys with carriage returns.
 $KeyMaterialLF = $KeyMaterial -replace "`r`n", "`n" -replace "`r", "`n"
 # Avoid all Windows<->WSL path translation (wslpath mangles backslashes when a
-# Windows path is passed through wsl.exe). Instead, base64-encode the key and
-# pipe it into the distro over stdin, decoding inside WSL.
+# Windows path is passed through wsl.exe). Base64-encode only the key, then
+# stream a literal bash script over stdin. Do not pass a multiline script as a
+# native argv value: Windows PowerShell 5.1 can alter its quoting/argument
+# boundary before wsl.exe sees it.
 $keyB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($KeyMaterialLF))
-$installKey = @"
+$installKey = @'
 set -euo pipefail
-# A freshly imported NixOS-WSL has no default user yet, so `$HOME may be empty
-# in this non-login `bash -lc` context. Resolve the real home directory and
-# export HOME so all downstream tools (ssh, git, nixos-rebuild) agree on it.
-HOME_DIR="`$(eval echo ~`$(id -un) 2>/dev/null)"
-if [ -z "`$HOME_DIR" ] || [ "`$HOME_DIR" = "~`$(id -un)" ]; then HOME_DIR="`$(getent passwd `$(id -un) | cut -d: -f6)"; fi
-if [ -z "`$HOME_DIR" ]; then HOME_DIR="/root"; fi
-export HOME="`$HOME_DIR"
-mkdir -p "`$HOME_DIR/.ssh"
-chmod 700 "`$HOME_DIR/.ssh"
+# Keep GNU diagnostics ASCII even if an older PowerShell host has an OEM code
+# page; this also makes failures readable in screenshots and provisioning logs.
+export LC_ALL=C
+
+# Always bootstrap as root. A fresh NixOS-WSL import can launch its placeholder
+# non-root user with HOME=/; using that value attempted to create /.ssh and
+# failed before the first switch could configure the real collective user.
+HOME_DIR="$(getent passwd "$(id -u)" | cut -d: -f6)"
+if [ -z "$HOME_DIR" ] || [ "${HOME_DIR#/}" = "$HOME_DIR" ]; then HOME_DIR=/root; fi
+export HOME="$HOME_DIR"
+mkdir -p "$HOME_DIR/.ssh"
+chmod 700 "$HOME_DIR/.ssh"
 # The base64 of the key is passed as the first argument.
-printf '%s' "`$1" | base64 -d > "`$HOME_DIR/.ssh/id_ed25519"
-chmod 600 "`$HOME_DIR/.ssh/id_ed25519"
+printf '%s' "$1" | base64 -d > "$HOME_DIR/.ssh/id_ed25519"
+chmod 600 "$HOME_DIR/.ssh/id_ed25519"
 # Derive the public key for convenience (matches the shared ms-dev key).
-ssh-keygen -y -f "`$HOME_DIR/.ssh/id_ed25519" > "`$HOME_DIR/.ssh/id_ed25519.pub" 2>/dev/null || true
-chmod 644 "`$HOME_DIR/.ssh/id_ed25519.pub" 2>/dev/null || true
+ssh-keygen -y -f "$HOME_DIR/.ssh/id_ed25519" > "$HOME_DIR/.ssh/id_ed25519.pub" 2>/dev/null || true
+chmod 644 "$HOME_DIR/.ssh/id_ed25519.pub" 2>/dev/null || true
 # Pre-trust github.com so the clone is non-interactive.
-ssh-keyscan -t ed25519,rsa github.com >> "`$HOME_DIR/.ssh/known_hosts" 2>/dev/null || true
-echo "SSH key installed at `$HOME_DIR/.ssh/id_ed25519"
-"@
-wsl.exe -d $Distro -- bash -lc ($installKey -replace "`r","") "_" "$keyB64" 2>&1 | Out-Host
+ssh-keyscan -t ed25519,rsa github.com >> "$HOME_DIR/.ssh/known_hosts" 2>/dev/null || true
+echo "SSH key installed at $HOME_DIR/.ssh/id_ed25519"
+'@
+# `bash -s` reads the script from stdin, so PowerShell never has to serialize a
+# multiline shell program into the Windows native command line. Run as root so
+# this is independent of the imported image's temporary default user/HOME.
+($installKey -replace "`r", "") | wsl.exe -d $Distro -u root -- bash -s -- "$keyB64" | Out-Host
+$installKeyExit = $LASTEXITCODE
+if ($installKeyExit -ne 0) { Die "SSH key installation inside WSL failed (exit $installKeyExit)." }
 Ok "Shared devbox SSH key in place."
 
 # ---------------------------------------------------------------------------
@@ -236,15 +253,13 @@ Info "This clones the collective flake, materializes the corp key, builds the sy
 $switchUrl = "https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/devbox-switch.sh"
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocol]::Tls12 } catch {}
 $switchScript = Invoke-RestMethod -Uri $switchUrl -Headers @{ "User-Agent" = "collective-devbox-bootstrap" }
-# LF-normalize + base64 so no CRLF or Windows<->WSL path translation reaches WSL.
-$switchScript = ($switchScript -replace "`r`n","`n" -replace "`r","`n")
-$switchB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($switchScript))
-$runSwitch = @"
-set -euo pipefail
-printf '%s' "`$1" | base64 -d > /tmp/devbox-switch.sh
-bash /tmp/devbox-switch.sh "$DevboxHost"
-"@
-wsl.exe -d $Distro -- bash -lc ($runSwitch -replace "`r","") "_" "$switchB64" 2>&1 | Out-Host
+# As above, stream the LF-normalized script over stdin rather than placing it in
+# a native argv value. Keep running as root so it reuses /root/.ssh/id_ed25519
+# and can perform the first system activation regardless of the image default.
+$switchScript = ($switchScript -replace "`r`n", "`n" -replace "`r", "`n")
+$switchScript | wsl.exe -d $Distro -u root -- bash -s -- "$DevboxHost" | Out-Host
+$switchExit = $LASTEXITCODE
+if ($switchExit -ne 0) { Die "Devbox switch inside WSL failed (exit $switchExit)." }
 
 Ok "Devbox '$DevboxHost' bootstrapped."
 Write-Host ""

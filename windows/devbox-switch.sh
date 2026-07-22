@@ -19,6 +19,9 @@
 # completes activation + home-manager linking. Just re-run it.
 
 set -euo pipefail
+# Keep diagnostics ASCII so Windows PowerShell 5.1 / legacy console code pages
+# cannot turn GNU's Unicode quotes into mojibake in bootstrap output.
+export LC_ALL=C
 
 DEVBOX_HOST="${1:-${DEVBOX_HOST:-}}"
 if [ -z "$DEVBOX_HOST" ]; then
@@ -114,7 +117,6 @@ echo "[devbox] Running first switch for '$DEVBOX_HOST' (this builds the system; 
 # multiplex wrapper rather than the clone-time single-key GIT_SSH_COMMAND.
 # Mirror what `cltv switch` relies on so the first switch evaluates cleanly.
 export GIT_SSH_COMMAND="$COLLECTIVE/scripts/git-ssh-multiplex"
-NIX_FEATURE_ARGS=(--extra-experimental-features "nix-command flakes")
 
 # Binary caches the first switch needs. A fresh/untrusted bootstrap nix ignores
 # the flake's nixConfig, so without these on the CLI it cannot fetch CUDA blobs
@@ -134,6 +136,8 @@ SECRETS_FILE="$COLLECTIVE/standalone/secrets/secrets.yaml"
 if [ ! -s "$HOME_DIR/.ssh/corp-github-key" ] && [ -f "$SECRETS_FILE" ]; then
   echo "[devbox] Materializing corp-github-key from sops..."
   export SECRETS_FILE
+  # The nested shell intentionally expands these variables, not this shell.
+  # shellcheck disable=SC2016
   nix-shell -p sops ssh-to-age openssh --run '
     set -e
     install -d -m700 "$HOME/.ssh"
