@@ -25,6 +25,7 @@ param(
   [string]$InstallRoot,
   [string]$StatePath,
   [string]$NixOSWSLVersion = "latest",
+  [string]$PublicCommit,
   [switch]$SkipWSLInstall,
   [switch]$UseDefaultSubs
 )
@@ -321,16 +322,23 @@ Info "This clones the collective flake, materializes the corp key, builds the sy
 # when a query-string cache buster is present.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocol]::Tls12 } catch {}
 $publicHeaders = @{ "User-Agent" = "collective-devbox-bootstrap"; "Accept" = "application/vnd.github+json"; "Cache-Control" = "no-cache" }
-try {
-  $publicRefUrl = "https://api.github.com/repos/harryaskham/collective-public/git/ref/heads/main"
-  $publicRef = Invoke-RestMethod -Uri "${publicRefUrl}?nocache=$([guid]::NewGuid())" -Headers $publicHeaders
-  $publicSha = $publicRef.object.sha
-  if ($publicSha -notmatch '^[0-9a-f]{40}$') { throw "invalid public main SHA: $publicSha" }
+if ($PublicCommit) {
+  if ($PublicCommit -notmatch '^[0-9a-fA-F]{40}$') { Die "Invalid -PublicCommit SHA: $PublicCommit" }
+  $publicSha = $PublicCommit.ToLowerInvariant()
   $switchUrl = "https://raw.githubusercontent.com/harryaskham/collective-public/$publicSha/windows/devbox-switch.sh"
-  Info "Resolved collective-public main at $publicSha"
-} catch {
-  Warn "Could not resolve collective-public main through GitHub API ($_); falling back to the branch URL."
-  $switchUrl = "https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/devbox-switch.sh?nocache=$([guid]::NewGuid())"
+  Info "Using pinned collective-public commit $publicSha (no API lookup)."
+} else {
+  try {
+    $publicRefUrl = "https://api.github.com/repos/harryaskham/collective-public/git/ref/heads/main"
+    $publicRef = Invoke-RestMethod -Uri "${publicRefUrl}?nocache=$([guid]::NewGuid())" -Headers $publicHeaders
+    $publicSha = $publicRef.object.sha
+    if ($publicSha -notmatch '^[0-9a-f]{40}$') { throw "invalid public main SHA: $publicSha" }
+    $switchUrl = "https://raw.githubusercontent.com/harryaskham/collective-public/$publicSha/windows/devbox-switch.sh"
+    Info "Resolved collective-public main at $publicSha"
+  } catch {
+    Warn "Could not resolve collective-public main through GitHub API ($_); falling back to the branch URL."
+    $switchUrl = "https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/devbox-switch.sh?nocache=$([guid]::NewGuid())"
+  }
 }
 $switchScript = Invoke-RestMethod -Uri $switchUrl -Headers $publicHeaders
 # As above, stage the complete LF-normalized script before running it. Nix and
