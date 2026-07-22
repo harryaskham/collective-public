@@ -123,6 +123,8 @@ if ($KeyPath -and (Test-Path $KeyPath)) {
 } elseif ($KeyFromClipboard) {
   $KeyMaterial = Get-Clipboard -Raw
   Info "Read SSH key from clipboard"
+} elseif ($ReuseExistingKey) {
+  # Nothing to read back into Windows; keep the private key inside WSL.
 } else {
   Write-Host ""
   Write-Host "Provide the shared devbox SSH private key (id_ed25519)." -ForegroundColor Cyan
@@ -234,6 +236,9 @@ if ($existing -match [Regex]::Escape($Distro)) {
 # ---------------------------------------------------------------------------
 # 4. Place the shared SSH key inside WSL
 # ---------------------------------------------------------------------------
+if ($ReuseExistingKey) {
+  Info "Existing root SSH key retained; skipping key prompt/install."
+} else {
 Info "Installing the devbox SSH key inside WSL..."
 # Normalize CRLF -> LF; ssh refuses keys with carriage returns.
 $KeyMaterialLF = $KeyMaterial -replace "`r`n", "`n" -replace "`r", "`n"
@@ -278,6 +283,7 @@ wsl.exe -d $Distro -u root -- bash $installKeyScript "$keyB64" | Out-Host
 $installKeyExit = $LASTEXITCODE
 if ($installKeyExit -ne 0) { Die "SSH key installation inside WSL failed (exit $installKeyExit)." }
 Ok "Shared devbox SSH key in place."
+}
 
 # ---------------------------------------------------------------------------
 # 5. Run the canonical, idempotent switch (devbox-switch.sh) inside WSL
