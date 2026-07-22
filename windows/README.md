@@ -68,6 +68,25 @@ You will be prompted for:
    host identity *and* the credential used to clone the private repo; all
    devbox instances reuse the `ms-dev` key so no sops re-keying is needed.
 
+### Resume after an interrupted or failed bootstrap
+
+If WSL/NixOS was already installed before the bootstrap stopped, **do not
+unregister or reinstall the distro**. Run this in elevated PowerShell:
+
+```powershell
+$u="https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/bootstrap-devbox.ps1"; $p=Join-Path $env:TEMP "bootstrap-devbox.ps1"; irm "${u}?nocache=$([guid]::NewGuid())" -OutFile $p; & $p -SkipWSLInstall
+```
+
+This downloads the latest script without using a cached copy, prompts again for
+the `ms-dev-N` hostname and SSH key, detects and preserves the existing `NixOS`
+distro, then resumes at key installation and the WSL-side switch. For the older
+`ΓÇÿ/.sshΓÇÖ` error, the special characters were only PowerShell 5.1 decoding
+GNU's UTF-8 quotes with an OEM code page; the real failing path was `/.ssh`.
+
+To supply recovery inputs non-interactively, add `-DevboxHost ms-dev-2` and
+either `-KeyPath C:\path\to\id_ed25519` or `-KeyFromClipboard` to the final
+script invocation.
+
 ## Non-interactive
 
 Download first, then pass parameters:
@@ -91,32 +110,6 @@ irm $u -OutFile bootstrap-devbox.ps1
     under `ms-dev-N` (shared key → identical age recipient → no sops changes)
 - The `keys/ts/devbox-pool` Tailscale auth key (tag `devbox-pool`) must be in
   sops so the new node joins the tailnet automatically.
-
-## Recover a partial bootstrap (WSL imported, key install failed)
-
-If an older bootstrap stopped with output resembling this:
-
-```text
-mkdir: cannot create directory 'ΓÇÿ/.sshΓÇÖ': Permission denied
-```
-
-**Do not unregister or reinstall the distro.** The special characters are only
-Windows PowerShell 5.1 decoding GNU's UTF-8 diagnostic quotes with an OEM code
-page; the real failing path was `/.ssh`. Download the latest bootstrap and
-re-run it with the same hostname and key:
-
-```powershell
-# Elevated Windows PowerShell
-$u = "https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/bootstrap-devbox.ps1"
-$p = Join-Path $env:TEMP "bootstrap-devbox.ps1"
-irm "${u}?nocache=$([guid]::NewGuid())" -OutFile $p
-& $p -DevboxHost ms-dev-2 -KeyPath C:\path\to\id_ed25519 -SkipWSLInstall
-```
-
-Use the correct `ms-dev-N` hostname for each box. `-KeyFromClipboard` can replace
-`-KeyPath ...` if the key is already on the clipboard. The script detects the
-existing `NixOS` distro, skips import, installs the key explicitly as root, and
-continues the resumable WSL-side switch. It preserves all work already done.
 
 ## Re-running
 
