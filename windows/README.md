@@ -67,10 +67,18 @@ these first:
    must match the private key that will be supplied to bootstrap. If reusing
    another machine's key (for example `ms-mac`), copy that machine's public SSH
    and precomputed age values; if reusing the shared devbox key, copy `ms-dev`.
-4. Ensure the `keys/ts/devbox-pool` Tailscale auth key is present in sops.
+4. Add `keys/nix/attic/caches/ms-dev-N` in
+   `standalone/secrets/secrets.yaml`. Because the devbox profile enables
+   `atticd`, `server_env` is a hard evaluation/build dependency; add the
+   corresponding `push` and `public` values as well for cache administration.
+5. Ensure the reused/new age recipient can decrypt `secrets.yaml`. Reusing an
+   already-enrolled key such as `ms-mac` needs no new recipient; a genuinely new
+   key requires re-keying the sops file.
+6. Ensure the shared `keys/cacophony/ts/devbox-pool` Tailscale auth key is
+   present in sops.
 
-Commit and push these changes before running bootstrap. Missing `flake.nix` or
-SSH/age entries cannot be repaired by the Windows-side installer.
+Commit and push these changes before running bootstrap. Missing `flake.nix`,
+SSH/age, or per-host Attic entries cannot be repaired by the Windows installer.
 
 ## One-liner (run in an elevated PowerShell on the Windows host)
 
