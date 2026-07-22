@@ -2,8 +2,8 @@
 #
 # ONE idempotent command: run it to bring up a FRESH box, or RE-RUN it to
 # continue a partial/interrupted bringup to completion. It skips WSL install +
-# rootfs import when the distro already exists, re-places the key, and delegates
-# the switch to the canonical (also-resumable) devbox-switch.sh.
+# rootfs import when the distro already exists, reuses or re-places the key,
+# and delegates the switch to the canonical (also-resumable) devbox-switch.sh.
 #
 # RECOMMENDED (supports a key file, keeps the window open on error):
 #   $u = "https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/bootstrap-devbox.ps1"
@@ -23,6 +23,7 @@ param(
   [switch]$KeyFromClipboard,
   [string]$Distro = "NixOS",
   [string]$InstallRoot,
+  [string]$StatePath,
   [string]$NixOSWSLVersion = "latest",
   [switch]$SkipWSLInstall
 )
@@ -68,20 +69,54 @@ if (-not $isAdmin) {
 if (-not $InstallRoot -or $InstallRoot -eq "") {
   $InstallRoot = Join-Path $env:LOCALAPPDATA "WSL\$Distro"
 }
+if (-not $StatePath -or $StatePath -eq "") {
+  $StatePath = Join-Path $env:USERPROFILE "collective-bootstrap-name.txt"
+}
+
+# Read-only probe used to make reruns prompt-free when the imported distro and
+# root bootstrap key survived an earlier failure.
+$existingBefore = ""
+try { $existingBefore = ((wsl.exe --list --quiet 2>$null) -replace "`0", "") } catch { }
 
 # ---------------------------------------------------------------------------
 # 1. Gather inputs (interactive-friendly for `irm | iex`)
 # ---------------------------------------------------------------------------
+if ((-not $DevboxHost -or $DevboxHost -eq "") -and (Test-Path $StatePath)) {
+  $savedHost = (Get-Content -Raw -Path $StatePath).Trim()
+  if ($savedHost -match '^[a-zA-Z0-9._-]+$') {
+    $DevboxHost = $savedHost
+    Info "Reusing saved devbox hostname '$DevboxHost' from $StatePath"
+  } else {
+    Warn "Ignoring invalid saved hostname in $StatePath"
+  }
+}
 if (-not $DevboxHost -or $DevboxHost -eq "") {
   $DevboxHost = Read-Host "Collective hostname for this devbox (e.g. ms-dev-2)"
 }
 if (-not $DevboxHost) { Die "A hostname is required." }
 if ($DevboxHost -notmatch '^[a-zA-Z0-9._-]+$') { Die "Invalid hostname: $DevboxHost" }
+try {
+  Set-Content -Path $StatePath -Value $DevboxHost -Encoding ASCII
+  Info "Saved devbox hostname to $StatePath"
+} catch {
+  Warn "Could not persist the devbox hostname to $StatePath : $_"
+}
 
-# The shared devbox id_ed25519 is both the host SSH identity AND the credential
-# used to clone the private collective repo over SSH. Accept a path, the
-# clipboard (most reliable for multi-line keys over RDP), or line-by-line paste.
+# The supplied id_ed25519 is both the host SSH identity AND the credential used
+# to clone the private collective repo. On a resume, prefer the valid key already
+# under /root/.ssh so the operator does not need to paste it again. Explicit
+# -KeyPath or -KeyFromClipboard still replaces that existing key.
 $KeyMaterial = $null
+$ReuseExistingKey = $false
+if (-not $KeyPath -and -not $KeyFromClipboard -and $existingBefore -match [Regex]::Escape($Distro)) {
+  try {
+    wsl.exe -d $Distro -u root -- test -s /root/.ssh/id_ed25519 2>$null
+    if ($LASTEXITCODE -eq 0) {
+      $ReuseExistingKey = $true
+      Info "Reusing existing /root/.ssh/id_ed25519 inside '$Distro'."
+    }
+  } catch { }
+}
 if ($KeyPath -and (Test-Path $KeyPath)) {
   $KeyMaterial = Get-Content -Raw -Path $KeyPath
   Info "Read SSH key from $KeyPath"
@@ -116,13 +151,15 @@ if ($KeyPath -and (Test-Path $KeyPath)) {
     $KeyMaterial = ($lines -join "`n").TrimEnd() + "`n"
   }
 }
-if (-not $KeyMaterial -or $KeyMaterial.Trim() -eq "") { Die "No SSH key provided." }
-# Normalize to LF and ensure a trailing newline; OpenSSH rejects CRLF keys.
-$KeyMaterial = ($KeyMaterial -replace "`r`n", "`n" -replace "`r", "`n").TrimEnd() + "`n"
-if ($KeyMaterial -notmatch "BEGIN OPENSSH PRIVATE KEY" -and $KeyMaterial -notmatch "BEGIN .*PRIVATE KEY") {
-  Warn "Pasted text does not contain a PRIVATE KEY header; the clone step will likely fail."
-  $cont = Read-Host "Continue anyway? (y/N)"
-  if ($cont -notmatch '^[Yy]') { Die "Aborted: no valid private key provided." }
+if (-not $ReuseExistingKey) {
+  if (-not $KeyMaterial -or $KeyMaterial.Trim() -eq "") { Die "No SSH key provided." }
+  # Normalize to LF and ensure a trailing newline; OpenSSH rejects CRLF keys.
+  $KeyMaterial = ($KeyMaterial -replace "`r`n", "`n" -replace "`r", "`n").TrimEnd() + "`n"
+  if ($KeyMaterial -notmatch "BEGIN OPENSSH PRIVATE KEY" -and $KeyMaterial -notmatch "BEGIN .*PRIVATE KEY") {
+    Warn "Pasted text does not contain a PRIVATE KEY header; the clone step will likely fail."
+    $cont = Read-Host "Continue anyway? (y/N)"
+    if ($cont -notmatch '^[Yy]') { Die "Aborted: no valid private key provided." }
+  }
 }
 
 # ---------------------------------------------------------------------------
