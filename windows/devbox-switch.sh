@@ -7,9 +7,13 @@
 # nixos-rebuild switch for the given host.
 #
 # Usage (from inside NixOS-WSL):
-#   curl -fsSL https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/devbox-switch.sh | bash -s -- ms-dev-2
-# or:
-#   DEVBOX_HOST=ms-dev-2 bash devbox-switch.sh
+#   curl -fsSLo /tmp/devbox-switch.sh https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/devbox-switch.sh
+#   bash /tmp/devbox-switch.sh ms-dev-2
+# or from an existing checkout:
+#   bash collective-public/windows/devbox-switch.sh ms-dev-2
+#
+# Do not use curl|bash here: Nix/systemctl may read stdin. The PowerShell
+# bootstrap likewise stages this complete file before executing it.
 #
 # It is idempotent AND resumable: safe to re-run at any stage to CONTINUE a
 # partial bringup to completion. It self-bootstraps PATH (so it works even before
@@ -23,7 +27,33 @@ set -euo pipefail
 # cannot turn GNU's Unicode quotes into mojibake in bootstrap output.
 export LC_ALL=C
 
-DEVBOX_HOST="${1:-${DEVBOX_HOST:-}}"
+DEVBOX_HOST="${DEVBOX_HOST:-}"
+USE_DEFAULT_SUBS="${USE_DEFAULT_SUBS:-0}"
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --use-default-subs)
+      USE_DEFAULT_SUBS=1
+      shift
+      ;;
+    --help|-h)
+      echo "Usage: devbox-switch.sh [ms-dev-N] [--use-default-subs]"
+      echo "By default the accepted flake nixConfig is authoritative for caches."
+      exit 0
+      ;;
+    -*)
+      echo "ERROR: unknown option: $1" >&2
+      exit 2
+      ;;
+    *)
+      if [ -n "$DEVBOX_HOST" ]; then
+        echo "ERROR: multiple devbox hostnames supplied." >&2
+        exit 2
+      fi
+      DEVBOX_HOST="$1"
+      shift
+      ;;
+  esac
+done
 if [ -z "$DEVBOX_HOST" ]; then
   read -r -p "Collective hostname for this devbox (e.g. ms-dev-2): " DEVBOX_HOST
 fi
@@ -31,6 +61,7 @@ if [ -z "$DEVBOX_HOST" ]; then
   echo "ERROR: no devbox hostname given." >&2
   exit 1
 fi
+DEVBOX_USER="${DEVBOX_USER:-harryaskham}"
 
 # Tools must be available whether or not the system is fully activated yet.
 # /run/current-system only exists AFTER activation; the BUILT generation's tools
@@ -38,6 +69,8 @@ fi
 # default profile. Without all of these a partial/resumed run hits
 # "id: command not found" / "ls: command not found" on a pre-activation distro.
 export PATH="/run/current-system/sw/bin:/nix/var/nix/profiles/system/sw/bin:/run/wrappers/bin:/nix/var/nix/profiles/default/bin:/bin:/usr/bin:$PATH"
+mkdir -p /var/lib/collective-bootstrap
+printf '%s\n' "$DEVBOX_HOST" > /var/lib/collective-bootstrap/devbox-name.txt
 
 # Resolve a real home directory even in a bare login shell on a fresh distro.
 HOME_DIR="$(eval echo ~"$(id -un)" 2>/dev/null || true)"
@@ -73,10 +106,14 @@ chmod 600 "$KEY" 2>/dev/null || true
 # one-command `nix-shell --run` only for the clone: Nix evaluation later invokes
 # git itself for builtins.fetchGit/Cargo git dependencies. Persist the
 # Nix-provided git+openssh PATH for this entire bootstrap process.
-if ! command -v git >/dev/null 2>&1; then
-  echo "[devbox] git not found; adding nix-shell git+openssh to bootstrap PATH..."
+if ! command -v git >/dev/null 2>&1 || \
+   ! command -v ssh-to-age >/dev/null 2>&1 || \
+   ! command -v sops >/dev/null 2>&1; then
+  echo "[devbox] Adding nix-shell git+openssh+sops+ssh-to-age to bootstrap PATH..."
   if command -v nix-shell >/dev/null 2>&1; then
-    BOOTSTRAP_PATH="$(nix-shell -p git openssh --run 'printf "%s" "$PATH"')"
+    # The nested nix-shell must expand its own PATH, not this shell's PATH.
+    # shellcheck disable=SC2016
+    BOOTSTRAP_PATH="$(nix-shell -p git openssh sops ssh-to-age --run 'printf "%s" "$PATH"')"
     if [ -z "$BOOTSTRAP_PATH" ]; then
       echo "ERROR: nix-shell returned an empty bootstrap PATH." >&2
       exit 1
@@ -98,13 +135,44 @@ echo "[devbox] Using bootstrap git: $(command -v git)"
 # when we are not already root.
 if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo"; fi
 
+# Once the configured user exists, make its home the canonical checkout
+# location. A first run must clone as root before that user is created; a resume
+# should adopt that fully fetched /root/collective instead of cloning again.
+# Moving at the end is also safe when this script itself was launched from the
+# root checkout: bash already has the script open.
+migrate_collective_checkout() {
+  id "$DEVBOX_USER" >/dev/null 2>&1 || return 0
+  target_home="$(getent passwd "$DEVBOX_USER" | cut -d: -f6)"
+  [ -n "$target_home" ] || target_home="/home/$DEVBOX_USER"
+  target="$target_home/collective"
+  if [ -d "$target/.git" ]; then
+    COLLECTIVE="$target"
+    return 0
+  fi
+  if [ -d /root/collective/.git ] && [ "$target" != /root/collective ]; then
+    echo "[devbox] Moving bootstrap checkout /root/collective -> $target"
+    mkdir -p "$target_home"
+    mv /root/collective "$target"
+    grp="$(id -gn "$DEVBOX_USER" 2>/dev/null || echo users)"
+    chown -R "$DEVBOX_USER:$grp" "$target"
+    # The remainder of this bootstrap still runs as root. Trust the now
+    # user-owned checkout explicitly so Git's safe.directory guard does not
+    # reject flake input operations before we hand execution to the user.
+    git config --global --add safe.directory "$target" 2>/dev/null || true
+    COLLECTIVE="$target"
+  fi
+}
+
 cd "$HOME_DIR"
-# Reuse an existing collective checkout wherever a prior run left it (this home,
-# /root, or the default WSL user's home) so a resumed bringup does not re-clone.
+# Reuse an existing collective checkout wherever a prior run left it. Prefer
+# the configured user's checkout; migrate the root bootstrap clone when able.
 COLLECTIVE=""
-for c in "$HOME_DIR/collective" /root/collective /home/*/collective; do
-  [ -d "$c/.git" ] && COLLECTIVE="$c" && break
-done
+migrate_collective_checkout
+if [ -z "$COLLECTIVE" ]; then
+  for c in "/home/$DEVBOX_USER/collective" "$HOME_DIR/collective" /root/collective /home/*/collective; do
+    [ -d "$c/.git" ] && COLLECTIVE="$c" && break
+  done
+fi
 if [ -z "$COLLECTIVE" ]; then
   COLLECTIVE="$HOME_DIR/collective"
   echo "[devbox] Cloning collective over SSH to $COLLECTIVE..."
@@ -122,12 +190,13 @@ echo "[devbox] Running first switch for '$DEVBOX_HOST' (this builds the system; 
 # multiplex wrapper rather than the clone-time single-key GIT_SSH_COMMAND.
 # Mirror what `cltv switch` relies on so the first switch evaluates cleanly.
 export GIT_SSH_COMMAND="$COLLECTIVE/scripts/git-ssh-multiplex"
+echo "[devbox] Updating the existing checkout before switching..."
+git pull --ff-only
 
-# Binary caches the first switch needs. A fresh/untrusted bootstrap nix ignores
-# the flake's nixConfig, so without these on the CLI it cannot fetch CUDA blobs
-# (e.g. nvidia-cublas-cu12 pulled in by pi's tts dependency) and the build
-# fails with "no substituter that can build it". These mirror flake.nix and the
-# system nix.settings; once the first switch lands they become authoritative.
+# Emergency fallback cache set. Normally `--accept-flake-config` makes the
+# flake's nixConfig authoritative (including a pre-tailnet Funnel/Attic URL), so
+# we do NOT add CLI cache options. Set USE_DEFAULT_SUBS=1 or pass
+# --use-default-subs only when the configured caches are unavailable.
 SUBS="https://cuda-maintainers.cachix.org https://ghc.cachix.org https://nix-community.cachix.org https://nixpkgs.cachix.org https://cache.nixos.org"
 KEYS="cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E= ghc.cachix.org-1:a751hwq9ydeP3Nr6h84iA9zSjxg9Z3uznqi4YBGjsiw= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= nixpkgs.cachix.org-1:q91R6hxbwFvDqTSDKwDAV4T5PxqXGxswD8vhONFMeOE= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
 
@@ -160,7 +229,7 @@ fi
 # `error: executing 'git': Permission denied`. GIT_SSH_COMMAND is inherited.
 if command -v nix >/dev/null 2>&1; then
   echo "[devbox] Archiving flake inputs (nix flake archive)..."
-  nix-shell -p git openssh --run 'nix --accept-flake-config --extra-experimental-features "nix-command flakes" flake archive .' || true
+  nix-shell -p git openssh --run 'nix --option accept-flake-config true --extra-experimental-features "nix-command flakes" flake archive .' || true
 fi
 
 # home-manager sops derives its per-user age key from the configured user's
@@ -182,8 +251,6 @@ fi
 #      (fast — no rebuild). sops derives the age key, imports it, and finishes.
 #   4. wsl --shutdown + reopen for a clean systemd boot (services start, the
 #      box joins the tailnet).
-DEVBOX_USER="${DEVBOX_USER:-harryaskham}"
-
 # Place the shared key into a specific user's home. Falls back to root ownership
 # when the user is not yet resolvable (early boot), since `activate` reads the
 # key as root and only needs it readable to derive the age key.
@@ -191,13 +258,28 @@ place_key_for_user() {
   user="$1"; home="/home/$user"
   [ "$user" = root ] && home=/root
   mkdir -p "$home/.ssh"
-  if [ ! -f "$home/.ssh/id_ed25519" ]; then
+  # Root owns the durable bootstrap material. Mirror it into the configured
+  # user's home on every resume so an explicitly replaced root key cannot leave
+  # stale user credentials behind.
+  if [ "$KEY" != "$home/.ssh/id_ed25519" ]; then
     cp "$KEY" "$home/.ssh/id_ed25519" || return 1
   fi
-  # home-manager's sops activation (deriveSshPublicKey) runs `ssh-to-age` on the
-  # PUBLIC key and fails without id_ed25519.pub. Derive it from the private key.
-  if [ ! -s "$home/.ssh/id_ed25519.pub" ] && command -v ssh-keygen >/dev/null 2>&1; then
+  # Derive/refresh both companion keys before activation. This is the same
+  # private age identity that the NixOS/home-manager activation would derive,
+  # but having it ready makes a partially built machine immediately resumable.
+  if command -v ssh-keygen >/dev/null 2>&1; then
     ssh-keygen -y -f "$home/.ssh/id_ed25519" > "$home/.ssh/id_ed25519.pub" 2>/dev/null || true
+  fi
+  if command -v ssh-to-age >/dev/null 2>&1; then
+    ssh-to-age -private-key < "$home/.ssh/id_ed25519" > "$home/.ssh/id_ed25519.age" 2>/dev/null || true
+  fi
+  # The corp key is materialized under root before the first evaluation. Seed
+  # the user's expected paths from that already-decrypted root material; sops
+  # activation will subsequently own/refresh the same files declaratively.
+  if [ "$home" != /root ]; then
+    for extra in corp-github-key corp-github-key.pub known_hosts; do
+      [ -s "/root/.ssh/$extra" ] && cp "/root/.ssh/$extra" "$home/.ssh/$extra"
+    done
   fi
   # chown the WHOLE .ssh tree to the user if it exists; otherwise leave
   # root-owned (system `activate` still derives the age key fine). The home-
@@ -213,7 +295,11 @@ place_key_for_user() {
   chmod 700 "$home/.ssh" 2>/dev/null || true
   chmod 600 "$home/.ssh/id_ed25519" 2>/dev/null || true
   [ -f "$home/.ssh/id_ed25519.pub" ] && chmod 644 "$home/.ssh/id_ed25519.pub" 2>/dev/null || true
-  echo "[devbox] Placed shared key + derived .pub in $home/.ssh (user $user)."
+  [ -f "$home/.ssh/id_ed25519.age" ] && chmod 664 "$home/.ssh/id_ed25519.age" 2>/dev/null || true
+  [ -f "$home/.ssh/corp-github-key" ] && chmod 600 "$home/.ssh/corp-github-key" 2>/dev/null || true
+  [ -f "$home/.ssh/corp-github-key.pub" ] && chmod 644 "$home/.ssh/corp-github-key.pub" 2>/dev/null || true
+  [ -f "$home/.ssh/known_hosts" ] && chmod 644 "$home/.ssh/known_hosts" 2>/dev/null || true
+  echo "[devbox] Seeded SSH, age, and available corp key material in $home/.ssh (user $user)."
 }
 
 # Place the key into every existing human home up front (best effort).
@@ -224,14 +310,22 @@ for d in /home/*; do
 done
 
 do_switch() {
-  # Use nixos-rebuild directly since cltv may not be on PATH yet. Pass the
-  # experimental-features flag and binary caches through so flake eval + CUDA
-  # fetches work pre-first-switch.
+  # Use nixos-rebuild directly since cltv may not be on PATH yet. The accepted
+  # flake nixConfig supplies caches by default; CLI fallback caches are opt-in.
+  local cache_args=()
+  if [ "$USE_DEFAULT_SUBS" = 1 ]; then
+    echo "[devbox] USE_DEFAULT_SUBS=1: adding fallback public substituters."
+    cache_args=(
+      --option extra-substituters "$SUBS"
+      --option extra-trusted-public-keys "$KEYS"
+    )
+  else
+    echo "[devbox] Using substituters and trusted keys from accepted flake nixConfig."
+  fi
   $SUDO nixos-rebuild switch --flake ".#$DEVBOX_HOST" \
-    --accept-flake-config \
+    --option accept-flake-config true \
     --option extra-experimental-features "nix-command flakes" \
-    --option extra-substituters "$SUBS" \
-    --option extra-trusted-public-keys "$KEYS" \
+    "${cache_args[@]}" \
     --show-trace --print-build-logs --impure
 }
 
@@ -292,6 +386,13 @@ if id "$DEVBOX_USER" >/dev/null 2>&1; then
       echo "[devbox] WARNING: home-manager-$DEVBOX_USER not active yet. Check:"
       echo "  journalctl -u home-manager-$DEVBOX_USER.service -n 40"
     fi
+  fi
+
+  # The configured user now exists; hand it the bootstrap checkout so the
+  # documented `cd ~/collective && cltv switch` path works after WSL restarts.
+  migrate_collective_checkout
+  if [ -d "/home/$DEVBOX_USER/collective/.git" ]; then
+    echo "[devbox] User checkout ready at /home/$DEVBOX_USER/collective."
   fi
 fi
 

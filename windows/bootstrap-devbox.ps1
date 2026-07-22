@@ -25,7 +25,8 @@ param(
   [string]$InstallRoot,
   [string]$StatePath,
   [string]$NixOSWSLVersion = "latest",
-  [switch]$SkipWSLInstall
+  [switch]$SkipWSLInstall,
+  [switch]$UseDefaultSubs
 )
 
 $ErrorActionPreference = "Stop"
@@ -81,6 +82,19 @@ try { $existingBefore = ((wsl.exe --list --quiet 2>$null) -replace "`0", "") } c
 # ---------------------------------------------------------------------------
 # 1. Gather inputs (interactive-friendly for `irm | iex`)
 # ---------------------------------------------------------------------------
+# A direct WSL-side resume also records the name inside the distro. Use that as
+# a fallback when this version has not yet created the Windows-side state file.
+if ((-not $DevboxHost -or $DevboxHost -eq "") -and
+    -not (Test-Path $StatePath) -and
+    $existingBefore -match [Regex]::Escape($Distro)) {
+  try {
+    $wslSavedHost = (wsl.exe -d $Distro -u root -- cat /var/lib/collective-bootstrap/devbox-name.txt 2>$null).Trim()
+    if ($wslSavedHost -match '^[a-zA-Z0-9._-]+$') {
+      $DevboxHost = $wslSavedHost
+      Info "Recovered devbox hostname '$DevboxHost' from the existing distro."
+    }
+  } catch { }
+}
 if ((-not $DevboxHost -or $DevboxHost -eq "") -and (Test-Path $StatePath)) {
   $savedHost = (Get-Content -Raw -Path $StatePath).Trim()
   if ($savedHost -match '^[a-zA-Z0-9._-]+$') {
@@ -309,7 +323,11 @@ $switchScriptPath = "/tmp/devbox-switch.sh"
 $switchScript | wsl.exe -d $Distro -u root -- tee $switchScriptPath | Out-Null
 $switchWriteExit = $LASTEXITCODE
 if ($switchWriteExit -ne 0) { Die "Could not stage devbox-switch.sh inside WSL (exit $switchWriteExit)." }
-wsl.exe -d $Distro -u root -- bash $switchScriptPath "$DevboxHost" | Out-Host
+if ($UseDefaultSubs) {
+  wsl.exe -d $Distro -u root -- bash $switchScriptPath "$DevboxHost" --use-default-subs | Out-Host
+} else {
+  wsl.exe -d $Distro -u root -- bash $switchScriptPath "$DevboxHost" | Out-Host
+}
 $switchExit = $LASTEXITCODE
 if ($switchExit -ne 0) { Die "Devbox switch inside WSL failed (exit $switchExit)." }
 

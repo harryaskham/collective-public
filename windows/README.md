@@ -54,6 +54,24 @@ tailnet within ~1 minute. (Hibernate-off + sleep-never, applied by the admin
 and headless convergence, reduce — but on a Cloud PC do not fully eliminate —
 idle deallocation.)
 
+## Before bootstrap: register the machine and its exact key
+
+Bootstrap assumes the target already evaluates in `collective`. Complete all of
+these first:
+
+1. Add `machines/ms-dev-N/nixos/configuration.nix` (copy an existing devbox and
+   set `devbox.hostName`).
+2. Add `ms-dev-N = Tagged [VM WSL] System.NixOS.X86;` to `flake.nix`.
+3. Add **both** `authorizedKeys.ms-dev-N` and
+   `precomputedAgeKeys.ms-dev-N` in `pkgs/collective-lib/ssh.nix`. The values
+   must match the private key that will be supplied to bootstrap. If reusing
+   another machine's key (for example `ms-mac`), copy that machine's public SSH
+   and precomputed age values; if reusing the shared devbox key, copy `ms-dev`.
+4. Ensure the `keys/ts/devbox-pool` Tailscale auth key is present in sops.
+
+Commit and push these changes before running bootstrap. Missing `flake.nix` or
+SSH/age entries cannot be repaired by the Windows-side installer.
+
 ## One-liner (run in an elevated PowerShell on the Windows host)
 
 ```powershell
@@ -63,10 +81,10 @@ irm https://raw.githubusercontent.com/harryaskham/collective-public/main/windows
 You will be prompted for:
 
 1. **Hostname** — e.g. `ms-dev-2` (must already be registered in the flake).
-2. **Shared devbox SSH key** — give a path to `id_ed25519`, or paste its
-   contents (finish with a line containing only `END`). This single key is the
-   host identity *and* the credential used to clone the private repo; all
-   devbox instances reuse the `ms-dev` key so no sops re-keying is needed.
+2. **Registered SSH key** — give a path to `id_ed25519`, or paste its contents
+   (finish with a line containing only `END`). This single key is the host
+   identity and the credential used to clone the private repo; its public and
+   age values must match the pre-bootstrap `ssh.nix` entries above.
 
 ### Resume after an interrupted or failed bootstrap
 
@@ -77,15 +95,22 @@ unregister or reinstall the distro**. Run this in elevated PowerShell:
 $u="https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/bootstrap-devbox.ps1"; $p=Join-Path $env:TEMP "bootstrap-devbox.ps1"; irm "${u}?nocache=$([guid]::NewGuid())" -OutFile $p; & $p -SkipWSLInstall
 ```
 
-This downloads the latest script without using a cached copy, prompts again for
-the `ms-dev-N` hostname and SSH key, detects and preserves the existing `NixOS`
-distro, then resumes at key installation and the WSL-side switch. For the older
-`ΓÇÿ/.sshΓÇÖ` error, the special characters were only PowerShell 5.1 decoding
-GNU's UTF-8 quotes with an OEM code page; the real failing path was `/.ssh`.
+This downloads the latest script without using a cached copy, detects and
+preserves the existing `NixOS` distro, then resumes the WSL-side switch. The
+hostname is persisted at `%USERPROFILE%\collective-bootstrap-name.txt`; when a
+valid `/root/.ssh/id_ed25519` already exists in WSL, it is reused without
+copying the private key back into Windows or prompting again. An older run that
+predates the state file may require `-DevboxHost ms-dev-N` once.
 
-To supply recovery inputs non-interactively, add `-DevboxHost ms-dev-2` and
-either `-KeyPath C:\path\to\id_ed25519` or `-KeyFromClipboard` to the final
-script invocation.
+During setup/resume, root's key material seeds the configured user's `.ssh`
+(private/public key, derived `.age`, and available corp key), and a bootstrap
+`/root/collective` checkout is moved to `~/collective` with user ownership. For
+the older `ΓÇÿ/.sshΓÇÖ` error, the special characters were only PowerShell 5.1
+decoding GNU's UTF-8 quotes with an OEM code page; the real path was `/.ssh`.
+
+By default, accepted flake `nixConfig` is authoritative for substituters and
+trusted keys (including a pre-tailnet Funnel/Attic cache). Only add
+`-UseDefaultSubs` to opt into the script's fallback public cache list.
 
 ## Non-interactive
 
@@ -96,20 +121,6 @@ $u = "https://raw.githubusercontent.com/harryaskham/collective-public/main/windo
 irm $u -OutFile bootstrap-devbox.ps1
 ./bootstrap-devbox.ps1 -DevboxHost ms-dev-2 -KeyPath C:\path\to\id_ed25519
 ```
-
-## Prerequisites
-
-- A new `ms-dev-N` must be registered in `collective`:
-  - `machines/ms-dev-N/nixos/configuration.nix` (copy `ms-dev-2` as a template;
-    opt into `devbox.windows` for declarative Windows app provisioning — put
-    user-scope/portable packages in `winget.userPackages` (headless) and only
-    machine-scope/self-elevating ones like `Google.Chrome` in
-    `winget.adminPackages` (run `devbox-windows-admin` once for those))
-  - `flake.nix`: `ms-dev-N = Tagged [VM WSL] System.NixOS.X86;`
-  - `pkgs/collective-lib/ssh.nix`: duplicate the `ms-dev` pubkey + age key lines
-    under `ms-dev-N` (shared key → identical age recipient → no sops changes)
-- The `keys/ts/devbox-pool` Tailscale auth key (tag `devbox-pool`) must be in
-  sops so the new node joins the tailnet automatically.
 
 ## Re-running
 
@@ -124,11 +135,21 @@ If the NixOS-WSL distro is already imported and the shared key is already at
 clone + first switch from *inside* the distro:
 
 ```bash
-# inside NixOS-WSL (wsl -d NixOS)
-curl -fsSL https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/devbox-switch.sh | bash -s -- ms-dev-2
+# Existing root checkout (best resume path; no hostname/key prompts):
+cd /root/collective
+git pull --ff-only
+bash collective-public/windows/devbox-switch.sh ms-dev-2
+
+# Or, when no checkout exists yet, download before executing. Do not curl|bash:
+curl -fsSLo /tmp/devbox-switch.sh \
+  https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/devbox-switch.sh
+bash /tmp/devbox-switch.sh ms-dev-2
 ```
 
 `devbox-switch.sh` is the WSL-side half of the bootstrap (the same clone +
 `nixos-rebuild switch` logic the PowerShell script runs over `wsl.exe`). It is
-idempotent and resolves `$HOME` robustly on a fresh distro where the env var
-may be empty.
+idempotent, resolves `$HOME` robustly, reuses root bootstrap material, and moves
+the checkout into the configured user's home. It must execute from a complete
+file rather than a pipe because Nix/systemctl may read stdin. Pass
+`--use-default-subs` only to opt into fallback public caches; otherwise the
+accepted flake cache configuration is used.
