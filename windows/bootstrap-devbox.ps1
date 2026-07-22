@@ -290,9 +290,18 @@ echo "SSH key installed at $HOME_DIR/.ssh/id_ed25519"
 # this pipeline is unsafe: any child command that reads stdin can consume the
 # unread remainder of the shell program and cause a later `unexpected fi`.
 $installKeyScript = "/tmp/collective-install-key.sh"
-($installKey -replace "`r", "") | wsl.exe -d $Distro -u root -- tee $installKeyScript | Out-Null
+$installKeyScriptB64Path = "$installKeyScript.b64"
+$installKeyScriptLF = ($installKey -replace "`r`n", "`n" -replace "`r", "`n")
+$installKeyScriptB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($installKeyScriptLF))
+# PowerShell 5.1 appends CRLF when piping a string to a native command. Stage
+# base64 (whose decoder ignores that whitespace), then decode wholly in Linux so
+# no carriage return can become a final `$'\r'` shell command.
+$installKeyScriptB64 | wsl.exe -d $Distro -u root -- tee $installKeyScriptB64Path | Out-Null
 $installKeyWriteExit = $LASTEXITCODE
 if ($installKeyWriteExit -ne 0) { Die "Could not stage the WSL key-install script (exit $installKeyWriteExit)." }
+wsl.exe -d $Distro -u root -- sh -c 'base64 -d $1 > $2 && rm -f $1' _ $installKeyScriptB64Path $installKeyScript
+$installKeyDecodeExit = $LASTEXITCODE
+if ($installKeyDecodeExit -ne 0) { Die "Could not decode the WSL key-install script (exit $installKeyDecodeExit)." }
 wsl.exe -d $Distro -u root -- bash $installKeyScript "$keyB64" | Out-Host
 $installKeyExit = $LASTEXITCODE
 if ($installKeyExit -ne 0) { Die "SSH key installation inside WSL failed (exit $installKeyExit)." }
@@ -320,9 +329,14 @@ $switchScript = Invoke-RestMethod -Uri $switchUrl -Headers @{ "User-Agent" = "co
 # switch reuses /root/.ssh/id_ed25519 and can activate the system.
 $switchScript = ($switchScript -replace "`r`n", "`n" -replace "`r", "`n")
 $switchScriptPath = "/tmp/devbox-switch.sh"
-$switchScript | wsl.exe -d $Distro -u root -- tee $switchScriptPath | Out-Null
+$switchScriptB64Path = "$switchScriptPath.b64"
+$switchScriptB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($switchScript))
+$switchScriptB64 | wsl.exe -d $Distro -u root -- tee $switchScriptB64Path | Out-Null
 $switchWriteExit = $LASTEXITCODE
 if ($switchWriteExit -ne 0) { Die "Could not stage devbox-switch.sh inside WSL (exit $switchWriteExit)." }
+wsl.exe -d $Distro -u root -- sh -c 'base64 -d $1 > $2 && rm -f $1' _ $switchScriptB64Path $switchScriptPath
+$switchDecodeExit = $LASTEXITCODE
+if ($switchDecodeExit -ne 0) { Die "Could not decode devbox-switch.sh inside WSL (exit $switchDecodeExit)." }
 if ($UseDefaultSubs) {
   wsl.exe -d $Distro -u root -- bash $switchScriptPath "$DevboxHost" --use-default-subs | Out-Host
 } else {
