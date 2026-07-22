@@ -207,6 +207,46 @@ KEYS="cuda-maintainers.cachix.org-1:0dq3bujKpuEPMCX6U4WylrUDZ9JyUG0VpVZa7CNfq5E=
 # age identity (ssh-to-age) so the very first archive / eval can reach corp
 # remotes. Verified on ms-dev-2.
 SECRETS_FILE="$COLLECTIVE/standalone/secrets/secrets.yaml"
+
+# Fail early with a focused registration error instead of discovering a missing
+# host entry after a long system build. These are the only host-indexed inputs
+# required by the devbox profile: machine/flake registration, SSH+age mappings,
+# and atticd's per-host server_env secret. Decrypting the latter also proves the
+# supplied bootstrap key is an enrolled sops recipient. The Tailscale auth key
+# is shared but checked here because first activation depends on it.
+preflight_devbox_registration() {
+  local machine="$COLLECTIVE/machines/$DEVBOX_HOST/nixos/configuration.nix"
+  local ssh_map="$COLLECTIVE/pkgs/collective-lib/ssh.nix"
+  local age secret
+  [ -f "$machine" ] || {
+    echo "ERROR: missing machines/$DEVBOX_HOST/nixos/configuration.nix" >&2
+    return 1
+  }
+  grep -Eq "^[[:space:]]*${DEVBOX_HOST}[[:space:]]*=[[:space:]]*Tagged[[:space:]]*\\[VM[[:space:]]+WSL\\]" "$COLLECTIVE/flake.nix" || {
+    echo "ERROR: $DEVBOX_HOST is not registered as Tagged [VM WSL] in flake.nix" >&2
+    return 1
+  }
+  if [ "$(grep -Ec "^[[:space:]]*${DEVBOX_HOST}[[:space:]]*=" "$ssh_map")" -lt 2 ]; then
+    echo "ERROR: $DEVBOX_HOST needs authorizedKeys and precomputedAgeKeys entries in pkgs/collective-lib/ssh.nix" >&2
+    return 1
+  fi
+  [ -f "$SECRETS_FILE" ] || {
+    echo "ERROR: missing standalone/secrets/secrets.yaml" >&2
+    return 1
+  }
+  age="$(ssh-to-age -private-key -i "$KEY")"
+  for secret in \
+    "[\"keys\"][\"nix\"][\"attic\"][\"caches\"][\"$DEVBOX_HOST\"][\"server_env\"]" \
+    '["keys"]["cacophony"]["ts"]["devbox-pool"]'; do
+    if ! SOPS_AGE_KEY="$age" sops decrypt --extract "$secret" "$SECRETS_FILE" >/dev/null 2>&1; then
+      echo "ERROR: required sops value $secret is missing or not decryptable with the bootstrap key" >&2
+      return 1
+    fi
+  done
+  echo "[devbox] Registration preflight passed for $DEVBOX_HOST (flake, SSH/age, Attic, Tailscale, sops recipient)."
+}
+preflight_devbox_registration
+
 if [ ! -s "$HOME_DIR/.ssh/corp-github-key" ] && [ -f "$SECRETS_FILE" ]; then
   echo "[devbox] Materializing corp-github-key from sops..."
   export SECRETS_FILE
