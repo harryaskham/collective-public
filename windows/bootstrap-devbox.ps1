@@ -230,10 +230,14 @@ chmod 644 "$HOME_DIR/.ssh/id_ed25519.pub" 2>/dev/null || true
 ssh-keyscan -t ed25519,rsa github.com >> "$HOME_DIR/.ssh/known_hosts" 2>/dev/null || true
 echo "SSH key installed at $HOME_DIR/.ssh/id_ed25519"
 '@
-# `bash -s` reads the script from stdin, so PowerShell never has to serialize a
-# multiline shell program into the Windows native command line. Run as root so
-# this is independent of the imported image's temporary default user/HOME.
-($installKey -replace "`r", "") | wsl.exe -d $Distro -u root -- bash -s -- "$keyB64" | Out-Host
+# Write the complete script before executing it. Running `bash -s` directly on
+# this pipeline is unsafe: any child command that reads stdin can consume the
+# unread remainder of the shell program and cause a later `unexpected fi`.
+$installKeyScript = "/tmp/collective-install-key.sh"
+($installKey -replace "`r", "") | wsl.exe -d $Distro -u root -- tee $installKeyScript | Out-Null
+$installKeyWriteExit = $LASTEXITCODE
+if ($installKeyWriteExit -ne 0) { Die "Could not stage the WSL key-install script (exit $installKeyWriteExit)." }
+wsl.exe -d $Distro -u root -- bash $installKeyScript "$keyB64" | Out-Host
 $installKeyExit = $LASTEXITCODE
 if ($installKeyExit -ne 0) { Die "SSH key installation inside WSL failed (exit $installKeyExit)." }
 Ok "Shared devbox SSH key in place."
@@ -253,11 +257,16 @@ Info "This clones the collective flake, materializes the corp key, builds the sy
 $switchUrl = "https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/devbox-switch.sh"
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocol]::Tls12 } catch {}
 $switchScript = Invoke-RestMethod -Uri $switchUrl -Headers @{ "User-Agent" = "collective-devbox-bootstrap" }
-# As above, stream the LF-normalized script over stdin rather than placing it in
-# a native argv value. Keep running as root so it reuses /root/.ssh/id_ed25519
-# and can perform the first system activation regardless of the image default.
+# As above, stage the complete LF-normalized script before running it. Nix and
+# systemctl may read stdin, so executing a shell program directly from that same
+# stream can let them consume later script lines. Keep running as root so the
+# switch reuses /root/.ssh/id_ed25519 and can activate the system.
 $switchScript = ($switchScript -replace "`r`n", "`n" -replace "`r", "`n")
-$switchScript | wsl.exe -d $Distro -u root -- bash -s -- "$DevboxHost" | Out-Host
+$switchScriptPath = "/tmp/devbox-switch.sh"
+$switchScript | wsl.exe -d $Distro -u root -- tee $switchScriptPath | Out-Null
+$switchWriteExit = $LASTEXITCODE
+if ($switchWriteExit -ne 0) { Die "Could not stage devbox-switch.sh inside WSL (exit $switchWriteExit)." }
+wsl.exe -d $Distro -u root -- bash $switchScriptPath "$DevboxHost" | Out-Host
 $switchExit = $LASTEXITCODE
 if ($switchExit -ne 0) { Die "Devbox switch inside WSL failed (exit $switchExit)." }
 

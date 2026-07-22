@@ -69,20 +69,29 @@ if [ ! -f "$KEY" ]; then
 fi
 chmod 600 "$KEY" 2>/dev/null || true
 
-# Fresh NixOS-WSL may not have git on PATH until the first switch. Provide it
-# via nix-shell if missing so the clone works on a brand-new distro.
-GIT_BIN="$(command -v git || true)"
-if [ -z "$GIT_BIN" ]; then
-  echo "[devbox] git not found; providing it via nix-shell for the clone..."
+# Fresh NixOS-WSL may not have git on PATH until the first switch. Do not use a
+# one-command `nix-shell --run` only for the clone: Nix evaluation later invokes
+# git itself for builtins.fetchGit/Cargo git dependencies. Persist the
+# Nix-provided git+openssh PATH for this entire bootstrap process.
+if ! command -v git >/dev/null 2>&1; then
+  echo "[devbox] git not found; adding nix-shell git+openssh to bootstrap PATH..."
   if command -v nix-shell >/dev/null 2>&1; then
-    GIT="nix-shell -p git --run"
+    BOOTSTRAP_PATH="$(nix-shell -p git openssh --run 'printf "%s" "$PATH"')"
+    if [ -z "$BOOTSTRAP_PATH" ]; then
+      echo "ERROR: nix-shell returned an empty bootstrap PATH." >&2
+      exit 1
+    fi
+    export PATH="$BOOTSTRAP_PATH"
   else
     echo "ERROR: neither git nor nix-shell is available." >&2
     exit 1
   fi
-else
-  GIT=""
 fi
+if ! command -v git >/dev/null 2>&1; then
+  echo "ERROR: git is still unavailable after nix-shell PATH setup." >&2
+  exit 1
+fi
+echo "[devbox] Using bootstrap git: $(command -v git)"
 
 # A fresh NixOS-WSL runs as root and its sudo is not yet setuid-wrapped
 # ("sudo must be owned by uid 0 and have the setuid bit set"). Only use sudo
@@ -100,11 +109,7 @@ if [ -z "$COLLECTIVE" ]; then
   COLLECTIVE="$HOME_DIR/collective"
   echo "[devbox] Cloning collective over SSH to $COLLECTIVE..."
   export GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
-  if [ -n "$GIT" ]; then
-    $GIT "git clone git@github.com:harryaskham/collective.git '$COLLECTIVE'"
-  else
-    git clone git@github.com:harryaskham/collective.git "$COLLECTIVE"
-  fi
+  git clone git@github.com:harryaskham/collective.git "$COLLECTIVE"
 else
   echo "[devbox] Using existing collective checkout at $COLLECTIVE."
 fi
@@ -155,7 +160,7 @@ fi
 # `error: executing 'git': Permission denied`. GIT_SSH_COMMAND is inherited.
 if command -v nix >/dev/null 2>&1; then
   echo "[devbox] Archiving flake inputs (nix flake archive)..."
-  nix-shell -p git openssh --run 'nix --extra-experimental-features "nix-command flakes" flake archive .' || true
+  nix-shell -p git openssh --run 'nix --accept-flake-config --extra-experimental-features "nix-command flakes" flake archive .' || true
 fi
 
 # home-manager sops derives its per-user age key from the configured user's
@@ -223,6 +228,7 @@ do_switch() {
   # experimental-features flag and binary caches through so flake eval + CUDA
   # fetches work pre-first-switch.
   $SUDO nixos-rebuild switch --flake ".#$DEVBOX_HOST" \
+    --accept-flake-config \
     --option extra-experimental-features "nix-command flakes" \
     --option extra-substituters "$SUBS" \
     --option extra-trusted-public-keys "$KEYS" \
@@ -239,13 +245,23 @@ reactivate() {
   fi
 }
 
+# Only use the key-placement/reactivation recovery when this switch actually
+# produced a NEW system generation. A fetch/evaluation/build failure leaves the
+# profile unchanged; reactivating that old profile would hide the real failure.
+SYSTEM_BEFORE="$(readlink -f /nix/var/nix/profiles/system 2>/dev/null || true)"
 if do_switch; then
   echo "[devbox] First switch complete for $DEVBOX_HOST."
 else
-  echo "[devbox] Switch did not fully activate (expected on first run: the"
-  echo "[devbox] configured user '$DEVBOX_USER' was just created and the home"
-  echo "[devbox] sops age key could not be derived). Placing the key now that"
-  echo "[devbox] the user exists, then re-activating directly..."
+  SYSTEM_AFTER="$(readlink -f /nix/var/nix/profiles/system 2>/dev/null || true)"
+  if [ -z "$SYSTEM_AFTER" ] || [ "$SYSTEM_AFTER" = "$SYSTEM_BEFORE" ]; then
+    echo "[devbox] ERROR: switch failed before producing a new system generation;" >&2
+    echo "[devbox] not reactivating the previous generation. Fix the fetch/build" >&2
+    echo "[devbox] error above, then re-run this resumable bootstrap." >&2
+    exit 1
+  fi
+  echo "[devbox] Switch built a new generation but did not fully activate"
+  echo "[devbox] (expected on first run when '$DEVBOX_USER' lacks its sops age"
+  echo "[devbox] key). Placing the key, then re-activating directly..."
   place_key_for_user "$DEVBOX_USER" || true
   if reactivate; then
     echo "[devbox] Re-activation succeeded after placing the key for $DEVBOX_USER."
