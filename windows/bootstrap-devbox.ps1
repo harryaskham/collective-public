@@ -299,7 +299,8 @@ $installKeyScriptB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.Ge
 $installKeyScriptB64 | wsl.exe -d $Distro -u root -- tee $installKeyScriptB64Path | Out-Null
 $installKeyWriteExit = $LASTEXITCODE
 if ($installKeyWriteExit -ne 0) { Die "Could not stage the WSL key-install script (exit $installKeyWriteExit)." }
-wsl.exe -d $Distro -u root -- sh -c 'base64 -d $1 > $2 && rm -f $1' _ $installKeyScriptB64Path $installKeyScript
+$installKeyDecodeCommand = "base64 -d $installKeyScriptB64Path > $installKeyScript && rm -f $installKeyScriptB64Path"
+wsl.exe -d $Distro -u root -- sh -c $installKeyDecodeCommand
 $installKeyDecodeExit = $LASTEXITCODE
 if ($installKeyDecodeExit -ne 0) { Die "Could not decode the WSL key-install script (exit $installKeyDecodeExit)." }
 wsl.exe -d $Distro -u root -- bash $installKeyScript "$keyB64" | Out-Host
@@ -334,7 +335,8 @@ $switchScriptB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetByt
 $switchScriptB64 | wsl.exe -d $Distro -u root -- tee $switchScriptB64Path | Out-Null
 $switchWriteExit = $LASTEXITCODE
 if ($switchWriteExit -ne 0) { Die "Could not stage devbox-switch.sh inside WSL (exit $switchWriteExit)." }
-wsl.exe -d $Distro -u root -- sh -c 'base64 -d $1 > $2 && rm -f $1' _ $switchScriptB64Path $switchScriptPath
+$switchDecodeCommand = "base64 -d $switchScriptB64Path > $switchScriptPath && rm -f $switchScriptB64Path"
+wsl.exe -d $Distro -u root -- sh -c $switchDecodeCommand
 $switchDecodeExit = $LASTEXITCODE
 if ($switchDecodeExit -ne 0) { Die "Could not decode devbox-switch.sh inside WSL (exit $switchDecodeExit)." }
 if ($UseDefaultSubs) {
