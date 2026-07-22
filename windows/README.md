@@ -83,8 +83,12 @@ SSH/age, or per-host Attic entries cannot be repaired by the Windows installer.
 ## One-liner (run in an elevated PowerShell on the Windows host)
 
 ```powershell
-irm https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/bootstrap-devbox.ps1 | iex
+$h=@{"User-Agent"="collective-devbox-bootstrap";"Cache-Control"="no-cache"}; $r="https://api.github.com/repos/harryaskham/collective-public/git/ref/heads/main"; $s=(irm "${r}?nocache=$([guid]::NewGuid())" -Headers $h).object.sha; iex (irm "https://raw.githubusercontent.com/harryaskham/collective-public/$s/windows/bootstrap-devbox.ps1" -Headers $h)
 ```
+
+This resolves `main` through GitHub's API and fetches the bootstrap by immutable
+commit SHA; a raw branch URL can remain stale despite a query-string cache
+buster.
 
 You will be prompted for:
 
@@ -100,7 +104,7 @@ If WSL/NixOS was already installed before the bootstrap stopped, **do not
 unregister or reinstall the distro**. Run this in elevated PowerShell:
 
 ```powershell
-$u="https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/bootstrap-devbox.ps1"; $p=Join-Path $env:TEMP "bootstrap-devbox.ps1"; irm "${u}?nocache=$([guid]::NewGuid())" -OutFile $p; & $p -SkipWSLInstall
+$h=@{"User-Agent"="collective-devbox-bootstrap";"Cache-Control"="no-cache"}; $r="https://api.github.com/repos/harryaskham/collective-public/git/ref/heads/main"; $s=(irm "${r}?nocache=$([guid]::NewGuid())" -Headers $h).object.sha; $p=Join-Path $env:TEMP "bootstrap-devbox.ps1"; irm "https://raw.githubusercontent.com/harryaskham/collective-public/$s/windows/bootstrap-devbox.ps1" -Headers $h -OutFile $p; & $p -SkipWSLInstall
 ```
 
 This downloads the latest script without using a cached copy, detects and
@@ -125,8 +129,11 @@ trusted keys (including a pre-tailnet Funnel/Attic cache). Only add
 Download first, then pass parameters:
 
 ```powershell
-$u = "https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/bootstrap-devbox.ps1"
-irm $u -OutFile bootstrap-devbox.ps1
+$h = @{ "User-Agent" = "collective-devbox-bootstrap"; "Cache-Control" = "no-cache" }
+$r = "https://api.github.com/repos/harryaskham/collective-public/git/ref/heads/main"
+$s = (irm "${r}?nocache=$([guid]::NewGuid())" -Headers $h).object.sha
+$u = "https://raw.githubusercontent.com/harryaskham/collective-public/$s/windows/bootstrap-devbox.ps1"
+irm $u -Headers $h -OutFile bootstrap-devbox.ps1
 ./bootstrap-devbox.ps1 -DevboxHost ms-dev-2 -KeyPath C:\path\to\id_ed25519
 ```
 

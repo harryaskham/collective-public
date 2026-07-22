@@ -316,9 +316,23 @@ Ok "Shared devbox SSH key in place."
 Info "Fetching the canonical devbox-switch.sh and running the switch for '$DevboxHost'..."
 Info "This clones the collective flake, materializes the corp key, builds the system, and completes activation. May take a while on first run."
 
-$switchUrl = "https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/devbox-switch.sh"
+# Resolve public/main through the GitHub API, then fetch the script by immutable
+# commit SHA. raw.githubusercontent.com may serve a stale cached `main` even
+# when a query-string cache buster is present.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocol]::Tls12 } catch {}
-$switchScript = Invoke-RestMethod -Uri $switchUrl -Headers @{ "User-Agent" = "collective-devbox-bootstrap" }
+$publicHeaders = @{ "User-Agent" = "collective-devbox-bootstrap"; "Accept" = "application/vnd.github+json"; "Cache-Control" = "no-cache" }
+try {
+  $publicRefUrl = "https://api.github.com/repos/harryaskham/collective-public/git/ref/heads/main"
+  $publicRef = Invoke-RestMethod -Uri "${publicRefUrl}?nocache=$([guid]::NewGuid())" -Headers $publicHeaders
+  $publicSha = $publicRef.object.sha
+  if ($publicSha -notmatch '^[0-9a-f]{40}$') { throw "invalid public main SHA: $publicSha" }
+  $switchUrl = "https://raw.githubusercontent.com/harryaskham/collective-public/$publicSha/windows/devbox-switch.sh"
+  Info "Resolved collective-public main at $publicSha"
+} catch {
+  Warn "Could not resolve collective-public main through GitHub API ($_); falling back to the branch URL."
+  $switchUrl = "https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/devbox-switch.sh?nocache=$([guid]::NewGuid())"
+}
+$switchScript = Invoke-RestMethod -Uri $switchUrl -Headers $publicHeaders
 # As above, stage the complete LF-normalized script before running it. Nix and
 # systemctl may read stdin, so executing a shell program directly from that same
 # stream can let them consume later script lines. Keep running as root so the
