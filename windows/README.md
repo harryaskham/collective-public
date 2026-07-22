@@ -109,7 +109,7 @@ re-run it with the same hostname and key:
 # Elevated Windows PowerShell
 $u = "https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/bootstrap-devbox.ps1"
 $p = Join-Path $env:TEMP "bootstrap-devbox.ps1"
-irm "$u?nocache=$([guid]::NewGuid())" -OutFile $p
+irm "${u}?nocache=$([guid]::NewGuid())" -OutFile $p
 & $p -DevboxHost ms-dev-2 -KeyPath C:\path\to\id_ed25519 -SkipWSLInstall
 ```
 
