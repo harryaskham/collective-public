@@ -38,6 +38,37 @@ The Windows devbox user is typically a **non-admin domain account** (e.g.
 A non-admin user cannot avoid the UAC consent for the admin half; everything
 else is fully automated.
 
+### Preventing idle lock and session eviction
+
+Sleep/hibernate and workstation locking are separate Windows policy paths. The
+current convergence handles both:
+
+- the interactive user gets a Startup keepalive that holds
+  `SetThreadExecutionState` and emits real input every ~45 seconds (the older
+  cursor-position change did not update Windows' idle clock);
+- user screensaver and lock policy hives are disabled;
+- `devbox-windows-admin` disables machine inactivity, lock-on-wake, lock-screen,
+  and RDS idle/disconnected-session limits;
+- the `DevboxKeepAwake` SYSTEM task applies those settings immediately, at boot,
+  and every two minutes so Group Policy/MDM refresh cannot silently restore
+  them.
+
+After updating an existing devbox, apply both halves once from its interactive
+RDP/Cloud PC WSL terminal:
+
+```bash
+cd ~/collective
+git pull --ff-only
+cltv switch
+devbox-windows-admin   # approve the single UAC prompt
+```
+
+The interactive keepalive writes
+`%LOCALAPPDATA%\devbox\keepactive.log`. If the machine still locks, inspect that
+log and the effective `DeviceLock/MaxInactivityTimeDeviceLock` Intune policy;
+an enforced central compliance policy may need to be removed in Intune rather
+than only converged locally.
+
 ## Waking the Cloud PC (Windows 365)
 
 These devboxes are Windows 365 Cloud PCs. The WSL2 VM can be killed by host
