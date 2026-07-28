@@ -75,10 +75,9 @@ These devboxes are Windows 365 Cloud PCs. The WSL2 VM can be killed by host
 memory pressure, and the Cloud PC itself deallocates when idle. If the node
 shows `offline` on the tailnet and SSH times out, **reconnect to wake it**:
 
-- **Windows App** (formerly Remote Desktop): open the `harryaskham` / Cloud PC
-  entry, or
-- **Web client:** `https://windows.cloud.microsoft/webclient/...` (authed as
-  `harryaskham@microsoft.com`).
+- **Windows App** (formerly Remote Desktop): open the Cloud PC entry, or
+- **Web client:** `https://windows.cloud.microsoft/webclient/...`, authenticated
+  as your corporate account.
 
 Connecting reboots/reattaches the Cloud PC; WSL restarts and rejoins the
 tailnet within ~1 minute. (Hibernate-off + sleep-never, applied by the admin

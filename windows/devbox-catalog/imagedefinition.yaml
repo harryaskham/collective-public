@@ -3,9 +3,15 @@
 # Microsoft Dev Box "Configuration as Code" image definition. This catalog is the
 # PUBLIC, non-secret half: it pulls the existing public bootstrap scripts in this
 # repo and references the SSH key by Key Vault URI (resolved at provisioning by
-# the dev center's managed identity). The actual secret lives in the
-# harryaskham-sandbox Key Vault (Terranix: mono/sandbox/ops/terraform/devbox.nix);
-# the dev center MI is granted Key Vault Secrets User on it.
+# the dev center's managed identity).
+#
+# !! BEFORE USE: substitute KEY_VAULT_SECRET_URI below. !!
+#
+# The vault host and secret name are deliberately NOT published here. A Key
+# Vault name is globally unique DNS, so publishing the URI confirms the vault
+# exists and names the exact secret — reconnaissance value with no benefit to a
+# public reader. The real URI, and the Terraform module that provisions it, are
+# recorded in the private collective repo at `windows/README.md`.
 #
 # Attach to a dev center (admin), e.g.:
 #   az devcenter admin catalog create --name collective-devbox \
@@ -13,9 +19,6 @@
 #     --git-hub uri="https://github.com/harryaskham/collective-public.git" \
 #              branch="main" path="windows/devbox-catalog"
 # (public repo -> no PAT/secret-identifier needed)
-#
-# Confirm the secret URI below matches the deployed vault:
-#   terraform output devbox_ssh_secret_uri   (mono/sandbox)
 
 $schema: "1.0"
 name: collective-devbox
@@ -33,8 +36,9 @@ tasks:
         $ErrorActionPreference = 'Stop'
 
         # SSH key injected by the Dev Box agent from Key Vault (versionless URI).
-        # Confirm the vault host matches `terraform output devbox_ssh_secret_uri`.
-        $sshKey = '{{ https://harryaskham-devbox-kv.vault.azure.net/secrets/devbox-ssh-private-key }}'
+        # SUBSTITUTE THIS before attaching the catalog — see the header note and
+        # `windows/README.md` in the private collective repo for the real value.
+        $sshKey = '{{ KEY_VAULT_SECRET_URI }}'
 
         # Per-box collective hostname (lower-cased COMPUTERNAME; adjust per pool).
         $devboxHost = $env:COMPUTERNAME.ToLower()
