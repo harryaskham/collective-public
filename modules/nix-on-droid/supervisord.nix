@@ -74,6 +74,7 @@ with lib; let
           autorestart=${autorestartToConf prog.autorestart}
           startsecs=${toString prog.startsecs}
           stopsignal=${prog.stopsignal}
+          ${optionalString (prog.stopwaitsecs != null) "stopwaitsecs=${toString prog.stopwaitsecs}"}
           stopasgroup=${boolToConf prog.stopasgroup}
           killasgroup=${boolToConf prog.killasgroup}
           redirect_stderr=${boolToConf prog.redirect_stderr}

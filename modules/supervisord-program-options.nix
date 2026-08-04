@@ -44,6 +44,14 @@ with lib;
       default = "TERM";
       description = "Signal to send when stopping the program.";
     };
+    stopwaitsecs = mkOption {
+      type = types.nullOr types.int;
+      default = null;
+      description = ''
+        Optional seconds to wait for the process to stop after sending the stop
+        signal. When null, omit the setting and preserve Supervisor's default.
+      '';
+    };
     stopasgroup = mkOption {
       type = types.bool;
       default = true;

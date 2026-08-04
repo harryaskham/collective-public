@@ -34,7 +34,7 @@
         let 
           collective-lib = outputs.packages.${system}.collective-lib;
           pkgs = nixpkgs.legacyPackages.${system};
-          testedModules = import ./modules { inherit collective-lib; };
+          testedModules = import ./modules { inherit collective-lib pkgs; };
         in {
           lib = collective-lib;
           packages = import ./pkgs { inherit pkgs inputs; };
