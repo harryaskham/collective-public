@@ -46,6 +46,12 @@ function with-installable() {
   expr="$3"
   shift 3
   flags=()
+  # bd-00e92f: the collective-lib suite exercises nix-reflect's AST evaluator,
+  # whose deep recursive round-trips (e.g. the lazy factorial `f 2`+) exceed
+  # Nix's default max-call-depth and overflow. nix-reflect's own test runner
+  # raises it to 1000000 for exactly this reason; match that here so running
+  # those tests through collective-public does not spuriously stack-overflow.
+  flags+=(--option max-call-depth 1000000)
   if [[ "$CLTV_TRACE_LEVEL" != "0" ]]; then
     flags+=(--show-trace)
   fi
