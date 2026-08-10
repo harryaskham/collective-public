@@ -26,6 +26,10 @@ param(
   [string]$StatePath,
   [string]$NixOSWSLVersion = "latest",
   [string]$PublicCommit,
+  [ValidatePattern('^\d+(KB|MB|GB|TB)$')]
+  [string]$WSLMemory = "48GB",
+  [ValidatePattern('^\d+(KB|MB|GB|TB)$')]
+  [string]$WSLDefaultVhdSize = "1536GB",
   [switch]$SkipWSLInstall,
   [switch]$UseDefaultSubs
 )
@@ -46,6 +50,90 @@ function Warn($m)  { Write-Host "[bootstrap] $m" -ForegroundColor Yellow }
 # Die throws instead of `exit` so that, when this script is run via `irm | iex`
 # in an interactive window, a failure does not silently close the host window.
 function Die($m)   { throw "[bootstrap] ERROR: $m" }
+
+# Merge one value into an INI-style file without replacing unrelated sections,
+# keys, or comments. Duplicate active definitions of the managed key are folded
+# into one value so WSL cannot select a stale definition.
+function Set-IniValue {
+  param(
+    [string[]]$Lines,
+    [string]$Section,
+    [string]$Key,
+    [string]$Value
+  )
+
+  $sectionPattern = '^\s*\[\s*' + [Regex]::Escape($Section) + '\s*\]\s*(?:[#;].*)?$'
+  $keyPattern = '^\s*' + [Regex]::Escape($Key) + '\s*='
+  $anySectionPattern = '^\s*\[[^]]+\]'
+  $result = New-Object System.Collections.Generic.List[string]
+  $sectionFound = $false
+  $inTargetSection = $false
+  $keyWritten = $false
+
+  foreach ($line in $Lines) {
+    if ($line -match $anySectionPattern) {
+      if ($inTargetSection -and -not $keyWritten) {
+        [void]$result.Add("$Key=$Value")
+        $keyWritten = $true
+      }
+
+      $inTargetSection = ($line -match $sectionPattern)
+      if ($inTargetSection) { $sectionFound = $true }
+      [void]$result.Add($line)
+      continue
+    }
+
+    if ($inTargetSection -and $line -match $keyPattern) {
+      if (-not $keyWritten) {
+        [void]$result.Add("$Key=$Value")
+        $keyWritten = $true
+      }
+      continue
+    }
+
+    [void]$result.Add($line)
+  }
+
+  if ($sectionFound) {
+    if ($inTargetSection -and -not $keyWritten) {
+      [void]$result.Add("$Key=$Value")
+    }
+  } else {
+    if ($result.Count -gt 0 -and $result[$result.Count - 1] -ne "") {
+      [void]$result.Add("")
+    }
+    [void]$result.Add("[$Section]")
+    [void]$result.Add("$Key=$Value")
+  }
+
+  return $result.ToArray()
+}
+
+function Set-WslCapacityConfig {
+  param(
+    [string]$Path,
+    [string]$MemoryValue,
+    [string]$DiskValue
+  )
+
+  $lines = @()
+  if (Test-Path -LiteralPath $Path) {
+    # ReadAllLines auto-detects UTF BOMs, preserving existing comments when the
+    # file was created by Windows PowerShell rather than this script.
+    $lines = @([IO.File]::ReadAllLines($Path))
+  }
+  $before = $lines -join "`n"
+
+  $lines = @(Set-IniValue -Lines $lines -Section "wsl2" -Key "memory" -Value $MemoryValue)
+  $lines = @(Set-IniValue -Lines $lines -Section "wsl2" -Key "defaultVhdSize" -Value $DiskValue)
+  $after = $lines -join "`n"
+
+  if ($before -eq $after) { return $false }
+
+  $newline = [Environment]::NewLine
+  [IO.File]::WriteAllText($Path, ($lines -join $newline) + $newline, $Utf8NoBom)
+  return $true
+}
 
 # Surface any terminating error (including Die) and keep the window open so the
 # message is visible. When piped to iex, `exit` would close the whole window.
@@ -193,6 +281,35 @@ if (-not $SkipWSLInstall) {
   try { wsl.exe --update 2>&1 | Out-Host } catch { Warn "wsl --update failed: $_" }
 } else {
   Info "Skipping WSL install (per -SkipWSLInstall)."
+}
+
+# ---------------------------------------------------------------------------
+# 2a. Set WSL2 capacity before creating the distro VHD
+# ---------------------------------------------------------------------------
+# WSL defaults new VHDs to a 1 TB maximum. defaultVhdSize is creation-time
+# configuration, so write the larger ceiling before import. The VHD remains
+# dynamically allocated: this does not consume 1.5 TB on the Windows disk now.
+$wslConfigPath = Join-Path $env:USERPROFILE ".wslconfig"
+Info "Configuring WSL2 for $WSLMemory RAM and a $WSLDefaultVhdSize default VHD ceiling..."
+$wslConfigChanged = Set-WslCapacityConfig -Path $wslConfigPath -MemoryValue $WSLMemory -DiskValue $WSLDefaultVhdSize
+if ($wslConfigChanged) {
+  Ok "Merged WSL capacity settings into $wslConfigPath (unrelated settings preserved)."
+} else {
+  Info "$wslConfigPath already has the requested WSL capacity settings."
+}
+
+# A full shutdown makes .wslconfig authoritative before import. Also restart on
+# a changed config during resume so the 48 GB VM cap takes effect. Existing VHDs
+# are deliberately not resized implicitly; use grow-devbox-vhd.ps1 for the
+# explicit, grow-only migration.
+$targetAlreadyExists = $existingBefore -match [Regex]::Escape($Distro)
+if ($wslConfigChanged -or -not $targetAlreadyExists) {
+  Info "Stopping WSL so the capacity settings apply before distro startup/import..."
+  wsl.exe --shutdown 2>&1 | Out-Host
+  if ($LASTEXITCODE -ne 0) { Die "Could not stop WSL after writing $wslConfigPath." }
+}
+if ($targetAlreadyExists) {
+  Info "Existing distro '$Distro' retained. defaultVhdSize does not resize existing VHDs; use grow-devbox-vhd.ps1 when an in-place grow is needed."
 }
 
 # ---------------------------------------------------------------------------

@@ -3,9 +3,56 @@
 Provision a new Microsoft WSL devbox (`ms-dev-N`) from a fresh Windows host in
 one command. The script installs WSL2 + NixOS-WSL, places the shared devbox SSH
 key, clones the (private) `collective` flake over SSH, and runs the first
-`cltv switch`. After that the box joins the tailnet non-interactively
-(devbox-pool auth key) and converges its Windows host declaratively from inside
-WSL (Chrome, Slack, etc. via winget; power settings via `powercfg`).
+`cltv switch`. Before importing NixOS, it also merges the devbox capacity
+settings into `%USERPROFILE%\.wslconfig`: a 48 GB WSL2 memory cap and a 1536 GB
+(1.5 TiB) default VHD ceiling. After that the box joins the tailnet
+non-interactively (devbox-pool auth key) and converges its Windows host
+declaratively from inside WSL (Chrome, Slack, etc. via winget; power settings
+via `powercfg`).
+
+## WSL memory and disk capacity
+
+The bootstrap configures these values before it imports the NixOS-WSL rootfs:
+
+```ini
+[wsl2]
+memory=48GB
+defaultVhdSize=1536GB
+```
+
+The script merges these keys without replacing unrelated `.wslconfig` settings,
+then shuts WSL down so they are active before the distro VHD is created.
+`defaultVhdSize` is a maximum for a dynamically expanding VHD; it does **not**
+preallocate 1.5 TiB of physical Windows disk space. It only controls newly
+created VHDs and therefore does not enlarge a distro that was already imported.
+
+### Grow an existing devbox to 1.5 TiB
+
+Use the dedicated grow-only script from an elevated Windows PowerShell after
+saving work in all WSL sessions:
+
+```powershell
+$u = "https://raw.githubusercontent.com/harryaskham/collective-public/main/windows/grow-devbox-vhd.ps1"
+$p = Join-Path $env:TEMP "grow-devbox-vhd.ps1"
+irm $u -OutFile $p
+& $p -Distro NixOS
+```
+
+The script:
+
+- verifies that the named distro exists and is WSL2;
+- reads the current root filesystem size and refuses any target below it;
+- preserves unrelated `.wslconfig` content while setting 48 GB RAM and the
+  1536 GB default for future VHDs;
+- asks before stopping WSL, then runs the supported WSL 2.5+ command
+  `wsl --manage NixOS --resize 1536GB`;
+- verifies the filesystem grew to the requested size.
+
+This is an in-place expansion. It never calls `wsl --unregister`, imports or
+recreates the distro, requests a shrink, or replaces the VHD. The 1536 GB
+ceiling remains dynamically allocated. Pass `-Force` only to skip the shutdown
+confirmation, or `-SkipWSLUpdate` when WSL 2.5+ is already installed and must
+not be updated during the run.
 
 ## Windows convergence: headless vs admin (UAC)
 
