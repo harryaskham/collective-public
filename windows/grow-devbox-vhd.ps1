@@ -131,26 +131,34 @@ function Convert-SizeToBytes {
   return [UInt64]($number * $multipliers[$unit])
 }
 
-function Get-DistroFilesystemBytes {
+function Get-DistroStorageInfo {
   param([string]$Name)
 
-  # Query the live root filesystem before taking WSL down. This is a safety
-  # guard, not a capacity estimate: a target at or below the current filesystem
-  # is refused so this script can never become a shrink path.
-  $output = @(& wsl.exe -d $Name -u root -- df --block-size=1 --output=size / 2>$null)
+  # The VHD/block device reaches the exact requested ceiling, but `df` reports
+  # less because ext4 reserves space for metadata. Probe both so grow/shrink
+  # decisions use the exact device size while messages show usable filesystem
+  # capacity. NixOS-WSL provides findmnt/lsblk/df through util-linux/coreutils.
+  $probe = 'root_device=$(findmnt -n -o SOURCE /) && device_bytes=$(lsblk -b -n -o SIZE "$root_device" | head -n 1) && filesystem_bytes=$(df --block-size=1 --output=size / | tail -n 1 | tr -d "[:space:]") && printf "%s\n%s\n" "$device_bytes" "$filesystem_bytes"'
+  $output = @(& wsl.exe -d $Name -u root -- sh -c $probe 2>$null)
   if ($LASTEXITCODE -ne 0) {
-    Die "Could not read the '$Name' root filesystem size; refusing to resize without the grow-only safety check."
+    Die "Could not read the '$Name' root block-device and filesystem sizes; refusing to resize without the grow-only safety check."
   }
 
-  [UInt64]$size = 0
+  $sizes = New-Object System.Collections.Generic.List[UInt64]
   foreach ($line in $output) {
     [UInt64]$candidate = 0
-    if ([UInt64]::TryParse($line.Trim(), [ref]$candidate)) { $size = $candidate }
+    if ([UInt64]::TryParse($line.Trim(), [ref]$candidate)) {
+      [void]$sizes.Add($candidate)
+    }
   }
-  if ($size -eq 0) {
-    Die "Could not parse the '$Name' root filesystem size; refusing to resize without the grow-only safety check."
+  if ($sizes.Count -lt 2 -or $sizes[0] -eq 0 -or $sizes[1] -eq 0) {
+    Die "Could not parse the '$Name' root block-device and filesystem sizes; refusing to resize without the grow-only safety check."
   }
-  return $size
+
+  return [PSCustomObject]@{
+    DeviceBytes = $sizes[0]
+    FilesystemBytes = $sizes[1]
+  }
 }
 
 if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
@@ -171,15 +179,15 @@ if ($verboseList -notmatch $distroPattern) {
 }
 
 $targetBytes = Convert-SizeToBytes $DiskSize
-$currentBytes = Get-DistroFilesystemBytes $Distro
-$currentGiB = [Math]::Round($currentBytes / 1GB, 1)
+$currentStorage = Get-DistroStorageInfo $Distro
+$currentDeviceBytes = [UInt64]$currentStorage.DeviceBytes
+$currentFilesystemBytes = [UInt64]$currentStorage.FilesystemBytes
+$currentDeviceGiB = [Math]::Round($currentDeviceBytes / 1GB, 1)
+$currentFilesystemGiB = [Math]::Round($currentFilesystemBytes / 1GB, 1)
 $targetGiB = [Math]::Round($targetBytes / 1GB, 1)
 
-# ext4 metadata makes df's filesystem size slightly smaller than the VHD's
-# exact virtual size. Treat a filesystem within one percent as already at the
-# requested ceiling, while refusing an actual lower target outright.
-if ($targetBytes -lt $currentBytes) {
-  Die "Refusing to shrink '$Distro': its root filesystem is already $currentGiB GiB, above the $targetGiB GiB target. No disk changes were made."
+if ($targetBytes -lt $currentDeviceBytes) {
+  Die "Refusing to shrink '$Distro': its root block device is already $currentDeviceGiB GiB, above the $targetGiB GiB target. No disk changes were made."
 }
 
 $configChanged = Set-WslCapacityConfig -Path $WslConfigPath -MemoryValue $Memory -DiskValue $DiskSize
@@ -189,9 +197,8 @@ if ($configChanged) {
   Info "$WslConfigPath already has memory=$Memory and defaultVhdSize=$DiskSize."
 }
 
-$alreadySizedThreshold = [UInt64]([Math]::Floor($targetBytes * 0.99))
-if ($currentBytes -ge $alreadySizedThreshold) {
-  Ok "'$Distro' is already approximately $currentGiB GiB; no VHD resize is needed."
+if ($currentDeviceBytes -ge $targetBytes) {
+  Ok "'$Distro' already has a $currentDeviceGiB GiB block device ($currentFilesystemGiB GiB ext4 filesystem); no VHD resize is needed."
   if ($configChanged) {
     Warn "The 48 GB memory cap will take effect after the next 'wsl --shutdown' and restart."
   }
@@ -210,7 +217,7 @@ if (-not $SkipWSLUpdate) {
 }
 
 Write-Host ""
-Warn "Growing '$Distro' from about $currentGiB GiB to $DiskSize requires stopping all WSL distributions."
+Warn "Growing '$Distro' from a $currentDeviceGiB GiB block device ($currentFilesystemGiB GiB ext4 filesystem) to $DiskSize requires stopping all WSL distributions."
 Warn "Close or save work in every WSL session first. The VHD will be expanded in place; it will not be recreated."
 if (-not $Force) {
   $answer = Read-Host "Continue with the grow-only resize? (y/N)"
@@ -227,11 +234,15 @@ if ($LASTEXITCODE -ne 0) {
   Die "WSL could not grow '$Distro'. Ensure WSL 2.5+ is installed with 'wsl --update'. The script did not unregister, import, recreate, or request a shrink."
 }
 
-$grownBytes = Get-DistroFilesystemBytes $Distro
-$grownGiB = [Math]::Round($grownBytes / 1GB, 1)
-if ($grownBytes -lt $alreadySizedThreshold) {
-  Die "WSL reported success, but the root filesystem is only $grownGiB GiB; expected approximately $targetGiB GiB."
+$grownStorage = Get-DistroStorageInfo $Distro
+$grownDeviceBytes = [UInt64]$grownStorage.DeviceBytes
+$grownFilesystemBytes = [UInt64]$grownStorage.FilesystemBytes
+$grownDeviceGiB = [Math]::Round($grownDeviceBytes / 1GB, 1)
+$grownFilesystemGiB = [Math]::Round($grownFilesystemBytes / 1GB, 1)
+if ($grownDeviceBytes -lt $targetBytes) {
+  Die "WSL reported success, but the root block device is only $grownDeviceGiB GiB; expected $targetGiB GiB."
 }
 
-Ok "'$Distro' was grown in place from about $currentGiB GiB to $grownGiB GiB."
+Ok "'$Distro' block device was grown in place from $currentDeviceGiB GiB to $grownDeviceGiB GiB."
+Ok "The ext4 filesystem reports $grownFilesystemGiB GiB after filesystem metadata overhead."
 Ok "WSL is configured for a $Memory memory cap and a $DiskSize default VHD ceiling."

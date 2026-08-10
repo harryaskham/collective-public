@@ -46,7 +46,11 @@ The script:
   1536 GB default for future VHDs;
 - asks before stopping WSL, then runs the supported WSL 2.5+ command
   `wsl --manage NixOS --resize 1536GB`;
-- verifies the filesystem grew to the requested size.
+- verifies the root block device reached the exact requested ceiling and reports
+  the smaller usable ext4 filesystem size separately.
+
+For a `1536GB` block device, `df -h` commonly reports about `1510.8G`; the
+difference is normal ext4 metadata overhead, not missing capacity.
 
 This is an in-place expansion. It never calls `wsl --unregister`, imports or
 recreates the distro, requests a shrink, or replaces the VHD. The 1536 GB
