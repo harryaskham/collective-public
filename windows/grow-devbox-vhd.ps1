@@ -137,27 +137,29 @@ function Get-DistroStorageInfo {
   # The VHD/block device reaches the exact requested ceiling, but `df` reports
   # less because ext4 reserves space for metadata. Probe both so grow/shrink
   # decisions use the exact device size while messages show usable filesystem
-  # capacity. NixOS-WSL provides findmnt/lsblk/df through util-linux/coreutils.
-  $probe = 'root_device=$(findmnt -n -o SOURCE /) && device_bytes=$(lsblk -b -n -o SIZE "$root_device" | head -n 1) && filesystem_bytes=$(df --block-size=1 --output=size / | tail -n 1 | tr -d "[:space:]") && printf "%s\n%s\n" "$device_bytes" "$filesystem_bytes"'
+  # capacity. `findmnt -v` omits source suffixes such as /dev/sdc[/]; strip one
+  # explicitly as well for older util-linux versions.
+  $probe = 'root_device=$(findmnt -vno SOURCE -T / 2>/dev/null); if [ -z "$root_device" ]; then root_device=$(findmnt -n -o SOURCE / 2>/dev/null); fi; root_device=${root_device%%\[*}; device_bytes=$(lsblk -b -n -o SIZE "$root_device" 2>/dev/null | head -n 1 | tr -d "[:space:]"); filesystem_bytes=$(df --block-size=1 --output=size / 2>/dev/null | tail -n 1 | tr -d "[:space:]"); printf "device=%s filesystem=%s source=%s\n" "$device_bytes" "$filesystem_bytes" "$root_device"'
   $output = @(& wsl.exe -d $Name -u root -- sh -c $probe 2>$null)
   if ($LASTEXITCODE -ne 0) {
     Die "Could not read the '$Name' root block-device and filesystem sizes; refusing to resize without the grow-only safety check."
   }
 
-  $sizes = New-Object System.Collections.Generic.List[UInt64]
-  foreach ($line in $output) {
-    [UInt64]$candidate = 0
-    if ([UInt64]::TryParse($line.Trim(), [ref]$candidate)) {
-      [void]$sizes.Add($candidate)
-    }
-  }
-  if ($sizes.Count -lt 2 -or $sizes[0] -eq 0 -or $sizes[1] -eq 0) {
-    Die "Could not parse the '$Name' root block-device and filesystem sizes; refusing to resize without the grow-only safety check."
+  # Windows PowerShell 5.1 can expose redirected wsl.exe output with embedded
+  # NULs. Parse labels from the joined, cleaned output instead of relying on
+  # native line splitting or output encoding.
+  $probeText = (($output -join " ") -replace "`0", "").Trim()
+  $sizeMatch = [Regex]::Match($probeText, 'device=(?<device>\d+)\s+filesystem=(?<filesystem>\d+)')
+  if (-not $sizeMatch.Success) {
+    $diagnostic = ($probeText -replace '[\r\n]+', ' ').Trim()
+    if (-not $diagnostic) { $diagnostic = "(empty)" }
+    if ($diagnostic.Length -gt 300) { $diagnostic = $diagnostic.Substring(0, 300) + "..." }
+    Die "Could not parse the '$Name' root block-device and filesystem sizes; refusing to resize without the grow-only safety check. Probe output: $diagnostic"
   }
 
   return [PSCustomObject]@{
-    DeviceBytes = $sizes[0]
-    FilesystemBytes = $sizes[1]
+    DeviceBytes = [UInt64]$sizeMatch.Groups["device"].Value
+    FilesystemBytes = [UInt64]$sizeMatch.Groups["filesystem"].Value
   }
 }
 
