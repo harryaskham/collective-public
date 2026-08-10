@@ -41,11 +41,13 @@ irm $u -OutFile $p
 The script:
 
 - verifies that the named distro exists and is WSL2;
-- reads the current root filesystem size and refuses any target below it;
+- starts the distro briefly to read its current root block-device/filesystem
+  sizes and refuses any target below the block-device size;
 - preserves unrelated `.wslconfig` content while setting 48 GB RAM and the
   1536 GB default for future VHDs;
-- asks before stopping WSL, then runs the supported WSL 2.5+ command
-  `wsl --manage NixOS --resize 1536GB`;
+- asks for confirmation, explicitly terminates the probed distro, shuts down
+  WSL, and requires it to remain stopped before running the supported WSL 2.5+
+  command `wsl --manage NixOS --resize 1536GB`;
 - verifies the root block device reached the exact requested ceiling and reports
   the smaller usable ext4 filesystem size separately.
 

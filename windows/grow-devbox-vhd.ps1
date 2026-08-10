@@ -174,6 +174,62 @@ function Get-DistroStorageInfo {
   }
 }
 
+function Get-RunningDistroNames {
+  $output = @(& wsl.exe --list --running --quiet)
+  $exitCode = $LASTEXITCODE
+  if ($exitCode -ne 0) {
+    Die "Could not list running WSL distributions (exit $exitCode); refusing to assume the target is stopped."
+  }
+  return @(($output -replace "`0", "") | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+
+function Wait-DistroStopped {
+  param(
+    [string]$Name,
+    [int]$TimeoutSeconds = 45,
+    [int]$StableSeconds = 3
+  )
+
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $stoppedSince = $null
+  while ((Get-Date) -lt $deadline) {
+    $runningDistros = @(Get-RunningDistroNames)
+    if ($runningDistros -notcontains $Name) {
+      if ($null -eq $stoppedSince) { $stoppedSince = Get-Date }
+      if (((Get-Date) - $stoppedSince).TotalSeconds -ge $StableSeconds) { return $true }
+    } else {
+      # A background task restarted the distro; require a new uninterrupted
+      # stopped interval before allowing the VHD operation.
+      $stoppedSince = $null
+    }
+    Start-Sleep -Milliseconds 500
+  }
+  return $false
+}
+
+function Stop-WslForResize {
+  param([string]$Name)
+
+  # The read-only safety probe starts the distro. Explicitly terminate that
+  # distro, shut down the WSL VM, then wait for a stable stopped interval so the
+  # VHD handle is released before `wsl --manage` runs.
+  Info "Terminating '$Name' and stopping WSL before the in-place expansion..."
+  & wsl.exe --terminate $Name
+  $terminateExitCode = $LASTEXITCODE
+  if ($terminateExitCode -ne 0) {
+    Warn "Targeted terminate returned exit $terminateExitCode; continuing with a full WSL shutdown."
+  }
+
+  & wsl.exe --shutdown
+  if ($LASTEXITCODE -ne 0) { Die "'wsl --shutdown' failed; the resize was not attempted." }
+
+  Info "Waiting for '$Name' to remain stopped and release its VHD..."
+  if (-not (Wait-DistroStopped -Name $Name)) {
+    Die "'$Name' did not remain stopped for 3 seconds within the 45-second timeout. A background task may be restarting it; the resize was not attempted."
+  }
+  Ok "'$Name' is stopped and its VHD is ready for an offline grow."
+}
+
 if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
   Die "wsl.exe is not available. Run this script in Windows PowerShell on the devbox host."
 }
@@ -237,14 +293,25 @@ if (-not $Force) {
   if ($answer -notmatch '^[Yy]') { Die "Aborted before shutdown; no disk changes were made." }
 }
 
-Info "Stopping WSL before the in-place expansion..."
-& wsl.exe --shutdown
-if ($LASTEXITCODE -ne 0) { Die "'wsl --shutdown' failed; the resize was not attempted." }
+Stop-WslForResize -Name $Distro
 
 Info "Growing '$Distro' to $DiskSize with the supported WSL VHD/filesystem resizer..."
 & wsl.exe --manage $Distro --resize $DiskSize
-if ($LASTEXITCODE -ne 0) {
-  Die "WSL could not grow '$Distro'. Ensure WSL 2.5+ is installed with 'wsl --update'. The script did not unregister, import, recreate, or request a shrink."
+$resizeExitCode = $LASTEXITCODE
+if ($resizeExitCode -ne 0) {
+  # A scheduled task can restart WSL in the small gap between the stopped-state
+  # barrier and `--manage`. Retry only when WSL confirms the target is running;
+  # other failures remain fail-closed and are never retried blindly.
+  $runningAfterFailure = @(Get-RunningDistroNames)
+  if ($runningAfterFailure -contains $Distro) {
+    Warn "'$Distro' restarted before the resize command; stopping it and retrying once."
+    Stop-WslForResize -Name $Distro
+    & wsl.exe --manage $Distro --resize $DiskSize
+    $resizeExitCode = $LASTEXITCODE
+  }
+}
+if ($resizeExitCode -ne 0) {
+  Die "WSL could not grow '$Distro' (exit $resizeExitCode). Ensure WSL 2.5+ is installed and no background task is restarting the distro. The script did not unregister, import, recreate, or request a shrink."
 }
 
 $grownStorage = Get-DistroStorageInfo $Distro
