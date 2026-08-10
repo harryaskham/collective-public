@@ -200,7 +200,10 @@ if ($currentBytes -ge $alreadySizedThreshold) {
 
 if (-not $SkipWSLUpdate) {
   Info "Updating WSL so the supported 'wsl --manage --resize' command is available (requires WSL 2.5+)..."
-  & wsl.exe --update 2>&1 | Out-Host
+  # Keep native stderr separate. Windows PowerShell 5.1 turns redirected native
+  # stderr (2>&1) into ErrorRecord objects, and ErrorActionPreference=Stop would
+  # abort on e2fsck's informational version banner despite a successful resize.
+  & wsl.exe --update
   if ($LASTEXITCODE -ne 0) {
     Warn "'wsl --update' failed; continuing in case WSL 2.5+ is already installed."
   }
@@ -215,11 +218,11 @@ if (-not $Force) {
 }
 
 Info "Stopping WSL before the in-place expansion..."
-& wsl.exe --shutdown 2>&1 | Out-Host
+& wsl.exe --shutdown
 if ($LASTEXITCODE -ne 0) { Die "'wsl --shutdown' failed; the resize was not attempted." }
 
 Info "Growing '$Distro' to $DiskSize with the supported WSL VHD/filesystem resizer..."
-& wsl.exe --manage $Distro --resize $DiskSize 2>&1 | Out-Host
+& wsl.exe --manage $Distro --resize $DiskSize
 if ($LASTEXITCODE -ne 0) {
   Die "WSL could not grow '$Distro'. Ensure WSL 2.5+ is installed with 'wsl --update'. The script did not unregister, import, recreate, or request a shrink."
 }
