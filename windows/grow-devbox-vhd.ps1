@@ -134,32 +134,43 @@ function Convert-SizeToBytes {
 function Get-DistroStorageInfo {
   param([string]$Name)
 
-  # The VHD/block device reaches the exact requested ceiling, but `df` reports
-  # less because ext4 reserves space for metadata. Probe both so grow/shrink
-  # decisions use the exact device size while messages show usable filesystem
-  # capacity. `findmnt -v` omits source suffixes such as /dev/sdc[/]; strip one
-  # explicitly as well for older util-linux versions.
-  $probe = 'PATH=/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/nix/var/nix/profiles/per-user/root/profile/bin:/etc/profiles/per-user/root/bin:$PATH; export PATH; findmnt_path=$(command -v findmnt 2>/dev/null); lsblk_path=$(command -v lsblk 2>/dev/null); df_path=$(command -v df 2>/dev/null); root_device=$(findmnt -vno SOURCE -T / 2>/dev/null); if [ -z "$root_device" ]; then root_device=$(findmnt -n -o SOURCE / 2>/dev/null); fi; root_device=${root_device%%\[*}; device_bytes=$(lsblk -b -n -o SIZE "$root_device" 2>/dev/null | head -n 1 | tr -d "[:space:]"); filesystem_bytes=$(df --block-size=1 --output=size / 2>/dev/null | tail -n 1 | tr -d "[:space:]"); printf "device=%s filesystem=%s source=%s findmnt=%s lsblk=%s df=%s\n" "$device_bytes" "$filesystem_bytes" "$root_device" "${findmnt_path:-missing}" "${lsblk_path:-missing}" "${df_path:-missing}"'
-  $output = @(& wsl.exe -d $Name -u root -- sh -c $probe 2>$null)
-  if ($LASTEXITCODE -ne 0) {
-    Die "Could not read the '$Name' root block-device and filesystem sizes; refusing to resize without the grow-only safety check."
+  # Avoid `sh -c`: PowerShell 7's native argument handling can retokenize long
+  # shell snippets differently across Windows builds. Call stable NixOS profile
+  # paths directly, with no login-shell PATH or nested quoting dependency.
+  $findmntPath = "/run/current-system/sw/bin/findmnt"
+  $lsblkPath = "/run/current-system/sw/bin/lsblk"
+  $dfPath = "/run/current-system/sw/bin/df"
+
+  $sourceOutput = @(& wsl.exe -d $Name -u root -- $findmntPath -n -o SOURCE /)
+  $sourceExitCode = $LASTEXITCODE
+  $sourceText = (($sourceOutput -join " ") -replace "`0", "").Trim()
+  $rootDevice = ($sourceText -replace '\[.*$', '').Trim()
+  if ($sourceExitCode -ne 0 -or $rootDevice -notmatch '^/dev/\S+$') {
+    if (-not $sourceText) { $sourceText = "(empty)" }
+    Die "Could not identify the '$Name' root block device with $findmntPath (exit $sourceExitCode; output: $sourceText); refusing to resize without the grow-only safety check."
   }
 
-  # Windows PowerShell 5.1 can expose redirected wsl.exe output with embedded
-  # NULs. Parse labels from the joined, cleaned output instead of relying on
-  # native line splitting or output encoding.
-  $probeText = (($output -join " ") -replace "`0", "").Trim()
-  $sizeMatch = [Regex]::Match($probeText, 'device=(?<device>\d+)\s+filesystem=(?<filesystem>\d+)')
-  if (-not $sizeMatch.Success) {
-    $diagnostic = ($probeText -replace '[\r\n]+', ' ').Trim()
-    if (-not $diagnostic) { $diagnostic = "(empty)" }
-    if ($diagnostic.Length -gt 300) { $diagnostic = $diagnostic.Substring(0, 300) + "..." }
-    Die "Could not parse the '$Name' root block-device and filesystem sizes; refusing to resize without the grow-only safety check. Probe output: $diagnostic"
+  $deviceOutput = @(& wsl.exe -d $Name -u root -- $lsblkPath -b -n -o SIZE $rootDevice)
+  $deviceExitCode = $LASTEXITCODE
+  $deviceText = (($deviceOutput -join "`n") -replace "`0", "").Trim()
+  $deviceMatch = [Regex]::Match($deviceText, '(?m)^\s*(?<bytes>\d+)\s*$')
+  if ($deviceExitCode -ne 0 -or -not $deviceMatch.Success) {
+    if (-not $deviceText) { $deviceText = "(empty)" }
+    Die "Could not read the '$Name' root block-device size with $lsblkPath (exit $deviceExitCode; source: $rootDevice; output: $deviceText); refusing to resize without the grow-only safety check."
+  }
+
+  $filesystemOutput = @(& wsl.exe -d $Name -u root -- $dfPath --block-size=1 --output=size /)
+  $filesystemExitCode = $LASTEXITCODE
+  $filesystemText = (($filesystemOutput -join "`n") -replace "`0", "").Trim()
+  $filesystemMatch = [Regex]::Match($filesystemText, '(?m)^\s*(?<bytes>\d+)\s*$')
+  if ($filesystemExitCode -ne 0 -or -not $filesystemMatch.Success) {
+    if (-not $filesystemText) { $filesystemText = "(empty)" }
+    Die "Could not read the '$Name' root filesystem size with $dfPath (exit $filesystemExitCode; output: $filesystemText); refusing to resize without the grow-only safety check."
   }
 
   return [PSCustomObject]@{
-    DeviceBytes = [UInt64]$sizeMatch.Groups["device"].Value
-    FilesystemBytes = [UInt64]$sizeMatch.Groups["filesystem"].Value
+    DeviceBytes = [UInt64]$deviceMatch.Groups["bytes"].Value
+    FilesystemBytes = [UInt64]$filesystemMatch.Groups["bytes"].Value
   }
 }
 
