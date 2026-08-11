@@ -20,8 +20,9 @@ check() {
   fi
 }
 
-cat > "$TMP/supervisorctl" <<'EOF'
-#!/usr/bin/env bash
+BASH_BIN=$(command -v bash)
+printf '#!%s\n' "$BASH_BIN" > "$TMP/supervisorctl"
+cat >> "$TMP/supervisorctl" <<'EOF'
 case "${CANARY_SCENARIO:?}" in
   healthy) printf '%s: started\n' "$2"; exit 0 ;;
   missing) printf '%s: ERROR (no such file)\n' "$2"; exit 1 ;;
@@ -33,12 +34,14 @@ chmod +x "$TMP/supervisorctl"
 
 probe_rc() {
   local scenario=$1
+  export CANARY_SCENARIO=$scenario
   set +e
-  CANARY_SCENARIO=$scenario SUPERVISORD_CANARY_TIMEOUT_SECONDS=1 \
+  SUPERVISORD_CANARY_TIMEOUT_SECONDS=1 \
     supervisord_exec_canary_probe "$TMP/supervisorctl" exec-canary "$(command -v timeout)" \
     >/dev/null 2>"$TMP/$scenario.err"
   local rc=$?
   set -e
+  unset CANARY_SCENARIO
   printf '%s\n' "$rc"
 }
 
