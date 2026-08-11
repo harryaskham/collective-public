@@ -9,6 +9,9 @@ let
   # leaving every other package dependency unchanged.
   testPkgs = pkgs // {
     writeText = name: text: builtins.toFile name text;
+    # Keep rendered config context-free so builtins.toFile can capture it; the
+    # test only inspects the command string and never executes this fake path.
+    coreutils = builtins.toFile "test-coreutils" "";
   };
 
   evalHome = usage:
@@ -76,6 +79,12 @@ let
       };
     };
   });
+  systemReservedCollision = evalSystem ({ ... }: {
+    supervisord = {
+      enable = true;
+      programs.collective-exec-canary.command = "/bin/false";
+    };
+  });
 
   renderedConfig = evaluated: let
     contextPaths = builtins.attrNames (builtins.getContext evaluated.build.activationAfter.supervisord);
@@ -93,5 +102,16 @@ in {
       expect.eq (lib.hasInfix "stopwaitsecs=" (renderedConfig systemDefault)) false;
     rendersExplicitValue =
       expect.eq (lib.hasInfix "stopwaitsecs=45" (renderedConfig systemExplicit)) true;
+    rendersExecCanary =
+      expect.eq (lib.hasInfix "[program:collective-exec-canary]" (renderedConfig systemDefault)) true;
+    execCanaryIsOnDemand =
+      expect.eq (lib.hasInfix "[program:collective-exec-canary]\ncommand=" (renderedConfig systemDefault)
+        && lib.hasInfix "autostart=false\nautorestart=false\nstartsecs=0" (renderedConfig systemDefault)) true;
+    reservesExecCanaryName = expect.eq
+      (lib.any (assertion:
+        !assertion.assertion
+        && lib.hasInfix "reserved for the proot exec canary" assertion.message
+      ) systemReservedCollision.assertions)
+      true;
   };
 }

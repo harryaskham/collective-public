@@ -17,6 +17,8 @@ with lib; let
   homeProgramNames = builtins.attrNames homePrograms;
   duplicateProgramNames = lib.intersectLists (builtins.attrNames cfg.programs) homeProgramNames;
   allPrograms = cfg.programs // homePrograms;
+  execCanaryName = "collective-exec-canary";
+  execCanaryLib = builtins.readFile ./supervisord-exec-canary.sh;
 
   boolToConf = b:
     if b
@@ -48,6 +50,20 @@ with lib; let
 
     [rpcinterface:supervisor]
     supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+    # On-demand proof that the live proot session can still exec a new child.
+    # Never autostarts; supervisord-start-inner invokes it only when an existing
+    # current-generation supervisor would otherwise be accepted as healthy.
+    [program:${execCanaryName}]
+    command=${pkgs.coreutils}/bin/true
+    directory=/
+    autostart=false
+    autorestart=false
+    startsecs=0
+    startretries=1
+    exitcodes=0
+    redirect_stderr=true
+    stdout_logfile=/dev/null
 
     ${concatStringsSep "\n" (mapAttrsToList (
         name: prog: let
@@ -153,22 +169,49 @@ with lib; let
 
     ${sdRunningPidFn}
     ${sdRunningConfFn}
+    ${execCanaryLib}
+
+    __sd_replace_running() {
+      _replace_pid="$1"
+      _replace_reason="$2"
+      echo "[supervisord-start-inner] $_replace_reason; replacing pid $_replace_pid" >&2
+      ${supervisorctl-wrapped}/bin/supervisorctl shutdown 2>/dev/null || true
+      ${pkgs.coreutils}/bin/sleep 1
+      kill -9 "$_replace_pid" 2>/dev/null || true
+      rm -f "${pidFile}"
+    }
 
     _pid=$(__sd_running_pid)
     if [ -n "$_pid" ]; then
       _conf=$(__sd_running_conf "$_pid")
       if [ "$_conf" = "$CONFIGFILE" ]; then
-        # Current-generation instance already running: nothing to do.
-        exit 0
-      fi
-      if [ -n "$_conf" ]; then
+        # The config matches, but a stale boot-proot can keep supervisord/RPC
+        # alive while every new execve fails ENOENT. Probe a known-good store
+        # executable. Only the exact on-device ENOENT signal permits restart;
+        # timeout or any other supervisor response is conservative/no-churn.
+        _canary_rc=0
+        SUPERVISORD_CANARY_TIMEOUT_SECONDS=3 \
+          supervisord_exec_canary_probe \
+            ${supervisorctl-wrapped}/bin/supervisorctl \
+            ${execCanaryName} \
+            ${pkgs.coreutils}/bin/timeout \
+          || _canary_rc=$?
+        case "$_canary_rc" in
+          0)
+            exit 0
+            ;;
+          10)
+            __sd_replace_running "$_pid" "current config '$CONFIGFILE' failed exec canary with ENOENT"
+            ;;
+          *)
+            echo "[supervisord-start-inner] exec canary inconclusive (rc=$_canary_rc); preserving current instance" >&2
+            exit 0
+            ;;
+        esac
+      elif [ -n "$_conf" ]; then
         # Confirmed mismatch: an old-generation / wrong-config supervisord is
         # alive. Replace it so we never leave a process pinned to a GC-able gen.
-        echo "[supervisord-start-inner] running supervisord (pid $_pid) serves '$_conf' != current '$CONFIGFILE'; replacing" >&2
-        ${supervisorctl-wrapped}/bin/supervisorctl shutdown 2>/dev/null || true
-        ${pkgs.coreutils}/bin/sleep 1
-        kill -9 "$_pid" 2>/dev/null || true
-        rm -f "${pidFile}"
+        __sd_replace_running "$_pid" "running config '$_conf' != current '$CONFIGFILE'"
       else
         # Could not read the running instance's config (e.g. unreadable cmdline
         # under proot). Stay conservative and do not churn a possibly-healthy
@@ -228,6 +271,10 @@ in {
             nix-on-droid system config and home-manager config:
             ${concatStringsSep ", " duplicateProgramNames}
           '';
+        }
+        {
+          assertion = !(allPrograms ? ${execCanaryName});
+          message = "supervisord program name '${execCanaryName}' is reserved for the proot exec canary";
         }
       ];
 
