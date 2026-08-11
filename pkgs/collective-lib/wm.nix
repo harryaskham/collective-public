@@ -8,6 +8,28 @@ with collective-lib.clib;
 let
   types = lib.types;
   mkOption = lib.mkOption;
+  darwinOpenTerminal = lib.concatStringsSep " " [
+    ''display="$(yabai -m query --displays --display 2>/dev/null | jq -r '.index // empty')";''
+    ''rule_label="ghostty-alt-enter-$$";''
+    ''rule_added=0;''
+    ''if [ -n "$display" ] && yabai -m rule --add --one-shot label="$rule_label" app="^Ghostty$" display="^$display"; then rule_added=1; fi;''
+    ''if ! osascript''
+    ''-e 'tell application "Ghostty"' ''
+    ''-e 'set cfg to new surface configuration' ''
+    ''-e 'if (count of windows) > 0 then' ''
+    ''-e 'try' ''
+    ''-e 'set sourceTerminal to focused terminal of selected tab of front window' ''
+    ''-e 'set sourceDirectory to working directory of sourceTerminal' ''
+    ''-e 'if sourceDirectory is not missing value and sourceDirectory is not "" then set initial working directory of cfg to sourceDirectory' ''
+    ''-e 'end try' ''
+    ''-e 'end if' ''
+    ''-e 'new window with configuration cfg' ''
+    ''-e 'end tell' ''
+    ''>/dev/null 2>&1; then''
+    ''if [ "$rule_added" -eq 1 ]; then yabai -m rule --remove "$rule_label" >/dev/null 2>&1 || true; fi;''
+    ''exit 1;''
+    ''fi''
+  ];
 in rec {
   typeWMOption = boundCommand types.anything;
   typeWMOptions = types.listOf typeWMOption;
@@ -286,7 +308,7 @@ in rec {
           moveWindowDown = runs "yabai -m window --swap south";
           moveWindowLeft = runs "yabai -m window --swap west";
           moveWindowRight = runs "yabai -m window --swap east";
-          openTerminal = runs ''osascript -e 'tell application "Ghostty" to new window' '';
+          openTerminal = runs darwinOpenTerminal;
           openLauncher = runs ''echo unimplemented'';
           reloadConfig = runs "yabai --restart-service; skhd --reload";
           floatCurrent = runs "yabai -m window --toggle float; yabai -m window --grid 4:4:1:1:2:2togglefloating";
