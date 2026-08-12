@@ -122,6 +122,40 @@ log and the effective `DeviceLock/MaxInactivityTimeDeviceLock` Intune policy;
 an enforced central compliance policy may need to be removed in Intune rather
 than only converged locally.
 
+### Automatic WSL recovery after OOM
+
+A boot/logon start is not sufficient when WSL exits later under memory pressure.
+Headless convergence therefore installs `DevboxWslWatchdog` as a repeating,
+least-privilege Windows task owned by the interactive Windows user. This is
+intentionally **not** a SYSTEM task: WSL distro registrations are per-user, so
+SYSTEM generally cannot see or start the user's `NixOS` distro.
+
+Every minute the task runs a bounded `NixOS` probe. The probe itself starts a
+stopped distro. After two consecutive failures it treats the VM as wedged,
+runs `wsl --terminate NixOS`, and makes one clean relaunch attempt; Task
+Scheduler retries on the next interval if that attempt fails. The probe has a
+60-second timeout and Task Scheduler prevents overlapping checks.
+
+The watchdog is part of ordinary `cltv switch`/bootstrap convergence and needs
+no UAC. To spot-fix an existing devbox:
+
+```bash
+cd ~/collective
+git pull --ff-only
+cltv switch
+```
+
+Inspect it from Windows with `Get-ScheduledTask DevboxWslWatchdog`. Recovery
+activity is logged at `%LOCALAPPDATA%\devbox\wsl-watchdog.log`. Intentional
+offline operations create `%LOCALAPPDATA%\devbox\wsl-watchdog.pause`; stale
+pause files expire after two hours. `grow-devbox-vhd.ps1` manages that marker
+automatically so the watchdog cannot race an offline VHD resize.
+
+The same headless convergence sets Windows Terminal's `defaultProfile` to the
+WSL-generated `NixOS` profile. The Terminal advanced **profile termination
+behavior** setting only decides whether a tab closes after `wsl.exe` exits; it
+does not restart WSL.
+
 ## Waking the Cloud PC (Windows 365)
 
 These devboxes are Windows 365 Cloud PCs. The WSL2 VM can be killed by host

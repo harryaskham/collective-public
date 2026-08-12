@@ -19,6 +19,7 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$WatchdogPausePath = $null
 
 function Info($m) { Write-Host "[wsl-grow] $m" -ForegroundColor Cyan }
 function Ok($m)   { Write-Host "[wsl-grow] $m" -ForegroundColor Green }
@@ -26,6 +27,9 @@ function Warn($m) { Write-Host "[wsl-grow] $m" -ForegroundColor Yellow }
 function Die($m)  { throw "[wsl-grow] ERROR: $m" }
 
 trap {
+  if ($WatchdogPausePath) {
+    Remove-Item -LiteralPath $WatchdogPausePath -Force -ErrorAction SilentlyContinue
+  }
   Write-Host ""
   Write-Host $_.Exception.Message -ForegroundColor Red
   exit 1
@@ -293,6 +297,14 @@ if (-not $Force) {
   if ($answer -notmatch '^[Yy]') { Die "Aborted before shutdown; no disk changes were made." }
 }
 
+# The Windows-side OOM watchdog normally restarts a stopped distro within a
+# minute. Pause it while the VHD must remain offline; the watchdog also expires
+# stale markers automatically if this process is interrupted before cleanup.
+$WatchdogPausePath = Join-Path $env:LOCALAPPDATA "devbox\wsl-watchdog.pause"
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $WatchdogPausePath) | Out-Null
+Set-Content -LiteralPath $WatchdogPausePath -Value "VHD resize started $(Get-Date -Format o)" -Encoding ASCII
+Info "Paused the WSL watchdog for the offline resize."
+
 Stop-WslForResize -Name $Distro
 
 Info "Growing '$Distro' to $DiskSize with the supported WSL VHD/filesystem resizer..."
@@ -322,6 +334,10 @@ $grownFilesystemGiB = [Math]::Round($grownFilesystemBytes / 1GB, 1)
 if ($grownDeviceBytes -lt $targetBytes) {
   Die "WSL reported success, but the root block device is only $grownDeviceGiB GiB; expected $targetGiB GiB."
 }
+
+Remove-Item -LiteralPath $WatchdogPausePath -Force -ErrorAction SilentlyContinue
+$WatchdogPausePath = $null
+Info "Resumed the WSL watchdog."
 
 Ok "'$Distro' block device was grown in place from $currentDeviceGiB GiB to $grownDeviceGiB GiB."
 Ok "The ext4 filesystem reports $grownFilesystemGiB GiB after filesystem metadata overhead."

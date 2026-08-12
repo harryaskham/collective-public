@@ -305,8 +305,17 @@ if ($wslConfigChanged) {
 $targetAlreadyExists = $existingBefore -match [Regex]::Escape($Distro)
 if ($wslConfigChanged -or -not $targetAlreadyExists) {
   Info "Stopping WSL so the capacity settings apply before distro startup/import..."
-  wsl.exe --shutdown 2>&1 | Out-Host
-  if ($LASTEXITCODE -ne 0) { Die "Could not stop WSL after writing $wslConfigPath." }
+  # An existing installation may already have the periodic OOM watchdog. Pause
+  # it for the deliberate shutdown so it cannot race the .wslconfig boundary.
+  $watchdogPausePath = Join-Path $env:LOCALAPPDATA "devbox\wsl-watchdog.pause"
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $watchdogPausePath) | Out-Null
+  Set-Content -LiteralPath $watchdogPausePath -Value "bootstrap shutdown started $(Get-Date -Format o)" -Encoding ASCII
+  try {
+    wsl.exe --shutdown 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) { Die "Could not stop WSL after writing $wslConfigPath." }
+  } finally {
+    Remove-Item -LiteralPath $watchdogPausePath -Force -ErrorAction SilentlyContinue
+  }
 }
 if ($targetAlreadyExists) {
   Info "Existing distro '$Distro' retained. defaultVhdSize does not resize existing VHDs; use grow-devbox-vhd.ps1 when an in-place grow is needed."
