@@ -184,10 +184,13 @@ these first:
    must match the private key that will be supplied to bootstrap. If reusing
    another machine's key (for example `ms-mac`), copy that machine's public SSH
    and precomputed age values; if reusing the shared devbox key, copy `ms-dev`.
-4. Add `keys/nix/attic/caches/ms-dev-N` in
+4. Add `keys/nix/attic/caches/ms-dev-N/server_env` in
    `standalone/secrets/secrets.yaml`. Because the devbox profile enables
-   `atticd`, `server_env` is a hard evaluation/build dependency; add the
-   corresponding `push` and `public` values as well for cache administration.
+   `atticd`, `server_env` is a hard evaluation/build dependency. Once the node
+   is switched and reachable, follow
+   [`docs/runbooks/attic-cache-onboarding.md`](../../docs/runbooks/attic-cache-onboarding.md)
+   to create its uniquely suffixed cache, store the generated `push` and
+   `public` values, and update every cache consumer.
 5. Ensure the reused/new age recipient can decrypt `secrets.yaml`. Reusing an
    already-enrolled key such as `ms-mac` needs no new recipient; a genuinely new
    key requires re-keying the sops file.
