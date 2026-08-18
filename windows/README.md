@@ -96,9 +96,9 @@ else is fully automated.
 Sleep/hibernate and workstation locking are separate Windows policy paths. The
 current convergence handles both:
 
-- the interactive user gets a Startup keepalive that holds
-  `SetThreadExecutionState` and emits real input every ~45 seconds (the older
-  cursor-position change did not update Windows' idle clock);
+- the interactive user gets a Startup helper that holds
+  `SetThreadExecutionState` without injecting keyboard or mouse input into the
+  foreground application;
 - user screensaver and lock policy hives are disabled;
 - `devbox-windows-admin` disables machine inactivity, lock-on-wake, lock-screen,
   and RDS idle/disconnected-session limits;
@@ -116,11 +116,13 @@ cltv switch
 devbox-windows-admin   # approve the single UAC prompt
 ```
 
-The interactive keepalive writes
-`%LOCALAPPDATA%\devbox\keepactive.log`. If the machine still locks, inspect that
-log and the effective `DeviceLock/MaxInactivityTimeDeviceLock` Intune policy;
-an enforced central compliance policy may need to be removed in Intune rather
-than only converged locally.
+The execution-state helper writes
+`%LOCALAPPDATA%\devbox\keepactive.log`. It deliberately does not advance
+`GetLastInputInfo`: synthetic F15/mouse events previously leaked into active
+applications and were removed. If the machine still locks, inspect the effective
+`DeviceLock/MaxInactivityTimeDeviceLock` Intune policy; an enforced central
+compliance policy may need to be removed in Intune rather than only converged
+locally.
 
 ### Automatic WSL recovery after OOM
 
@@ -136,17 +138,27 @@ runs `wsl --terminate NixOS`, and makes one clean relaunch attempt; Task
 Scheduler retries on the next interval if that attempt fails. The probe has a
 60-second timeout and Task Scheduler prevents overlapping checks.
 
-The watchdog is part of ordinary `cltv switch`/bootstrap convergence and needs
-no UAC. To spot-fix an existing devbox:
+The interactive task cannot run during the gap after a Windows Update reboot
+and before the user signs back in. `devbox-windows-admin` additionally installs
+`DevboxWslBootRecovery`: an at-startup S4U task which runs as the same distro-
+owning user without storing a password or requiring an interactive logon. This
+closes the reboot gap while preserving the per-user WSL registration context.
+
+The minute watchdog is part of ordinary `cltv switch`/bootstrap convergence and
+needs no UAC. The reboot-gap task needs the same one-time elevation as the power
+policy. To install both halves on an existing devbox:
 
 ```bash
 cd ~/collective
 git pull --ff-only
 cltv switch
+devbox-windows-admin   # one interactive UAC consent
 ```
 
-Inspect it from Windows with `Get-ScheduledTask DevboxWslWatchdog`. Recovery
-activity is logged at `%LOCALAPPDATA%\devbox\wsl-watchdog.log`. Intentional
+Inspect both tasks from Windows with
+`Get-ScheduledTask DevboxWslWatchdog,DevboxWslBootRecovery`. Recovery activity
+is logged at `%LOCALAPPDATA%\devbox\wsl-watchdog.log`; the boot task logs its
+successful probe too, making post-reboot verification explicit. Intentional
 offline operations create `%LOCALAPPDATA%\devbox\wsl-watchdog.pause`; stale
 pause files expire after two hours. `grow-devbox-vhd.ps1` manages that marker
 automatically so the watchdog cannot race an offline VHD resize.
