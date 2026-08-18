@@ -15,8 +15,13 @@ in rec {
     inherit summary;
     type = bashScript;
     usage = ''
-      $(subcommands-of --prefix ${name} --long --delimiter "-" \
-        | xargs -I{} bash -c "{} --print-summary" \
+      $(while IFS= read -r command; do
+          # PATH may contain unrelated binaries sharing this command's prefix
+          # (for example `nod-install`). Only scripts built by this framework
+          # implement the private --print-summary protocol.
+          summary=$("$command" --print-summary 2>/dev/null) || continue
+          printf '%s\n' "$summary"
+        done < <(subcommands-of --prefix ${name} --long --delimiter "-") \
         | indent -n2 \
         | sed -e 's/${name}-//')
     '';
@@ -43,7 +48,8 @@ in rec {
       fi
 
       CMD="${name}-''${COMMAND}"
-      if which "''${CMD}" 1>/dev/null 2>/dev/null; then
+      if which "''${CMD}" 1>/dev/null 2>/dev/null \
+          && "''${CMD}" --print-summary 1>/dev/null 2>/dev/null; then
         ${log.debug ''Command found as: ''${CMD}''}
         if $("''${CMD}" --should-source-subcommand); then
           ${log.debug ''Sourcing command: ''${COMMAND}''}
