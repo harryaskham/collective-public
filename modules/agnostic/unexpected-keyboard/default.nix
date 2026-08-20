@@ -272,6 +272,14 @@ let
               "center_horizontal"
               "center_vertical"
               "center_both"
+              "wm_open_terminal"
+              "wm_hide_all"
+              "wm_minimize_all"
+              "wm_restore_all"
+              "wm_focus_left"
+              "wm_focus_right"
+              "wm_focus_up"
+              "wm_focus_down"
             ];
             in if cfg.enableFork then xs else mapAttrs (_: _: "removed") xs;
         };

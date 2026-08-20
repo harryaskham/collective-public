@@ -359,11 +359,11 @@ in {
               c.x
         sw.bwd       se.fwd
       _
-                    ne.copy
+          "Hide" n.wm_hide_all  ne.copy
               c.c
-        sw.config  "⎙" macros.se.new_termux_terminal
+        sw.config  "⎙" se.wm_open_terminal
       _
-                  ne.paste
+          "Min" n.wm_minimize_all  ne.paste
               c.v
                       se.pastePlain
       _
@@ -371,7 +371,7 @@ in {
               c.b
         "←" macros.sw.prev_termux_terminal"→" macros.se.next_termux_terminal
       _
-                    ne."?"
+        "Rest" n.wm_restore_all  ne."?"
               c.n
         sw."/"      
       _
@@ -383,9 +383,11 @@ in {
               c."."
         sw.","
       _
+        "W←" nw.wm_focus_left  "W↑" ne.wm_focus_up
                   n.up
           w.left        e.right
                   s.down
+        "W↓" sw.wm_focus_down  "W→" se.wm_focus_right
       _
         "⤡" nw.floating_resize ne.action
                 c.enter
