@@ -280,6 +280,12 @@ let
               "wm_focus_right"
               "wm_focus_up"
               "wm_focus_down"
+              "wm_move_left"
+              "wm_move_right"
+              "wm_move_up"
+              "wm_move_down"
+              "wm_workspace_previous"
+              "wm_workspace_next"
             ];
             in if cfg.enableFork then xs else mapAttrs (_: _: "removed") xs;
         };

@@ -389,8 +389,11 @@ in {
                   s.down
         "W↓" sw.wm_focus_down  "W→" se.wm_focus_right
       _
-        "⤡" nw.floating_resize ne.action
-                c.enter
+        "⤡" nw.floating_resize  ne.action
+            "WS−" n.wm_workspace_previous
+        "M←" w.wm_move_left  c.enter  "M→" e.wm_move_right
+            "WS+" s.wm_workspace_next
+        "M↑" sw.wm_move_up  "M↓" se.wm_move_down
 
       K;
   }

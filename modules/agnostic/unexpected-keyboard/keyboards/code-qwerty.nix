@@ -138,8 +138,11 @@ with uklib;
                     s.down
           "W↓" sw.wm_focus_down  "W→" se.wm_focus_right
         _
-              "⎙" n.wm_open_terminal  ne.action
-                  c.enter
+          "M↑" nw.wm_move_up  ne.action
+              "⎙" n.wm_open_terminal
+          "M←" w.wm_move_left  c.enter  "M→" e.wm_move_right
+              "WS+" s.wm_workspace_next
+          "WS−" sw.wm_workspace_previous  "M↓" se.wm_move_down
 
         K;
     }
