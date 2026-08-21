@@ -2,8 +2,19 @@
 
 with typed;
 with uklib;
+with codes;
 
-{
+let
+  macros =
+    typed.recursiveMergeAttrsList
+      (mapAttrsToList mkCardinal
+        (with codes._; with kv; {
+          float_terminal = (m "⇡" [(k ctrl) (k alt) (k f)]);
+          tmux_zoom = (m "⛶" [(k ctrl) (k a) (k z)]);
+          tmux_descend = (m "↑" [(k ctrl) (k a) (k ctrl) (k t)]);
+          tmux_ascend = (m "↓" [(k ctrl) (k a) (k ctrl) (k g)]);
+        }));
+in {
   name = "Code QWERTY";
   bottomRow = false;
   rows = with codes; [
@@ -58,16 +69,17 @@ with uklib;
                   c.a
             sw."~"       "✲" se.ctrl
         _
-                
-                c.s
+          "⇠" w.wm_workspace_previous  c.s  "⇢" e.wm_workspace_next
                         "⌥" se.alt
         _
-
-                c.d
+          "↑" n.wm_move_up  "⛶" macros.ne.tmux_zoom
+          "←" w.wm_move_left  c.d  "→" e.wm_move_right
+          "↓" s.wm_move_down
                         "❖" se.meta
         _
-
-                c.f
+          "↑" n.wm_focus_up  "⇡" macros.ne.float_terminal
+          "←" w.wm_focus_left  c.f  "→" e.wm_focus_right
+          "↓" s.wm_focus_down
                         "▤" se.fn
 
         _
@@ -116,8 +128,9 @@ with uklib;
                 c.v
                         se.pastePlain
         _
-
+          "↑" macros.n.tmux_descend
                 c.b
+          "↓" macros.s.tmux_ascend
 
         _
           "Rest" n.wm_restore_all  ne."?"
@@ -132,17 +145,12 @@ with uklib;
                 c."."
           sw.","
         _
-          "W←" nw.wm_focus_left  "W↑" ne.wm_focus_up
                     n.up
             w.left        e.right
                     s.down
-          "W↓" sw.wm_focus_down  "W→" se.wm_focus_right
         _
-          "M↑" nw.wm_move_up  ne.action
-              "⎙" n.wm_open_terminal
-          "M←" w.wm_move_left  c.enter  "M→" e.wm_move_right
-              "WS+" s.wm_workspace_next
-          "WS−" sw.wm_workspace_previous  "M↓" se.wm_move_down
+              "⎙" n.wm_open_terminal  ne.action
+                  c.enter
 
         K;
     }

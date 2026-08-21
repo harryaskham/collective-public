@@ -34,7 +34,9 @@ let
           next_tmux_window = (m "▸" [(k ctrl) (k a) (k n)]);
           prev_tmux_window = (m "◂" [(k ctrl) (k a) (k p)]);
           float_terminal = (m "⇡" [(k ctrl) (k alt) (k f)]);
-          tmux_zoom = (m "⛶" [(k ctrl) (k a) (k f)]);
+          tmux_zoom = (m "⛶" [(k ctrl) (k a) (k z)]);
+          tmux_descend = (m "↑" [(k ctrl) (k a) (k ctrl) (k t)]);
+          tmux_ascend = (m "↓" [(k ctrl) (k a) (k ctrl) (k g)]);
           tmux_session_picker = (m "⎆" [(k ctrl) (k a) (k g)]);
           tmux_split_horizontal = (m "╌" [(k ctrl) (k a) (k "S")]);
           tmux_split_vertical = (m "¦" [(k ctrl) (k a) (k "|")]);
@@ -309,17 +311,19 @@ in {
         nw.tab     ne.shift
               c.a
         "⇤" sw.snap_left  "✲" se.ctrl
-      _       
-              "⎆" macros.n.tmux_session_picker  
-              c.s
+      _
+              "⎆" macros.n.tmux_session_picker
+        "⇠" w.wm_workspace_previous  c.s  "⇢" e.wm_workspace_next
                     "⌥" se.alt
       _
-              "⛶" macros.n.tmux_zoom
-              c.d
+              "↑" n.wm_move_up  "⛶" macros.ne.tmux_zoom
+        "←" w.wm_move_left  c.d  "→" e.wm_move_right
+              "↓" s.wm_move_down
                     "❖" se.meta
       _
-              "⇡" macros.n.float_terminal  
-              c.f
+              "↑" n.wm_focus_up  "⇡" macros.ne.float_terminal
+        "←" w.wm_focus_left  c.f  "→" e.wm_focus_right
+              "↓" s.wm_focus_down
                      "▤" se.fn
       _
                                         "△" macros.n.tmux_resize_up ne."-"
@@ -367,9 +371,9 @@ in {
               c.v
                       se.pastePlain
       _
-        "◂" macros.nw.prev_tmux_window  "▸" macros.ne.next_tmux_window
+        "◂" macros.nw.prev_tmux_window  "↑" macros.n.tmux_descend  "▸" macros.ne.next_tmux_window
               c.b
-        "←" macros.sw.prev_termux_terminal"→" macros.se.next_termux_terminal
+        "←" macros.sw.prev_termux_terminal  "↓" macros.s.tmux_ascend  "→" macros.se.next_termux_terminal
       _
         "Rest" n.wm_restore_all  ne."?"
               c.n
@@ -383,17 +387,12 @@ in {
               c."."
         sw.","
       _
-        "W←" nw.wm_focus_left  "W↑" ne.wm_focus_up
                   n.up
           w.left        e.right
                   s.down
-        "W↓" sw.wm_focus_down  "W→" se.wm_focus_right
       _
         "⤡" nw.floating_resize  ne.action
-            "WS−" n.wm_workspace_previous
-        "M←" w.wm_move_left  c.enter  "M→" e.wm_move_right
-            "WS+" s.wm_workspace_next
-        "M↑" sw.wm_move_up  "M↓" se.wm_move_down
+                c.enter
 
       K;
   }
