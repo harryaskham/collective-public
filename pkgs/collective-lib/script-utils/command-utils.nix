@@ -33,12 +33,12 @@ in rec {
         COMMAND="''${1}"
         ${log.debug ''Command detected: $COMMAND''}
         shift
-        COMMAND_ARGS="''${@}"
+        COMMAND_ARGS=("''${@}")
 
         # getopt now sees no options, all will be passed to the command
         set -- --
 
-        ${log.debug ''Command arguments: ''${COMMAND_ARGS}''}
+        ${log.debug ''Command arguments: ''${COMMAND_ARGS[*]}''}
         ${log.debug ''New flags: $@''}
       fi
     '';
@@ -53,10 +53,10 @@ in rec {
         ${log.debug ''Command found as: ''${CMD}''}
         if $("''${CMD}" --should-source-subcommand); then
           ${log.debug ''Sourcing command: ''${COMMAND}''}
-          source "''${CMD}" ''${COMMAND_ARGS}
+          source "''${CMD}" "''${COMMAND_ARGS[@]}"
         else
           ${log.debug ''Running command: ''${COMMAND}''}
-          "''${CMD}" ''${COMMAND_ARGS}
+          "''${CMD}" "''${COMMAND_ARGS[@]}"
         fi
       else
         ${log.fatalWithUsage ''Unknown command: ''${COMMAND}''}

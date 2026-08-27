@@ -79,6 +79,12 @@ in rec {
       else (Strings_ {w = width text;} [(code styles) text]);
     style' = styles: text: (Strings_ {w = width text;} [end (style styles text)]);
 
+    # Escape text embedded in an unquoted shell heredoc. Usage text is emitted
+    # through heredocs so ANSI escapes can be interpreted later by echo -e, but
+    # prose must never execute command/parameter substitutions while help loads.
+    escapeShellHeredoc = s:
+      replaceStrings ["\\" "$" "`"] ["\\\\" "\\$" "\\`"] (toString s);
+
     escapeANSI = s: 
       if isString s then
         replaceStrings ["\\e["] ["\\\\e["] (toString s)
@@ -245,7 +251,6 @@ in rec {
                 ++ [outerBodyBlock]
                 ++ (optionals (padding.bottom > 0) [bottomPadding])
                 ++ [bottomBorder]
-                ++ (optionals (margin.bottom > 0) [bottomMargin])
                 ++ (optionals (margin.bottom > 0) [bottomMargin]);
           in Lines lines_;
       in 
@@ -442,6 +447,22 @@ ${eof}
                   " ┗━━━┛ "
                 ]);
 
+            bottomMarginOnce =
+              expect.eq
+                (stripANSI (toString (box {
+                  body = "a";
+                  margin = ones;
+                })))
+                (joinLines [
+                  "       "
+                  " ┏━━━┓ "
+                  " ┃   ┃ "
+                  " ┃ a ┃ "
+                  " ┃   ┃ "
+                  " ┗━━━┛ "
+                  "       "
+                ]);
+
             header =
               expect.eq 
                 (stripANSI (toString (box {header = "b"; body = "a";})))
@@ -536,6 +557,11 @@ ${eof}
                   ]);
               };
           };
+
+          _04_escapeShellHeredoc =
+            expect.eq
+              (escapeShellHeredoc ''\e[31m$HOME `cmd`'')
+              ''\\e[31m\$HOME \`cmd\`'';
         };
   };
 }

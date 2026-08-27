@@ -99,10 +99,9 @@ rec {
       # A set from level to a builder for a formatted line without prefix.
       text = mapAttrs (_: lineFn: lineFn false) line;
 
-      # Get the indent level to line a newline up with the logtag RHS
+      # Get the indent needed to align continuation text after the visible prefix.
       indent = level:
-        let getIndent = levelName: level: prefix.${levelName};
-        in 1 + mapAttrs getIndent levels;
+        1 + builtins.stringLength (stripANSI prefix.${level.name});
 
       # An attrset from level to an echo-command builder that takes text and returns an echo command string.
       # Not usually used directly, but rather via e.g. log.shell.info which calls shell
@@ -318,37 +317,39 @@ rec {
     }
 
     function print-log-text() {
-      LEVEL="$1"
+      local LEVEL="$1"
       shift
-      MSG="$@"
-      DO_PRINT_LOG=true
+      local MSG="$*"
+      local PREFIX LOGLINE THIS INDENT_PAST_PREFIX line
+      local first=true
+
       case "$LEVEL" in
         debug)
           if [[ "$(__collective_log_debug_check)" != true ]]; then
             return 0
           fi
           PREFIX=${toShellValue log.shell.prefix.debug}
-          LOGINE=${toShellValue (log.shell.text.debug "$MSG")}
+          LOGLINE=${toShellValue (log.shell.text.debug "$MSG")}
         ;;
         info)
           PREFIX=${toShellValue log.shell.prefix.info}
-          LOGINE=${toShellValue (log.shell.text.info "$MSG")}
+          LOGLINE=${toShellValue (log.shell.text.info "$MSG")}
         ;;
         warn)
           PREFIX=${toShellValue log.shell.prefix.warn}
-          LOGINE=${toShellValue (log.shell.text.warn "$MSG")}
+          LOGLINE=${toShellValue (log.shell.text.warn "$MSG")}
         ;;
         error)
           PREFIX=${toShellValue log.shell.prefix.error}
-          LOGINE=${toShellValue (log.shell.text.error "$MSG")}
+          LOGLINE=${toShellValue (log.shell.text.error "$MSG")}
         ;;
         fatal)
           PREFIX=${toShellValue log.shell.prefix.fatal}
-          LOGINE=${toShellValue (log.shell.text.fatal "$MSG")}
+          LOGLINE=${toShellValue (log.shell.text.fatal "$MSG")}
         ;;
         success)
           PREFIX=${toShellValue log.shell.prefix.success}
-          LOGINE=${toShellValue (log.shell.text.success "$MSG")}
+          LOGLINE=${toShellValue (log.shell.text.success "$MSG")}
         ;;
         *)
           print-log-text fatal "Unknown log level: $LEVEL (message: $MSG)"
@@ -356,13 +357,19 @@ rec {
         ;;
       esac
 
-      INDENT_PAST_PREFIX=$((1+''${#PREFIX}))
-      SPACES=$(for i in $(seq 1 $INDENT_PAST_PREFIX); do echo -n " "; done)
-      ${echo-n "$PREFIX "}
-      ${echo "$LOGINE"} | head -n1
-      for l in $(echo $LOGLINE | tail -n+2); do
-        ${echo "$SPACES$l"}
-      done
+      # ANSI sequences in PREFIX have no display width. Calculate indentation
+      # from the unstyled runtime components instead of the encoded string.
+      THIS=$(basename "$0")
+      INDENT_PAST_PREFIX=$((''${#THIS} + ''${#LEVEL} + 4))
+
+      while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$first" == true ]]; then
+          printf '%b %b\n' "$PREFIX" "$line"
+          first=false
+        else
+          printf '%*s%b\n' "$INDENT_PAST_PREFIX" "" "$line"
+        fi
+      done <<< "$LOGLINE"
     }
 
     function log() {

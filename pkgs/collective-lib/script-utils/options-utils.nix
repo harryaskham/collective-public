@@ -171,6 +171,40 @@ ${exportPrefix}${name}=${defaultShellValue}
   handleOptCasesBlock = opts:
     codeBlockLines (mapAttrsToList (_: opt: opt.handleCaseBlock) opts);
 
+  # Build an option case for the passthrough parser. GNU getopt rejects unknown
+  # options before we can preserve them, so allowUnrecognisedOptions uses this
+  # parser instead. It supports the normal separated form plus --long=value and
+  # -sVALUE for value options.
+  handlePassthroughOptCaseBlock = opt:
+    let
+      missingValueCheck = optionalString (!opt.isSwitch) ''
+        if (( $# < 2 )); then
+          ${log.fatalWithUsage "Option ${concatStringsSep " or " opt.allFlags} requires a value"}
+        fi
+      '';
+      exactCase = codeBlockLines [
+        opt.caseRegex
+        missingValueCheck
+        opt.handleCaseBlockBody
+        ";;"
+      ];
+      longEqualsCase = optionalString (opt.hasLong && !opt.isSwitch) (codeBlockLines [
+        "--${opt.params.long}=*)"
+        ''set -- "--${opt.params.long}" "''${1#*=}" "''${@:2}"''
+        opt.handleCaseBlockBody
+        ";;"
+      ]);
+      shortAttachedCase = optionalString (opt.hasShort && !opt.isSwitch) (codeBlockLines [
+        "-${opt.params.short}?*)"
+        ''set -- "-${opt.params.short}" "''${1#-${opt.params.short}}" "''${@:2}"''
+        opt.handleCaseBlockBody
+        ";;"
+      ]);
+    in codeBlockLines [exactCase longEqualsCase shortAttachedCase];
+
+  handlePassthroughOptCasesBlock = opts:
+    codeBlockLines (mapAttrsToList (_: handlePassthroughOptCaseBlock) opts);
+
   # Build a block for handling the options
   handleOptsBlock = args: opts:
     codeBlockHeader "### Handle options" ''
@@ -205,12 +239,43 @@ done'';
       eval set -- "''${OPTS}"
     '';
 
-  # Build the combined options handling block
-  optsBlock = args: opts: codeBlocks [
-    (parseOptsBlock args opts)
+  # Parse known wrapper options while preserving every unknown/positional
+  # argument byte-for-byte for a wrapped command. Callers should still use `--`
+  # to prevent a downstream flag that matches a wrapper flag from being consumed.
+  passthroughOptsBlock = args: opts: codeBlocks [
     (setDefaultOptsBlock opts)
-    (handleOptsBlock args opts)
+    (codeBlockHeader "### Parse options and preserve passthrough arguments" ''
+PASSTHROUGH_ARGS=()
+while (( $# > 0 )); do
+  case "$1" in
+${handlePassthroughOptCasesBlock opts}
+--)
+shift
+PASSTHROUGH_ARGS+=("$@")
+break
+;;
+*)
+PASSTHROUGH_ARGS+=("$1")
+shift
+;;
+  esac
+done
+set -- "''${PASSTHROUGH_ARGS[@]}"
+'')
     (checkRequiredOptsBlock opts)
   ];
+
+  # Build the combined options handling block. Unknown options cannot be made
+  # safe by ignoring getopt's failure: that loses or rewrites argv. Use the
+  # dedicated parser whenever passthrough was requested.
+  optsBlock = args: opts:
+    if (args.allowUnrecognisedOptions or false)
+    then passthroughOptsBlock args opts
+    else codeBlocks [
+      (parseOptsBlock args opts)
+      (setDefaultOptsBlock opts)
+      (handleOptsBlock args opts)
+      (checkRequiredOptsBlock opts)
+    ];
 
 }

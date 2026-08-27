@@ -18,7 +18,7 @@ in rec {
         '';
         mainWrappedEnabled = codeBlock ''
           function __main-wrapped() {
-            if [[ $(type -t main) == function ]]; then
+            if typeset -f main >/dev/null 2>&1; then
               main "$@"
             else
               ${log.fatal "main not defined"}

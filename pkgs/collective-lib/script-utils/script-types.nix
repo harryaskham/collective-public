@@ -187,17 +187,22 @@ rec {
     builder = args:
       let
         # Create a nested raw ZSH script to trigger from Bash.
-        zshArgs = {
+        # Preserve the complete script definition: the previous wrapper dropped
+        # body/main (and options), producing an inner script with no user code.
+        zshArgs = args // {
           type = rawScript "zsh";
           name = "zshwrapper-" + args.name;
         };
         zshScript = mkScriptPackage zshArgs;
       in 
-        #  Create a raw inner Bash script with no structure
+        # The Bash launcher must not parse the Zsh script's options first. It
+        # forwards argv unchanged; the generated inner script owns parsing and
+        # execution of the original body/main.
         mkScriptPackage {
           inherit (args) name;
           type = rawScript "bash";
-          body = ''zsh "${zshScript}/bin/${zshArgs.name}" "$@"'';
+          passthroughArgs = true;
+          main = ''exec ${pkgs.zsh}/bin/zsh "${zshScript}/bin/${zshArgs.name}" "$@"'';
         };
   };
 

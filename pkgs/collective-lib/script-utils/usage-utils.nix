@@ -41,7 +41,7 @@ in rec {
             (style [italic fg.yellow] " (default: false)"))
         ])
         (setIndent 4 (
-          if opt ? description then (trimNewlines opt.description)
+          if opt.params ? description then (escapeShellHeredoc (trimNewlines opt.params.description))
           else if (opt.isSwitch && opt.isInverted) then "Sets ${optName} to false"
           else if (opt.isSwitch) then "Sets ${optName} to true"
           else "Sets ${optName} to the value provided"))
@@ -56,9 +56,10 @@ in rec {
 
   # Build a block making the 'usage' function available
   usageBlock = args: opts:
-    let exposedOpts = filterAttrs (_: opt: !opt.isHiddenInUsage) opts;
-        requiredOpts = filterAttrs (_: opt: opt.isRequired) exposedOpts;
-        optionalOpts = filterAttrs (_: opt: !opt.isRequired) exposedOpts;
+    let usageOpts = filterAttrs (_: opt: !opt.isHiddenInUsage) opts;
+        optionsOpts = filterAttrs (_: opt: !opt.isHiddenInOptions) opts;
+        requiredOpts = filterAttrs (_: opt: opt.isRequired) usageOpts;
+        optionalOpts = filterAttrs (_: opt: !opt.isRequired) usageOpts;
     in codeBlockHeader "### Print command usage" ''
 USAGE_COMMAND=$(${
   with ansi;
@@ -92,11 +93,11 @@ USAGE_FULLTEXT=$(${
     (optionalString (args ? usage) (echo "\n$USAGE_BODY"))
   ] ++ (
     optionals
-      (exposedOpts != {})
+      (optionsOpts != {})
       ([(echo (atom.h2 "\nOptions"))]
        ++ (mapAttrsToList
              (optName: opt: echo (optUsageString optName opt))
-             exposedOpts))))
+             optionsOpts))))
 })
 
 function usage() {
