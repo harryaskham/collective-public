@@ -193,7 +193,7 @@ rec {
           type = rawScript "zsh";
           name = "zshwrapper-" + args.name;
         };
-        zshScript = mkScriptPackage zshArgs;
+        zshScript = mkDefaultScriptPackage zshArgs;
       in 
         # The Bash launcher must not parse the Zsh script's options first. It
         # forwards argv unchanged; the generated inner script owns parsing and

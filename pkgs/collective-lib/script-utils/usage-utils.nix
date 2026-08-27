@@ -61,16 +61,8 @@ in rec {
         requiredOpts = filterAttrs (_: opt: opt.isRequired) usageOpts;
         optionalOpts = filterAttrs (_: opt: !opt.isRequired) usageOpts;
     in codeBlockHeader "### Print command usage" ''
-USAGE_COMMAND=$(${
-  with ansi;
-  echo-n (joinWords [
-    (atom.h1 "Usage")
-    (toShellValue args.name)
-    (atom.requiredOpt (joinWords (mapAttrsToList getOptCommandUsage requiredOpts)))
-    (atom.optionalOpt (joinWords (mapAttrsToList getOptCommandUsage optionalOpts)))
-  ])
-})
-
+# Keep only the cheap summary eager: --print-summary is called recursively while
+# discovering command trees and must not build the full usage text itself.
 USAGE_SUMMARY=$(${
   with ansi;
   echo-n (joinOptionalWords [
@@ -79,28 +71,40 @@ USAGE_SUMMARY=$(${
   ])
 })
 
-${optionalString (args ? usage)
-''USAGE_BODY=$(cat << EOF
+function usage() {
+  local USAGE_COMMAND USAGE_BODY USAGE_FULLTEXT
+
+  USAGE_COMMAND=$(${
+    with ansi;
+    echo-n (joinWords [
+      (atom.h1 "Usage")
+      (toShellValue args.name)
+      (atom.requiredOpt (joinWords (mapAttrsToList getOptCommandUsage requiredOpts)))
+      (atom.optionalOpt (joinWords (mapAttrsToList getOptCommandUsage optionalOpts)))
+    ])
+  })
+
+  ${optionalString (args ? usage)
+  ''USAGE_BODY=$(cat << EOF
 ${codeBlock args.usage}
 EOF
 )''}
 
-USAGE_FULLTEXT=$(${
-  with ansi;
-  joinStatementLines ([
-    (echo "$USAGE_SUMMARY")
-    (echo "\n$USAGE_COMMAND")
-    (optionalString (args ? usage) (echo "\n$USAGE_BODY"))
-  ] ++ (
-    optionals
-      (optionsOpts != {})
-      ([(echo (atom.h2 "\nOptions"))]
-       ++ (mapAttrsToList
-             (optName: opt: echo (optUsageString optName opt))
-             optionsOpts))))
-})
+  USAGE_FULLTEXT=$(${
+    with ansi;
+    joinStatementLines ([
+      (echo "$USAGE_SUMMARY")
+      (echo "\n$USAGE_COMMAND")
+      (optionalString (args ? usage) (echo "\n$USAGE_BODY"))
+    ] ++ (
+      optionals
+        (optionsOpts != {})
+        ([(echo (atom.h2 "\nOptions"))]
+         ++ (mapAttrsToList
+               (optName: opt: echo (optUsageString optName opt))
+               optionsOpts))))
+  })
 
-function usage() {
   ${with ansi.echoing; echo stderr "$USAGE_FULLTEXT"}
 }
 '';
