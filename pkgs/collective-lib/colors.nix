@@ -225,6 +225,12 @@ rec {
       cursor = color4;
     };
 
+    # Matches the flat 3840x2160 wallpaper/blank/4k-nord0-midnight.png.
+    # Keep Nord's ANSI colors intact; only darken the terminal background.
+    nord-midnight = schemes.nord // {
+      background = "#1A1D23";
+    };
+
     # Just reverses colors 0-6
     nord-light = rec {
       ordering = "nord";

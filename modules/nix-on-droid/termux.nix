@@ -184,8 +184,8 @@ in {
     '';
     colors = mkOption {
       type = typed.colors.schemeType;
-      default = typed.colors.schemes.nord;
-      description = "Colors for the terminal";
+      default = typed.colors.schemes.nord-midnight;
+      description = "Colors for the terminal (Nord Midnight by default)";
     };
     settings = {
       hideExtraKeys = mkOption {
