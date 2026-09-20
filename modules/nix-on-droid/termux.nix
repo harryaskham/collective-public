@@ -566,7 +566,8 @@ in {
           LD_PRELOAD="/system/lib64/libskcodec.so" pulseaudio \
             --start \
             --exit-idle-time=-1 \
-            --load="module-native-protocol-tcp auth-anonymous=1" \
+            --load="module-native-protocol-tcp listen=0.0.0.0 auth-anonymous=1 port=4713" \
+            --load="module-null-sink sink_name=cacophony rate=48000 channels=2 sink_properties=device.description=Cacophony" \
             --load="module-sles-source"
         '';
       };

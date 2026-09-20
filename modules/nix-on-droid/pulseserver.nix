@@ -13,7 +13,13 @@ let
   cfg = config.pulseserver;
   amSupervisor = pkgs.am-supervisor;
 
-  checkCmd = "PULSE_SERVER=${cfg.host}:${toString cfg.port} ${pkgs.pulseaudio}/bin/pactl info";
+  checkCmd = pkgs.writeShellScript "pulseserver-check" ''
+    export PULSE_SERVER=${escapeShellArg "tcp:${cfg.host}:${toString cfg.port}"}
+    export PULSE_PACTL=${pkgs.pulseaudio}/bin/pactl
+    export PULSE_TIMEOUT=${pkgs.coreutils}/bin/timeout
+    set -- ${escapeShellArgs cfg.virtualSinks}
+    ${builtins.readFile ./pulseserver-check.sh}
+  '';
   actionCmd = "am start -n ${cfg.package}";
 in {
   options.pulseserver = {
@@ -22,13 +28,23 @@ in {
     host = mkOption {
       type = types.str;
       default = "127.0.0.1";
-      description = "PulseServer listen address.";
+      description = "Client address used to check the app-owned server, not its bind address. The Android app controls its own wildcard listener.";
     };
 
     port = mkOption {
       type = types.port;
       default = 4713;
       description = "PulseServer TCP port.";
+    };
+
+    virtualSinks = mkOption {
+      type = types.listOf (types.strMatching "[A-Za-z0-9_.-]+");
+      default = [];
+      description = ''
+        Null sinks to ensure on every successful health check. The Android app
+        generates its own private default.pa; reconciliation recreates these
+        sinks after app/daemon restarts without changing default devices or routes.
+      '';
     };
 
     package = mkOption {
