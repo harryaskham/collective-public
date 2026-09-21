@@ -260,7 +260,6 @@ let
               "toggle_floating"
               "toggle_floating_docked"
               "toggle_persistence"
-              "toggle_mounted_terminal"
               "floating_move"
               "floating_resize"
               "floating_enable_passthrough"
@@ -1317,25 +1316,6 @@ rec {
     };
 
   _tests = with typed.tests; suite {
-    compactMountedTerminal =
-      let
-        check = enableFork:
-          let
-            config = _evalModule ({...}: {
-              services.unexpected-keyboard = { enable = true; inherit enableFork; };
-            });
-            layouts = filterAttrs (name: _: hasPrefix "Code QWERTY Compact" name)
-              config.services.unexpected-keyboard.layouts;
-          in mapAttrs (_: layout:
-            let
-              keys = concatMap (row: row.keys) layout.keyboard.rows;
-              eKeys = filter (key: key.c != null && key.c.k == "e") keys;
-            in expect.eq
-              (map (key: [key.nw.k key.nw.legend key.ne.k key.sw.k key.se.k]) eKeys)
-              [[(if enableFork then "toggle_mounted_terminal" else "removed") "" "3" "#"
-                (if enableFork then "center_vertical" else "removed")]]
-          ) layouts;
-      in { fork = check true; upstream = check false; };
     empty = 
       let config = _evalModule (mkConfig false []);
       in {
