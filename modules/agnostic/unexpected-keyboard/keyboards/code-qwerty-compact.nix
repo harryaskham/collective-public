@@ -271,7 +271,7 @@ in {
               c.w
         sw."@"      "⌖" se.center_both
       _
-                    ne."3"
+        "" nw.toggle_mounted_terminal  ne."3"  # nf-fa-terminal (U+F120), bundled FiraCode Nerd Font Mono.
               c.e
         sw."#"      "⏛" se.center_vertical
       _
