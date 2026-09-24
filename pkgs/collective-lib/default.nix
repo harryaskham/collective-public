@@ -13,14 +13,14 @@ let
   # (e.g. parent collective-lib without flake inputs, REPL use), fall back to
   # fetching the repo directly.
   nix-reflect = inputs.nix-reflect or {
-    lib.${pkgs.system} = import (builtins.fetchTree {
+    lib.${pkgs.stdenv.hostPlatform.system} = import (builtins.fetchTree {
       type = "github";
       owner = "harryaskham";
       repo = "nix-reflect";
       ref = "main";
     } + "/lib") {
       inherit pkgs lib;
-      inputs.collective-public.lib.${pkgs.system} = self;
+      inputs.collective-public.lib.${pkgs.stdenv.hostPlatform.system} = self;
     };
   };
 
@@ -66,6 +66,7 @@ let
           functions
           lists
           modulelib
+          platform
           rebinds
           shell
           strings
@@ -113,7 +114,11 @@ let
       # - lib.strings
       #
       # Does not include _tests; intended only for use as a library.
-      untyped = lib.recursiveUpdate lib baseMerged;
+      # Both fold aliases are replaced by our fold centraliser anyway. Avoid
+      # forcing the deprecated nixpkgs aliases during recursiveUpdate's type check.
+      untyped = lib.recursiveUpdate ((removeAttrs lib [ "fold" ]) // {
+        lists = removeAttrs lib.lists [ "fold" ];
+      }) baseMerged;
 
       # Produce a new version of the collective-lib with 'lib' merged in and the type system enabled and exposed.
       # Can be used as a drop-in replacement for 'lib' in modules that make use of the type system.
@@ -160,8 +165,13 @@ let
       lists = import ./lists.nix args;
       log = import ./log.nix (args // { inherit traceOpts; });
       inherit modulelib;
+      # Host-platform predicates are booleans, just like the stdenv originals.
+      # Export through typed/untyped as well as platform.isLinux/isDarwin.
+      platform = {
+        inherit (pkgs.stdenv.hostPlatform) isLinux isDarwin;
+      };
       rebinds = import ./rebinds.nix args;
-      nix-reflect = nix-reflect.lib.${pkgs.system};
+      nix-reflect = nix-reflect.lib.${pkgs.stdenv.hostPlatform.system};
       script-utils = import ./script-utils (args // { inherit pkgs; });
       shell = import ./shell.nix (args // { inherit pkgs; });
       strings = import ./strings args;
