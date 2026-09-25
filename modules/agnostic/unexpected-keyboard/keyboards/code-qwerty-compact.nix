@@ -6,6 +6,7 @@ with uklib;
 let
   codes' = codes.withAliases {
     switch_to_base = "switch_to_layout_Code_QWERTY_Compact";
+    switch_to_wm = wmLayoutSwitch "Flotilla_WM";
     # Note: These rely on the order of the variants as emitted by `indexPrefixedAttrs`
     # to switch to imported layout by index.
     switch_to_C0Mods = "switch_to_layout_Code_QWERTY_Compact_0_C0Mods";
@@ -33,7 +34,6 @@ let
           prev_termux_terminal = (m "←" [(k ctrl) (k alt) (k p)]);
           next_tmux_window = (m "▸" [(k ctrl) (k a) (k n)]);
           prev_tmux_window = (m "◂" [(k ctrl) (k a) (k p)]);
-          float_terminal = (m "⇡" [(k ctrl) (k alt) (k f)]);
           tmux_zoom = (m "⛶" [(k ctrl) (k a) (k z)]);
           tmux_descend = (m "↑" [(k ctrl) (k a) (k ctrl) (k t)]);
           tmux_ascend = (m "↓" [(k ctrl) (k a) (k ctrl) (k g)]);
@@ -321,10 +321,10 @@ in {
               "↓" s.wm_move_down
                     "❖" se.meta
       _
-              "↑" n.wm_focus_up  "⇡" macros.ne.float_terminal
+              "↑" n.wm_focus_up  "⇡" ne.wm_open_terminal
         "←" w.wm_focus_left  c.f  "→" e.wm_focus_right
               "↓" s.wm_focus_down
-                     "▤" se.fn
+        "WM" sw.switch_to_wm  "▤" se.fn
       _
                                         "△" macros.n.tmux_resize_up ne."-"
          "◁" macros.w.tmux_resize_left  c.g "▷" macros.e.tmux_resize_right

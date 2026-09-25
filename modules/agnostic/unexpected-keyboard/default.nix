@@ -14,6 +14,12 @@ let
     };
 
     getLayout = name: cfg.layouts.${name};
+    # Configuration-only controls: never emit WM shortcut chords in upstream UK.
+    wmShortcut = label: keys:
+      if cfg.enableFork then codes.kv.m label (map codes.kv.k keys)
+      else (codes.kv.k "removed") // { legend = label; };
+    wmReturnLayouts = cfg.wmReturnLayouts;
+    wmLayoutSwitch = name: if cfg.enableFork then "switch_to_layout_" + name else "removed";
 
     getRows = keyboard: keyboard.rows;
     numRows = keyboard: length keyboard.rows;
@@ -261,6 +267,7 @@ let
               "toggle_floating_docked"
               "toggle_persistence"
               "toggle_mounted_terminal"
+              "floating_other_screen"
               "floating_move"
               "floating_resize"
               "floating_enable_passthrough"
@@ -287,7 +294,7 @@ let
               "wm_move_down"
               "wm_workspace_previous"
               "wm_workspace_next"
-            ];
+            ] // selfAttrs (genList (i: "flotilla_${toString (i + 1)}") 12);
             in if cfg.enableFork then xs else mapAttrs (_: _: "removed") xs;
         };
 
@@ -1113,6 +1120,24 @@ in {
       Whether to enable fork-specific features of UK for
       https://github.com/harryaskham/unexpected-keyboard
     '';
+    wmReturnLayouts = mkOption {
+      type = types.listOf (types.submodule {
+        options = {
+          label = mkOption { type = types.str; description = "Short return-key label."; };
+          layout = mkOption { type = types.str; description = "Exact imported Omni layout name."; };
+        };
+      });
+      default = [
+        { label = "ABC"; layout = "Code QWERTY Compact"; }
+        { label = "Portrait"; layout = "Code QWERTY Compact (7_splitPMk2)"; }
+        { label = "Landscape"; layout = "Code QWERTY Compact (8_splitLMk2)"; }
+      ];
+      description = ''
+        One to four explicit return destinations on the Flotilla WM layouts.
+        Import these layouts alongside the WM layouts. This does not change Omni's
+        configured default or pretend that named layout switching remembers history.
+      '';
+    };
     keyboards = mkOption {
       type = types.listOf keyboardType;
       default = [];
@@ -1336,6 +1361,35 @@ rec {
                 (if enableFork then "center_vertical" else "removed")]]
           ) layouts;
       in { fork = check true; upstream = check false; };
+    wmControls =
+      let
+        config = _evalModule ({...}: { services.unexpected-keyboard = {
+          enable = true; enableFork = true;
+          wmReturnLayouts = [{ label = "Mine"; layout = "Code QWERTY Compact (5_keys29T)"; }];
+        }; });
+        cfg = config.services.unexpected-keyboard;
+        keys = name: concatMap (row: row.keys) cfg.layouts.${name}.keyboard.rows;
+        compact = filterAttrs (name: _: hasPrefix "Code QWERTY Compact" name) cfg.layouts;
+        first = head (keys "Flotilla WM");
+        upstream = (_evalModule ({...}: { services.unexpected-keyboard.enable = true; })).services.unexpected-keyboard;
+      in {
+        compactEntry = mapAttrs (_: layout:
+          let f = head (filter (key: key.c != null && key.c.k == "f") (concatMap (row: row.keys) layout.keyboard.rows));
+          in expect.eq [f.ne.k f.sw.k f.se.k f.n.k f.s.k f.w.k f.e.k]
+            ["wm_open_terminal" "switch_to_layout_Flotilla_WM" "fn" "wm_focus_up" "wm_focus_down" "wm_focus_left" "wm_focus_right"]
+        ) compact;
+        workspace = expect.eq (map (k: k.k) first.c.m) ["ctrl" "alt" "1"];
+        sendWorkspace = expect.eq (map (k: k.k) first.s.m) ["ctrl" "alt" "shift" "1"];
+        returnTarget = expect.eq
+          (map (k: k.c.k) (filter (k: k.c != null && k.c.legend == "Mine") (keys "Flotilla WM")))
+          ["switch_to_layout_Code QWERTY Compact (5_keys29T)"];
+        pads = expect.eq (length cfg.layouts."Flotilla WM".keyboard.rows) 4;
+        arrows = expect.eq (length cfg.layouts."Flotilla WM (Arrows)".keyboard.rows) 7;
+        upstreamShortcut = expect.eq (head (head upstream.layouts."Flotilla WM".keyboard.rows).keys).c.k "removed";
+        upstreamSlot = expect.eq upstream.lib.codes._.flotilla_12 "removed";
+        upstreamEntry = expect.eq (upstream.lib.getKey 1 3 upstream.layouts."Code QWERTY Compact".keyboard).sw.k "removed";
+        liveSlot = expect.eq cfg.lib.codes._.flotilla_12 "flotilla_12";
+      };
     empty = 
       let config = _evalModule (mkConfig false []);
       in {
@@ -1345,8 +1399,8 @@ rec {
     defaults = 
       let config = _evalModule (mkConfig true []);
       in with config.services.unexpected-keyboard.lib; {
-        etc.size = expect.eq (size config.agnostic.environment.etc) 10;
-        layouts.size = expect.eq (size config.services.unexpected-keyboard.layouts) 10;
+        etc.size = expect.eq (size config.agnostic.environment.etc) 14;
+        layouts.size = expect.eq (size config.services.unexpected-keyboard.layouts) 14;
         layouts.golden = 
           expect.eq
             config.services.unexpected-keyboard.layouts."QWERTY (US)".xmlSource
