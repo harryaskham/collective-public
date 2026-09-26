@@ -33,6 +33,12 @@ let
 in rec {
   typeWMOption = boundCommand types.anything;
   typeWMOptions = types.listOf typeWMOption;
+  typeWMGesture = types.submodule {
+    options = {
+      gesture = mkOption { type = binding.gesture; };
+      cmd = mkOption { type = commandWithArgs types.attrs; };
+    };
+  };
   commandWithArgs = argType: types.submodule {
     options = {
       tag = mkOption {
@@ -70,10 +76,17 @@ in rec {
           "brightnessUp"
           "brightnessDown"
           "toggleOutput"
+          "toggleSplit"
+          "nextWorkspace"
+          "previousWorkspace"
+          "stepWorkspace"
+          "rotateCW"
+          "flip"
         ];
       };
       args = mkOption {
         type = argType;
+        default = {};
         description = "The arguments for the command";
       };
     };
@@ -85,12 +98,13 @@ in rec {
         description = "The binding for the command";
       };
       cmd = mkOption {
-        type = commandWithArgs types.int;
+        type = commandWithArgs argType;
         description = "The command to bind";
       };
     };
   };
   mkB = b: c: { bind = b; cmd = c; };
+  mkG = gesture: cmd: { inherit gesture cmd; };
   mkB1 = b: c: { bind = (binding.oneKey b); cmd = c; };
   mkBMod = b: c: { bind = (binding.modAnd b); cmd = c; };
   mkBSuper = b: c: { bind = (binding.superAnd b); cmd = c; };
@@ -163,16 +177,23 @@ in rec {
     brightnessDown = { tag = "brightnessDown"; };
     nextWorkspace = { tag = "nextWorkspace"; };
     previousWorkspace = { tag = "previousWorkspace"; };
+    # Numeric adjacency, including empty workspaces; unlike next/previous in i3/Sway.
+    stepWorkspace = delta:
+      assert lib.elem delta [ (-1) 1 ];
+      {
+        tag = "stepWorkspace";
+        args = { inherit delta; };
+      };
     rotateCW = { tag = "rotateCW"; };
     flip = { tag = "flip"; };
   };
-  impl = wm: bc:
+  # Keep action rendering separate from the trigger (key, gesture, or IPC).
+  implWith = runs: wm: cmd:
     (let
-      bind = bc.bind;
-      args = bc.cmd.args;
-      runs = mkKeybindCmd wm bind;
+      args = cmd.args or {};
     in rec {
       i3 = sway // {
+        stepWorkspace = runs "exec --no-startup-id collective-workspace-step i3 ${toString args.delta}";
         goToWorkspace = runs "workspace number ${toString args.n}";
         exec = runs ''exec "${toString args.execCmd}"'';
         toggleOutput = runs ''output "${args.disp.defaultOutput}" toggle'';
@@ -212,6 +233,7 @@ in rec {
         flip = runs ''exec "echo unimplemented"'';
       };
       sway = {
+        stepWorkspace = runs "exec collective-workspace-step sway ${toString args.delta}";
         goToWorkspace = runs "workspace number ${toString args.n}";
         exec = runs ''exec "${toString args.execCmd}"'';
         toggleOutput = runs ''output "${args.disp.defaultOutput}" toggle'';
@@ -251,6 +273,7 @@ in rec {
         flip = runs ''exec "echo unimplemented"'';
       };
       hyprland = {
+        stepWorkspace = runs "exec, collective-workspace-step hyprland ${toString args.delta}";
         goToWorkspace = runs "workspace, ${toString args.n}";
         exec = runs "exec, ${toString args.execCmd}";
         toggleOutput = runs ''exec, if [[ $(hyprctl -j monitors | jq ".[]" | jq "if .description == \"${args.disp.name}\" then .disabled else false end" | jq "if . == true then \"1\" else \"0\" end") ]]; then hyprctl keyword monitor 'desc:${args.disp.name}', disable; else hyprctl keyword monitor 'desc:${args.disp.name}', ${display.toHyprSettings (args.disp // { enable = true;  })}; fi 2>/dev/null'';
@@ -331,7 +354,16 @@ in rec {
           rotateCW = runs ''echo unimplemented'';
           flip = runs ''echo unimplemented'';
         };
-    }.${wm}.${bc.cmd.tag});
+    }.${wm}.${cmd.tag});
+  impl = wm: bc: implWith (mkKeybindCmd wm bc.bind) wm bc.cmd;
+  toCommand = implWith (command: command);
+  toGesture = wm: bg: {
+    hyprland = "${binding.mkGesture.hypr bg.gesture}, dispatcher, ${toCommand "hyprland" bg.cmd}";
+    sway = "bindgesture ${binding.mkGesture.sway bg.gesture} ${toCommand "sway" bg.cmd}";
+    # libinput-gestures parses argv with shlex; quote the whole i3 IPC command.
+    i3 = "${binding.mkGesture.libinput bg.gesture} i3-msg ${lib.escapeShellArg (toCommand "i3" bg.cmd)}";
+  }.${wm};
+  workspaceStepScript = builtins.readFile ./wm-workspace-step.sh;
   toConfig = impl;
   toi3Config = toConfig "i3";
   toSwayConfig = toConfig "sway";

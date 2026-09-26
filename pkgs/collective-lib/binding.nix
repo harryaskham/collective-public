@@ -3,8 +3,26 @@
 with lib;
 with collective-lib.clib;
 
-# Generate keybindings for i3, sway, and hyprland
+# Generate key and gesture bindings independently of the window manager.
 rec {
+  gesture = types.submodule {
+    options = {
+      fingers = mkOption {
+        type = types.ints.between 2 5;
+        description = "Number of fingers in the swipe";
+      };
+      direction = mkOption {
+        type = types.enum [ "left" "right" "up" "down" ];
+        description = "Physical direction of the swipe (independent of natural scrolling)";
+      };
+    };
+  };
+  swipe = fingers: direction: { inherit fingers direction; };
+  mkGesture = {
+    hypr = g: "${toString g.fingers}, ${g.direction}";
+    sway = g: "swipe:${toString g.fingers}:${g.direction}";
+    libinput = g: "gesture swipe ${g.direction} ${toString g.fingers}";
+  };
   bind = types.submodule {
     options = {
       mods = mkOption {
