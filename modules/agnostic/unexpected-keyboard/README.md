@@ -9,6 +9,10 @@
   its default-window factory, it opens a NOD float even while another app is focused.
   It uses NOD's configured command. It requires the selected manager; it is **not**
   a manager-independent Android intent in Local mode.
+- **F ↖ → ⇅** moves the current NOD session between docked and floating (Ctrl+Alt+Shift+F).
+- **K ↓ → Kb↓** toggles/hides the keyboard from NOD (Ctrl+Alt+K).
+  Both are NOD shortcuts and require NOD focus; the latter normally hides the
+  already-visible keyboard, but is technically NOD's toggle action.
 - F's focus arrows and Fn stay in place. E ↖ remains the mounted-terminal key.
 
 ## Control deck
@@ -75,10 +79,6 @@ These are proposals, not silent additions to the typing layout:
 
 | Existing action not previously placed here | Proposed gesture | Notes |
 |---|---|---|
-| Ctrl+Alt+Shift+F: move current session between docked and floating | F ↖ | Different from creating a new float; needs NOD focus. F ↖ is free. |
-| Ctrl+Alt+C: new docked terminal tab | C ← | Currently defined as a macro but unbound; requires NOD's docked activity. |
-| Ctrl+Alt+K: toggle keyboard from NOD | K ↑ | K's quotes/brackets remain intact; requires NOD focus. |
-| Ctrl+Alt+comma: NOD Settings | C ↖ | C ↙ remains **Omni** settings; label `NOD`. Requires NOD focus. |
 | `floating_other_screen`: keyboard display/pane picker | O ↖ is already keyboard move; use O ↑ | Implemented on Term+ ↗ in the WM deck; does not move a terminal. |
 | `toggle_floating_docked`: keyboard float/dock | O ↓ | Implemented on Term+ ↓; different from NOD session docking. |
 | `floating_disable_passthrough`: make keyboard interactive again | P ↑ | Useful counterpart to P ↘, though an untouchable keyboard needs its recovery surface. |

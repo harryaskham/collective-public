@@ -34,6 +34,8 @@ let
           prev_termux_terminal = (m "←" [(k ctrl) (k alt) (k p)]);
           next_tmux_window = (m "▸" [(k ctrl) (k a) (k n)]);
           prev_tmux_window = (m "◂" [(k ctrl) (k a) (k p)]);
+          move_terminal = (m "⇅" [(k ctrl) (k alt) (k shift) (k f)]);
+          hide_keyboard = (m "Kb↓" [(k ctrl) (k alt) (k "k")]);
           tmux_zoom = (m "⛶" [(k ctrl) (k a) (k z)]);
           tmux_descend = (m "↑" [(k ctrl) (k a) (k ctrl) (k t)]);
           tmux_ascend = (m "↓" [(k ctrl) (k a) (k ctrl) (k g)]);
@@ -321,6 +323,7 @@ in {
               "↓" s.wm_move_down
                     "❖" se.meta
       _
+        "⇅" macros.nw.move_terminal
               "↑" n.wm_focus_up  "⇡" ne.wm_open_terminal
         "←" w.wm_focus_left  c.f  "→" e.wm_focus_right
               "↓" s.wm_focus_down
@@ -340,6 +343,7 @@ in {
       _
                     ne."'"
                 c.k
+              "Kb↓" macros.s.hide_keyboard
         sw."["       se."]"
       _
                       ne."\""

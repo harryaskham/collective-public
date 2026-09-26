@@ -1378,6 +1378,14 @@ rec {
           in expect.eq [f.ne.k f.sw.k f.se.k f.n.k f.s.k f.w.k f.e.k]
             ["wm_open_terminal" "switch_to_layout_Flotilla_WM" "fn" "wm_focus_up" "wm_focus_down" "wm_focus_left" "wm_focus_right"]
         ) compact;
+        nodGestures = mapAttrs (_: layout:
+          let
+            all = concatMap (row: row.keys) layout.keyboard.rows;
+            f = head (filter (key: key.c != null && key.c.k == "f") all);
+            k = head (filter (key: key.c != null && key.c.k == "k") all);
+          in expect.eq [(map (v: v.k) f.nw.m) (map (v: v.k) k.s.m)]
+            [["ctrl" "alt" "shift" "f"] ["ctrl" "alt" "k"]]
+        ) compact;
         workspace = expect.eq (map (k: k.k) first.c.m) ["ctrl" "alt" "1"];
         sendWorkspace = expect.eq (map (k: k.k) first.s.m) ["ctrl" "alt" "shift" "1"];
         returnTarget = expect.eq
