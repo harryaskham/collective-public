@@ -108,6 +108,7 @@ in rec {
   mkG = gesture: cmd: { inherit gesture cmd; };
   mkB1 = b: c: { bind = (binding.oneKey b); cmd = c; };
   mkBMod = b: c: { bind = (binding.modAnd b); cmd = c; };
+  mkBCtrl = b: c: { bind = (binding.ctrlAnd b); cmd = c; };
   mkBSuper = b: c: { bind = (binding.superAnd b); cmd = c; };
   mkBSuperShift = b: c: { bind = (binding.superShiftAnd b); cmd = c; };
   mkBModShift = b: c: { bind = (binding.modShiftAnd b); cmd = c; };
