@@ -25,11 +25,6 @@ rec {
   };
   bind = types.submodule {
     options = {
-      wholeWindow = mkOption {
-        type = types.bool;
-        default = false;
-        description = "Apply i3/Sway pointer bindings over the whole window, not only its titlebar";
-      };
       mods = mkOption {
         type = types.nullOr (types.listOf types.str);
         description = "The mod keys of the binding";
@@ -48,15 +43,6 @@ rec {
     mods = ["$mod"];
     keys = [k];
   };
-  ctrlAnd = k: {
-    mods = ["ctrl"];
-    keys = [k];
-  };
-  horizontalScroll = direction:
-    assert elem direction [ "left" "right" ];
-    (oneKey (if direction == "left" then "ScrollLeft" else "ScrollRight")) // {
-      wholeWindow = true;
-    };
   superAnd = k: {
     mods = ["super"];
     keys = [k];
@@ -89,7 +75,7 @@ rec {
     mods = ["$mod" "ctrl" "shift"];
     keys = [k];
   };
-  swayMod = m: { super = "Mod4"; ctrl = "Control"; }.${m} or m;
+  swayMod = m: if (m == "super") then "Mod4" else m;
   swayMods = ms: map swayMod ms;
   skhdMod = m: if (m == "super") then "cmd" else if (m == "$mod") then "alt" else m;
   skhdMods = b:
@@ -98,13 +84,9 @@ rec {
 
   swayKeys = map (k: {
     "=" = "equal";
-    ScrollLeft = "button6";
-    ScrollRight = "button7";
   }.${k} or k);
   hyprKeys = map (k: {
     "=" = "equal";
-    ScrollLeft = "mouse_left";
-    ScrollRight = "mouse_right";
   }.${k} or k);
   skhdKeys = map (k: {
     "=" = "0x18";
@@ -138,8 +120,8 @@ rec {
     skhd = b: strings.concatStringsSep " " (skhdKeys b.keys);
   };
   mkBind = rec {
-    sway = b: "${optionalString (b.wholeWindow or false) "--whole-window "}${modPrefix.sway b}${keySuffix.sway b}";
-    i3 = sway;
+    sway = b: "${modPrefix.sway b}${keySuffix.sway b}";
+    i3 = b: "${modPrefix.i3 b}${keySuffix.i3 b}";
     hypr = b: "${modPrefix.hypr b}${keySuffix.hypr b}";
     skhd = b: "${modPrefix.skhd b}${keySuffix.skhd b}";
   };

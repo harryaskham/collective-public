@@ -80,7 +80,6 @@ in rec {
           "nextWorkspace"
           "previousWorkspace"
           "stepWorkspace"
-          "cycleWorkspaceOnOutput"
           "rotateCW"
           "flip"
         ];
@@ -108,7 +107,6 @@ in rec {
   mkG = gesture: cmd: { inherit gesture cmd; };
   mkB1 = b: c: { bind = (binding.oneKey b); cmd = c; };
   mkBMod = b: c: { bind = (binding.modAnd b); cmd = c; };
-  mkBCtrl = b: c: { bind = (binding.ctrlAnd b); cmd = c; };
   mkBSuper = b: c: { bind = (binding.superAnd b); cmd = c; };
   mkBSuperShift = b: c: { bind = (binding.superShiftAnd b); cmd = c; };
   mkBModShift = b: c: { bind = (binding.modShiftAnd b); cmd = c; };
@@ -186,14 +184,6 @@ in rec {
         tag = "stepWorkspace";
         args = { inherit delta; };
       };
-    # Existing workspaces on the focused output only, wrapping at either end.
-    # Native selectors keep output resolution and switching in one WM command.
-    cycleWorkspaceOnOutput = delta:
-      assert lib.elem delta [ (-1) 1 ];
-      {
-        tag = "cycleWorkspaceOnOutput";
-        args = { inherit delta; };
-      };
     rotateCW = { tag = "rotateCW"; };
     flip = { tag = "flip"; };
   };
@@ -243,8 +233,6 @@ in rec {
         flip = runs ''exec "echo unimplemented"'';
       };
       sway = {
-        # i3 inherits this command too. Never use global next/prev here.
-        cycleWorkspaceOnOutput = runs "workspace ${if args.delta == 1 then "next" else "prev"}_on_output";
         stepWorkspace = runs "exec collective-workspace-step sway ${toString args.delta}";
         goToWorkspace = runs "workspace number ${toString args.n}";
         exec = runs ''exec "${toString args.execCmd}"'';
@@ -285,9 +273,6 @@ in rec {
         flip = runs ''exec "echo unimplemented"'';
       };
       hyprland = {
-        # m cycles existing workspaces on this monitor; e crosses monitors and
-        # plain +/- creates numeric neighbours, potentially on another output.
-        cycleWorkspaceOnOutput = runs "workspace, m${if args.delta == 1 then "+1" else "-1"}";
         stepWorkspace = runs "exec, collective-workspace-step hyprland ${toString args.delta}";
         goToWorkspace = runs "workspace, ${toString args.n}";
         exec = runs "exec, ${toString args.execCmd}";
