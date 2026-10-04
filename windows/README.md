@@ -91,6 +91,61 @@ The Windows devbox user is typically a **non-admin domain account** (e.g.
 A non-admin user cannot avoid the UAC consent for the admin half; everything
 else is fully automated.
 
+### Keeping background work off the Windows desktop
+
+The private Collective modules use the shared `headless.ps1` and
+`collective-headless.cs` adapter here for Windows-native GitHub runners, the
+keep-active helper, and the repeating WSL watchdog. A `.cmd` Startup entry and
+`start /b` are **not** headless: they still own a visible console. PowerShell's
+`-WindowStyle Hidden` alone also does not isolate child windows.
+
+The adapter is compiled with Windows' inbox .NET Framework compiler as a small
+**GUI-subsystem executable** (no initial console). It starts the command on a
+shared, non-visible `CollectiveBackground` Win32 desktop, so ordinary child
+consoles and GUI windows stay off the operator's input desktop. It never switches
+desktops, changes the terminal default host, requests elevation, changes the
+Windows user, or stores a password. This is UI isolation, **not a security
+sandbox**: programs explicitly targeting the input desktop or an existing
+interactive application can still escape it.
+
+- Startup uses `.lnk` shortcuts, not `.cmd` files. Immediate starts use the same
+  adapter. Same-command starts are serialized by a named mutex; duplicate live
+  launches are ignored.
+- The watchdog's Task Scheduler action targets the windowless adapter directly,
+  avoiding a PowerShell console on each poll. Its user/trigger/recovery policy is
+  unchanged. The S4U boot task already runs non-interactively.
+- The screen-capture agent intentionally remains on the interactive desktop.
+  Jobs requiring the operator's live UI/input must not use background runners.
+- The adapter waits for its child, returns its exit code and fails closed (no
+  visible-console fallback). Last launch errors go to
+  `collective-headless-error.log` in the command's working directory. Runner
+  diagnostics remain in the installation's `_diag` directory; keep-active and
+  watchdog logs remain under `%LOCALAPPDATA%\devbox`.
+- Content-addressed executables live in `%LOCALAPPDATA%\Collective\headless`.
+  An update can install a new version without overwriting an executing binary.
+  If local policy blocks compilation/execution, convergence fails rather than
+  weakening policy or falling back to an interactive runner.
+
+**Existing boxes:** the operator's next `cltv switch` replaces the managed
+Startup entries and watchdog action. It does **not** kill existing runner
+listeners or workers, which may have live CI jobs. Those listeners move to the
+background desktop on their next controlled restart or Windows logout/login;
+drain CI before doing either. This remains user-logon autostart, not a Windows
+service, and does not add pre-logon runner availability.
+
+Validation (Windows PowerShell 5.1 or PowerShell 7, no admin):
+
+```powershell
+# Public adapter: isolated native/GUI children, argv, exit codes, no desktop switch
+powershell -NoProfile -ExecutionPolicy Bypass -File collective-public/windows/tests/headless-test.ps1
+# In a full Collective checkout: fake runner/Startup migration and duplicate starts
+powershell -NoProfile -ExecutionPolicy Bypass -File modules/nixos/tests/github-runner-wsltunnel-launcher-test.ps1
+```
+
+Both tests use unique temporary directories and fake children. They do not change
+real Startup entries, scheduled tasks, or running CI jobs. In the public-only
+checkout, the first script is at `windows/tests/headless-test.ps1`.
+
 ### Preventing idle lock and session eviction
 
 Sleep/hibernate and workstation locking are separate Windows policy paths. The
