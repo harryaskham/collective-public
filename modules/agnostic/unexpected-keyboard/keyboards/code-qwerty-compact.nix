@@ -29,13 +29,13 @@ let
       (mapAttrsToList mkCardinal
         (with _; with kv; {
           show_termux_sidebar = (m "⌁" [(k ctrl) (k alt) (k shift) (k right)]);
-          new_termux_terminal = (m "⎙" [(k ctrl) (k alt) (k c)]);
+          new_termux_terminal = (m "" [(k ctrl) (k alt) (k c)]);
           next_termux_terminal = (m "→" [(k ctrl) (k alt) (k n)]);
           prev_termux_terminal = (m "←" [(k ctrl) (k alt) (k p)]);
           next_tmux_window = (m "▸" [(k ctrl) (k a) (k n)]);
           prev_tmux_window = (m "◂" [(k ctrl) (k a) (k p)]);
           move_terminal = (m "⇅" [(k ctrl) (k alt) (k shift) (k f)]);
-          hide_keyboard = (m "Kb↓" [(k ctrl) (k alt) (k "k")]);
+          hide_keyboard = (m "󰌐" [(k ctrl) (k alt) (k "k")]);
           tmux_zoom = (m "⛶" [(k ctrl) (k a) (k z)]);
           tmux_descend = (m "↑" [(k ctrl) (k a) (k ctrl) (k t)]);
           tmux_ascend = (m "↓" [(k ctrl) (k a) (k ctrl) (k g)]);
@@ -318,15 +318,15 @@ in {
         "⇠" w.wm_workspace_previous  c.s  "⇢" e.wm_workspace_next
                     "⌥" se.alt
       _
-              "↑" n.wm_move_up  "⛶" macros.ne.tmux_zoom
-        "←" w.wm_move_left  c.d  "→" e.wm_move_right
-              "↓" s.wm_move_down
+              "" n.wm_move_up  "⛶" macros.ne.tmux_zoom
+        "" w.wm_move_left  c.d  "" e.wm_move_right
+              "" s.wm_move_down
                     "❖" se.meta
       _
         "⇅" macros.nw.move_terminal
-              "↑" n.wm_focus_up  "⇡" ne.wm_open_terminal
-        "←" w.wm_focus_left  c.f  "→" e.wm_focus_right
-              "↓" s.wm_focus_down
+              "" n.wm_focus_up  "⇡" ne.wm_open_terminal
+        "" w.wm_focus_left  c.f  "" e.wm_focus_right
+              "" s.wm_focus_down
         "WM" sw.switch_to_wm  "▤" se.fn
       _
                                         "△" macros.n.tmux_resize_up ne."-"
@@ -343,7 +343,7 @@ in {
       _
                     ne."'"
                 c.k
-              "Kb↓" macros.s.hide_keyboard
+              "󰌐" macros.s.hide_keyboard
         sw."["       se."]"
       _
                       ne."\""
@@ -367,11 +367,11 @@ in {
               c.x
         sw.bwd       se.fwd
       _
-          "Hide" n.wm_hide_all  ne.copy
+          "" n.wm_hide_all  ne.copy
               c.c
-        sw.config  "⎙" se.wm_open_terminal
+        sw.config  "" macros.se.new_termux_terminal
       _
-          "Min" n.wm_minimize_all  ne.paste
+          "󰞒" n.wm_minimize_all  ne.paste
               c.v
                       se.pastePlain
       _
@@ -379,7 +379,7 @@ in {
               c.b
         "←" macros.sw.prev_termux_terminal  "↓" macros.s.tmux_ascend  "→" macros.se.next_termux_terminal
       _
-        "Rest" n.wm_restore_all  ne."?"
+        "" n.wm_restore_all  ne."?"
               c.n
         sw."/"      
       _

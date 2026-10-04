@@ -40,8 +40,8 @@ let
     { c = kv.k _.flotilla_2; }
     { c = kv.k _.flotilla_3; }
     { c = kv.k _.flotilla_5; }
-    ((key "Hide" _.wm_hide_all) // { s = label "Min" _.wm_minimize_all; })
-    (key "Restore" _.wm_restore_all)
+    ((key "" _.wm_hide_all) // { s = label "󰞒" _.wm_minimize_all; })
+    (key "" _.wm_restore_all)
   ];
   returns = assert length wmReturnLayouts >= 1 && length wmReturnLayouts <= 4;
     map (entry: switch entry.label entry.layout) wmReturnLayouts;

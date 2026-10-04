@@ -9,11 +9,24 @@
   its default-window factory, it opens a NOD float even while another app is focused.
   It uses NOD's configured command. It requires the selected manager; it is **not**
   a manager-independent Android intent in Local mode.
+- **C ↘ → ** creates a new docked terminal tab (Ctrl+Alt+C), not a new float.
+  It requires NOD's docked activity; F ↗ remains the manager's new-float action.
 - **F ↖ → ⇅** moves the current NOD session between docked and floating (Ctrl+Alt+Shift+F).
-- **K ↓ → Kb↓** toggles/hides the keyboard from NOD (Ctrl+Alt+K).
+- **K ↓ → 󰌐** toggles/hides the keyboard from NOD (Ctrl+Alt+K).
   Both are NOD shortcuts and require NOD focus; the latter normally hides the
   already-visible keyboard, but is technically NOD's toggle action.
-- F's focus arrows and Fn stay in place. E ↖ remains the mounted-terminal key.
+- **D** uses solid shafted arrows **   ** for moving windows; **F** uses
+  thin chevrons **   ** for focus. Directions and Fn stay in place.
+  G retains its hollow tmux-resize triangles. E ↖ remains the mounted-terminal key.
+- **C ↑ → **, **V ↑ → 󰞒**, **N ↑ → ** hide, minimize, and restore windows.
+  Minimize uses Nerd Font `md-arrow_collapse_down` (U+F0792), not an underline.
+
+**Show is not Restore.** Flotilla's `windows.hide` sets a workspace-hidden flag;
+`windows.show` clears it. `windows.restore` unminimizes windows without clearing
+that flag. Omni currently lacks the `wm_show_all` semantic key and dispatch
+mapping (tracked by **android-utils:bd-9d9e82**). C ↓ is reserved for ** Show**,
+but deliberately remains unbound until that Android-side support ships; an
+invented XML key would not provide recovery.
 
 ## Control deck
 
@@ -29,7 +42,7 @@ Named switching only finds layouts that are installed in Omni's layout list.
 | Resize pad | Resize using Flotilla's default Ctrl+Alt+Shift+arrow bindings |
 | WS− / WS+ | Previous/next workspace, through the selected manager |
 | Four live slots | Flotilla slots 1, 2, 3, 5; defaults WM, Tile, Full, Pin |
-| Hide / south Min / Restore | Visibility controls, not terminal-session closure |
+|  / south 󰞒 /  | Hide / minimize / restore; not terminal-session closure or Show |
 | Bottom ABC / Portrait / Landscape | Explicit configurable keyboard return layouts |
 | Arrows / Swipes | Toggle compact swipe pads versus individual tap arrows |
 | Term+ | Same semantic new-float action as F ↗ |
@@ -85,7 +98,7 @@ These are proposals, not silent additions to the typing layout:
 | Flotilla slots 4 / 6 | WM deck secondary gestures | Defaults Float / Balance; keep live slot labels if added. |
 | Flotilla slots 7 / 8 / 9 | Separate optional advanced deck | Defaults Close / Hide keyboard / Show keyboard; avoid accidental Close or hiding the controls themselves. |
 
-Already covered: new float (F ↗ and C ↘), mounted terminal (E ↖), previous/next tab
+Already covered: new float (F ↗), new docked tab (C ↘), mounted terminal (E ↖), previous/next tab
 (B ↙/↘), tab switcher (Z ↘), paste (V ↗), keyboard move/resize, persistence,
 centering/snapping, focus/move arrows, and manager visibility. No invented
 `nod_*` key names or arbitrary intent strings are emitted.

@@ -1383,9 +1383,40 @@ rec {
             all = concatMap (row: row.keys) layout.keyboard.rows;
             f = head (filter (key: key.c != null && key.c.k == "f") all);
             k = head (filter (key: key.c != null && key.c.k == "k") all);
-          in expect.eq [(map (v: v.k) f.nw.m) (map (v: v.k) k.s.m)]
-            [["ctrl" "alt" "shift" "f"] ["ctrl" "alt" "k"]]
+            c = head (filter (key: key.c != null && key.c.k == "c") all);
+          in expect.eq [(map (v: v.k) f.nw.m) (map (v: v.k) k.s.m) (map (v: v.k) c.se.m)]
+            [["ctrl" "alt" "shift" "f"] ["ctrl" "alt" "k"] ["ctrl" "alt" "c"]]
         ) compact;
+        compactGlyphs = mapAttrs (_: layout:
+          let
+            all = concatMap (row: row.keys) layout.keyboard.rows;
+            key = letter: head (filter (k: k.c != null && k.c.k == letter) all);
+            d = key "d"; f = key "f"; c = key "c";
+            v = key "v"; n = key "n"; k = key "k";
+          in expect.eq {
+            move = map (kv: [kv.k kv.legend]) [d.n d.s d.w d.e];
+            focus = map (kv: [kv.k kv.legend]) [f.n f.s f.w f.e];
+            visibility = map (kv: [kv.k kv.legend]) [c.n v.n n.n];
+            newTab = c.se.legend;
+            keyboard = k.s.legend;
+            # Reserve C south until Omni actually supports wm_show_all.
+            show = c.s;
+          } {
+            move = [["wm_move_up" ""] ["wm_move_down" ""] ["wm_move_left" ""] ["wm_move_right" ""]];
+            focus = [["wm_focus_up" ""] ["wm_focus_down" ""] ["wm_focus_left" ""] ["wm_focus_right" ""]];
+            visibility = [["wm_hide_all" ""] ["wm_minimize_all" "󰞒"] ["wm_restore_all" ""]];
+            newTab = "";
+            keyboard = "󰌐";
+            show = null;
+          }
+        ) compact;
+        deckVisibilityGlyphs = genAttrs ["Flotilla WM" "Flotilla WM (Arrows)"] (name:
+          let
+            hide = head (filter (k: k.c != null && k.c.k == "wm_hide_all") (keys name));
+            restore = head (filter (k: k.c != null && k.c.k == "wm_restore_all") (keys name));
+          in expect.eq [hide.c.legend hide.s.k hide.s.legend restore.c.legend]
+            ["" "wm_minimize_all" "󰞒" ""]
+        );
         workspace = expect.eq (map (k: k.k) first.c.m) ["ctrl" "alt" "1"];
         sendWorkspace = expect.eq (map (k: k.k) first.s.m) ["ctrl" "alt" "shift" "1"];
         returnTarget = expect.eq
