@@ -657,8 +657,11 @@ in {
           echo "Acquiring wake-lock"
           termux-wake-lock
 
-          echo "Starting X11 listener"
-          termux-x11 :1 -listen tcp -ac -dpi 192 \
+          # DISPLAY must be set in this Termux process (Tasker does not inherit
+          # the environment of the separate NOD caller).
+          export DISPLAY="''${DISPLAY:-:0}"
+          echo "Starting X11 listener on $DISPLAY"
+          termux-x11 "$DISPLAY" -listen tcp -ac -dpi 192 \
             +extension MIT-SHM \
             +extension RANDR \
             +extension GLX
