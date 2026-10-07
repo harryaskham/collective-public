@@ -187,17 +187,27 @@ least-privilege Windows task owned by the interactive Windows user. This is
 intentionally **not** a SYSTEM task: WSL distro registrations are per-user, so
 SYSTEM generally cannot see or start the user's `NixOS` distro.
 
-Every minute the task runs a bounded `NixOS` probe. The probe itself starts a
-stopped distro. After two consecutive failures it treats the VM as wedged,
-runs `wsl --terminate NixOS`, and makes one clean relaunch attempt; Task
-Scheduler retries on the next interval if that attempt fails. The probe has a
-60-second timeout and Task Scheduler prevents overlapping checks.
+The task runs a persistent Windows supervisor with a bounded `NixOS` probe
+every minute. It also keeps a WSL client attached between probes: a one-shot
+`true` starts the distro but **systemd services do not keep WSL alive**, so it
+can idle-shut down immediately afterward. The attached client waits on an owned
+stdin pipe; closing that pipe or losing the supervisor releases only that
+client, not the distro.
+
+After two consecutive failed probes the supervisor runs `wsl --terminate NixOS`
+and makes one clean relaunch attempt with a new attached client. Probes have a
+60-second timeout. The supervisor keeps retrying; scheduled minute triggers and
+restart-on-error recover a dead supervisor. Tasks have unlimited execution time,
+not the previous three-minute limit. A global per-user/distro mutex prevents
+overlapping recovery across interactive and boot sessions.
 
 The interactive task cannot run during the gap after a Windows Update reboot
 and before the user signs back in. `devbox-windows-admin` additionally installs
-`DevboxWslBootRecovery`: an at-startup S4U task which runs as the same distro-
-owning user without storing a password or requiring an interactive logon. This
-closes the reboot gap while preserving the per-user WSL registration context.
+`DevboxWslBootRecovery`: an at-startup **and repeating** S4U task which runs the
+same persistent supervisor as the distro-owning user, without storing a password
+or requiring an interactive logon. Repeating triggers cover later failures too,
+not only the first boot attempt. Existing boxes must re-run the admin command
+to update their boot task.
 
 The minute watchdog is part of ordinary `cltv switch`/bootstrap convergence and
 needs no UAC. The reboot-gap task needs the same one-time elevation as the power
@@ -212,10 +222,12 @@ devbox-windows-admin   # one interactive UAC consent
 
 Inspect both tasks from Windows with
 `Get-ScheduledTask DevboxWslWatchdog,DevboxWslBootRecovery`. Recovery activity
-is logged at `%LOCALAPPDATA%\devbox\wsl-watchdog.log`; the boot task logs its
-successful probe too, making post-reboot verification explicit. Intentional
-offline operations create `%LOCALAPPDATA%\devbox\wsl-watchdog.pause`; stale
-pause files expire after two hours. `grow-devbox-vhd.ps1` manages that marker
+is logged at `%LOCALAPPDATA%\devbox\wsl-watchdog.log`. The active task stays
+`Running`; `%LOCALAPPDATA%\devbox\wsl-watchdog.status.json` must show a fresh
+`updatedAt`, `state: healthy` and a live `keepAlivePid`. `-Once` is diagnostic
+one-shot mode and does not keep the distro alive. Intentional offline operations
+create `%LOCALAPPDATA%\devbox\wsl-watchdog.pause`; the supervisor releases its
+client and stops recovery while paused. Stale pause files expire after two hours. `grow-devbox-vhd.ps1` manages that marker
 automatically so the watchdog cannot race an offline VHD resize.
 
 The same headless convergence sets Windows Terminal's `defaultProfile` to the
