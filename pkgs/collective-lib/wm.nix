@@ -220,7 +220,7 @@ in rec {
         moveWindowLeft = runs "move left";
         moveWindowRight = runs "move right";
         openTerminal = runs ''exec "alacritty"'';
-        openLauncher = runs ''exec "rofi -show run -modi run"'';
+        openLauncher = runs ''exec "rofi -show combi"'';
         reloadConfig = runs "reload";
         floatCurrent = runs "floating toggle";
         pseudofloatCurrent = runs "floating toggle";
@@ -262,7 +262,7 @@ in rec {
         moveWindowLeft = runs "move left";
         moveWindowRight = runs "move right";
         openTerminal = runs ''exec "kitty || xterm"'';
-        openLauncher = runs ''exec "rofi -show run -modi run"'';
+        openLauncher = runs ''exec "rofi -show combi"'';
         reloadConfig = runs "reload";
         floatCurrent = runs "floating toggle";
         pseudofloatCurrent = runs "floating toggle";
@@ -305,7 +305,7 @@ in rec {
         moveWindowLeft = runs "movewindow, l";
         moveWindowRight = runs "movewindow, r";
         openTerminal = runs ''exec, kitty || xterm'';
-        openLauncher = runs ''exec , rofi -show run -modi run'';
+        openLauncher = runs ''exec, rofi -show combi'';
         reloadConfig = runs "exec, hyprctl reload";
         floatCurrent = runs "togglefloating";
         pseudofloatCurrent = runs "pseudo";
