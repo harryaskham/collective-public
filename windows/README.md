@@ -210,8 +210,23 @@ not only the first boot attempt. Existing boxes must re-run the admin command
 to update their boot task.
 
 The minute watchdog is part of ordinary `cltv switch`/bootstrap convergence and
-needs no UAC. The reboot-gap task needs the same one-time elevation as the power
-policy. To install both halves on an existing devbox:
+normally needs no UAC. Some older boxes have an administrator-owned
+`DevboxWslWatchdog` task whose ACL grants the normal user only read access.
+Updating it then fails with `Access is denied`; Linux `sudo` or repeatedly
+restarting the convergence service cannot repair a Windows ACL.
+
+The updated `devbox-windows-admin` includes a one-time, narrowly scoped repair:
+it grants the original user read/write/execute on that task, verifies it already
+uses the same user's limited interactive token, and preserves the task
+identity, existing permissions and definition. The original ACL is backed up;
+elevated/SYSTEM tasks and deny policies are not weakened. The user's SID is
+captured before UAC, so authenticating as a different administrator does not
+give that administrator ownership of the per-user workflow. In the full private
+checkout, `windows/repair-devbox-watchdog-acl.ps1` also supports a targeted
+pre-switch repair; see `windows/README.md` there for the exact commands.
+
+The reboot-gap task needs the same one-time elevation as the power policy.
+To install both halves on an existing devbox:
 
 ```bash
 cd ~/collective
