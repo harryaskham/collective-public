@@ -291,7 +291,22 @@ in rec {
         stepWorkspace = runs "exec, collective-workspace-step hyprland ${toString args.delta}";
         goToWorkspace = runs "workspace, ${toString args.n}";
         exec = runs "exec, ${toString args.execCmd}";
-        toggleOutput = runs ''exec, if [[ $(hyprctl -j monitors | jq ".[]" | jq "if .description == \"${args.disp.name}\" then .disabled else false end" | jq "if . == true then \"1\" else \"0\" end") ]]; then hyprctl keyword monitor 'desc:${args.disp.name}', disable; else hyprctl keyword monitor 'desc:${args.disp.name}', ${display.toHyprSettings (args.disp // { enable = true;  })}; fi 2>/dev/null'';
+        toggleOutput =
+          let
+            disp = args.disp;
+            field = if disp.name != "" then "description" else "name";
+            target = lib.escapeShellArg (if disp.name != "" then disp.name else disp.defaultOutput);
+            enable = lib.escapeShellArg (display.toHypr (disp // { enable = true; }));
+            disable = lib.escapeShellArg (display.toHypr (disp // { enable = false; }));
+          # Include disabled outputs, inspect only the requested panel, and
+          # compare a boolean value rather than testing a nonempty "0"/"1".
+          # Query errors/missing outputs must not issue a monitor command.
+          in runs (lib.concatStringsSep " " [
+            ''exec, monitors=$(hyprctl -j monitors all) &&''
+            ''disabled=$(printf '%s' "$monitors" | jq -er --arg target ${target} '[.[] | select(.${field} == $target)] | if length == 1 and (.[0].disabled | type) == "boolean" then .[0].disabled | tostring else error("Cannot determine output state") end') &&''
+            ''if [ "$disabled" = true ]; then hyprctl keyword monitor ${enable};''
+            ''else hyprctl keyword monitor ${disable}; fi''
+          ]);
         currentToWorkspace = runs ''movetoworkspacesilent, ${toString args.n}'';
         killCurrent = runs "killactive";
         fullscreen = runs "fullscreen, 0";
