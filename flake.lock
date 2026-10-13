@@ -13,8 +13,9 @@
         "type": "github"
       },
       "original": {
-        "id": "flake-utils",
-        "type": "indirect"
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
       }
     },
     "flake-utils_2": {
@@ -75,14 +76,18 @@
         ]
       },
       "locked": {
-        "path": "flakes/nix-reflect",
-        "type": "path"
+        "lastModified": 1776527246,
+        "narHash": "sha256-jl3q6Cv4Uz9lffc7eNcvF/97c6AdzYC9mTk4zftp14o=",
+        "owner": "harryaskham",
+        "repo": "nix-reflect",
+        "rev": "e0e46db156e838e8b04a4c56361969d18ee5188f",
+        "type": "github"
       },
       "original": {
-        "path": "flakes/nix-reflect",
-        "type": "path"
-      },
-      "parent": []
+        "owner": "harryaskham",
+        "repo": "nix-reflect",
+        "type": "github"
+      }
     },
     "nixpkgs": {
       "locked": {
