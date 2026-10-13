@@ -294,6 +294,8 @@ let
               "wm_move_down"
               "wm_workspace_previous"
               "wm_workspace_next"
+              # Turns Flotilla's hardware shortcuts off/on for nested tiling WMs.
+              "flotilla_shortcuts"
             ] // selfAttrs (genList (i: "flotilla_${toString (i + 1)}") 12);
             in if cfg.enableFork then xs else mapAttrs (_: _: "removed") xs;
         };
@@ -1392,8 +1394,9 @@ rec {
             all = concatMap (row: row.keys) layout.keyboard.rows;
             key = letter: head (filter (k: k.c != null && k.c.k == letter) all);
             d = key "d"; f = key "f"; c = key "c";
-            v = key "v"; n = key "n"; k = key "k";
+            v = key "v"; n = key "n"; k = key "k"; x = key "x";
           in expect.eq {
+            shortcuts = [x.nw.k x.nw.legend];
             move = map (kv: [kv.k kv.legend]) [d.n d.s d.w d.e];
             focus = map (kv: [kv.k kv.legend]) [f.n f.s f.w f.e];
             visibility = map (kv: [kv.k kv.legend]) [c.n v.n n.n];
@@ -1402,6 +1405,7 @@ rec {
             # Reserve C south until Omni actually supports wm_show_all.
             show = c.s;
           } {
+            shortcuts = ["flotilla_shortcuts" "⌨"];
             move = [["wm_move_up" ""] ["wm_move_down" ""] ["wm_move_left" ""] ["wm_move_right" ""]];
             focus = [["wm_focus_up" ""] ["wm_focus_down" ""] ["wm_focus_left" ""] ["wm_focus_right" ""]];
             visibility = [["wm_hide_all" ""] ["wm_minimize_all" "󰞒"] ["wm_restore_all" ""]];
