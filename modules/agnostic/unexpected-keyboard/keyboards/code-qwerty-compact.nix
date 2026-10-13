@@ -363,7 +363,7 @@ in {
               c.z
         sw."\\"         "⇝" macros.se.show_termux_sidebar
       _
-        "⌨" nw.flotilla_shortcuts ne.cut
+        "⊡" nw.switch_to_keys29R ne.cut
               c.x
         sw.bwd       se.fwd
       _
