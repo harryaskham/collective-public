@@ -1,45 +1,55 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}: let
+{ config, lib, pkgs, ...}:
+
+with lib;
+
+let
   cfg = config.services.handheld-daemon;
-  ppdPackage = config.services.power-profiles-daemon.package;
-
-  # Adjustor implements the PPD API itself. Keep the CLI and bus permissions,
-  # but not PPD's D-Bus activation files: systemPackages also feed the system
-  # bus configuration, so installing the full package could start PPD again.
-  ppdCompat = pkgs.runCommand "handheld-daemon-power-profiles-compat" {} ''
-    mkdir -p "$out/bin" "$out/share/dbus-1/system.d"
-    ln -s ${lib.getExe' ppdPackage "powerprofilesctl"} "$out/bin/powerprofilesctl"
-    cp ${ppdPackage}/share/dbus-1/system.d/net.hadess.PowerProfiles.conf \
-       ${ppdPackage}/share/dbus-1/system.d/org.freedesktop.UPower.PowerProfiles.conf \
-       "$out/share/dbus-1/system.d/"
-  '';
 in {
-  imports = [
-    # The upstream NixOS module now owns Adjustor packaging and acpi_call.
-    (lib.mkRenamedOptionModule
-      ["services" "handheld-daemon" "adjustor" "acpiCall" "enable"]
-      ["services" "handheld-daemon" "adjustor" "loadAcpiCallModule"])
-  ];
-
-  config = lib.mkIf (cfg.enable && cfg.adjustor.enable) {
-    # Desktop environments may enable PPD by default. There must be only one
-    # owner: an active PPD or TuneD makes Adjustor disable energy management.
-    services.power-profiles-daemon.enable = lib.mkForce false;
-    services.tuned.enable = lib.mkForce false;
-
-    environment.systemPackages = [ppdCompat];
-    services.dbus = {
-      enable = true;
-      packages = [ppdCompat];
+  options.services.handheld-daemon.adjustor = {
+    enable = mkOption {
+      type = types.bool;
+      default = false;
+      description = "Enable the HHD Adjustor for TDP control.";
     };
-    systemd.services.handheld-daemon = {
-      requires = ["dbus.service"];
-      after = ["dbus.service"];
-      restartTriggers = [ppdCompat];
+    acpiCall = {
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Enable acpi_call at boot, required for Adjustor TDP control on most devices.";
+      };
     };
   };
+
+  config = mkIf (cfg.enable && cfg.adjustor.enable) (mkMerge [
+
+    (let
+      hhdPython = pkgs.python3.withPackages (ps: [ ps.handheld-daemon-adjustor ] );
+
+      handheld-daemon-with-adjustor = pkgs.handheld-daemon.overrideAttrs (attrs: {
+        # Ensure the Python adjustor can be seen by HHD:
+        nativeBuildInputs = (attrs.nativeBuildInputs or []) ++ [ hhdPython.pkgs.wrapPython ];
+        propagatedBuildInputs =
+          (attrs.propagatedBuildInputs or [])
+          ++ (with pkgs.python3Packages; [handheld-daemon-adjustor])
+          ++ (with pkgs; [busybox]);
+        postFixup = ''
+          wrapProgram "$out/bin/hhd" \
+            --prefix PYTHONPATH : "$PYTHONPATH" \
+            --prefix PATH : "${hhdPython}/bin"
+        '';
+      });
+
+    in {
+      services.handheld-daemon.package = handheld-daemon-with-adjustor;
+      # Adjustor assumes it can talk PPD protocol over dbus
+      services.power-profiles-daemon.enable = true;
+    })
+
+    (mkIf cfg.adjustor.acpiCall.enable {
+      boot.extraModulePackages = [ config.boot.kernelPackages.acpi_call ];
+      boot.kernelModules = [ "acpi_call" ];
+    })
+
+  ]);
+
 }
