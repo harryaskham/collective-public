@@ -16,8 +16,6 @@ This document is a detailed guide to the public flake "collective-public". It ex
     - `lib`: The instantiated `collective-lib`
     - `packages`:
       - `collective-lib`: library exported as a derivation for programmatic import
-      - `collective-pythonPackages`: namespaced Python packages
-      - `handheld-daemon-adjustor`: Python application wrapper around the adjustor CLI
     - `devShells`: `default` minimal shell
     - `testedModules`: module trees arranged for testing
     - `modules`: `testedModules` with tests removed (suitable for consumption)
@@ -55,8 +53,7 @@ This document is a detailed guide to the public flake "collective-public". It ex
 
 Defined in `overlays/default.nix`:
 - `python3Overlay`
-  - Overrides `python3` to include `collective-public/pkgs/pythonPackages` and extends `python3Packages`.
-  - Also injects an `image-go-nord` overlay to include missing Python dependencies (`numpy`, `ffmpeg-python`, `requests`) and disable checks.
+  - Overrides `image-go-nord` in `python3` and `python3Packages` with the version from `nixpkgs-stable`.
 - `packagesOverlay`
   - Imports `collective-public/pkgs` into your package set.
 
@@ -75,10 +72,11 @@ Usage example:
 
 - `packages.collective-lib`
   - A derivation exporting the library from `pkgs/collective-lib`. You can also import it directly from source.
-- `packages.collective-pythonPackages`
-  - Namespaced Python packages for use via the `python3Overlay` or directly.
-- `packages.handheld-daemon-adjustor`
-  - A Python application wrapper for the handheld-daemon adjustor CLI.
+
+HHD and its bundled Adjustor are supplied by `pkgs.handheld-daemon` from nixpkgs.
+The old standalone Adjustor package and its Python-package namespace have been
+removed; enable `services.handheld-daemon.adjustor.enable` rather than installing
+a separate plugin.
 
 Access example:
 ```nix
@@ -112,7 +110,9 @@ Structure (`modules/`):
   - `termux.nix`: Termux-related helpers
 - `nixos/`
   - `default.nix`: NixOS module group
-  - `handheld-daemon.nix`: NixOS module for handheld-daemon integration
+  - `handheld-daemon.nix`: service-level power ownership for upstream HHD/Adjustor.
+    Uses nixpkgs packaging and ACPI support; disables standalone PPD and TuneD
+    when HHD/Adjustor are enabled, retaining the profile CLI and D-Bus permissions.
 
 Consumption example (NixOS):
 ```nix

@@ -9,14 +9,6 @@
     inherit (pkgs) lib;
   };
 
-  # Namespaced python packages.
-  collective-pythonPackages = import ./pythonPackages {inherit pkgs;};
-
-  # Application wrapping of the HHD adjustor CLI
-  handheld-daemon-adjustor =
-    pkgs.python3Packages.toPythonApplication
-    collective-pythonPackages.handheld-daemon-adjustor;
-
   # Aviator CLI
   aviator-cli = pkgs.callPackage ./aviator-cli.nix {};
 
