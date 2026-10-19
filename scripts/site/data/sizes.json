@@ -1,0 +1,154 @@
+[
+ {
+  "path": "attrsets.nix",
+  "lines": 740
+ },
+ {
+  "path": "binding.nix",
+  "lines": 158
+ },
+ {
+  "path": "clib.nix",
+  "lines": 144
+ },
+ {
+  "path": "collections.nix",
+  "lines": 298
+ },
+ {
+  "path": "colors.nix",
+  "lines": 556
+ },
+ {
+  "path": "data.nix",
+  "lines": 100
+ },
+ {
+  "path": "default.nix",
+  "lines": 211
+ },
+ {
+  "path": "disk.nix",
+  "lines": 47
+ },
+ {
+  "path": "dispatchlib.nix",
+  "lines": 460
+ },
+ {
+  "path": "display.nix",
+  "lines": 124
+ },
+ {
+  "path": "errors.nix",
+  "lines": 97
+ },
+ {
+  "path": "ext.nix",
+  "lines": 36
+ },
+ {
+  "path": "fan.nix",
+  "lines": 130
+ },
+ {
+  "path": "file.nix",
+  "lines": 188
+ },
+ {
+  "path": "font.nix",
+  "lines": 71
+ },
+ {
+  "path": "functions.nix",
+  "lines": 1014
+ },
+ {
+  "path": "lists.nix",
+  "lines": 367
+ },
+ {
+  "path": "log.nix",
+  "lines": 1383
+ },
+ {
+  "path": "modulelib.nix",
+  "lines": 16
+ },
+ {
+  "path": "nixlike.el",
+  "lines": 397
+ },
+ {
+  "path": "rebinds.nix",
+  "lines": 35
+ },
+ {
+  "path": "script-utils/ansi-utils.nix",
+  "lines": 567
+ },
+ {
+  "path": "script-utils/command-utils.nix",
+  "lines": 114
+ },
+ {
+  "path": "script-utils/default.nix",
+  "lines": 22
+ },
+ {
+  "path": "script-utils/log-utils.nix",
+  "lines": 527
+ },
+ {
+  "path": "script-utils/main-utils.nix",
+  "lines": 38
+ },
+ {
+  "path": "script-utils/options-utils.nix",
+  "lines": 281
+ },
+ {
+  "path": "script-utils/script-types.nix",
+  "lines": 262
+ },
+ {
+  "path": "script-utils/usage-utils.nix",
+  "lines": 112
+ },
+ {
+  "path": "shell.nix",
+  "lines": 24
+ },
+ {
+  "path": "strings/default.nix",
+  "lines": 7
+ },
+ {
+  "path": "strings/strings.nix",
+  "lines": 971
+ },
+ {
+  "path": "strings/strings_test.nix",
+  "lines": 574
+ },
+ {
+  "path": "syntax.nix",
+  "lines": 51
+ },
+ {
+  "path": "tests.nix",
+  "lines": 660
+ },
+ {
+  "path": "typelib.nix",
+  "lines": 5388
+ },
+ {
+  "path": "wm-workspace-step.sh",
+  "lines": 58
+ },
+ {
+  "path": "wm.nix",
+  "lines": 407
+ }
+]

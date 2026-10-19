@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="a.skh.am:made" content="hand">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>collective-public · a Nix library and modules from a personal configuration</title>
+<meta name="description" content="collective-public is the public part of a personal Nix configuration: collective-lib, a Nix library with a type system for Nix values and a test framework; modules for Nix-on-Droid, NixOS and Home Manager; and scripts that turn a Windows machine into a NixOS-WSL development box. What works, what is tested, and what is out of date.">
+<meta name="theme-color" content="#0d1526">
+<meta name="color-scheme" content="dark">
+<meta name="a.skh.am:group" content="libraries">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/fonts/fonts.css">
+<link rel="stylesheet" href="assets/base.css">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="wrap">
+<nav class="topbar" aria-label="Site">
+  <a href="https://a.skh.am/all/">a.skh.am/all</a><span aria-hidden="true">/</span><span>collective-public</span>
+  <a class="src" href="https://github.com/harryaskham/collective-public">Source on GitHub</a>
+</nav>
+
+<main id="main">
+<header class="intro">
+  <h1><span class="lam" aria-hidden="true">λ</span>collective-public</h1>
+  <p class="lede">The public part of a personal Nix configuration. It holds <b>collective-lib</b>, a Nix library with a type system for Nix values and a test framework; modules for Nix-on-Droid, NixOS and Home Manager; a package for renting GPUs; and scripts that turn a Windows machine into a NixOS-WSL development box.</p>
+  <p>It is published from a folder inside a private configuration repository, and its own README advises against depending on it directly: it changes whenever the configuration does. <a href="https://a.skh.am/nix-reflect/">nix-reflect</a>, a Nix evaluator written in Nix, is built on it.</p>
+</header>
+
+<section aria-labelledby="h-lib">
+  <h2 id="h-lib">collective-lib</h2>
+  <p>A library of plain Nix functions, exposed as the flake's <code>lib</code> output. <code>lib.typed</code> is nixpkgs' <code>lib</code> merged with everything below, 1,022 names in all, so code can switch to it with one <code>with</code>.</p>
+  <!-- gen:sizes -->
+<div class="table-wrap"><table><caption>The largest of collective-lib's 37 files (16,061 lines in all), counted when the page was built</caption><thead><tr><th scope="col">File</th><th scope="col">Lines</th><th scope="col">What it is</th></tr></thead><tbody><tr><th scope="row"><code>typelib.nix</code></th><td class="num">5,388</td><td>a type system for Nix values, outside the module system</td></tr><tr><th scope="row"><code>log.nix</code></th><td class="num">1,383</td><td>structured logging and tracing, aware of the type system</td></tr><tr><th scope="row"><code>functions.nix</code></th><td class="num">1,014</td><td>missing functional basics and variadic functions</td></tr><tr><th scope="row"><code>strings/strings.nix</code></th><td class="num">971</td><td>string formatting and multi-line indentation</td></tr><tr><th scope="row"><code>attrsets.nix</code></th><td class="num">740</td><td>attribute-set helpers</td></tr><tr><th scope="row"><code>tests.nix</code></th><td class="num">660</td><td>the test framework: suites, expectations, runners</td></tr><tr><th scope="row"><code>script-utils/ansi-utils.nix</code></th><td class="num">567</td><td>terminal colours and styles for generated scripts</td></tr><tr><th scope="row"><code>colors.nix</code></th><td class="num">556</td><td>colour schemes and hex and RGB formatting for configs</td></tr><tr><th scope="row"><code>script-utils/log-utils.nix</code></th><td class="num">527</td><td>logging for generated shell scripts</td></tr><tr><th scope="row"><code>dispatchlib.nix</code></th><td class="num">460</td><td>dispatch on a value&#x27;s type or shape</td></tr><tr><th scope="row"><code>wm.nix</code></th><td class="num">407</td><td>window-management intents and key bindings, independent of the window manager</td></tr><tr><th scope="row"><code>nixlike.el</code></th><td class="num">397</td><td>Emacs: evaluate Nix on the fly in a Nix or Tvix REPL</td></tr></tbody></table></div>
+<!-- /gen -->
+</section>
+
+<section aria-labelledby="h-types">
+  <h2 id="h-types">Types for Nix values</h2>
+  <p>The largest part is a type system that lives outside NixOS's module system. Objects are attribute sets carrying their type and supertype; fields are checked when an object is created and again when it changes, so a value built as a type stays valid for it. Built-in values are wrapped (<code>Int</code>, <code>Bool</code>, …) and the raw value is in <code>.value</code>.</p>
+  <figure class="fig">
+    <!-- fig:levels -->
+<svg class="dg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 170" width="940" height="170" role="img" aria-labelledby="levels-t levels-d">
+<title id="levels-t">How the type system bootstraps itself</title>
+<desc id="levels-d">The bootstrap of collective-lib&#x27;s type system, as typelib.nix describes it. A minimal HyperType, built by hand, defines what fields a type has. MetaType is a subtype of HyperType and also an instance of it, and adds methods. ProtoType is a subtype and an instance of MetaType, and binds methods when instantiated. Type is a subtype and instance of ProtoType and is the base of every other type, from Int and Bool to types you declare.</desc>
+<defs><marker id="levels-tip-ink" class="k-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="tip" d="M0 1L10 5L0 9z"/></marker></defs>
+<g class="k-ink"><path class="edge" d="M165.0 95.0 L265.0 95.0" stroke-width="1.5" marker-end="url(#levels-tip-ink)"/></g>
+<g class="k-ink"><path class="edge" d="M415.0 95.0 L515.0 95.0" stroke-width="1.5" marker-end="url(#levels-tip-ink)"/></g>
+<g class="k-ink"><path class="edge" d="M665.0 95.0 L745.0 95.0" stroke-width="1.5" marker-end="url(#levels-tip-ink)"/></g>
+<g class="k-muted"><rect class="shadow" x="19.0" y="71.0" width="150.0" height="56.0"/><rect class="node" x="15.0" y="67.0" width="150.0" height="56.0" rx="1.5"/><text x="90.0" y="92.0" font-size="15" text-anchor="middle" class="lbl m">HyperType</text><text x="90.0" y="109.0" font-size="12.5" text-anchor="middle" class="sub">built by hand</text></g>
+<g class="k-b"><rect class="shadow" x="269.0" y="71.0" width="150.0" height="56.0"/><rect class="node" x="265.0" y="67.0" width="150.0" height="56.0" rx="1.5"/><text x="340.0" y="92.0" font-size="15" text-anchor="middle" class="lbl m">MetaType</text><text x="340.0" y="109.0" font-size="12.5" text-anchor="middle" class="sub">adds methods</text></g>
+<g class="k-c"><rect class="shadow" x="519.0" y="71.0" width="150.0" height="56.0"/><rect class="node" x="515.0" y="67.0" width="150.0" height="56.0" rx="1.5"/><text x="590.0" y="92.0" font-size="15" text-anchor="middle" class="lbl m">ProtoType</text><text x="590.0" y="109.0" font-size="12.5" text-anchor="middle" class="sub">binds methods</text></g>
+<g class="k-accent"><rect class="shadow" x="749.0" y="63.0" width="180.0" height="72.0"/><rect class="node" x="745.0" y="59.0" width="180.0" height="72.0" rx="1.5"/><text x="835.0" y="84.0" font-size="15" text-anchor="middle" class="lbl m">Type</text><text x="835.0" y="101.0" font-size="12.5" text-anchor="middle" class="sub">base of every type</text><text x="835.0" y="117.0" font-size="12.5" text-anchor="middle" class="sub">Int · Bool · yours</text></g>
+</svg>
+<!-- /fig -->
+  </figure>
+  <p>Each type is a subtype and an instance of the one before it. Every example below was evaluated against this flake by <code>capture.py</code> when the page was built.</p>
+  <div class="cols">
+    <div>
+      <h3>Declare a type, construct it positionally</h3>
+      <div class="pair"><!-- gen:ex-construct -->
+<pre class="nix"><code>with lib.typed;
+let A = Type &quot;A&quot; { fields = [ { a = &quot;int&quot;; } { b = Int; } { c = Default Int 5; } ]; };
+    x = A 1 (Int 2);
+in [ x.a x.b.value x.c.value ]</code></pre><pre class="out" aria-label="Result"><code>[1,2,5]</code></pre>
+<!-- /gen --></div>
+      <h3>A field of the wrong type is refused</h3>
+      <div class="pair"><!-- gen:ex-wrong-field -->
+<pre class="nix"><code>with lib.typed;
+let A = Type &quot;A&quot; { fields = [ { a = &quot;int&quot;; } { b = Int; } ]; };
+in (A 1 &quot;two&quot;).b.value</code></pre><pre class="out" aria-label="Result"><code>error: Upcast error:</code></pre>
+<!-- /gen --></div>
+    </div>
+    <div>
+      <h3>Raw values keep their builtin type</h3>
+      <div class="pair"><!-- gen:ex-typeof-raw -->
+<pre class="nix"><code>with lib.typed; typeOf true</code></pre><pre class="out" aria-label="Result"><code>&quot;bool&quot;</code></pre>
+<!-- /gen --></div>
+      <h3>Wrapped values report their type</h3>
+      <div class="pair"><!-- gen:ex-typeof-wrapped -->
+<pre class="nix"><code>with lib.typed; typeOf (Bool true) == Bool</code></pre><pre class="out" aria-label="Result"><code>true</code></pre>
+<!-- /gen --></div>
+      <h3>But <code>Int</code> does not check its argument</h3>
+      <div class="pair"><!-- gen:ex-int-rejects-string -->
+<pre class="nix"><code>with lib.typed; (Int &quot;123&quot;).value</code></pre><pre class="out" aria-label="Result"><code>&quot;123&quot;</code></pre>
+<!-- /gen --></div>
+    </div>
+  </div>
+  <p class="note">The README is older than the code. Its typed-function example uses <code>defun</code>, which now lives inside the logging layer and is not exported, and its examples use a <code>String</code> type that <code>lib.typed</code> does not export. The <code>eval</code> and <code>parser</code> modules it describes have moved to <a href="https://a.skh.am/nix-reflect/">nix-reflect</a>.</p>
+</section>
+
+<section aria-labelledby="h-tests">
+  <h2 id="h-tests">Tests</h2>
+  <p><code>tests.nix</code> is a small test framework: nested attribute sets of expectations (<code>expect.eq</code>, <code>expect.error</code>, …) gathered into suites, run with <code>lib._tests.run {}</code> or one module at a time. Each library module carries its own suite, and nix-reflect's suites use the same framework.</p>
+  <!-- gen:tests -->
+<div class="table-wrap"><table class="tests"><caption>Each module's own suite, run one module at a time by <code>capture.py</code>: 1093 of 1109 tests pass</caption><thead><tr><th scope="col">Module</th><th scope="col">Passed</th><th scope="col">Tests</th><th scope="col">Result</th></tr></thead><tbody><tr><th scope="row"><code>attrsets</code></th><td class="num">127</td><td class="num">127</td><td class="ok">all pass</td></tr><tr><th scope="row"><code>clib</code></th><td class="num">12</td><td class="num">12</td><td class="ok">all pass</td></tr><tr><th scope="row"><code>collections</code></th><td class="num">62</td><td class="num">62</td><td class="ok">all pass</td></tr><tr><th scope="row"><code>colors</code></th><td class="num">8</td><td class="num">8</td><td class="ok">all pass</td></tr><tr><th scope="row"><code>data</code></th><td class="num">13</td><td class="num">13</td><td class="ok">all pass</td></tr><tr><th scope="row"><code>dispatchlib</code></th><td class="num">27</td><td class="num">27</td><td class="ok">all pass</td></tr><tr><th scope="row"><code>errors</code></th><td class="num">12</td><td class="num">12</td><td class="ok">all pass</td></tr><tr><th scope="row"><code>fan</code></th><td class="num">1</td><td class="num">1</td><td class="ok">all pass</td></tr><tr><th scope="row"><code>functions</code></th><td class="num">134</td><td class="num">134</td><td class="ok">all pass</td></tr><tr><th scope="row"><code>lists</code></th><td class="num">70</td><td class="num">70</td><td class="ok">all pass</td></tr><tr><th scope="row"><code>log</code></th><td class="num">56</td><td class="num">56</td><td class="ok">all pass</td></tr><tr><th scope="row"><code>script-utils</code></th><td class="num">31</td><td class="num">38</td><td class="bad">7 failing</td></tr><tr><th scope="row"><code>strings</code></th><td class="num">85</td><td class="num">94</td><td class="bad">8 failing, 1 skipped</td></tr><tr><th scope="row"><code>syntax</code></th><td class="num">4</td><td class="num">4</td><td class="ok">all pass</td></tr><tr><th scope="row"><code>tests</code></th><td class="num">3</td><td class="num">3</td><td class="ok">all pass</td></tr><tr><th scope="row"><code>typelib</code></th><td class="num">448</td><td class="num">448</td><td class="ok">all pass</td></tr></tbody></table></div>
+<!-- /gen -->
+  <p class="note">The failures are in two places: seven tests of stripping styled text back to plain text in the terminal-styling helpers, and eight tests of padding strings to a display width when they contain multi-byte characters.</p>
+</section>
+
+<section aria-labelledby="h-mods">
+  <h2 id="h-mods">Modules and packages</h2>
+  <div class="cols">
+    <div>
+      <h3>Nix-on-Droid</h3>
+      <ul class="mods">
+        <li><b>supervisord</b>: a small service manager that keeps daemons running across app restarts; other modules declare programs for it, and Home Manager modules can too.</li>
+        <li><b>nod-exec</b>: a TCP command server inside Nix-on-Droid, port 18357 by default, used by <a href="https://a.skh.am/android-utils/#/nod-term">NOD Term</a> and X11 Droid.</li>
+        <li><b>pulseserver</b>: health-checks and restarts the <a href="https://a.skh.am/android-utils/#/android-pulse-server">PulseServer</a> app.</li>
+        <li><b>sshd</b>, <b>termux</b>, <b>session</b>, <b>dbus</b>, <b>fonts</b>: an SSH server under supervision, Termux integration, restarting daemons after Android stops the app, a session bus and fonts.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Everywhere else</h3>
+      <ul class="mods">
+        <li><b>unexpected-keyboard</b>: a 1,500-line library for building keyboard layouts in Nix, which generates the layouts loaded by the <a href="https://a.skh.am/android-utils/#/omni">Omni</a> keyboard.</li>
+        <li><b>handheld-daemon</b> (NixOS): Handheld Daemon for handheld gaming PCs, without letting power-profiles-daemon start again.</li>
+        <li><b>vastai</b>: the Vast.ai GPU-rental command-line client, with Docker images and provisioning scripts.</li>
+      </ul>
+    </div>
+  </div>
+  <h3>Windows development boxes</h3>
+  <p>The <code>windows/</code> scripts provision a development machine from a fresh Windows host in one command: they install WSL2 and NixOS-WSL, cap WSL at 48 GB of memory and a 1.5 TiB virtual disk (a ceiling, not an allocation), clone the private configuration and apply it, then manage the Windows side declaratively from inside WSL, installing applications with winget and setting power options.</p>
+</section>
+
+<section aria-labelledby="h-src">
+  <h2 id="h-src">Where it comes from</h2>
+  <figure class="fig">
+    <!-- fig:mirror -->
+<svg class="dg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 250" width="940" height="250" role="img" aria-labelledby="mirror-t mirror-d">
+<title id="mirror-t">Where this repository comes from</title>
+<desc id="mirror-d">How collective-public is published. It is a folder, collective-public/, inside a private configuration repository. A git pre-push hook there notices pushes that touch the folder and makes a commit on the public repository whose tree is exactly the folder and whose parent is the public repository&#x27;s current tip, then fast-forwards it. Other projects take it as a flake input: nix-reflect builds on collective-lib and its test framework, and the private configuration uses all of it.</desc>
+<defs><marker id="mirror-tip-accent" class="k-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="tip" d="M0 1L10 5L0 9z"/></marker><marker id="mirror-tip-b" class="k-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="tip" d="M0 1L10 5L0 9z"/></marker><marker id="mirror-tip-ink" class="k-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="tip" d="M0 1L10 5L0 9z"/></marker></defs>
+<g class="k-ink"><path class="edge" d="M240.0 80.0 L310.0 80.0" stroke-width="1.5" marker-end="url(#mirror-tip-ink)"/></g>
+<g class="k-accent"><path class="edge" d="M510.0 80.0 L590.0 80.0" stroke-width="1.5" marker-end="url(#mirror-tip-accent)"/></g>
+<g class="k-b"><path class="edge" d="M690.0 108.0 L690.0 130.0 Q690.0 140.0 680.0 140.0 L570.0 140.0 Q560.0 140.0 560.0 150.0 L560.0 172.0" stroke-width="1.5" marker-end="url(#mirror-tip-b)"/></g>
+<g class="k-b"><path class="edge" d="M690.0 108.0 L690.0 130.0 Q690.0 140.0 700.0 140.0 L820.0 140.0 Q830.0 140.0 830.0 150.0 L830.0 172.0" stroke-width="1.5" marker-end="url(#mirror-tip-b)"/></g>
+<g class="k-muted"><rect class="shadow" x="24.0" y="56.0" width="220.0" height="56.0"/><rect class="node" x="20.0" y="52.0" width="220.0" height="56.0" rx="1.5"/><text x="130.0" y="77.0" font-size="15" text-anchor="middle" class="lbl">private configuration</text><text x="130.0" y="94.0" font-size="12.5" text-anchor="middle" class="sub">collective-public/ folder</text></g>
+<g class="k-ink"><rect class="shadow" x="314.0" y="56.0" width="200.0" height="56.0"/><rect class="node" x="310.0" y="52.0" width="200.0" height="56.0" rx="1.5"/><text x="410.0" y="77.0" font-size="15" text-anchor="middle" class="lbl">pre-push hook</text><text x="410.0" y="94.0" font-size="12.5" text-anchor="middle" class="sub">same tree, fast-forward</text></g>
+<g class="k-accent"><rect class="shadow" x="594.0" y="56.0" width="200.0" height="56.0"/><rect class="node" x="590.0" y="52.0" width="200.0" height="56.0" rx="1.5"/><text x="690.0" y="77.0" font-size="15" text-anchor="middle" class="lbl">collective-public</text><text x="690.0" y="94.0" font-size="12.5" text-anchor="middle" class="sub">this repository</text></g>
+<g class="k-b"><rect class="shadow" x="469.0" y="176.0" width="190.0" height="56.0"/><rect class="node" x="465.0" y="172.0" width="190.0" height="56.0" rx="1.5"/><text x="560.0" y="197.0" font-size="15" text-anchor="middle" class="lbl">nix-reflect</text><text x="560.0" y="214.0" font-size="12.5" text-anchor="middle" class="sub">collective-lib + tests</text></g>
+<g class="k-b"><rect class="shadow" x="739.0" y="176.0" width="190.0" height="56.0"/><rect class="node" x="735.0" y="172.0" width="190.0" height="56.0" rx="1.5"/><text x="830.0" y="197.0" font-size="15" text-anchor="middle" class="lbl">the configuration</text><text x="830.0" y="214.0" font-size="12.5" text-anchor="middle" class="sub">modules · library</text></g>
+</svg>
+<!-- /fig -->
+  </figure>
+  <p class="note">Because every push replaces the whole tree, this site is written in the private repository's <code>collective-public/</code> folder like everything else here.</p>
+</section>
+</main>
+
+<footer class="foot">
+  <span>collective-public</span>
+  <a href="https://github.com/harryaskham/collective-public">Source</a>
+  <a href="https://a.skh.am/nix-reflect/">nix-reflect</a>
+  <a href="https://a.skh.am/all/">More at a.skh.am/all</a>
+  <div class="skh-made-wrap" style="display:flex;justify-content:flex-start;box-sizing:border-box;width:100%;margin:14px 0 4px;padding:0 0"><a class="skh-made" data-made="hand" href="https://a.skh.am/made/" title="Made by hand: written by hand, mostly before 2026; since then agents have only cleaned up or fixed bugs" style="display:inline-block;margin:0;padding:0;border:0;background:none;line-height:0;text-decoration:none;vertical-align:middle"><svg role="img" aria-label="Made by hand" viewBox="0 0 120 120" width="112" height="112" style="display:block;width:112px;height:112px;max-width:none;margin:0;overflow:visible"><defs><linearGradient id="skh-seal-hand-foil" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbe7a1"/><stop offset=".45" stop-color="#d9a640"/><stop offset=".7" stop-color="#fbe7a1"/><stop offset="1" stop-color="#8a5a12"/></linearGradient><radialGradient id="skh-seal-hand-disk" cx=".38" cy=".32" r=".8"><stop offset="0" stop-color="#fbe7a1"/><stop offset=".6" stop-color="#d9a640"/><stop offset="1" stop-color="#8a5a12"/></radialGradient><polygon id="skh-seal-hand-edge" points="60.0,2.0 64.6,7.0 70.1,2.9 73.8,8.6 79.8,5.5 82.5,11.8 89.0,9.8 90.5,16.4 97.3,15.6 97.6,22.4 104.4,22.7 103.6,29.5 110.2,31.0 108.2,37.5 114.5,40.2 111.4,46.2 117.1,49.9 113.0,55.4 118.0,60.0 113.0,64.6 117.1,70.1 111.4,73.8 114.5,79.8 108.2,82.5 110.2,89.0 103.6,90.5 104.4,97.3 97.6,97.6 97.3,104.4 90.5,103.6 89.0,110.2 82.5,108.2 79.8,114.5 73.8,111.4 70.1,117.1 64.6,113.0 60.0,118.0 55.4,113.0 49.9,117.1 46.2,111.4 40.2,114.5 37.5,108.2 31.0,110.2 29.5,103.6 22.7,104.4 22.4,97.6 15.6,97.3 16.4,90.5 9.8,89.0 11.8,82.5 5.5,79.8 8.6,73.8 2.9,70.1 7.0,64.6 2.0,60.0 7.0,55.4 2.9,49.9 8.6,46.2 5.5,40.2 11.8,37.5 9.8,31.0 16.4,29.5 15.6,22.7 22.4,22.4 22.7,15.6 29.5,16.4 31.0,9.8 37.5,11.8 40.2,5.5 46.2,8.6 49.9,2.9 55.4,7.0"/></defs><use href="#skh-seal-hand-edge" transform="translate(1.6 2.4)" style="fill:#000;fill-opacity:.32"/><use href="#skh-seal-hand-edge" style="fill:url(#skh-seal-hand-foil);stroke:#8a5a12;stroke-width:.8"/><circle cx="60" cy="60" r="49.5" style="fill:url(#skh-seal-hand-disk);stroke:#8a5a12;stroke-width:1.4"/><circle cx="60" cy="60" r="48" style="fill:none;stroke:#fff;stroke-opacity:.5;stroke-width:.8"/><circle cx="60" cy="60" r="34.5" style="fill:none;stroke:#8a5a12;stroke-width:1"/><circle cx="60" cy="60" r="33.4" style="fill:none;stroke:#fff;stroke-opacity:.45;stroke-width:.6"/><path id="skh-seal-hand-top" d="M 19.5 60 A 40.5 40.5 0 0 1 100.5 60" style="fill:none;stroke:none"/><text style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:800;font-size:8.6px;letter-spacing:1.4px;fill:#fff;fill-opacity:.55" transform="translate(0 .7)"><textPath href="#skh-seal-hand-top" startOffset="50%" text-anchor="middle">OFFICIAL · A.SKH.AM</textPath></text><text style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:800;font-size:8.6px;letter-spacing:1.4px;fill:#3f2604"><textPath href="#skh-seal-hand-top" startOffset="50%" text-anchor="middle">OFFICIAL · A.SKH.AM</textPath></text><path id="skh-seal-hand-bot" d="M 14.6 60 A 45.4 45.4 0 0 0 105.4 60" style="fill:none;stroke:none"/><text style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:800;font-size:8.6px;letter-spacing:1.4px;fill:#fff;fill-opacity:.55" transform="translate(0 .7)"><textPath href="#skh-seal-hand-bot" startOffset="50%" text-anchor="middle">SEAL OF ORIGIN</textPath></text><text style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:800;font-size:8.6px;letter-spacing:1.4px;fill:#3f2604"><textPath href="#skh-seal-hand-bot" startOffset="50%" text-anchor="middle">SEAL OF ORIGIN</textPath></text><polygon points="17.2,57.5 18.0,59.5 20.1,59.6 18.4,61.0 19.0,63.1 17.2,61.9 15.4,63.1 16.0,61.0 14.3,59.6 16.4,59.5" style="fill:#3f2604"/><polygon points="102.8,57.5 103.6,59.5 105.7,59.6 104.0,61.0 104.6,63.1 102.8,61.9 101.0,63.1 101.6,61.0 99.9,59.6 102.0,59.5" style="fill:#3f2604"/><text x="60" y="55.7" text-anchor="middle" style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:800;font-size:8.4px;letter-spacing:1px;fill:#fff;fill-opacity:.55" >MADE BY</text><text x="60" y="55" text-anchor="middle" style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:800;font-size:8.4px;letter-spacing:1px;fill:#3f2604" >MADE BY</text><text x="60" y="73.7" text-anchor="middle" style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:800;font-size:16px;letter-spacing:0.4px;fill:#fff;fill-opacity:.55" >HAND</text><text x="60" y="73" text-anchor="middle" style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-weight:800;font-size:16px;letter-spacing:0.4px;fill:#3f2604" >HAND</text><ellipse cx="46" cy="40" rx="26" ry="14" transform="rotate(-28 46 40)" style="fill:#fff;fill-opacity:.16"/></svg></a></div>
+</footer>
+</div>
+<script src="assets/site.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+/* collective-public — a Nix blueprint. Midnight paper, the Nix logo's two blues, a faint grid;
+   Instrument Sans for prose, JetBrains Mono for code and figures. */
+:root {
+  --page-bg: #0d1526; --page-text: #dce6f3; --page-muted: #9aaac0; --page-line: #22314d; --page-accent: #7ebae4;
+  --strong: #ffffff; --surface: #111c31; --raise: #16233c; --code-bg: #0a1120; --code-text: #cfe3f7;
+  --page-ui: "Instrument Sans", system-ui, sans-serif; --display: var(--page-ui); --mono: "JetBrains Mono", ui-monospace, monospace;
+  --accent: #7ebae4; --accent-2: #5277c3; --ok: #86d3a5; --bad: #f29e8c;
+  --k-ink: #dce6f3; --k-accent: #7ebae4; --k-a: #e8b07a; --k-b: #8fa8e8; --k-c: #c7a3f0; --k-d: #f09ac2;
+  --k-ok: #86d3a5; --k-warn: #e6c46a; --k-err: #f29e8c; --k-muted: #7d8ca5; --k-file: #9aaac0;
+  color-scheme: dark;
+}
+html, body { background:
+  linear-gradient(#ffffff05 1px, transparent 1px) 0 0 / 26px 26px,
+  linear-gradient(90deg, #ffffff05 1px, transparent 1px) 0 0 / 26px 26px, var(--page-bg); color: var(--page-text); }
+body { font: 16.5px/1.65 var(--page-ui); }
+h1 { font: 700 clamp(40px, 6vw, 68px)/1.02 var(--page-ui); letter-spacing: -0.03em; margin: 8px 0 14px; }
+h1 .lam { color: var(--accent); font-family: var(--mono); font-weight: 500; margin-right: 0.18em; }
+h2 { font: 650 clamp(24px, 3vw, 32px)/1.15 var(--page-ui); letter-spacing: -0.015em; margin: 56px 0 14px; }
+h3 { font: 650 17px/1.3 var(--page-ui); margin: 22px 0 6px; color: var(--accent); }
+a { color: var(--accent); }
+code { font: 0.9em var(--mono); color: var(--code-text); }
+.lede { font-size: 19px; color: var(--page-text); max-width: 66ch; }
+.fig { margin: 22px 0; padding: 16px 12px; background: var(--surface); border: 1px solid var(--page-line); border-radius: 8px; }
+.dg .lab-bg { fill: var(--surface); } .dg .halo { stroke: var(--surface); }
+pre { margin: 0; padding: 12px 14px; background: var(--code-bg); border: 1px solid var(--page-line); border-radius: 8px; overflow-x: auto; font: 13.5px/1.55 var(--mono); }
+pre.out { margin-top: -1px; border-top: 1px dashed var(--page-line); border-radius: 0 0 8px 8px; color: var(--ok); }
+pre.out::before { content: "→ "; color: var(--page-muted); }
+pre.nix { border-radius: 8px 8px 0 0; }
+.pair { display: grid; gap: 0; margin: 12px 0 18px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px 30px; }
+table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+caption { text-align: left; color: var(--page-muted); font-size: 13px; padding-bottom: 8px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--page-line); vertical-align: top; }
+td.num { font-family: var(--mono); text-align: right; white-space: nowrap; }
+td.ok { color: var(--ok); } td.bad { color: var(--bad); }
+.table-wrap { overflow-x: auto; }
+ul.mods { list-style: none; padding: 0; display: grid; gap: 8px; }
+ul.mods li { padding: 10px 14px; background: var(--surface); border: 1px solid var(--page-line); border-left: 3px solid var(--accent-2); border-radius: 6px; }
+.note { color: var(--page-muted); font-size: 14.5px; }
+.pair pre { white-space: pre-wrap; overflow-wrap: anywhere; }

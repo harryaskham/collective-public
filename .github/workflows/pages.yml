@@ -1,0 +1,24 @@
+name: Pages
+
+# Publishes site/ to gh-pages with the shared branch publisher (no Actions artifacts). This repository is
+# mirrored from the private configuration's collective-public/ folder, so edit the site there.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'scripts/site/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+jobs:
+  pages:
+    uses: harryaskham/harryaskham.github.io/.github/workflows/publish-pages.yml@main
+    with:
+      path: site
+      build: python3 scripts/site/check.py && python3 scripts/site/build.py --check
+      runs-on: '["ubuntu-latest"]'

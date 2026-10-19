@@ -1,0 +1,42 @@
+[
+ {
+  "name": "construct",
+  "src": "with lib.typed;\nlet A = Type \"A\" { fields = [ { a = \"int\"; } { b = Int; } { c = Default Int 5; } ]; };\n    x = A 1 (Int 2);\nin [ x.a x.b.value x.c.value ]",
+  "ok": true,
+  "out": "[1,2,5]",
+  "err": "",
+  "s": 7.9
+ },
+ {
+  "name": "wrong-field",
+  "src": "with lib.typed;\nlet A = Type \"A\" { fields = [ { a = \"int\"; } { b = Int; } ]; };\nin (A 1 \"two\").b.value",
+  "ok": false,
+  "out": "",
+  "err": "Upcast error:",
+  "s": 6.1
+ },
+ {
+  "name": "typeof-raw",
+  "src": "with lib.typed; typeOf true",
+  "ok": true,
+  "out": "\"bool\"",
+  "err": "",
+  "s": 0.9
+ },
+ {
+  "name": "typeof-wrapped",
+  "src": "with lib.typed; typeOf (Bool true) == Bool",
+  "ok": true,
+  "out": "true",
+  "err": "",
+  "s": 1.0
+ },
+ {
+  "name": "int-rejects-string",
+  "src": "with lib.typed; (Int \"123\").value",
+  "ok": true,
+  "out": "\"123\"",
+  "err": "",
+  "s": 1.0
+ }
+]

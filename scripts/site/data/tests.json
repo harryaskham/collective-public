@@ -1,0 +1,181 @@
+[
+ {
+  "module": "attrsets",
+  "ok": true,
+  "total": 127,
+  "passed": 127,
+  "failed_tests": [],
+  "err": "",
+  "s": 1.2
+ },
+ {
+  "module": "clib",
+  "ok": true,
+  "total": 12,
+  "passed": 12,
+  "failed_tests": [],
+  "err": "",
+  "s": 1.1
+ },
+ {
+  "module": "collections",
+  "ok": true,
+  "total": 62,
+  "passed": 62,
+  "failed_tests": [],
+  "err": "",
+  "s": 1.1
+ },
+ {
+  "module": "colors",
+  "ok": true,
+  "total": 8,
+  "passed": 8,
+  "failed_tests": [],
+  "err": "",
+  "s": 1.1
+ },
+ {
+  "module": "data",
+  "ok": true,
+  "total": 13,
+  "passed": 13,
+  "failed_tests": [],
+  "err": "",
+  "s": 1.1
+ },
+ {
+  "module": "dispatchlib",
+  "ok": true,
+  "total": 27,
+  "passed": 27,
+  "failed_tests": [],
+  "err": "",
+  "s": 1.2
+ },
+ {
+  "module": "errors",
+  "ok": true,
+  "total": 12,
+  "passed": 12,
+  "failed_tests": [],
+  "err": "",
+  "s": 1.1
+ },
+ {
+  "module": "fan",
+  "ok": true,
+  "total": 1,
+  "passed": 1,
+  "failed_tests": [],
+  "err": "",
+  "s": 1.2
+ },
+ {
+  "module": "functions",
+  "ok": true,
+  "total": 134,
+  "passed": 134,
+  "failed_tests": [],
+  "err": "",
+  "s": 1.2
+ },
+ {
+  "module": "lists",
+  "ok": true,
+  "total": 70,
+  "passed": 70,
+  "failed_tests": [],
+  "err": "",
+  "s": 1.1
+ },
+ {
+  "module": "log",
+  "ok": true,
+  "total": 56,
+  "passed": 56,
+  "failed_tests": [],
+  "err": "",
+  "s": 5.1
+ },
+ {
+  "module": "script-utils",
+  "ok": true,
+  "total": 38,
+  "passed": 31,
+  "failed": 7,
+  "failed_tests": [
+   "test-ansi-utils__styles___03_strip__bottomMarginOnce",
+   "test-ansi-utils__styles___03_strip__header",
+   "test-ansi-utils__styles___03_strip__nested__withColor",
+   "test-ansi-utils__styles___03_strip__nested__withoutColor",
+   "test-ansi-utils__styles___03_strip__simpleBox",
+   "test-ansi-utils__styles___03_strip__styledBody",
+   "test-ansi-utils__styles___03_strip__styledHeader",
+   "test-ansi-utils__styles___03_strip__bottomMarginOnce",
+   "test-ansi-utils__styles___03_strip__header",
+   "test-ansi-utils__styles___03_strip__nested__withColor",
+   "test-ansi-utils__styles___03_strip__nested__withoutColor",
+   "test-ansi-utils__styles___03_strip__simpleBox",
+   "test-ansi-utils__styles___03_strip__styledBody",
+   "test-ansi-utils__styles___03_strip__styledHeader"
+  ],
+  "err": "",
+  "s": 9.9
+ },
+ {
+  "module": "strings",
+  "ok": true,
+  "total": 94,
+  "skipped": 1,
+  "passed": 85,
+  "failed": 8,
+  "failed_tests": [
+   "test-pad__hello__plus1Char__display__stringLength__utf8",
+   "test-pad__hello__plus1__display__stringLength__utf8",
+   "test-pad__hello__plus2Chars__display__stringLength__utf8",
+   "test-pad__hello__plus2__display__stringLength__utf8",
+   "test-pad__hello__plus3Char__display__stringLength__utf8",
+   "test-pad__hello__plus3__display__stringLength__utf8",
+   "test-pad__hello__plus4Chars__display__stringLength__utf8",
+   "test-pad__hello__plus4__display__stringLength__utf8",
+   "test-pad__hello__plus1Char__display__stringLength__utf8",
+   "test-pad__hello__plus1__display__stringLength__utf8",
+   "test-pad__hello__plus2Chars__display__stringLength__utf8",
+   "test-pad__hello__plus2__display__stringLength__utf8",
+   "test-pad__hello__plus3Char__display__stringLength__utf8",
+   "test-pad__hello__plus3__display__stringLength__utf8",
+   "test-pad__hello__plus4Chars__display__stringLength__utf8",
+   "test-pad__hello__plus4__display__stringLength__utf8"
+  ],
+  "err": "",
+  "s": 2.3
+ },
+ {
+  "module": "syntax",
+  "ok": true,
+  "total": 4,
+  "passed": 4,
+  "failed_tests": [],
+  "err": "",
+  "s": 1.7
+ },
+ {
+  "module": "tests",
+  "ok": true,
+  "total": 3,
+  "passed": 3,
+  "failed_tests": [],
+  "err": "",
+  "s": 1.2
+ },
+ {
+  "module": "typelib",
+  "ok": true,
+  "total": 448,
+  "passed": 448,
+  "failed_tests": [],
+  "err": "",
+  "s": 100.4
+ }
+]
