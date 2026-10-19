@@ -1,0 +1,22 @@
+Fonts in this folder are licensed under the SIL Open Font License 1.1
+(https://openfontlicense.org). They were taken unmodified from these packages:
+
+  Instrument Sans: @fontsource-variable/instrument-sans@5.3.0
+  Bricolage Grotesque: @fontsource-variable/bricolage-grotesque@5.3.0
+  Martian Mono: @fontsource-variable/martian-mono@5.3.0
+  Fraunces: @fontsource-variable/fraunces@5.3.0
+  IBM Plex Sans: @fontsource-variable/ibm-plex-sans@5.3.0
+  IBM Plex Mono: @fontsource/ibm-plex-mono@5.3.0
+  Anybody: @fontsource-variable/anybody@5.3.0
+  Onest: @fontsource-variable/onest@5.3.1
+  JetBrains Mono: @fontsource-variable/jetbrains-mono@5.3.0
+  Newsreader: @fontsource-variable/newsreader@5.3.0
+  Caveat: @fontsource-variable/caveat@5.3.0
+  Silkscreen: @fontsource/silkscreen@5.3.0
+  Courier Prime: @fontsource/courier-prime@5.3.0
+  Chakra Petch: @fontsource/chakra-petch@5.3.0
+  Literata: @fontsource-variable/literata@5.3.0
+  Rubik: @fontsource-variable/rubik@5.3.0
+  Manrope: @fontsource-variable/manrope@5.3.0
+  Big Shoulders Display: @fontsource-variable/big-shoulders-display@5.3.0
+  Recursive: @fontsource-variable/recursive@5.3.0

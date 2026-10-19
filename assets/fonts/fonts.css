@@ -1,0 +1,5 @@
+/* Instrument Sans (prose) and JetBrains Mono (code): OFL 1.1, see LICENSE.txt. Latin subsets, weight axes. */
+@font-face { font-family: "Instrument Sans"; font-style: normal; font-weight: 400 700; font-display: swap;
+  src: url("instrument-sans-latin-wght-normal.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 100 800; font-display: swap;
+  src: url("jetbrains-mono-latin-wght-normal.woff2") format("woff2"); }
