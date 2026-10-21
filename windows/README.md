@@ -60,59 +60,6 @@ ceiling remains dynamically allocated. Pass `-Force` only to skip the shutdown
 confirmation, or `-SkipWSLUpdate` when WSL 2.5+ is already installed and must
 not be updated during the run.
 
-## Offline maintenance: give a VHD's free space back to Windows
-
-A WSL2 `ext4.vhdx` grows as the distro writes but never shrinks: `fstrim` or
-the `discard` mount option inside Linux only marks blocks unused. When the
-volume holding the VHD fills up even though the distro has free space,
-compact the VHD offline with `devbox-maintenance.ps1`.
-
-The script takes the VHD path from WSL's own registration, trims the distro,
-pauses the WSL watchdog, shuts WSL down (WSL keeps every distro's VHD attached
-while its VM runs, even after `wsl --terminate`), compacts the VHD with
-`Optimize-VHD` (or DiskPart without Hyper-V tools), then starts every distro
-that was running and resumes the watchdog. Restoration also runs when
-compaction fails, and
-compaction is safe to interrupt and re-run. It never unregisters, imports,
-moves, resizes or recreates a distro. Each run leaves a JSON receipt and a
-transcript in `%LOCALAPPDATA%\devbox\maintenance`.
-
-In an **elevated** PowerShell (pinned to the current commit):
-
-```powershell
-$h=@{"User-Agent"="collective-devbox";"Cache-Control"="no-cache"}; $s=(irm "https://api.github.com/repos/harryaskham/collective-public/git/ref/heads/main?nocache=$([guid]::NewGuid())" -Headers $h).object.sha; $p=Join-Path $env:TEMP "devbox-maintenance.ps1"; irm "https://raw.githubusercontent.com/harryaskham/collective-public/$s/windows/devbox-maintenance.ps1" -Headers $h -OutFile $p
-& $p -Distro NixOS -DryRun          # report only; also works unelevated
-& $p -Operation Compact -Distro NixOS
-& $p -Install                       # optional: register the task (below)
-```
-
-`-SetSparse` additionally runs `wsl --manage <distro> --set-sparse true` while
-the distro is stopped, so later trims return space automatically. It is opt-in:
-older WSL releases gated sparse VHDs behind an unsafe flag after reported ext4
-corruption. `-VerifyBoot` starts a stopped distro afterwards to prove it boots,
-then stops it again. `-Operation Cycle` only stops and restarts the distro (and
-leaves WSL and the watchdog alone for a distro other than NixOS).
-
-### Remote maintenance from inside WSL
-
-`-Install` (one UAC consent) copies the script into
-`%ProgramData%\Collective\DevboxMaintenance`, writable only by Administrators
-and SYSTEM, and registers the elevated `DevboxMaintenance` task. An agent in
-WSL then queues a request (`%LOCALAPPDATA%\devbox\maintenance\request.json`)
-and starts the task; only `Compact` and `Cycle` with a plain distro name and
-boolean flags are accepted, so a request cannot run arbitrary code. The task
-runs while the user is signed in to Windows.
-
-### If WSL does not come back
-
-```powershell
-Remove-Item "$env:LOCALAPPDATA\devbox\wsl-watchdog.pause" -ErrorAction SilentlyContinue
-wsl -d NixOS --exec /bin/sh -c true
-```
-
-The watchdog also discards a pause marker older than its `PauseMaxHours`
-(default 2 h); the maintenance task refreshes its marker while it works.
-
 ## Windows convergence: headless vs admin (UAC)
 
 The Windows devbox user is typically a **non-admin domain account** (e.g.
