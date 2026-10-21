@@ -68,10 +68,11 @@ volume holding the VHD fills up even though the distro has free space,
 compact the VHD offline with `devbox-maintenance.ps1`.
 
 The script takes the VHD path from WSL's own registration, trims the distro,
-pauses the WSL watchdog (only for the distro it guards), stops the distro
-(and WSL as a whole for the watchdog's distro), compacts the VHD with
-`Optimize-VHD` (or DiskPart without Hyper-V tools), then starts the distro and
-resumes the watchdog. Restoration also runs when compaction fails, and
+pauses the WSL watchdog, shuts WSL down (WSL keeps every distro's VHD attached
+while its VM runs, even after `wsl --terminate`), compacts the VHD with
+`Optimize-VHD` (or DiskPart without Hyper-V tools), then starts every distro
+that was running and resumes the watchdog. Restoration also runs when
+compaction fails, and
 compaction is safe to interrupt and re-run. It never unregisters, imports,
 moves, resizes or recreates a distro. Each run leaves a JSON receipt and a
 transcript in `%LOCALAPPDATA%\devbox\maintenance`.
@@ -89,7 +90,8 @@ $h=@{"User-Agent"="collective-devbox";"Cache-Control"="no-cache"}; $s=(irm "http
 the distro is stopped, so later trims return space automatically. It is opt-in:
 older WSL releases gated sparse VHDs behind an unsafe flag after reported ext4
 corruption. `-VerifyBoot` starts a stopped distro afterwards to prove it boots,
-then stops it again. `-Operation Cycle` only stops and restarts.
+then stops it again. `-Operation Cycle` only stops and restarts the distro (and
+leaves WSL and the watchdog alone for a distro other than NixOS).
 
 ### Remote maintenance from inside WSL
 

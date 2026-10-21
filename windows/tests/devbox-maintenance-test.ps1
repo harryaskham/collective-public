@@ -89,6 +89,24 @@ try {
   function Invoke-Wsl { param([string[]]$Arguments) [PSCustomObject]@{ ExitCode = 5; Text = 'Catastrophic failure' } }
   Assert-Throws 'unknown wsl failure is not treated as stopped' { Get-RunningDistroNames } 'Could not list'
 
+  # Plan: compaction always shuts WSL down (pausing the watchdog) and restores
+  # what was running; Cycle of another distro touches only that distro.
+  function New-TestRequest($Operation, $Name, $Boot = $false, $Sparse = $false) {
+    ConvertTo-MaintenanceRequest ([PSCustomObject]@{ id = 'abcdefgh'; operation = $Operation; distro = $Name; verifyBoot = $Boot; setSparse = $Sparse })
+  }
+  $plan = Get-MaintenancePlan (New-TestRequest 'Compact' 'CollectiveCanary' $true) @('NixOS', 'docker-desktop')
+  Assert-True 'canary compaction shuts WSL down and pauses the watchdog' ($plan.Shutdown -and $plan.PauseWatchdog)
+  Assert-True 'canary compaction restores NixOS but not Docker''s distro' ((@($plan.RestartOthers) -join ',') -eq 'NixOS')
+  Assert-True 'stopped canary is boot-checked then stopped again' ($plan.StartTarget -and $plan.StopTargetAfterBootCheck)
+  $plan = Get-MaintenancePlan (New-TestRequest 'Cycle' 'CollectiveCanary') @('NixOS')
+  Assert-True 'cycling another distro leaves WSL and the watchdog alone' (-not $plan.Shutdown -and -not $plan.PauseWatchdog -and @($plan.RestartOthers).Count -eq 0 -and -not $plan.StartTarget)
+  $plan = Get-MaintenancePlan (New-TestRequest 'Cycle' 'CollectiveCanary' $false $true) @('NixOS')
+  Assert-True 'set-sparse needs a shutdown even for Cycle' ($plan.Shutdown -and (@($plan.RestartOthers) -join ',') -eq 'NixOS')
+  $plan = Get-MaintenancePlan (New-TestRequest 'Compact' 'NixOS') @('NixOS', 'Other')
+  Assert-True 'devbox compaction restarts NixOS and other running distros' ($plan.Shutdown -and $plan.StartTarget -and -not $plan.StopTargetAfterBootCheck -and (@($plan.RestartOthers) -join ',') -eq 'Other')
+  $plan = Get-MaintenancePlan (New-TestRequest 'Compact' 'NixOS') @()
+  Assert-True 'devbox distro is started even if it was down' ($plan.StartTarget)
+
   # A file held open exclusively is not released; a closed one is.
   $file = Join-Path $testRoot 'image.vhdx'
   [IO.File]::WriteAllBytes($file, [byte[]](1, 2, 3))

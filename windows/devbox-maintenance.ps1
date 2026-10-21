@@ -9,15 +9,18 @@
 #               unelevated process can queue requests but not change the code
 #               the task runs.
 #   -FromTask   What the task runs: take the queued request, stop the target
-#               distro (pausing the WSL watchdog when it guards that distro),
-#               do the maintenance, then restart the distro and resume the
-#               watchdog. Restoration also runs when maintenance fails.
+#               distro (shutting all of WSL down when the VHD must be released,
+#               with the WSL watchdog paused), do the maintenance, then restart
+#               every distro that was running and resume the watchdog.
+#               Restoration also runs when maintenance fails.
 #   (default)   The same operation, run directly from an elevated console.
 #   -DryRun     Report what would happen. Safe while WSL runs; no elevation.
 #
 # Operations:
 #   Compact  fstrim inside the distro, then compact its VHDX offline
-#            (Optimize-VHD, else DiskPart); optionally mark it sparse.
+#            (Optimize-VHD, else DiskPart); optionally mark it sparse. WSL
+#            keeps every distro's VHD attached while its VM runs, so Compact
+#            always shuts WSL down briefly, devbox distro included.
 #   Cycle    Stop and restart only (canary for the stop/restore path).
 #
 # Every run writes a JSON receipt and a transcript under
@@ -375,6 +378,8 @@ function New-Receipt {
     log = $LogPath
     vhd = $null
     wasRunning = $null
+    runningBefore = $null
+    shutdownWsl = $null
     before = $null
     after = $null
     reclaimedBytes = $null
@@ -385,23 +390,53 @@ function New-Receipt {
   Save-Receipt
 }
 
+function Get-MaintenancePlan {
+  param($Request, [string[]]$RunningBefore)
+  $guardsWatchdog = ($Request.distro -eq $script:WatchdogDistro)
+  # While the WSL VM runs, WSL keeps every distro's VHD attached (held by
+  # System and the WSL service) even after `wsl --terminate`; compacting or
+  # converting a VHD therefore needs the whole VM shut down. That stops the
+  # watchdog's distro too, so pause the watchdog and restore what was running.
+  $shutdown = $guardsWatchdog -or $Request.operation -eq "Compact" -or $Request.setSparse
+  $wasRunning = @($RunningBefore) -contains $Request.distro
+  $restart = New-Object System.Collections.ArrayList
+  if ($shutdown) {
+    # Docker Desktop starts its own distros; do not start them for it.
+    foreach ($name in @($RunningBefore)) {
+      if ($name -ne $Request.distro -and $name -notmatch '^docker-desktop') { [void]$restart.Add($name) }
+    }
+    if (-not $restart.Contains($script:WatchdogDistro) -and $Request.distro -ne $script:WatchdogDistro -and @($RunningBefore) -contains $script:WatchdogDistro) {
+      [void]$restart.Add($script:WatchdogDistro)
+    }
+  }
+  $startTarget = $wasRunning -or $guardsWatchdog -or $Request.verifyBoot
+  return [PSCustomObject]@{
+    Shutdown = $shutdown
+    PauseWatchdog = $shutdown
+    WasRunning = $wasRunning
+    StartTarget = $startTarget
+    StopTargetAfterBootCheck = ($Request.verifyBoot -and -not $wasRunning -and -not $guardsWatchdog)
+    RestartOthers = @($restart)
+  }
+}
+
 function Invoke-Maintenance {
   param($Request)
   $vhd = Get-DistroVhd $Request.distro
   Assert-VhdPresent $vhd
-  $guardsWatchdog = ($Request.distro -eq $script:WatchdogDistro)
+  $runningBefore = @(Get-RunningDistroNames)
+  $plan = Get-MaintenancePlan $Request $runningBefore
   $script:Receipt.vhd = $vhd.Path
   $script:Receipt.before = Get-SpaceInfo $vhd.Path
-  $wasRunning = @(Get-RunningDistroNames) -contains $Request.distro
-  $script:Receipt.wasRunning = $wasRunning
+  $script:Receipt.wasRunning = $plan.WasRunning
+  $script:Receipt.runningBefore = $runningBefore
+  $script:Receipt.shutdownWsl = $plan.Shutdown
   Save-Receipt
   $failure = $null
   try {
     if ($Request.operation -eq "Compact" -and -not $Request.skipTrim) { Invoke-GuestTrim $Request.distro }
-    if ($guardsWatchdog) { Suspend-Watchdog $Request.id }
-    # Shut the whole WSL VM down only for the watchdog-guarded devbox distro;
-    # other distros (e.g. a canary) are stopped on their own.
-    Stop-TargetDistro -Name $Request.distro -ShutdownWsl $guardsWatchdog -VhdPath $vhd.Path
+    if ($plan.PauseWatchdog) { Suspend-Watchdog $Request.id }
+    Stop-TargetDistro -Name $Request.distro -ShutdownWsl $plan.Shutdown -VhdPath $vhd.Path
     if ($Request.operation -eq "Compact") {
       if (-not (Invoke-VhdCompaction $vhd.Path)) { throw "No compaction method succeeded." }
     }
@@ -414,11 +449,18 @@ function Invoke-Maintenance {
     $failure = "$_"
     Add-Step "maintenance" $false $failure
   } finally {
-    # Always bring the devbox back, whatever happened above.
-    if ($wasRunning -or $guardsWatchdog -or $Request.verifyBoot) {
+    # Always bring the devbox back, whatever happened above: first the
+    # distros the shutdown stopped (NixOS first), then the target.
+    foreach ($name in @($plan.RestartOthers | Sort-Object { $_ -ne $script:WatchdogDistro })) {
+      try { Start-TargetDistro $name } catch {
+        if (-not $failure) { $failure = "$_" }
+        Add-Step "start" $false "$_"
+      }
+    }
+    if ($plan.StartTarget) {
       try {
         Start-TargetDistro $Request.distro
-        if ($Request.verifyBoot -and -not $wasRunning -and -not $guardsWatchdog) {
+        if ($plan.StopTargetAfterBootCheck) {
           $result = Invoke-Wsl @("--terminate", $Request.distro)
           Add-Step "restored-stopped" ($result.ExitCode -eq 0) "boot verified; left stopped as found"
         }
@@ -492,6 +534,7 @@ function Get-DryRunReport {
     space = Get-SpaceInfo $vhd.Path
     running = (@(Get-RunningDistroNames) -contains $Request.distro)
     guardsWatchdog = ($Request.distro -eq $script:WatchdogDistro)
+    plan = Get-MaintenancePlan $Request @(Get-RunningDistroNames)
     watchdogPaused = (Test-Path -LiteralPath $script:PausePath)
     elevated = (Test-Administrator)
     hyperV = [bool](Get-Module -ListAvailable -Name Hyper-V)
@@ -544,7 +587,9 @@ function Invoke-Main {
       })
       if ($DryRun) { Get-DryRunReport $request | ConvertTo-Json -Depth 6; exit 0 }
       if (-not $Force) {
-        Write-Line warn "$Operation stops '$Distro'$(if ($Distro -eq $script:WatchdogDistro) { ' and every WSL distribution' }); work inside it is interrupted."
+        $plan = Get-MaintenancePlan $request @(Get-RunningDistroNames)
+        $scope = $(if ($plan.Shutdown) { 'shuts down WSL (every distribution, including the devbox)' } else { "stops '$Distro'" })
+        Write-Line warn "$Operation $scope; work inside is interrupted, and running distributions are restarted afterwards."
         $answer = Read-Host "Continue? (y/N)"
         if ($answer -notmatch '^[Yy]') { Write-Line warn "Aborted; nothing changed."; exit 1 }
       }
