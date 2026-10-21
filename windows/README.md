@@ -95,10 +95,11 @@ corruption. `-VerifyBoot` starts a stopped distro afterwards to prove it boots,
 then stops it again. `-Operation Cycle` only stops and restarts the distro (and
 leaves WSL and the watchdog alone for a distro other than NixOS).
 
-Dry runs and receipts also compare the VHD's virtual size (its growth
-ceiling) with the volume holding it: a ceiling above the volume's size minus
-50 GB lets the file fill the volume while the distro still has free space,
-which is how a 1536 GB VHD on a 1535 GB volume ended with 2 GB free.
+Dry runs and receipts also check whether the VHD can fill the volume holding
+it while the distro still has free space: its virtual size (growth ceiling)
+above the volume's size minus 50 GB, or the growth still allowed (ceiling minus
+current file) above the volume's free space minus 50 GB, which other files
+share. A 1536 GB VHD on a 1535 GB volume ended with 2 GB free that way.
 `grow-devbox-vhd.ps1` refuses such targets unless `-AllowExceedVolume` is given.
 
 ### Remote maintenance from inside WSL

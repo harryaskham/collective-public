@@ -101,11 +101,20 @@ try {
   Assert-True 'root device size parsed from mountinfo and partitions' ((Get-RootDeviceBytes $procText) -eq ([int64]1610612736 * 1024))
   Assert-True 'no root device yields null' ($null -eq (Get-RootDeviceBytes "major minor  #blocks  name`n   8 48 10 sdd"))
   $q = [int64]1648126590976
-  $check = Get-CapacityCheck ([int64]1536GB) $q
-  Assert-True '1536 GiB VHD on a 1535 GiB volume is at risk' ($check.known -and $check.atRisk -and $check.message -match 'can fill the volume')
-  $check = Get-CapacityCheck ([int64]1400GB) $q
-  Assert-True 'VHD 50 GiB below the volume is safe' ($check.known -and -not $check.atRisk -and $check.maxSafeBytes -eq ($q - 50GB))
-  Assert-True 'unknown virtual size is reported, not guessed' (-not (Get-CapacityCheck $null $q).known)
+  function Space($File, $Free) { [ordered]@{ fileBytes = [int64]$File; volumeFreeBytes = [int64]$Free; volumeTotalBytes = $q } }
+  # ms-dev-7 before compaction: 1536 GiB ceiling on a 1535 GiB Q:.
+  $check = Get-CapacityCheck ([int64]1536GB) (Space 1476GB 2GB)
+  Assert-True '1536 GiB VHD on a 1535 GiB volume is at risk (ceiling)' ($check.known -and $check.atRisk -and $check.ceilingRisk -and $check.message -match 'can fill its volume')
+  # ms-dev-8 today: 1238 GiB file may grow 298 GiB; Q: has 272 GiB free.
+  $check = Get-CapacityCheck ([int64]1536GB) (Space 1238GB 272GB)
+  Assert-True 'remaining growth beyond free space is at risk (growth)' ($check.growthRisk -and $check.growthBytes -eq [int64]298GB)
+  # A C: devbox near its ceiling with ample free space is safe.
+  $c = [int64]2198429741056
+  $check = Get-CapacityCheck ([int64]1536GB) ([ordered]@{ fileBytes = [int64]1512GB; volumeFreeBytes = [int64]133GB; volumeTotalBytes = $c })
+  Assert-True 'small remaining growth within free space is safe' ($check.known -and -not $check.atRisk -and -not $check.growthRisk)
+  $check = Get-CapacityCheck ([int64]1400GB) (Space 600GB 900GB)
+  Assert-True 'ceiling 50 GiB below the volume with room is safe' (-not $check.atRisk -and $check.maxSafeBytes -eq ($q - 50GB))
+  Assert-True 'unknown virtual size is reported, not guessed' (-not (Get-CapacityCheck $null (Space 1 1)).known)
 
   # Plan: compaction always shuts WSL down (pausing the watchdog) and restores
   # what was running; Cycle of another distro touches only that distro.

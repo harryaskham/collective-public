@@ -263,20 +263,33 @@ function Get-VirtualDiskBytes {
 }
 
 function Get-CapacityCheck {
-  param($VirtualBytes, [int64]$VolumeTotalBytes, [int64]$MarginBytes = $script:CapacityMarginBytes)
+  # Two ways a VHD can fill its volume while ext4 still has free space: its
+  # ceiling exceeds the volume (structural), or the growth still allowed
+  # (ceiling minus current file) exceeds the volume's free space, which other
+  # files share (current). Both keep a margin.
+  param($VirtualBytes, $Space, [int64]$MarginBytes = $script:CapacityMarginBytes)
   if (-not $VirtualBytes) {
     return [ordered]@{ known = $false; atRisk = $null; message = "virtual size unknown (distro stopped and no elevated Get-VHD)" }
   }
-  $limit = [int64]($VolumeTotalBytes - $MarginBytes)
-  $atRisk = ([int64]$VirtualBytes -gt $limit)
-  $message = $(if ($atRisk) {
-      "virtual size {0} exceeds volume {1} minus a {2} margin: the VHD can fill the volume; keep it at most {3} (resize with a separate maintenance)" -f (Format-GiB $VirtualBytes), (Format-GiB $VolumeTotalBytes), (Format-GiB $MarginBytes), (Format-GiB $limit)
-    } else {
-      "virtual size {0} fits volume {1} with at least a {2} margin" -f (Format-GiB $VirtualBytes), (Format-GiB $VolumeTotalBytes), (Format-GiB $MarginBytes)
+  $virtual = [int64]$VirtualBytes
+  $limit = [int64]$Space.volumeTotalBytes - $MarginBytes
+  $growth = [int64]([Math]::Max([int64]0, $virtual - [int64]$Space.fileBytes))
+  $ceilingRisk = $virtual -gt $limit
+  $growthRisk = $growth -gt ([int64]$Space.volumeFreeBytes - $MarginBytes)
+  $problems = New-Object System.Collections.ArrayList
+  if ($ceilingRisk) {
+    [void]$problems.Add(("ceiling {0} exceeds volume {1} minus {2}; keep it at most {3} (resize is a separate maintenance)" -f (Format-GiB $virtual), (Format-GiB $Space.volumeTotalBytes), (Format-GiB $MarginBytes), (Format-GiB $limit)))
+  }
+  if ($growthRisk) {
+    [void]$problems.Add(("it may still grow {0} but the volume has {1} free (margin {2}); compact it or free space" -f (Format-GiB $growth), (Format-GiB $Space.volumeFreeBytes), (Format-GiB $MarginBytes)))
+  }
+  $message = $(if ($problems.Count) { "VHD can fill its volume: " + ($problems -join "; ") } else {
+      "ceiling {0} and remaining growth {1} fit volume {2} ({3} free) with a {4} margin" -f (Format-GiB $virtual), (Format-GiB $growth), (Format-GiB $Space.volumeTotalBytes), (Format-GiB $Space.volumeFreeBytes), (Format-GiB $MarginBytes)
     })
   return [ordered]@{
-    known = $true; atRisk = $atRisk; virtualBytes = [int64]$VirtualBytes
-    volumeTotalBytes = $VolumeTotalBytes; marginBytes = $MarginBytes; maxSafeBytes = $limit; message = $message
+    known = $true; atRisk = ($ceilingRisk -or $growthRisk); ceilingRisk = $ceilingRisk; growthRisk = $growthRisk
+    virtualBytes = $virtual; growthBytes = $growth; volumeTotalBytes = [int64]$Space.volumeTotalBytes
+    volumeFreeBytes = [int64]$Space.volumeFreeBytes; marginBytes = $MarginBytes; maxSafeBytes = $limit; message = $message
   }
 }
 
@@ -501,7 +514,7 @@ function Invoke-Maintenance {
   $script:Receipt.wasRunning = $plan.WasRunning
   $script:Receipt.runningBefore = $runningBefore
   $script:Receipt.shutdownWsl = $plan.Shutdown
-  $capacity = Get-CapacityCheck (Get-VirtualDiskBytes $Request.distro $vhd.Path $plan.WasRunning) $script:Receipt.before.volumeTotalBytes
+  $capacity = Get-CapacityCheck (Get-VirtualDiskBytes $Request.distro $vhd.Path $plan.WasRunning) $script:Receipt.before
   $script:Receipt.capacity = $capacity
   if ($capacity.known) { Add-Step "capacity" (-not $capacity.atRisk) $capacity.message }
   Save-Receipt
@@ -607,7 +620,7 @@ function Get-DryRunReport {
     distro = $Request.distro
     vhd = $vhd.Path
     space = $space
-    capacity = Get-CapacityCheck (Get-VirtualDiskBytes $Request.distro $vhd.Path $running) $space.volumeTotalBytes
+    capacity = Get-CapacityCheck (Get-VirtualDiskBytes $Request.distro $vhd.Path $running) $space
     running = $running
     guardsWatchdog = ($Request.distro -eq $script:WatchdogDistro)
     plan = Get-MaintenancePlan $Request @(Get-RunningDistroNames)
