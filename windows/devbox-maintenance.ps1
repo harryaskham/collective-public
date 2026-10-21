@@ -1,0 +1,556 @@
+# devbox-maintenance.ps1 - agent-friendly offline maintenance for a WSL2 devbox.
+#
+# Some maintenance needs a distro (and with it SSH, agents and builds) to be
+# stopped, so it cannot be driven from inside that distro. This script runs on
+# the Windows host:
+#
+#   -Install    Register the elevated DevboxMaintenance task (one UAC consent).
+#               The script is copied to an Administrators-only directory, so an
+#               unelevated process can queue requests but not change the code
+#               the task runs.
+#   -FromTask   What the task runs: take the queued request, stop the target
+#               distro (pausing the WSL watchdog when it guards that distro),
+#               do the maintenance, then restart the distro and resume the
+#               watchdog. Restoration also runs when maintenance fails.
+#   (default)   The same operation, run directly from an elevated console.
+#   -DryRun     Report what would happen. Safe while WSL runs; no elevation.
+#
+# Operations:
+#   Compact  fstrim inside the distro, then compact its VHDX offline
+#            (Optimize-VHD, else DiskPart); optionally mark it sparse.
+#   Cycle    Stop and restart only (canary for the stop/restore path).
+#
+# Every run writes a JSON receipt and a transcript under
+# %LOCALAPPDATA%\devbox\maintenance, readable from WSL afterwards. The script
+# never unregisters, imports, moves, resizes or recreates a distribution, and
+# takes the VHDX path from WSL's own registration, never from a request.
+
+[CmdletBinding(DefaultParameterSetName = "Direct")]
+param(
+  [Parameter(ParameterSetName = "Install", Mandatory = $true)]
+  [switch]$Install,
+  [Parameter(ParameterSetName = "Task", Mandatory = $true)]
+  [switch]$FromTask,
+  [Parameter(ParameterSetName = "Direct")]
+  [ValidateSet("Compact", "Cycle")]
+  [string]$Operation = "Compact",
+  [Parameter(ParameterSetName = "Direct")]
+  [string]$Distro = "NixOS",
+  [Parameter(ParameterSetName = "Direct")]
+  [switch]$SetSparse,
+  [Parameter(ParameterSetName = "Direct")]
+  [switch]$SkipTrim,
+  [Parameter(ParameterSetName = "Direct")]
+  [switch]$VerifyBoot,
+  [Parameter(ParameterSetName = "Direct")]
+  [switch]$DryRun,
+  [Parameter(ParameterSetName = "Direct")]
+  [switch]$Force,
+  [string]$StateDir = (Join-Path $env:LOCALAPPDATA "devbox\maintenance"),
+  # Tests dot-source the functions without running anything.
+  [switch]$NoMain
+)
+
+$ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
+
+$script:Mode = $PSCmdlet.ParameterSetName
+$script:TaskName = "DevboxMaintenance"
+$script:InstallDir = Join-Path $env:ProgramData "Collective\DevboxMaintenance"
+$script:InstalledScript = Join-Path $script:InstallDir "devbox-maintenance.ps1"
+$script:WatchdogDistro = "NixOS"
+$script:PausePath = Join-Path $env:LOCALAPPDATA "devbox\wsl-watchdog.pause"
+$script:LxssRoot = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss"
+$script:Operations = @("Compact", "Cycle")
+$script:CreatedPause = $false
+$script:Receipt = $null
+$script:ReceiptPath = $null
+$script:Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+function Write-Line {
+  param([string]$Level, [string]$Message)
+  $colors = @{ info = "Cyan"; ok = "Green"; warn = "Yellow"; error = "Red" }
+  Write-Host "[devbox-maintenance] $Message" -ForegroundColor $colors[$Level]
+}
+
+function Test-Administrator {
+  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+  return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Get-Field {
+  param($Object, [string]$Name, $Default)
+  if ($null -ne $Object -and $Object.PSObject.Properties[$Name]) { return $Object.$Name }
+  return $Default
+}
+
+# Validate a queued request. Only whitelisted operations, a plain distro name
+# and boolean flags pass; anything else is rejected before WSL is touched.
+function ConvertTo-MaintenanceRequest {
+  param($Object)
+  if ($null -eq $Object) { throw "Request is empty." }
+  $id = [string](Get-Field $Object "id" "")
+  if ($id -notmatch '^[A-Za-z0-9-]{8,64}$') { throw "Request id '$id' is invalid." }
+  $operation = [string](Get-Field $Object "operation" "")
+  if ($script:Operations -notcontains $operation) {
+    throw "Operation '$operation' is not one of: $($script:Operations -join ', ')."
+  }
+  $distroName = [string](Get-Field $Object "distro" "")
+  if ($distroName -notmatch '^[A-Za-z0-9._-]{1,64}$') { throw "Distro name '$distroName' is invalid." }
+  $flags = [ordered]@{}
+  foreach ($flag in @("setSparse", "skipTrim", "verifyBoot")) {
+    $value = Get-Field $Object $flag $false
+    if ($value -isnot [bool]) { throw "Request field '$flag' must be true or false." }
+    $flags[$flag] = $value
+  }
+  return [ordered]@{
+    id = $id; operation = $operation; distro = $distroName
+    setSparse = $flags.setSparse; skipTrim = $flags.skipTrim; verifyBoot = $flags.verifyBoot
+    requestedBy = [string](Get-Field $Object "requestedBy" "")
+  }
+}
+
+function Get-DistroVhd {
+  param([string]$Name, [string]$RegistryRoot = $script:LxssRoot)
+  if (-not (Test-Path -LiteralPath $RegistryRoot)) { throw "No WSL registrations under $RegistryRoot." }
+  foreach ($key in Get-ChildItem -LiteralPath $RegistryRoot) {
+    $props = Get-ItemProperty -LiteralPath $key.PSPath
+    if ((Get-Field $props "DistributionName" "") -ne $Name) { continue }
+    if ([int](Get-Field $props "Version" 0) -ne 2) { throw "'$Name' is not a WSL2 distribution." }
+    $base = ([string](Get-Field $props "BasePath" "")) -replace '^\\\\\?\\', ''
+    if (-not $base) { throw "'$Name' has no BasePath in its WSL registration." }
+    $file = [string](Get-Field $props "VhdFileName" "ext4.vhdx")
+    if (-not $file) { $file = "ext4.vhdx" }
+    return [PSCustomObject]@{ Name = $Name; Path = (Join-Path $base $file) }
+  }
+  throw "WSL distribution '$Name' is not registered for $env:USERNAME."
+}
+
+function Assert-VhdPresent {
+  param($Vhd)
+  if (-not (Test-Path -LiteralPath $Vhd.Path -PathType Leaf)) {
+    throw "'$($Vhd.Name)' is registered, but its VHD is missing at $($Vhd.Path) (dangling registration); nothing to maintain."
+  }
+}
+
+function Invoke-Wsl {
+  param([string[]]$Arguments)
+  # Windows PowerShell 5.1 turns redirected native stderr into ErrorRecords;
+  # with Stop they would abort the script instead of reporting an exit code.
+  $ErrorActionPreference = "Continue"
+  $output = @(& wsl.exe @Arguments 2>&1 | ForEach-Object { "$_" })
+  $code = $LASTEXITCODE
+  return [PSCustomObject]@{ ExitCode = $code; Text = ((($output -join "`n") -replace "`0", "").Trim()) }
+}
+
+function Get-RunningDistroNames {
+  $result = Invoke-Wsl @("--list", "--running", "--quiet")
+  if ($result.ExitCode -ne 0) {
+    if ($result.Text -match '(?i)no running') { return @() }
+    throw "Could not list running WSL distributions (exit $($result.ExitCode)): $($result.Text)"
+  }
+  return @($result.Text -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+
+function Wait-DistroStopped {
+  param([string]$Name, [int]$TimeoutSeconds = 60, [int]$StableSeconds = 3)
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $since = $null
+  while ((Get-Date) -lt $deadline) {
+    if (@(Get-RunningDistroNames) -notcontains $Name) {
+      if ($null -eq $since) { $since = Get-Date }
+      if (((Get-Date) - $since).TotalSeconds -ge $StableSeconds) { return $true }
+    } else {
+      $since = $null
+    }
+    Start-Sleep -Milliseconds 500
+  }
+  return $false
+}
+
+function Test-FileReleased {
+  param([string]$Path)
+  try {
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
+    $stream.Dispose()
+    return $true
+  } catch {
+    return $false
+  }
+}
+
+function Wait-FileReleased {
+  param([string]$Path, [int]$TimeoutSeconds = 60)
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ((Get-Date) -lt $deadline) {
+    if (Test-FileReleased $Path) { return $true }
+    Start-Sleep -Seconds 1
+  }
+  return $false
+}
+
+function Get-SpaceInfo {
+  param([string]$Path)
+  $item = Get-Item -LiteralPath $Path
+  $drive = New-Object System.IO.DriveInfo ([System.IO.Path]::GetPathRoot($item.FullName))
+  return [ordered]@{
+    fileBytes = [int64]$item.Length
+    volume = $drive.Name
+    fileSystem = $drive.DriveFormat
+    volumeFreeBytes = [int64]$drive.AvailableFreeSpace
+    volumeTotalBytes = [int64]$drive.TotalSize
+  }
+}
+
+function Format-GiB {
+  param([double]$Bytes)
+  return ("{0:N1} GiB" -f ($Bytes / 1GB))
+}
+
+function Add-Step {
+  param([string]$Name, [bool]$Ok, [string]$Detail = "")
+  if ($Ok) { Write-Line ok "$Name $Detail" } else { Write-Line warn "$Name FAILED $Detail" }
+  if ($null -ne $script:Receipt) {
+    [void]$script:Receipt.steps.Add([ordered]@{
+      name = $Name; ok = $Ok; at = (Get-Date).ToString("o"); detail = $Detail
+    })
+    Save-Receipt
+  }
+}
+
+function Save-Receipt {
+  if ($null -eq $script:Receipt -or -not $script:ReceiptPath) { return }
+  $json = $script:Receipt | ConvertTo-Json -Depth 8
+  $tmp = "$($script:ReceiptPath).tmp"
+  [IO.File]::WriteAllText($tmp, $json, $script:Utf8NoBom)
+  Move-Item -LiteralPath $tmp -Destination $script:ReceiptPath -Force
+  Copy-Item -LiteralPath $script:ReceiptPath -Destination (Join-Path $StateDir "last.json") -Force
+}
+
+function Suspend-Watchdog {
+  param([string]$Id)
+  if (Test-Path -LiteralPath $script:PausePath) {
+    throw "A WSL watchdog pause marker already exists ($($script:PausePath)); another maintenance may be running."
+  }
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $script:PausePath) | Out-Null
+  Set-Content -LiteralPath $script:PausePath -Value "devbox-maintenance $Id $(Get-Date -Format o)" -Encoding ASCII
+  $script:CreatedPause = $true
+  Add-Step "watchdog-paused" $true $script:PausePath
+}
+
+function Update-WatchdogPause {
+  # The watchdog expires markers older than its PauseMaxHours (default 2h);
+  # long compactions keep the marker fresh.
+  if ($script:CreatedPause -and (Test-Path -LiteralPath $script:PausePath)) {
+    (Get-Item -LiteralPath $script:PausePath).LastWriteTime = Get-Date
+  }
+}
+
+function Resume-Watchdog {
+  if ($script:CreatedPause) {
+    Remove-Item -LiteralPath $script:PausePath -Force -ErrorAction SilentlyContinue
+    $script:CreatedPause = $false
+    Add-Step "watchdog-resumed" $true ""
+  }
+}
+
+function Stop-TargetDistro {
+  param([string]$Name, [bool]$ShutdownWsl, [string]$VhdPath)
+  $result = Invoke-Wsl @("--terminate", $Name)
+  Add-Step "terminate" $true "exit $($result.ExitCode) $($result.Text)"
+  if ($ShutdownWsl) {
+    $result = Invoke-Wsl @("--shutdown")
+    if ($result.ExitCode -ne 0) { throw "wsl --shutdown failed (exit $($result.ExitCode)): $($result.Text)" }
+    Add-Step "wsl-shutdown" $true ""
+  }
+  if (-not (Wait-DistroStopped $Name)) {
+    throw "'$Name' did not stay stopped; a background task may be restarting it."
+  }
+  if (-not (Wait-FileReleased $VhdPath)) { throw "The VHD is still in use after '$Name' stopped: $VhdPath" }
+  Add-Step "stopped" $true $VhdPath
+}
+
+function Start-TargetDistro {
+  param([string]$Name)
+  $result = Invoke-Wsl @("-d", $Name, "--exec", "/bin/sh", "-c", "true")
+  if ($result.ExitCode -ne 0) { throw "Could not start '$Name' (exit $($result.ExitCode)): $($result.Text)" }
+  Add-Step "started" $true $Name
+}
+
+function Invoke-GuestTrim {
+  param([string]$Name)
+  $last = ""
+  foreach ($path in @("/run/current-system/sw/bin/fstrim", "/usr/sbin/fstrim", "/sbin/fstrim")) {
+    $result = Invoke-Wsl @("-d", $Name, "-u", "root", "--exec", $path, "-v", "/")
+    if ($result.ExitCode -eq 0) { Add-Step "trim" $true $result.Text; return }
+    $last = "exit $($result.ExitCode) $($result.Text)"
+  }
+  Add-Step "trim" $false "continuing without a fresh trim: $last"
+}
+
+$script:OptimizeWork = {
+  param($Path, $Mode)
+  $ErrorActionPreference = "Stop"
+  Import-Module Hyper-V
+  Optimize-VHD -Path $Path -Mode $Mode
+  "Optimize-VHD -Mode $Mode completed"
+}
+
+$script:DiskPartWork = {
+  param($Path)
+  $ErrorActionPreference = "Stop"
+  $commands = Join-Path $env:TEMP ("devbox-compact-" + [guid]::NewGuid().ToString("N") + ".txt")
+  Set-Content -LiteralPath $commands -Value @("select vdisk file=`"$Path`"", "compact vdisk") -Encoding ASCII
+  try {
+    $output = & "$env:SystemRoot\System32\diskpart.exe" /s $commands
+    $code = $LASTEXITCODE
+  } finally {
+    Remove-Item -LiteralPath $commands -Force -ErrorAction SilentlyContinue
+  }
+  $text = ($output -join "`n")
+  if ($code -ne 0 -or $text -notmatch '(?i)successfully compacted') { throw "diskpart exit ${code}:`n$text" }
+  $text
+}
+
+function Invoke-WorkJob {
+  param([string]$Label, [scriptblock]$Work, [object[]]$Arguments, [string]$VhdPath)
+  $job = Start-Job -ScriptBlock $Work -ArgumentList $Arguments
+  $start = Get-Date
+  try {
+    while ($job.State -eq "Running" -or $job.State -eq "NotStarted") {
+      Update-WatchdogPause
+      $elapsed = (Get-Date) - $start
+      Write-Line info ("{0}: {1:hh\:mm\:ss} elapsed, image {2}" -f $Label, $elapsed, (Format-GiB (Get-Item -LiteralPath $VhdPath).Length))
+      [void](Wait-Job -Job $job -Timeout 60)
+    }
+    $jobErrors = $null
+    $output = @(Receive-Job -Job $job -ErrorAction SilentlyContinue -ErrorVariable jobErrors)
+    $detail = (($output | ForEach-Object { "$_" }) -join "`n").Trim()
+    $errorText = ((@($jobErrors) | Where-Object { $_ } | ForEach-Object { "$_" }) -join "`n").Trim()
+    if ($errorText) { $detail = ("$detail`n$errorText").Trim() }
+    $ok = ($job.State -eq "Completed") -and (-not $errorText)
+    return [PSCustomObject]@{ Ok = $ok; Detail = $detail; Seconds = [int]((Get-Date) - $start).TotalSeconds }
+  } finally {
+    Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+  }
+}
+
+function Invoke-VhdCompaction {
+  param([string]$VhdPath)
+  $attempts = New-Object System.Collections.ArrayList
+  if (Get-Module -ListAvailable -Name Hyper-V) {
+    [void]$attempts.Add(@{ Label = "Optimize-VHD Full"; Work = $script:OptimizeWork; Arguments = @($VhdPath, "Full") })
+    [void]$attempts.Add(@{ Label = "Optimize-VHD Pretrimmed"; Work = $script:OptimizeWork; Arguments = @($VhdPath, "Pretrimmed") })
+  }
+  [void]$attempts.Add(@{ Label = "DiskPart compact"; Work = $script:DiskPartWork; Arguments = @($VhdPath) })
+  $anyOk = $false
+  foreach ($attempt in $attempts) {
+    $before = (Get-Item -LiteralPath $VhdPath).Length
+    $result = Invoke-WorkJob $attempt.Label $attempt.Work $attempt.Arguments $VhdPath
+    $after = (Get-Item -LiteralPath $VhdPath).Length
+    Add-Step $attempt.Label $result.Ok ("{0}s, {1} -> {2}. {3}" -f $result.Seconds, (Format-GiB $before), (Format-GiB $after), $result.Detail)
+    if ($result.Ok) {
+      $anyOk = $true
+      # A method can succeed without seeing the guest's unused blocks; try the
+      # next one only when this one returned (almost) nothing.
+      if (($before - $after) -ge 1GB) { return $true }
+    }
+  }
+  return $anyOk
+}
+
+function New-Receipt {
+  param($Request, [string]$LogPath)
+  $script:Receipt = [ordered]@{
+    schema = 1
+    id = $Request.id
+    operation = $Request.operation
+    distro = $Request.distro
+    options = [ordered]@{ setSparse = $Request.setSparse; skipTrim = $Request.skipTrim; verifyBoot = $Request.verifyBoot }
+    requestedBy = $Request.requestedBy
+    state = "running"
+    startedAt = (Get-Date).ToString("o")
+    finishedAt = $null
+    log = $LogPath
+    vhd = $null
+    wasRunning = $null
+    before = $null
+    after = $null
+    reclaimedBytes = $null
+    steps = New-Object System.Collections.ArrayList
+    error = $null
+  }
+  $script:ReceiptPath = Join-Path (Join-Path $StateDir "receipts") "$($Request.id).json"
+  Save-Receipt
+}
+
+function Invoke-Maintenance {
+  param($Request)
+  $vhd = Get-DistroVhd $Request.distro
+  Assert-VhdPresent $vhd
+  $guardsWatchdog = ($Request.distro -eq $script:WatchdogDistro)
+  $script:Receipt.vhd = $vhd.Path
+  $script:Receipt.before = Get-SpaceInfo $vhd.Path
+  $wasRunning = @(Get-RunningDistroNames) -contains $Request.distro
+  $script:Receipt.wasRunning = $wasRunning
+  Save-Receipt
+  $failure = $null
+  try {
+    if ($Request.operation -eq "Compact" -and -not $Request.skipTrim) { Invoke-GuestTrim $Request.distro }
+    if ($guardsWatchdog) { Suspend-Watchdog $Request.id }
+    # Shut the whole WSL VM down only for the watchdog-guarded devbox distro;
+    # other distros (e.g. a canary) are stopped on their own.
+    Stop-TargetDistro -Name $Request.distro -ShutdownWsl $guardsWatchdog -VhdPath $vhd.Path
+    if ($Request.operation -eq "Compact") {
+      if (-not (Invoke-VhdCompaction $vhd.Path)) { throw "No compaction method succeeded." }
+    }
+    if ($Request.setSparse) {
+      $result = Invoke-Wsl @("--manage", $Request.distro, "--set-sparse", "true")
+      Add-Step "set-sparse" ($result.ExitCode -eq 0) "exit $($result.ExitCode) $($result.Text)"
+      if ($result.ExitCode -ne 0) { throw "wsl --manage --set-sparse failed: $($result.Text)" }
+    }
+  } catch {
+    $failure = "$_"
+    Add-Step "maintenance" $false $failure
+  } finally {
+    # Always bring the devbox back, whatever happened above.
+    if ($wasRunning -or $guardsWatchdog -or $Request.verifyBoot) {
+      try {
+        Start-TargetDistro $Request.distro
+        if ($Request.verifyBoot -and -not $wasRunning -and -not $guardsWatchdog) {
+          $result = Invoke-Wsl @("--terminate", $Request.distro)
+          Add-Step "restored-stopped" ($result.ExitCode -eq 0) "boot verified; left stopped as found"
+        }
+      } catch {
+        if (-not $failure) { $failure = "$_" }
+        Add-Step "start" $false "$_"
+      }
+    }
+    Resume-Watchdog
+    $script:Receipt.after = Get-SpaceInfo $vhd.Path
+    $script:Receipt.reclaimedBytes = [int64]($script:Receipt.before.fileBytes - $script:Receipt.after.fileBytes)
+    Save-Receipt
+  }
+  if ($failure) { throw $failure }
+}
+
+function Invoke-Request {
+  param($Request)
+  if ($Request.operation -eq "Compact" -and -not (Test-Administrator)) {
+    throw "Compact needs an elevated PowerShell (or the installed DevboxMaintenance task)."
+  }
+  foreach ($dir in @($StateDir, (Join-Path $StateDir "receipts"), (Join-Path $StateDir "logs"))) {
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+  }
+  $lockPath = Join-Path $StateDir "run.lock"
+  try {
+    $lock = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+  } catch {
+    throw "Another devbox maintenance run holds $lockPath."
+  }
+  $log = Join-Path (Join-Path $StateDir "logs") "$($Request.id).log"
+  $transcript = $false
+  try {
+    try { Start-Transcript -LiteralPath $log -Append | Out-Null; $transcript = $true } catch { }
+    New-Receipt $Request $log
+    Write-Line info "$($Request.operation) '$($Request.distro)' (request $($Request.id))"
+    try {
+      Invoke-Maintenance $Request
+      $script:Receipt.state = "succeeded"
+    } catch {
+      $script:Receipt.state = "failed"
+      $script:Receipt.error = "$_"
+    }
+    $script:Receipt.finishedAt = (Get-Date).ToString("o")
+    Save-Receipt
+    if ($script:Receipt.state -eq "succeeded") {
+      Write-Line ok ("Done. Image {0} -> {1}; {2} free on {3}." -f (Format-GiB $script:Receipt.before.fileBytes), (Format-GiB $script:Receipt.after.fileBytes), (Format-GiB $script:Receipt.after.volumeFreeBytes), $script:Receipt.after.volume)
+    } else {
+      Write-Line error "Failed: $($script:Receipt.error). Receipt: $($script:ReceiptPath)"
+    }
+    return ($script:Receipt.state -eq "succeeded")
+  } finally {
+    if ($transcript) { try { Stop-Transcript | Out-Null } catch { } }
+    $lock.Dispose()
+  }
+}
+
+function Get-DryRunReport {
+  param($Request)
+  $vhd = Get-DistroVhd $Request.distro
+  Assert-VhdPresent $vhd
+  $task = Get-ScheduledTask -TaskName $script:TaskName -ErrorAction SilentlyContinue
+  $installedHash = $null
+  if (Test-Path -LiteralPath $script:InstalledScript) {
+    $installedHash = (Get-FileHash -LiteralPath $script:InstalledScript -Algorithm SHA256).Hash
+  }
+  return [ordered]@{
+    operation = $Request.operation
+    distro = $Request.distro
+    vhd = $vhd.Path
+    space = Get-SpaceInfo $vhd.Path
+    running = (@(Get-RunningDistroNames) -contains $Request.distro)
+    guardsWatchdog = ($Request.distro -eq $script:WatchdogDistro)
+    watchdogPaused = (Test-Path -LiteralPath $script:PausePath)
+    elevated = (Test-Administrator)
+    hyperV = [bool](Get-Module -ListAvailable -Name Hyper-V)
+    taskInstalled = [bool]$task
+    taskState = $(if ($task) { [string]$task.State } else { $null })
+    installedScriptSha256 = $installedHash
+    thisScriptSha256 = $(if ($PSCommandPath) { (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash } else { $null })
+  }
+}
+
+function Install-MaintenanceTask {
+  if (-not (Test-Administrator)) { throw "-Install needs an elevated PowerShell (one UAC consent)." }
+  New-Item -ItemType Directory -Force -Path $script:InstallDir | Out-Null
+  # Administrators and SYSTEM may change the code the elevated task runs;
+  # users may only read it. Requests stay in the user's profile.
+  & icacls.exe $script:InstallDir /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-32-545:(OI)(CI)RX" | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "Could not restrict $($script:InstallDir)." }
+  Copy-Item -LiteralPath $PSCommandPath -Destination $script:InstalledScript -Force
+  $powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+  $action = New-ScheduledTaskAction -Execute $powershell -Argument ("-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"{0}`" -FromTask" -f $script:InstalledScript)
+  $principal = New-ScheduledTaskPrincipal -UserId ("{0}\{1}" -f $env:USERDOMAIN, $env:USERNAME) -LogonType Interactive -RunLevel Highest
+  $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 12)
+  Register-ScheduledTask -TaskName $script:TaskName -Action $action -Principal $principal -Settings $settings -Force `
+    -Description "Collective devbox maintenance: runs one queued request from %LOCALAPPDATA%\devbox\maintenance\request.json." | Out-Null
+  $hash = (Get-FileHash -LiteralPath $script:InstalledScript -Algorithm SHA256).Hash
+  Write-Line ok "Installed task '$($script:TaskName)' running $($script:InstalledScript) (sha256 $hash)."
+}
+
+function Invoke-FromTask {
+  $requestPath = Join-Path $StateDir "request.json"
+  if (-not (Test-Path -LiteralPath $requestPath)) { Write-Line warn "No queued request at $requestPath."; return $true }
+  $queued = Join-Path (Join-Path $StateDir "requests") ("taken-{0}.json" -f [guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $queued) | Out-Null
+  # Take the request before acting so a re-trigger cannot repeat it.
+  Move-Item -LiteralPath $requestPath -Destination $queued -Force
+  $request = ConvertTo-MaintenanceRequest (Get-Content -Raw -LiteralPath $queued | ConvertFrom-Json)
+  return (Invoke-Request $request)
+}
+
+function Invoke-Main {
+  switch ($script:Mode) {
+    "Install" { Install-MaintenanceTask; exit 0 }
+    "Task" { if (Invoke-FromTask) { exit 0 } else { exit 1 } }
+    default {
+      $request = ConvertTo-MaintenanceRequest ([PSCustomObject]@{
+        id = ("direct-" + [guid]::NewGuid().ToString("N").Substring(0, 12))
+        operation = $Operation; distro = $Distro
+        setSparse = [bool]$SetSparse; skipTrim = [bool]$SkipTrim; verifyBoot = [bool]$VerifyBoot
+        requestedBy = "console"
+      })
+      if ($DryRun) { Get-DryRunReport $request | ConvertTo-Json -Depth 6; exit 0 }
+      if (-not $Force) {
+        Write-Line warn "$Operation stops '$Distro'$(if ($Distro -eq $script:WatchdogDistro) { ' and every WSL distribution' }); work inside it is interrupted."
+        $answer = Read-Host "Continue? (y/N)"
+        if ($answer -notmatch '^[Yy]') { Write-Line warn "Aborted; nothing changed."; exit 1 }
+      }
+      if (Invoke-Request $request) { exit 0 } else { exit 1 }
+    }
+  }
+}
+
+if (-not $NoMain) { Invoke-Main }
