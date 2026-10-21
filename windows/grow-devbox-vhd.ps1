@@ -13,6 +13,11 @@ param(
   [string]$Memory = "48GB",
   [string]$WslConfigPath = (Join-Path $env:USERPROFILE ".wslconfig"),
   [switch]$SkipWSLUpdate,
+  # A VHD may grow until its volume is full while the distro still reports
+  # free space; refuse targets within this margin of the holding volume.
+  [ValidateRange(0, 10240)]
+  [int]$CapacityMarginGB = 50,
+  [switch]$AllowExceedVolume,
   [switch]$Force
 )
 
@@ -178,6 +183,19 @@ function Get-DistroStorageInfo {
   }
 }
 
+function Get-DistroVhdVolume {
+  param([string]$Name)
+  foreach ($key in Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss' -ErrorAction SilentlyContinue) {
+    $props = Get-ItemProperty -LiteralPath $key.PSPath
+    if ($props.PSObject.Properties['DistributionName'] -and $props.DistributionName -eq $Name -and $props.PSObject.Properties['BasePath']) {
+      $base = ([string]$props.BasePath) -replace '^\\\\\?\\', ''
+      $root = [IO.Path]::GetPathRoot($base)
+      if ($root) { return (New-Object IO.DriveInfo $root) }
+    }
+  }
+  return $null
+}
+
 function Get-RunningDistroNames {
   $output = @(& wsl.exe --list --running --quiet)
   $exitCode = $LASTEXITCODE
@@ -252,6 +270,24 @@ if ($verboseList -notmatch $distroPattern) {
 }
 
 $targetBytes = Convert-SizeToBytes $DiskSize
+
+# The VHD's ceiling must leave room on the volume that holds it; otherwise the
+# file can fill that volume while ext4 still has free space (ms-dev-7: a 1536 GB
+# VHD on a 1535 GB Q: left 2 GB free and made WSL boots unreliable).
+$volume = Get-DistroVhdVolume $Distro
+if ($volume) {
+  $maxSafeBytes = [Int64]$volume.TotalSize - ([Int64]$CapacityMarginGB * 1GB)
+  if ([Int64]$targetBytes -gt $maxSafeBytes) {
+    $capacityMessage = "$DiskSize exceeds the $($volume.Name) volume ($([Math]::Round($volume.TotalSize / 1GB, 1)) GiB) minus a $CapacityMarginGB GiB margin, so the VHD could fill that volume."
+    if ($AllowExceedVolume) {
+      Warn "$capacityMessage Continuing because -AllowExceedVolume was given."
+    } else {
+      Die "$capacityMessage Choose at most $([Math]::Floor($maxSafeBytes / 1GB))GB, or pass -AllowExceedVolume. No changes were made."
+    }
+  }
+} else {
+  Warn "Could not find the volume holding '$Distro''s VHD; skipping the capacity guard."
+}
 $currentStorage = Get-DistroStorageInfo $Distro
 $currentDeviceBytes = [UInt64]$currentStorage.DeviceBytes
 $currentFilesystemBytes = [UInt64]$currentStorage.FilesystemBytes
