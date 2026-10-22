@@ -153,6 +153,35 @@ The Windows devbox user is typically a **non-admin domain account** (e.g.
 A non-admin user cannot avoid the UAC consent for the admin half; everything
 else is fully automated.
 
+### Shell notices when Windows setup needs attention
+
+The private Collective devbox module now checks Windows setup asynchronously.
+A normal-user systemd timer probes task definitions, watchdog/headless shim
+versions, the live WSL keepalive, and the recorded admin configuration every
+five minutes, and after convergence. It is read-only and never opens UAC.
+
+Interactive zsh shells only read a small local cache at prompt boundaries—no
+PowerShell, network request or subprocess on shell startup. A newly discovered
+problem appears at the next prompt, not in the middle of a command or typed
+line. Repeated identical notices are suppressed within that shell.
+
+Use `devbox-windows-status` for cached details, or
+`devbox-windows-status --refresh` for a bounded read-only check. Notices
+separate admin updates (`devbox-windows-admin`, with deliberate Windows UAC)
+from ordinary user convergence, unhealthy keepalives, and unavailable/stale
+checks. Unknown or old cache data does not request elevation. Maintenance
+pauses are identified rather than mistaken for failures.
+
+The admin command writes a versioned completion receipt; actual task/file and
+runtime checks can still detect drift afterward. Installations predating the
+receipt need one admin pass to establish it. Routine unrelated flake/package
+updates do not invalidate the admin receipt. The SYSTEM power task is made
+**readable**, never writable, to the normal-user probe.
+
+In the full checkout, `windows/README.md` documents the cache, test commands,
+and `devbox.windows.health` settings. `DEVBOX_WINDOWS_NOTICE=0` hides notices
+for a new shell without turning off background monitoring.
+
 ### Keeping background work off the Windows desktop
 
 The private Collective modules use the shared `headless.ps1` and
