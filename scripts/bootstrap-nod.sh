@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Bootstrap a fresh Nix-on-Droid install into Collective: install the machine's
 # SSH private key, clone (or update) the Collective repository, then build and
-# activate the machine's configuration as `nix-on-droid switch` does, but under
-# a current Nix. Safe to re-run: an installed key is kept and the checkout is
+# activate the machine's configuration as `nix-on-droid switch` does, but with
+# the machine's own Nix and nix.conf. Safe to re-run: an installed key is kept and the checkout is
 # fast-forwarded.
 #
 # On the fresh install (the Nix-on-Droid flake bootstrap enables flakes):
@@ -23,14 +23,12 @@ if [[ -z $machine || $machine == -h || $machine == --help ]]; then
   exit 2
 fi
 
-# The bare install lacks sed and friends (busybox), and its Nix cannot
-# evaluate Collective's relative path inputs, so the build runs under a
-# current Nix. git, ssh and ssh-to-age come from the bootstrap's release line.
+# Tools from the bootstrap's release line; the bare install lacks sed and
+# friends (busybox).
 if [[ -z ${BOOTSTRAP_NOD_SHELL:-} ]]; then
   nixpkgs=${BOOTSTRAP_NIXPKGS:-github:NixOS/nixpkgs/nixos-24.05}
-  nix=${BOOTSTRAP_NIX:-github:NixOS/nixpkgs/nixos-unstable#nix}
   export BOOTSTRAP_NOD_SHELL=1
-  exec nix shell "$nix" "$nixpkgs#git" "$nixpkgs#openssh" "$nixpkgs#ssh-to-age" \
+  exec nix shell "$nixpkgs#git" "$nixpkgs#openssh" "$nixpkgs#ssh-to-age" \
     "$nixpkgs#busybox" --command bash "$0" "$@"
 fi
 
@@ -75,13 +73,30 @@ fi || {
   exit 1
 }
 
-# Not `nix-on-droid switch`: the bootstrap's CLI puts its own (old) Nix first
-# on PATH. These are its steps, run with the current Nix from the tool shell.
-# Later switches use Collective's own nix-on-droid and Nix.
+# Not `nix-on-droid switch`: the bootstrap's CLI puts its own Nix first on
+# PATH, and that Nix cannot evaluate Collective's relative path inputs. Run its
+# steps with the Nix the machine itself uses (Collective's droid nixpkgs pin:
+# newer glibc fails under proot) and the machine's own nix.conf (no sandbox or
+# syscall filter under proot; its binary caches). Later switches use
+# Collective's own nix-on-droid and Nix.
+# shellcheck disable=SC2016 # Nix, not shell, interpolation
+rev=$(BOOTSTRAP_LOCK=$dir/flake.lock nix eval --raw --impure --expr \
+  'let l = builtins.fromJSON (builtins.readFile (builtins.getEnv "BOOTSTRAP_LOCK"));
+   in l.nodes.${l.nodes.${l.root}.inputs.nixpkgs-unstable-droid}.locked.rev')
+nix_out=$(nix build --no-link --print-out-paths "${BOOTSTRAP_NIX:-github:NixOS/nixpkgs/$rev#nix}^out")
+PATH=$nix_out/bin:$PATH
+export NIX_CONFIG="experimental-features = nix-command flakes
+sandbox = false
+filter-syscalls = false"
+echo "Reading $machine's nix.conf with $(nix --version)..."
+NIX_CONFIG=$(nix eval --raw --impure \
+  "$dir#nixOnDroidConfigurations.$machine.config.environment.etc.\"nix/nix.conf\".text")
+build_dir=$(sed -n 's/^build-dir = //p' <<<"$NIX_CONFIG")
+[[ -z $build_dir ]] || mkdir -p "$build_dir"
+
 attr="$dir#nixOnDroidConfigurations.$machine.activationPackage"
-echo "Building activation package with $(nix --version)..."
-# --accept-flake-config: Collective's nixConfig substituters, or nothing is cached.
-generation=$(nix build --no-link --print-out-paths --impure --accept-flake-config \
-  --extra-experimental-features 'nix-command flakes' "$attr")
+echo "Building activation package..."
+# --accept-flake-config: also Collective's flake nixConfig substituters.
+generation=$(nix build --no-link --print-out-paths --impure --accept-flake-config "$attr")
 echo "Executing activation script..."
 exec "$generation/activate"
