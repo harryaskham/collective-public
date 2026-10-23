@@ -80,7 +80,8 @@ fi || {
 # Later switches use Collective's own nix-on-droid and Nix.
 attr="$dir#nixOnDroidConfigurations.$machine.activationPackage"
 echo "Building activation package with $(nix --version)..."
-generation=$(nix build --no-link --print-out-paths --impure \
+# --accept-flake-config: Collective's nixConfig substituters, or nothing is cached.
+generation=$(nix build --no-link --print-out-paths --impure --accept-flake-config \
   --extra-experimental-features 'nix-command flakes' "$attr")
 echo "Executing activation script..."
 exec "$generation/activate"
