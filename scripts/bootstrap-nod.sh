@@ -94,6 +94,11 @@ NIX_CONFIG=$(nix eval --raw --impure \
 build_dir=$(sed -n 's/^build-dir = //p' <<<"$NIX_CONFIG")
 [[ -z $build_dir ]] || mkdir -p "$build_dir"
 
+# Fetch every input first, as cltv switch does: a private git+ssh input that
+# cannot be fetched then fails here, not deep inside evaluation.
+echo "Fetching flake inputs..."
+nix flake archive --accept-flake-config "$dir" >/dev/null
+
 attr="$dir#nixOnDroidConfigurations.$machine.activationPackage"
 echo "Building activation package..."
 # --accept-flake-config: also Collective's flake nixConfig substituters.
