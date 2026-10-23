@@ -22,13 +22,15 @@ if [[ -z $machine || $machine == -h || $machine == --help ]]; then
   exit 2
 fi
 
-# git, ssh and ssh-to-age from the bootstrap's release line: newer nixpkgs
-# glibc does not run under Nix-on-Droid's proot.
+# The bare install lacks sed and friends (busybox), and its Nix cannot
+# evaluate Collective's relative path inputs, so the switch runs under a
+# current Nix. git, ssh and ssh-to-age come from the bootstrap's release line.
 if [[ -z ${BOOTSTRAP_NOD_SHELL:-} ]]; then
   nixpkgs=${BOOTSTRAP_NIXPKGS:-github:NixOS/nixpkgs/nixos-24.05}
+  nix=${BOOTSTRAP_NIX:-github:NixOS/nixpkgs/nixos-unstable#nix}
   export BOOTSTRAP_NOD_SHELL=1
-  exec nix shell "$nixpkgs#git" "$nixpkgs#openssh" "$nixpkgs#ssh-to-age" \
-    --command bash "$0" "$@"
+  exec nix shell "$nix" "$nixpkgs#git" "$nixpkgs#openssh" "$nixpkgs#ssh-to-age" \
+    "$nixpkgs#busybox" --command bash "$0" "$@"
 fi
 
 repo=${COLLECTIVE_REPO:-git@github.com:harryaskham/collective.git}
