@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Bootstrap a fresh Nix-on-Droid install into Collective: install the machine's
-# SSH private key, clone (or update) the Collective repository and run the
-# regular switch. Safe to re-run: an installed key is kept and the checkout is
+# SSH private key, clone (or update) the Collective repository, then build and
+# activate the machine's configuration as `nix-on-droid switch` does, but under
+# a current Nix. Safe to re-run: an installed key is kept and the checkout is
 # fast-forwarded.
 #
 # On the fresh install (the Nix-on-Droid flake bootstrap enables flakes):
@@ -18,12 +19,12 @@ set -euo pipefail
 
 machine=${1:-}
 if [[ -z $machine || $machine == -h || $machine == --help ]]; then
-  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
   exit 2
 fi
 
 # The bare install lacks sed and friends (busybox), and its Nix cannot
-# evaluate Collective's relative path inputs, so the switch runs under a
+# evaluate Collective's relative path inputs, so the build runs under a
 # current Nix. git, ssh and ssh-to-age come from the bootstrap's release line.
 if [[ -z ${BOOTSTRAP_NOD_SHELL:-} ]]; then
   nixpkgs=${BOOTSTRAP_NIXPKGS:-github:NixOS/nixpkgs/nixos-24.05}
@@ -74,4 +75,12 @@ fi || {
   exit 1
 }
 
-exec nix-on-droid switch --flake "$dir#$machine"
+# Not `nix-on-droid switch`: the bootstrap's CLI puts its own (old) Nix first
+# on PATH. These are its steps, run with the current Nix from the tool shell.
+# Later switches use Collective's own nix-on-droid and Nix.
+attr="$dir#nixOnDroidConfigurations.$machine.activationPackage"
+echo "Building activation package with $(nix --version)..."
+generation=$(nix build --no-link --print-out-paths --impure \
+  --extra-experimental-features 'nix-command flakes' "$attr")
+echo "Executing activation script..."
+exec "$generation/activate"
