@@ -35,6 +35,90 @@ with lib; let
 
   pidFile = "${cfg.stateDir}/run/supervisord.pid";
 
+  # supervisord refuses to start at all when any program's log file has no
+  # parent directory, and fails the program when its working directory is
+  # missing. The start path creates those first. Only literal absolute paths:
+  # not /dev/*, NONE/AUTO or %(...)s expansions.
+  isLiteralPath = p: p != null && hasPrefix "/" p && !(hasPrefix "/dev/" p) && !(hasInfix "%(" p);
+  programLogDirs = prog: unique (
+    map dirOf (filter isLiteralPath [prog.stdout_logfile prog.stderr_logfile])
+    ++ optional (prog.directory != "/" && isLiteralPath prog.directory) prog.directory
+  );
+
+  # Programs with requiresPath (e.g. caco, whose state a bootstrap creates) get
+  # their own config file, included from confDir only while that path exists.
+  # Their directories are left to the bootstrap: creating them here would hide
+  # that it has not run.
+  conditionalPrograms = filterAttrs (_: prog: prog.requiresPath != null) allPrograms;
+  unconditionalPrograms = filterAttrs (_: prog: prog.requiresPath == null) allPrograms;
+  programDirs = unique (concatLists (mapAttrsToList (_: programLogDirs) unconditionalPrograms));
+  confDir = "${cfg.stateDir}/conf.d";
+
+  renderProgram = name: prog: let
+    pathStr = concatStringsSep ":" (map (p: "${p}/bin") prog.path);
+    envLine =
+      if isString prog.environment
+      then prog.environment
+      else let
+        envPairs = mapAttrsToList (k: v: "${k}=\"${v}\"") (
+          prog.environment
+          // optionalAttrs (prog.path != []) {
+            PATH = concatStringsSep ":" (
+              ["%(ENV_PATH)s" pathStr]
+              ++ optional (prog.environment ? PATH) prog.environment.PATH
+            );
+          }
+        );
+      in optionalString (envPairs != []) (concatStringsSep "," envPairs);
+  in ''
+    [program:${name}]
+    command=${prog.command}
+    directory=${prog.directory}
+    autostart=${boolToConf prog.autostart}
+    autorestart=${autorestartToConf prog.autorestart}
+    startsecs=${toString prog.startsecs}
+    stopsignal=${prog.stopsignal}
+    ${optionalString (prog.stopwaitsecs != null) "stopwaitsecs=${toString prog.stopwaitsecs}"}
+    stopasgroup=${boolToConf prog.stopasgroup}
+    killasgroup=${boolToConf prog.killasgroup}
+    redirect_stderr=${boolToConf prog.redirect_stderr}
+    ${optionalString (envLine != "") "environment=${envLine}"}
+    ${optionalString (prog.stdout_logfile != null) "stdout_logfile=${prog.stdout_logfile}"}
+    ${optionalString (prog.stderr_logfile != null) "stderr_logfile=${prog.stderr_logfile}"}
+  '';
+
+  conditionalConfFiles = mapAttrs (name: prog:
+    pkgs.writeText "supervisord-program-${name}.conf" (renderProgram name prog))
+  conditionalPrograms;
+
+  # Under the start lock: link each conditional program whose path exists into
+  # confDir, warn about the rest, and note whether the set changed so a running
+  # supervisord can reread it.
+  linkConditionalPrograms = optionalString (conditionalPrograms != {}) ''
+    CONFD=${escapeShellArg confDir}
+    mkdir -p "$CONFD"
+    __sd_confd() {
+      for __f in "$CONFD"/*.conf; do
+        [ -L "$__f" ] && echo "$__f -> $(${pkgs.coreutils}/bin/readlink "$__f")"
+      done
+      return 0
+    }
+    _confd_before=$(__sd_confd)
+    rm -f "$CONFD"/*.conf
+    ${concatStringsSep "\n" (mapAttrsToList (name: prog: ''
+        if [ -e ${escapeShellArg prog.requiresPath} ]; then
+          ${optionalString (programLogDirs prog != []) "mkdir -p ${escapeShellArgs (programLogDirs prog)}"}
+          ${pkgs.coreutils}/bin/ln -sfn ${conditionalConfFiles.${name}} "$CONFD"/${escapeShellArg "${name}.conf"}
+        else
+          echo ${escapeShellArg ("[supervisord] warning: not starting ${name}: ${prog.requiresPath} does not exist."
+            + optionalString (prog.requiresHint != "") " ${prog.requiresHint}")} >&2
+        fi
+      '')
+      conditionalPrograms)}
+    _confd_changed=0
+    [ "$(__sd_confd)" = "$_confd_before" ] || _confd_changed=1
+  '';
+
   configFile = pkgs.writeText "supervisord.conf" ''
     [supervisord]
     pidfile=${pidFile}
@@ -65,41 +149,11 @@ with lib; let
     redirect_stderr=true
     stdout_logfile=/dev/null
 
-    ${concatStringsSep "\n" (mapAttrsToList (
-        name: prog: let
-          pathStr = concatStringsSep ":" (map (p: "${p}/bin") prog.path);
-          envLine =
-            if isString prog.environment
-            then prog.environment
-            else let
-              envPairs = mapAttrsToList (k: v: "${k}=\"${v}\"") (
-                prog.environment
-                // optionalAttrs (prog.path != []) {
-                  PATH = concatStringsSep ":" (
-                    ["%(ENV_PATH)s" pathStr]
-                    ++ optional (prog.environment ? PATH) prog.environment.PATH
-                  );
-                }
-              );
-            in optionalString (envPairs != []) (concatStringsSep "," envPairs);
-        in ''
-          [program:${name}]
-          command=${prog.command}
-          directory=${prog.directory}
-          autostart=${boolToConf prog.autostart}
-          autorestart=${autorestartToConf prog.autorestart}
-          startsecs=${toString prog.startsecs}
-          stopsignal=${prog.stopsignal}
-          ${optionalString (prog.stopwaitsecs != null) "stopwaitsecs=${toString prog.stopwaitsecs}"}
-          stopasgroup=${boolToConf prog.stopasgroup}
-          killasgroup=${boolToConf prog.killasgroup}
-          redirect_stderr=${boolToConf prog.redirect_stderr}
-          ${optionalString (envLine != "") "environment=${envLine}"}
-          ${optionalString (prog.stdout_logfile != null) "stdout_logfile=${prog.stdout_logfile}"}
-          ${optionalString (prog.stderr_logfile != null) "stderr_logfile=${prog.stderr_logfile}"}
-        ''
-      )
-      allPrograms)}
+    ${concatStringsSep "\n" (mapAttrsToList renderProgram unconditionalPrograms)}
+    ${optionalString (conditionalPrograms != {}) ''
+      [include]
+      files = ${confDir}/*.conf
+    ''}
   '';
 
   supervisor = pkgs.python3Packages.supervisor;
@@ -152,9 +206,13 @@ with lib; let
     LOCKFILE="${lockFile}"
 
     mkdir -p "$STATEDIR"/{run,log}
+    ${optionalString (programDirs != []) "mkdir -p ${escapeShellArgs programDirs}"}
 
     exec ${flock} "$LOCKFILE" ${supervisord-start-inner}/bin/supervisord-start-inner
-  '';
+  '' // {
+    # For tests: the locked inner script links conditional programs.
+    inherit supervisord-start-inner;
+  };
 
   supervisord-start-inner = pkgs.writeScriptBin "supervisord-start-inner" ''
     #!${pkgs.runtimeShell}
@@ -167,9 +225,18 @@ with lib; let
     # that generation out from under the still-running process (bd-63202d).
     CONFIGFILE="${configFile}"
 
+    ${linkConditionalPrograms}
+
     ${sdRunningPidFn}
     ${sdRunningConfFn}
     ${execCanaryLib}
+
+    __sd_apply_confd() {
+      # A kept instance must reread conf.d to add or drop conditional programs.
+      [ "''${_confd_changed:-0}" = 1 ] || return 0
+      ${supervisorctl-wrapped}/bin/supervisorctl reread >/dev/null 2>&1 || true
+      ${supervisorctl-wrapped}/bin/supervisorctl update >/dev/null 2>&1 || true
+    }
 
     __sd_replace_running() {
       _replace_pid="$1"
@@ -198,6 +265,7 @@ with lib; let
           || _canary_rc=$?
         case "$_canary_rc" in
           0)
+            __sd_apply_confd
             exit 0
             ;;
           10)
@@ -205,6 +273,7 @@ with lib; let
             ;;
           *)
             echo "[supervisord-start-inner] exec canary inconclusive (rc=$_canary_rc); preserving current instance" >&2
+            __sd_apply_confd
             exit 0
             ;;
         esac
@@ -216,6 +285,7 @@ with lib; let
         # Could not read the running instance's config (e.g. unreadable cmdline
         # under proot). Stay conservative and do not churn a possibly-healthy
         # instance; the activation post-condition is the stronger backstop.
+        __sd_apply_confd
         exit 0
       fi
     else
@@ -271,6 +341,10 @@ in {
             nix-on-droid system config and home-manager config:
             ${concatStringsSep ", " duplicateProgramNames}
           '';
+        }
+        {
+          assertion = all (prog: hasPrefix "/" prog.requiresPath) (attrValues conditionalPrograms);
+          message = "supervisord programs' requiresPath must be absolute: ${concatStringsSep ", " (attrNames (filterAttrs (_: prog: !(hasPrefix "/" prog.requiresPath)) conditionalPrograms))}";
         }
         {
           assertion = !(allPrograms ? ${execCanaryName});

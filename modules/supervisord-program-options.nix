@@ -77,5 +77,21 @@ with lib;
       default = null;
       description = "Optional stderr log path for the program.";
     };
+    requiresPath = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = ''
+        Absolute path that must exist for the program to run, such as state a
+        bootstrap step creates. While it is missing, supervisord-start leaves
+        the program out and prints requiresHint instead of failing: supervisord
+        refuses to start at all when a program's log file has no directory.
+        Run supervisord-start again once the path exists to add the program.
+      '';
+    };
+    requiresHint = mkOption {
+      type = types.str;
+      default = "";
+      description = "Guidance printed while requiresPath is missing.";
+    };
   };
 }

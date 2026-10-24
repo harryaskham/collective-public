@@ -79,6 +79,49 @@ let
       };
     };
   });
+  systemLogDirs = evalSystem ({ ... }: {
+    supervisord = {
+      enable = true;
+      programs.logs = {
+        command = "/bin/true";
+        directory = "/home/u/.work";
+        stdout_logfile = "/home/u/.app/app.log";
+        stderr_logfile = "/home/u/.app/app.err";
+      };
+      programs.special = {
+        command = "/bin/true";
+        stdout_logfile = "/dev/null";
+        stderr_logfile = "%(here)s/x.log";
+      };
+    };
+  });
+  systemConditional = evalSystem ({ ... }: {
+    supervisord = {
+      enable = true;
+      programs.always.command = "/bin/true";
+      programs.cond = {
+        command = "/bin/true";
+        stdout_logfile = "/home/u/.caco/caco.log";
+        requiresPath = "/home/u/.caco";
+        requiresHint = "Run the boot script.";
+      };
+    };
+  });
+  systemRelativeRequires = evalSystem ({ ... }: {
+    supervisord = {
+      enable = true;
+      programs.rel = {
+        command = "/bin/true";
+        requiresPath = "relative/path";
+      };
+    };
+  });
+  homeConditional = evalHome ({ ... }: {
+    supervisord.programs.cond = {
+      command = "/bin/true";
+      requiresPath = "/home/u/.caco";
+    };
+  });
   systemReservedCollision = evalSystem ({ ... }: {
     supervisord = {
       enable = true;
@@ -91,10 +134,20 @@ let
     configPaths = lib.filter (lib.hasSuffix "-supervisord.conf") contextPaths;
   in
     builtins.readFile (lib.head configPaths);
+
+  startPackage = evaluated:
+    lib.findFirst (p: (p.name or "") == "supervisord-start") null evaluated.environment.packages;
+  startScript = evaluated: (startPackage evaluated).text;
+  innerScript = evaluated: (startPackage evaluated).supervisord-start-inner.text;
+  conditionalConf = evaluated: name: let
+    contextPaths = builtins.attrNames (builtins.getContext (innerScript evaluated));
+  in
+    builtins.readFile (lib.head (lib.filter (lib.hasSuffix "-supervisord-program-${name}.conf") contextPaths));
 in {
   home-manager = suite {
     defaultsToNull = expect.eq homeDefault.supervisord.programs.example.stopwaitsecs null;
     acceptsInteger = expect.eq homeExplicit.supervisord.programs.example.stopwaitsecs 45;
+    acceptsRequiresPath = expect.eq homeConditional.supervisord.programs.cond.requiresPath "/home/u/.caco";
   };
 
   nix-on-droid = suite {
@@ -107,6 +160,38 @@ in {
     execCanaryIsOnDemand =
       expect.eq (lib.hasInfix "[program:collective-exec-canary]\ncommand=" (renderedConfig systemDefault)
         && lib.hasInfix "autostart=false\nautorestart=false\nstartsecs=0" (renderedConfig systemDefault)) true;
+    createsProgramDirsBeforeStart =
+      expect.eq (lib.hasInfix "mkdir -p /home/u/.app /home/u/.work" (startScript systemLogDirs)) true;
+    skipsNonPathLogTargets =
+      expect.eq (lib.any (s: lib.hasInfix s (startScript systemLogDirs)) ["mkdir -p /dev" "%(here)s" " /dev "]) false;
+    noProgramDirsWithoutLogs =
+      expect.eq (lib.length (lib.filter (lib.hasPrefix "mkdir") (lib.splitString "\n" (startScript systemDefault)))) 1;
+    conditionalProgramLeftOutOfMainConfig =
+      expect.eq (lib.hasInfix "[program:cond]" (renderedConfig systemConditional)) false;
+    unconditionalProgramStaysInMainConfig =
+      expect.eq (lib.hasInfix "[program:always]" (renderedConfig systemConditional)) true;
+    mainConfigIncludesConfDir =
+      expect.eq (lib.hasInfix "[include]\nfiles = /tmp/run/supervisord/conf.d/*.conf" (renderedConfig systemConditional)) true;
+    noIncludeWithoutConditionalPrograms =
+      expect.eq (lib.hasInfix "[include]" (renderedConfig systemDefault)) false;
+    conditionalProgramHasOwnConfig =
+      expect.eq (lib.hasInfix "[program:cond]\ncommand=/bin/true" (conditionalConf systemConditional "cond")
+        && lib.hasInfix "stdout_logfile=/home/u/.caco/caco.log" (conditionalConf systemConditional "cond")) true;
+    linksConditionalProgramOnlyWhenPathExists =
+      expect.eq (lib.hasInfix "if [ -e /home/u/.caco ]; then" (innerScript systemConditional)
+        && lib.hasInfix "/cond.conf" (innerScript systemConditional)) true;
+    warnsWithHintWhenPathMissing =
+      expect.eq (lib.hasInfix "warning: not starting cond: /home/u/.caco does not exist. Run the boot script." (innerScript systemConditional)) true;
+    leavesConditionalDirsToBootstrap =
+      expect.eq (lib.hasInfix "mkdir -p /home/u/.caco" (startScript systemConditional)) false;
+    keptInstanceRereadsConfDir =
+      expect.eq (lib.hasInfix "supervisorctl reread" (innerScript systemConditional)
+        && lib.hasInfix "supervisorctl update" (innerScript systemConditional)) true;
+    requiresAbsolutePath = expect.eq
+      (lib.any (assertion:
+        !assertion.assertion && lib.hasInfix "requiresPath must be absolute: rel" assertion.message
+      ) systemRelativeRequires.assertions)
+      true;
     reservesExecCanaryName = expect.eq
       (lib.any (assertion:
         !assertion.assertion
