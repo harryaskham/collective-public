@@ -17,6 +17,21 @@
        ${ppdPackage}/share/dbus-1/system.d/org.freedesktop.UPower.PowerProfiles.conf \
        "$out/share/dbus-1/system.d/"
   '';
+
+  # Adjustor launches its PPD server as `sys.executable -m adjustor...`. On Nix
+  # the bare interpreter lacks the wrapper's site-packages, so the child fails
+  # with ModuleNotFoundError and no power-profile bus service appears. Pass the
+  # parent's import path; --replace-fail flags any upstream launcher change.
+  ppdLauncherFix = package:
+    package.overrideAttrs (old: {
+      postPatch =
+        (old.postPatch or "")
+        + ''
+          substituteInPlace src/adjustor/drivers/gpu/__init__.py \
+            --replace-fail '[sys.executable, "-m", "adjustor.drivers.gpu.ppd"],' \
+              '[sys.executable, "-m", "adjustor.drivers.gpu.ppd"], env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)},'
+        '';
+    });
 in {
   imports = [
     # The upstream NixOS module now owns Adjustor packaging and acpi_call.
@@ -26,10 +41,15 @@ in {
   ];
 
   config = lib.mkIf (cfg.enable && cfg.adjustor.enable) {
+    services.handheld-daemon.package = lib.mkDefault (ppdLauncherFix pkgs.handheld-daemon);
+
     # Desktop environments may enable PPD by default. There must be only one
     # owner: an active PPD or TuneD makes Adjustor disable energy management.
     services.power-profiles-daemon.enable = lib.mkForce false;
     services.tuned.enable = lib.mkForce false;
+    # nixos-hardware's laptop profile enables TLP when PPD is off. TLP sets the
+    # same platform profile, governor, EPP and boost knobs as Adjustor.
+    services.tlp.enable = lib.mkForce false;
 
     environment.systemPackages = [ppdCompat];
     services.dbus = {
