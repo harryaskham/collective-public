@@ -217,13 +217,27 @@ SECRETS_FILE="$COLLECTIVE/standalone/secrets/secrets.yaml"
 preflight_devbox_registration() {
   local machine="$COLLECTIVE/machines/$DEVBOX_HOST/nixos/configuration.nix"
   local ssh_map="$COLLECTIVE/pkgs/collective-lib/ssh.nix"
+  local registry="$COLLECTIVE/machines/registry.nix"
+  local registration="^[[:space:]]*${DEVBOX_HOST}[[:space:]]*=[[:space:]]*Tagged[[:space:]]*\\[VM[[:space:]]+WSL\\]"
   local age secret
   [ -f "$machine" ] || {
     echo "ERROR: missing machines/$DEVBOX_HOST/nixos/configuration.nix" >&2
     return 1
   }
-  grep -Eq "^[[:space:]]*${DEVBOX_HOST}[[:space:]]*=[[:space:]]*Tagged[[:space:]]*\\[VM[[:space:]]+WSL\\]" "$COLLECTIVE/flake.nix" || {
-    echo "ERROR: $DEVBOX_HOST is not registered as Tagged [VM WSL] in flake.nix" >&2
+  # Machines are declared in machines/registry.nix as `<host> = { system =
+  # Tagged [VM WSL] ...` (older checkouts declared `<host> = Tagged [VM WSL]`
+  # in flake.nix). Accept either layout.
+  if [ -f "$registry" ]; then
+    awk -v host="$DEVBOX_HOST" '
+      $0 ~ "^[[:space:]]*" host "[[:space:]]*=[[:space:]]*\\{" { inside = 1; next }
+      inside && /^[[:space:]]*};/ { inside = 0 }
+      inside && /system[[:space:]]*=[[:space:]]*Tagged[[:space:]]*\[VM[[:space:]]+WSL\]/ { found = 1 }
+      END { exit !found }
+    ' "$registry"
+  else
+    false
+  fi || grep -Eq "$registration" "$COLLECTIVE/flake.nix" || {
+    echo "ERROR: $DEVBOX_HOST is not registered as Tagged [VM WSL] in machines/registry.nix" >&2
     return 1
   }
   if [ "$(grep -Ec "^[[:space:]]*${DEVBOX_HOST}[[:space:]]*=" "$ssh_map")" -lt 2 ]; then
