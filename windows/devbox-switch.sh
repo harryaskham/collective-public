@@ -251,7 +251,8 @@ preflight_devbox_registration() {
   age="$(ssh-to-age -private-key -i "$KEY")"
   for secret in \
     "[\"keys\"][\"nix\"][\"attic\"][\"caches\"][\"$DEVBOX_HOST\"][\"server_env\"]" \
-    '["keys"]["cacophony"]["ts"]["devbox-pool"]'; do
+    '["keys"]["cacophony"]["ts"]["devbox-pool"]' \
+    '["keys"]["github"]["personal"]'; do
     if ! SOPS_AGE_KEY="$age" sops decrypt --extract "$secret" "$SECRETS_FILE" >/dev/null 2>&1; then
       echo "ERROR: required sops value $secret is missing or not decryptable with the bootstrap key" >&2
       return 1
@@ -260,6 +261,25 @@ preflight_devbox_registration() {
   echo "[devbox] Registration preflight passed for $DEVBOX_HOST (flake, SSH/age, Attic, Tailscale, sops recipient)."
 }
 preflight_devbox_registration
+
+# Some private flake inputs are pinned as github:owner/repo/<rev> (cacophony's
+# culture-sdk -> paratenic, cost's kittui-src). Nix fetches those as HTTPS
+# tarballs, not over SSH, and GitHub answers 404 without a token. `cltv switch`
+# exports this token from sops on every later switch; the first switch must too.
+# NIX_CONFIG keeps it out of process arguments.
+configure_github_access_token() {
+  local age token
+  age="$(ssh-to-age -private-key -i "$KEY")" || return 1
+  token="$(SOPS_AGE_KEY="$age" sops decrypt --extract '["keys"]["github"]["personal"]' "$SECRETS_FILE" 2>/dev/null)" || return 1
+  [ -n "$token" ] || return 1
+  export NIX_CONFIG="${NIX_CONFIG:+$NIX_CONFIG$'\n'}access-tokens = github.com=$token"
+}
+if configure_github_access_token; then
+  echo "[devbox] GitHub access token configured for private github: flake inputs."
+else
+  echo "ERROR: could not decrypt keys.github.personal; private github: inputs would fail with HTTP 404." >&2
+  exit 1
+fi
 
 if [ ! -s "$HOME_DIR/.ssh/corp-github-key" ] && [ -f "$SECRETS_FILE" ]; then
   echo "[devbox] Materializing corp-github-key from sops..."
@@ -376,7 +396,10 @@ do_switch() {
   else
     echo "[devbox] Using substituters and trusted keys from accepted flake nixConfig."
   fi
-  $SUDO nixos-rebuild switch --flake ".#$DEVBOX_HOST" \
+  # sudo resets the environment; keep the GitHub token for a non-root resume.
+  local sudo_cmd=()
+  if [ -n "$SUDO" ]; then sudo_cmd=("$SUDO" --preserve-env=NIX_CONFIG); fi
+  "${sudo_cmd[@]}" nixos-rebuild switch --flake ".#$DEVBOX_HOST" \
     --option accept-flake-config true \
     --option extra-experimental-features "nix-command flakes" \
     "${cache_args[@]}" \

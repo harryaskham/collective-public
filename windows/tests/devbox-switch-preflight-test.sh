@@ -106,6 +106,33 @@ expect pass "$legacy" devbox-b "Registration preflight passed"   # older flake.n
 sops() { return 1; }
 expect fail "$registry" devbox-a "missing or not decryptable"
 
+# The GitHub token reaches Nix through NIX_CONFIG, appended to any existing
+# configuration, and an undecryptable or empty token is reported as a failure.
+eval "$(sed -n '/^configure_github_access_token() {$/,/^}$/p' "$script")"
+declare -F configure_github_access_token >/dev/null
+token_case() {
+  local name="$1" want="$2" before="$3" expected="$4" status
+  set +e
+  NIX_CONFIG="$before"
+  KEY=/dev/null SECRETS_FILE=/dev/null configure_github_access_token
+  status=$?
+  set -e
+  if { [ "$want" = pass ] && [ "$status" -eq 0 ] && [ "$NIX_CONFIG" = "$expected" ]; } || \
+     { [ "$want" = fail ] && [ "$status" -ne 0 ]; }; then
+    echo "ok   token $name"
+  else
+    echo "FAIL token $name: status $status, NIX_CONFIG='$NIX_CONFIG'"; failures=$((failures + 1))
+  fi
+}
+sops() { [ "${*: -2:1}" = '["keys"]["github"]["personal"]' ] && echo ghp_TEST; }
+token_case fresh pass "" "access-tokens = github.com=ghp_TEST"
+token_case appended pass "tarball-ttl = 0" $'tarball-ttl = 0\naccess-tokens = github.com=ghp_TEST'
+sops() { return 1; }
+token_case undecryptable fail "" ""
+sops() { return 0; }
+token_case empty fail "" ""
+unset NIX_CONFIG
+
 if [ "$failures" -ne 0 ]; then
   echo "$failures failure(s)"
   exit 1
