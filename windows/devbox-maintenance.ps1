@@ -22,16 +22,11 @@
 #            keeps every distro's VHD attached while its VM runs, so Compact
 #            always shuts WSL down briefly, devbox distro included.
 #   Cycle    Stop and restart only (canary for the stop/restore path).
-#   Move     Move the distro's VHD to <Drive>:\WSL\<Distro> on another fixed
-#            drive (wsl --manage --move), for example from a 512 GB C: to a
-#            1.5 TB Q:. A request names only the drive letter, never a path.
-#            Needs no elevation; like Compact it shuts WSL down.
 #
 # Every run writes a JSON receipt and a transcript under
 # %LOCALAPPDATA%\devbox\maintenance, readable from WSL afterwards. The script
-# never unregisters, imports, resizes or recreates a distribution, moves one
-# only with Move, and takes the VHDX path from WSL's own registration, never
-# from a request.
+# never unregisters, imports, moves, resizes or recreates a distribution, and
+# takes the VHDX path from WSL's own registration, never from a request.
 
 [CmdletBinding(DefaultParameterSetName = "Direct")]
 param(
@@ -44,12 +39,8 @@ param(
   [Parameter(ParameterSetName = "Task", Mandatory = $true)]
   [switch]$FromTask,
   [Parameter(ParameterSetName = "Direct")]
-  [ValidateSet("Compact", "Cycle", "Move")]
+  [ValidateSet("Compact", "Cycle")]
   [string]$Operation = "Compact",
-  # Move only: the fixed drive to move to (a letter such as Q).
-  [Parameter(ParameterSetName = "Direct")]
-  [ValidatePattern('^[A-Za-z]?$')]
-  [string]$TargetDrive = "",
   [Parameter(ParameterSetName = "Direct")]
   [string]$Distro = "NixOS",
   [Parameter(ParameterSetName = "Direct")]
@@ -77,7 +68,7 @@ $script:InstalledScript = Join-Path $script:InstallDir "devbox-maintenance.ps1"
 $script:WatchdogDistro = "NixOS"
 $script:PausePath = Join-Path $env:LOCALAPPDATA "devbox\wsl-watchdog.pause"
 $script:LxssRoot = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss"
-$script:Operations = @("Compact", "Cycle", "Move")
+$script:Operations = @("Compact", "Cycle")
 $script:CreatedPause = $false
 $script:Receipt = $null
 $script:ReceiptPath = $null
@@ -113,15 +104,7 @@ function ConvertTo-MaintenanceRequest {
     throw "Operation '$operation' is not one of: $($script:Operations -join ', ')."
   }
   $distroName = [string](Get-Field $Object "distro" "")
-  if ($distroName -notmatch '^[A-Za-z0-9._-]{1,64}$' -or $distroName -match '^\.+$') { throw "Distro name '$distroName' is invalid." }
-  # Move takes a drive letter only; the layout under it is fixed.
-  $drive = [string](Get-Field $Object "targetDrive" "")
-  if ($operation -eq "Move") {
-    if ($drive -notmatch '^[A-Za-z]$') { throw "Move needs a target drive letter (for example Q), not '$drive'." }
-    $drive = $drive.ToUpperInvariant()
-  } elseif ($drive) {
-    throw "Only Move takes a target drive."
-  }
+  if ($distroName -notmatch '^[A-Za-z0-9._-]{1,64}$') { throw "Distro name '$distroName' is invalid." }
   $flags = [ordered]@{}
   foreach ($flag in @("setSparse", "skipTrim", "verifyBoot")) {
     $value = Get-Field $Object $flag $false
@@ -129,7 +112,7 @@ function ConvertTo-MaintenanceRequest {
     $flags[$flag] = $value
   }
   return [ordered]@{
-    id = $id; operation = $operation; distro = $distroName; targetDrive = $drive
+    id = $id; operation = $operation; distro = $distroName
     setSparse = $flags.setSparse; skipTrim = $flags.skipTrim; verifyBoot = $flags.verifyBoot
     requestedBy = [string](Get-Field $Object "requestedBy" "")
   }
@@ -423,8 +406,7 @@ function Invoke-WorkJob {
     while ($job.State -eq "Running" -or $job.State -eq "NotStarted") {
       Update-WatchdogPause
       $elapsed = (Get-Date) - $start
-      $image = $(if (Test-Path -LiteralPath $VhdPath) { Format-GiB (Get-Item -LiteralPath $VhdPath).Length } else { "-" })
-      Write-Line info ("{0}: {1:hh\:mm\:ss} elapsed, image {2}" -f $Label, $elapsed, $image)
+      Write-Line info ("{0}: {1:hh\:mm\:ss} elapsed, image {2}" -f $Label, $elapsed, (Format-GiB (Get-Item -LiteralPath $VhdPath).Length))
       [void](Wait-Job -Job $job -Timeout 60)
     }
     $jobErrors = $null
@@ -463,67 +445,6 @@ function Invoke-VhdCompaction {
   return $anyOk
 }
 
-# Every Move lands in one fixed layout, <Drive>:\WSL\<Distro> (as on the Q:
-# devboxes), so a request chooses a drive, never a path.
-function Get-MoveDestination {
-  param([string]$Drive, [string]$Name)
-  return ("{0}:\WSL\{1}" -f $Drive.ToUpperInvariant(), $Name)
-}
-
-function Test-MoveFits {
-  param([int64]$FileBytes, [int64]$FreeBytes, [int64]$MarginBytes = $script:CapacityMarginBytes)
-  return ($FreeBytes -ge ($FileBytes + $MarginBytes))
-}
-
-# Checks made before WSL is touched: a ready fixed drive, no file in the way,
-# room for the VHD plus the margin. A VHD already on that drive needs nothing.
-function Get-MovePlan {
-  param($Vhd, [string]$Destination, [int64]$MarginBytes = $script:CapacityMarginBytes)
-  $root = [IO.Path]::GetPathRoot($Destination)
-  $drive = New-Object System.IO.DriveInfo $root
-  if (-not $drive.IsReady) { throw "Drive $root is not ready." }
-  if ($drive.DriveType -ne [IO.DriveType]::Fixed) { throw "Drive $root is $($drive.DriveType), not a fixed local drive." }
-  $fileBytes = [int64](Get-Item -LiteralPath $Vhd.Path).Length
-  $target = Join-Path $Destination ([IO.Path]::GetFileName($Vhd.Path))
-  $already = ([IO.Path]::GetPathRoot($Vhd.Path)) -ieq $root
-  $free = [int64]$drive.AvailableFreeSpace
-  if (-not $already) {
-    if (Test-Path -LiteralPath $target) { throw "$target already exists; move or remove it first." }
-    if (-not (Test-MoveFits $fileBytes $free $MarginBytes)) {
-      throw ("{0} has {1} free; the {2} VHD needs {3} with a {4} margin." -f $root, (Format-GiB $free), (Format-GiB $fileBytes), (Format-GiB ($fileBytes + $MarginBytes)), (Format-GiB $MarginBytes))
-    }
-  }
-  return [PSCustomObject]@{
-    Destination = $Destination; Target = $target; AlreadyThere = $already; FileBytes = $fileBytes
-    # The destination volume as it will be once the VHD is on it.
-    Space = [ordered]@{
-      fileBytes = $fileBytes; volume = $drive.Name; fileSystem = $drive.DriveFormat
-      volumeFreeBytes = $(if ($already) { $free } else { $free - $fileBytes }); volumeTotalBytes = [int64]$drive.TotalSize
-    }
-  }
-}
-
-$script:MoveWork = {
-  param($Name, $Destination)
-  $ErrorActionPreference = "Continue"
-  $output = @(& wsl.exe --manage $Name --move $Destination 2>&1 | ForEach-Object { "$_" })
-  $code = $LASTEXITCODE
-  $text = (($output -join "`n") -replace "`0", "").Trim()
-  if ($code -ne 0) { throw "wsl --manage --move exit ${code}: $text" }
-  $text
-}
-
-function Invoke-DistroMove {
-  param([string]$Name, $Move, [string]$SourcePath)
-  # Copying a large VHD across volumes can outlast the watchdog's pause
-  # expiry; Invoke-WorkJob keeps the marker fresh.
-  $result = Invoke-WorkJob "move" $script:MoveWork @($Name, $Move.Destination) $Move.Target
-  $moved = Get-DistroVhd $Name
-  $ok = $result.Ok -and ($moved.Path -ieq $Move.Target) -and (Test-Path -LiteralPath $moved.Path -PathType Leaf)
-  Add-Step "move" $ok ("{0}s, {1} -> {2}. {3}" -f $result.Seconds, $SourcePath, $moved.Path, $result.Detail)
-  if (-not $ok) { throw "Move did not complete; WSL registers '$Name' at $($moved.Path)." }
-}
-
 function New-Receipt {
   param($Request, [string]$LogPath)
   $script:Receipt = [ordered]@{
@@ -531,14 +452,13 @@ function New-Receipt {
     id = $Request.id
     operation = $Request.operation
     distro = $Request.distro
-    options = [ordered]@{ setSparse = $Request.setSparse; skipTrim = $Request.skipTrim; verifyBoot = $Request.verifyBoot; targetDrive = $Request.targetDrive }
+    options = [ordered]@{ setSparse = $Request.setSparse; skipTrim = $Request.skipTrim; verifyBoot = $Request.verifyBoot }
     requestedBy = $Request.requestedBy
     state = "running"
     startedAt = (Get-Date).ToString("o")
     finishedAt = $null
     log = $LogPath
     vhd = $null
-    vhdAfter = $null
     wasRunning = $null
     runningBefore = $null
     shutdownWsl = $null
@@ -554,19 +474,14 @@ function New-Receipt {
 }
 
 function Get-MaintenancePlan {
-  # VhdReleased: nothing holds the VHD now (a stopped distro WSL has not
-  # attached since its VM started). Only Move uses it.
-  param($Request, [string[]]$RunningBefore, [bool]$VhdReleased = $false)
+  param($Request, [string[]]$RunningBefore)
   $guardsWatchdog = ($Request.distro -eq $script:WatchdogDistro)
   # While the WSL VM runs, WSL keeps every distro's VHD attached (held by
   # System and the WSL service) even after `wsl --terminate`; compacting or
   # converting a VHD therefore needs the whole VM shut down. That stops the
   # watchdog's distro too, so pause the watchdog and restore what was running.
+  $shutdown = $guardsWatchdog -or $Request.operation -eq "Compact" -or $Request.setSparse
   $wasRunning = @($RunningBefore) -contains $Request.distro
-  # A Move needs the file released too, but a stopped distro whose VHD WSL does
-  # not hold can move without taking the devbox down.
-  $moveNeedsShutdown = ($Request.operation -eq "Move") -and ($wasRunning -or -not $VhdReleased)
-  $shutdown = $guardsWatchdog -or $Request.operation -eq "Compact" -or $Request.setSparse -or $moveNeedsShutdown
   $restart = New-Object System.Collections.ArrayList
   if ($shutdown) {
     # Docker Desktop starts its own distros; do not start them for it.
@@ -593,26 +508,15 @@ function Invoke-Maintenance {
   $vhd = Get-DistroVhd $Request.distro
   Assert-VhdPresent $vhd
   $runningBefore = @(Get-RunningDistroNames)
-  $plan = Get-MaintenancePlan $Request $runningBefore (Test-FileReleased $vhd.Path)
+  $plan = Get-MaintenancePlan $Request $runningBefore
   $script:Receipt.vhd = $vhd.Path
   $script:Receipt.before = Get-SpaceInfo $vhd.Path
   $script:Receipt.wasRunning = $plan.WasRunning
   $script:Receipt.runningBefore = $runningBefore
   $script:Receipt.shutdownWsl = $plan.Shutdown
-  $move = $null
-  if ($Request.operation -eq "Move") { $move = Get-MovePlan $vhd (Get-MoveDestination $Request.targetDrive $Request.distro) }
-  # For a Move, what matters is the volume the VHD lands on.
-  $capacity = Get-CapacityCheck (Get-VirtualDiskBytes $Request.distro $vhd.Path $plan.WasRunning) $(if ($move) { $move.Space } else { $script:Receipt.before })
+  $capacity = Get-CapacityCheck (Get-VirtualDiskBytes $Request.distro $vhd.Path $plan.WasRunning) $script:Receipt.before
   $script:Receipt.capacity = $capacity
   if ($capacity.known) { Add-Step "capacity" (-not $capacity.atRisk) $capacity.message }
-  if ($move -and $move.AlreadyThere) {
-    Add-Step "move" $true "'$($Request.distro)' is already on $($Request.targetDrive): ($($vhd.Path)); nothing to do"
-    $script:Receipt.vhdAfter = $vhd.Path
-    $script:Receipt.after = $script:Receipt.before
-    $script:Receipt.reclaimedBytes = [int64]0
-    Save-Receipt
-    return
-  }
   Save-Receipt
   $failure = $null
   try {
@@ -622,7 +526,6 @@ function Invoke-Maintenance {
     if ($Request.operation -eq "Compact") {
       if (-not (Invoke-VhdCompaction $vhd.Path)) { throw "No compaction method succeeded." }
     }
-    if ($Request.operation -eq "Move") { Invoke-DistroMove $Request.distro $move $vhd.Path }
     if ($Request.setSparse) {
       $result = Invoke-Wsl @("--manage", $Request.distro, "--set-sparse", "true")
       Add-Step "set-sparse" ($result.ExitCode -eq 0) "exit $($result.ExitCode) $($result.Text)"
@@ -653,14 +556,8 @@ function Invoke-Maintenance {
       }
     }
     Resume-Watchdog
-    # A Move changes where the VHD lives; report it from the registration.
-    $afterPath = $vhd.Path
-    try { $afterPath = (Get-DistroVhd $Request.distro).Path } catch { }
-    $script:Receipt.vhdAfter = $afterPath
-    if (Test-Path -LiteralPath $afterPath -PathType Leaf) {
-      $script:Receipt.after = Get-SpaceInfo $afterPath
-      $script:Receipt.reclaimedBytes = [int64]($script:Receipt.before.fileBytes - $script:Receipt.after.fileBytes)
-    }
+    $script:Receipt.after = Get-SpaceInfo $vhd.Path
+    $script:Receipt.reclaimedBytes = [int64]($script:Receipt.before.fileBytes - $script:Receipt.after.fileBytes)
     Save-Receipt
   }
   if ($failure) { throw $failure }
@@ -696,7 +593,7 @@ function Invoke-Request {
     $script:Receipt.finishedAt = (Get-Date).ToString("o")
     Save-Receipt
     if ($script:Receipt.state -eq "succeeded") {
-      Write-Line ok ("Done. {0}: image {1} -> {2}; {3} free on {4}." -f $script:Receipt.vhdAfter, (Format-GiB $script:Receipt.before.fileBytes), (Format-GiB $script:Receipt.after.fileBytes), (Format-GiB $script:Receipt.after.volumeFreeBytes), $script:Receipt.after.volume)
+      Write-Line ok ("Done. Image {0} -> {1}; {2} free on {3}." -f (Format-GiB $script:Receipt.before.fileBytes), (Format-GiB $script:Receipt.after.fileBytes), (Format-GiB $script:Receipt.after.volumeFreeBytes), $script:Receipt.after.volume)
     } else {
       Write-Line error "Failed: $($script:Receipt.error). Receipt: $($script:ReceiptPath)"
     }
@@ -718,22 +615,15 @@ function Get-DryRunReport {
   }
   $space = Get-SpaceInfo $vhd.Path
   $running = (@(Get-RunningDistroNames) -contains $Request.distro)
-  $move = $null
-  $moveError = $null
-  if ($Request.operation -eq "Move") {
-    try { $move = Get-MovePlan $vhd (Get-MoveDestination $Request.targetDrive $Request.distro) } catch { $moveError = "$_" }
-  }
   return [ordered]@{
     operation = $Request.operation
     distro = $Request.distro
     vhd = $vhd.Path
     space = $space
-    move = $move
-    moveError = $moveError
-    capacity = Get-CapacityCheck (Get-VirtualDiskBytes $Request.distro $vhd.Path $running) $(if ($move) { $move.Space } else { $space })
+    capacity = Get-CapacityCheck (Get-VirtualDiskBytes $Request.distro $vhd.Path $running) $space
     running = $running
     guardsWatchdog = ($Request.distro -eq $script:WatchdogDistro)
-    plan = Get-MaintenancePlan $Request @(Get-RunningDistroNames) (Test-FileReleased $vhd.Path)
+    plan = Get-MaintenancePlan $Request @(Get-RunningDistroNames)
     watchdogPaused = (Test-Path -LiteralPath $script:PausePath)
     elevated = (Test-Administrator)
     hyperV = [bool](Get-Module -ListAvailable -Name Hyper-V)
@@ -781,20 +671,14 @@ function Invoke-Main {
     default {
       $request = ConvertTo-MaintenanceRequest ([PSCustomObject]@{
         id = ("direct-" + [guid]::NewGuid().ToString("N").Substring(0, 12))
-        operation = $Operation; distro = $Distro; targetDrive = $TargetDrive
+        operation = $Operation; distro = $Distro
         setSparse = [bool]$SetSparse; skipTrim = [bool]$SkipTrim; verifyBoot = [bool]$VerifyBoot
         requestedBy = "console"
       })
       if ($DryRun) { Get-DryRunReport $request | ConvertTo-Json -Depth 6; exit 0 }
-      if ($Operation -eq "Move") {
-        # Refuse an unusable target before asking; nothing to confirm if already there.
-        $move = Get-MovePlan (Get-DistroVhd $Distro) (Get-MoveDestination $request.targetDrive $Distro)
-        if ($move.AlreadyThere) { Write-Line ok "'$Distro' is already on $($request.targetDrive): ($((Get-DistroVhd $Distro).Path)); nothing to do."; exit 0 }
-      }
       if (-not $Force) {
-        $plan = Get-MaintenancePlan $request @(Get-RunningDistroNames) (Test-FileReleased (Get-DistroVhd $Distro).Path)
+        $plan = Get-MaintenancePlan $request @(Get-RunningDistroNames)
         $scope = $(if ($plan.Shutdown) { 'shuts down WSL (every distribution, including the devbox)' } else { "stops '$Distro'" })
-        if ($Operation -eq "Move") { $scope = "moves '$Distro' to $(Get-MoveDestination $request.targetDrive $Distro) and $scope" }
         Write-Line warn "$Operation $scope; work inside is interrupted, and running distributions are restarted afterwards."
         $answer = Read-Host "Continue? (y/N)"
         if ($answer -notmatch '^[Yy]') { Write-Line warn "Aborted; nothing changed."; exit 1 }

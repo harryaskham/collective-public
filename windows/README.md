@@ -76,9 +76,8 @@ while its VM runs, even after `wsl --terminate`), compacts the VHD with
 that was running and resumes the watchdog. Restoration also runs when
 compaction fails, and
 compaction is safe to interrupt and re-run. It never unregisters, imports,
-resizes or recreates a distro, and moves one only with `-Operation Move`
-(below). Each run leaves a JSON receipt and a transcript in
-`%LOCALAPPDATA%\devbox\maintenance`.
+moves, resizes or recreates a distro. Each run leaves a JSON receipt and a
+transcript in `%LOCALAPPDATA%\devbox\maintenance`.
 
 In an **elevated** PowerShell (pinned to the current commit):
 
@@ -96,33 +95,6 @@ corruption. `-VerifyBoot` starts a stopped distro afterwards to prove it boots,
 then stops it again. `-Operation Cycle` only stops and restarts the distro (and
 leaves WSL and the watchdog alone for a distro other than NixOS).
 
-### Move the WSL disk to a bigger drive
-
-Dev Boxes with a 512 GB C: and a 1.5 TB Q: should keep the distro's VHD on Q:.
-`-Operation Move -TargetDrive Q` moves it to `Q:\WSL\<distro>` (the layout of
-the existing Q: devboxes) with `wsl --manage <distro> --move`. It needs no
-elevation:
-
-```powershell
-& $p -Operation Move -Distro NixOS -TargetDrive Q -DryRun   # destination, free space, capacity
-& $p -Operation Move -Distro NixOS -TargetDrive Q
-```
-
-Before WSL is touched it refuses a drive that is missing, not fixed, already
-has `Q:\WSL\<distro>\ext4.vhdx`, or lacks room for the VHD plus 50 GB. A VHD
-already on that drive is left alone. Like Compact, it pauses the watchdog,
-shuts WSL down, then restarts every distro that was running. A stopped
-distro whose VHD WSL no longer holds moves without the shutdown. Copying
-across volumes takes as long as the VHD is large; the watchdog pause is kept
-fresh meanwhile. On a new devbox, move right after the distro is imported,
-while the VHD is still small. The capacity check is reported for the
-destination; a 1536 GB ceiling on a 1535 GB Q: is flagged (resizing is
-separate).
-
-From inside WSL, `scripts/devbox-maintenance move` queues the same operation
-for the installed `DevboxMaintenance` task (see below); it checks the target
-first, then this session ends with WSL.
-
 Dry runs and receipts also check whether the VHD can fill the volume holding
 it while the distro still has free space: its virtual size (growth ceiling)
 above the volume's size minus 50 GB, or the growth still allowed (ceiling minus
@@ -136,10 +108,9 @@ share. A 1536 GB VHD on a 1535 GB volume ended with 2 GB free that way.
 `%ProgramData%\Collective\DevboxMaintenance`, writable only by Administrators
 and SYSTEM, and registers the elevated `DevboxMaintenance` task. An agent in
 WSL then queues a request (`%LOCALAPPDATA%\devbox\maintenance\request.json`)
-and starts the task; only `Compact`, `Cycle` and `Move` with a plain distro
-name, boolean flags and (for Move) a drive letter are accepted, so a request
-cannot run arbitrary code or choose a path. The task runs while the user is
-signed in to Windows.
+and starts the task; only `Compact` and `Cycle` with a plain distro name and
+boolean flags are accepted, so a request cannot run arbitrary code. The task
+runs while the user is signed in to Windows.
 
 ### If WSL does not come back
 
