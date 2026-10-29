@@ -133,6 +133,34 @@ sops() { return 0; }
 token_case empty fail "" ""
 unset NIX_CONFIG
 
+# cacophony-config registration is only a warning; a stubbed git supplies it.
+eval "$(sed -n '/^preflight_cacophony_registration() {$/,/^}$/p' "$script")"
+declare -F preflight_cacophony_registration >/dev/null
+git() {
+  [ "$1" = clone ] || return 1
+  [ -n "${GIT_FAIL:-}" ] && return 128
+  local dest="${*: -1}"
+  mkdir -p "$dest"
+  printf '  - imports:\n      - devbox_node.yaml\n    name: ms-dev-0\n    short_name: md0\n    host: ms-dev-0.miku-owl.ts.net\n' > "$dest/config.yaml"
+}
+caco_case() {
+  local name="$1" host="$2" pattern="$3" out status
+  set +e
+  out="$(DEVBOX_HOST="$host" preflight_cacophony_registration 2>&1)"
+  status=$?
+  set -e
+  if [ "$status" -eq 0 ] && grep -q -- "$pattern" <<<"$out"; then
+    echo "ok   caco $name"
+  else
+    echo "FAIL caco $name: status $status: $out"; failures=$((failures + 1))
+  fi
+}
+caco_case registered ms-dev-0 "cacophony-config lists ms-dev-0"
+caco_case missing ms-dev-b "not in cacophony-config"
+caco_case prefix ms-dev "not in cacophony-config"
+GIT_FAIL=1 caco_case unreadable ms-dev-0 "could not read cacophony-config"
+unset -f git
+
 if [ "$failures" -ne 0 ]; then
   echo "$failures failure(s)"
   exit 1

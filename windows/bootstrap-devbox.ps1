@@ -10,6 +10,13 @@
 #   irm $u -OutFile "$env:TEMP\bootstrap-devbox.ps1"
 #   & "$env:TEMP\bootstrap-devbox.ps1" -DevboxHost ms-dev-2 -KeyPath C:\path\to\id_ed25519
 #
+# Placement: the distro goes on the largest fixed NTFS/ReFS drive when that is
+# bigger than the system drive (Dev Boxes with a 512 GB C: and a 1.5 TB Q:), at
+# <Drive>:\WSL\<Distro>; otherwise under %LOCALAPPDATA%\WSL. -InstallDrive Q or
+# -InstallRoot override it. The VHD's maximum size is capped to fit its volume.
+# After the switch it waits for the tailnet join, then runs bootstrap-caco.sh
+# when caco is installed for the user (-SkipCaco to skip).
+#
 # QUICK (fully interactive; prompts for hostname + key):
 #   & ([scriptblock]::Create((irm "$u"))) -DevboxHost ms-dev-2
 #
@@ -30,8 +37,16 @@ param(
   [string]$WSLMemory = "48GB",
   [ValidatePattern('^\d+(KB|MB|GB|TB)$')]
   [string]$WSLDefaultVhdSize = "1536GB",
+  # Drive letter for a new distro (default: the largest fixed drive when it is
+  # bigger than the system drive). Ignored when -InstallRoot is given.
+  [ValidatePattern('^[A-Za-z]?$')]
+  [string]$InstallDrive = "",
   [switch]$SkipWSLInstall,
-  [switch]$UseDefaultSubs
+  [switch]$UseDefaultSubs,
+  # Do not run bootstrap-caco.sh after the switch.
+  [switch]$SkipCaco,
+  [ValidateRange(0, 3600)]
+  [int]$TailscaleWaitSeconds = 300
 )
 
 $ErrorActionPreference = "Stop"
@@ -135,6 +150,48 @@ function Set-WslCapacityConfig {
   return $true
 }
 
+# Ready local NTFS/ReFS volumes that can hold a WSL VHD.
+function Get-DevboxVolumes {
+  @([IO.DriveInfo]::GetDrives() | Where-Object {
+      $_.DriveType -eq [IO.DriveType]::Fixed -and $_.IsReady -and @('NTFS', 'ReFS') -contains $_.DriveFormat
+    } | ForEach-Object {
+      [pscustomobject]@{ Root = $_.RootDirectory.FullName; TotalBytes = [int64]$_.TotalSize; FreeBytes = [int64]$_.AvailableFreeSpace }
+    })
+}
+
+# Not every Dev Box has a Q:. Prefer the largest volume only when it is bigger
+# than the system drive; otherwise keep the distro on the system drive.
+function Select-DevboxVolume {
+  param([object[]]$Volumes, [string]$SystemRoot, [string]$Drive = "")
+  if ($Drive) {
+    $root = "$($Drive.ToUpperInvariant()):\"
+    $chosen = @($Volumes | Where-Object { $_.Root -ieq $root }) | Select-Object -First 1
+    if (-not $chosen) { throw "Drive $root is not a ready local NTFS/ReFS volume." }
+    return $chosen
+  }
+  $system = @($Volumes | Where-Object { $_.Root -ieq $SystemRoot }) | Select-Object -First 1
+  $largest = @($Volumes | Sort-Object TotalBytes -Descending) | Select-Object -First 1
+  if ($largest -and $system -and $largest.Root -ine $system.Root -and $largest.TotalBytes -gt $system.TotalBytes) { return $largest }
+  if ($system) { return $system }
+  return $largest
+}
+
+# A VHD's maximum size must leave room on its volume: a 1536 GB ceiling on a
+# 1535 GB Q: can fill the drive while ext4 still has space. Keep the requested
+# size when it fits; otherwise use the volume size minus the margin.
+function Get-DevboxVhdCeiling {
+  param([string]$Requested, [int64]$VolumeTotalBytes, [int64]$MarginBytes = 50GB)
+  $match = [regex]::Match($Requested, '^(\d+)(KB|MB|GB|TB)$')
+  if (-not $match.Success) { throw "Invalid VHD size '$Requested'." }
+  $unit = @{ KB = 1KB; MB = 1MB; GB = 1GB; TB = 1TB }[$match.Groups[2].Value]
+  $requestedBytes = [int64]$match.Groups[1].Value * [int64]$unit
+  $limit = $VolumeTotalBytes - $MarginBytes
+  if ($requestedBytes -le $limit) { return $Requested }
+  $gb = [int64][Math]::Floor($limit / 1GB)
+  if ($gb -lt 64) { throw "The volume is too small for a devbox VHD ($([Math]::Floor($VolumeTotalBytes / 1GB)) GB)." }
+  return "${gb}GB"
+}
+
 # Surface any terminating error (including Die) and keep the window open so the
 # message is visible. When piped to iex, `exit` would close the whole window.
 trap {
@@ -156,8 +213,26 @@ if (-not $isAdmin) {
   Warn "Not running as Administrator. WSL install may prompt for elevation."
 }
 
+$systemRoot = [IO.Path]::GetPathRoot($env:SystemRoot)
+$volumes = Get-DevboxVolumes
 if (-not $InstallRoot -or $InstallRoot -eq "") {
-  $InstallRoot = Join-Path $env:LOCALAPPDATA "WSL\$Distro"
+  $installVolume = Select-DevboxVolume -Volumes $volumes -SystemRoot $systemRoot -Drive $InstallDrive
+  if ($installVolume.Root -ieq $systemRoot) {
+    $InstallRoot = Join-Path $env:LOCALAPPDATA "WSL\$Distro"
+  } else {
+    # The layout devbox-maintenance.ps1 -Operation Move uses.
+    $InstallRoot = Join-Path $installVolume.Root "WSL\$Distro"
+  }
+} else {
+  $installVolume = @($volumes | Where-Object { $_.Root -ieq [IO.Path]::GetPathRoot($InstallRoot) }) | Select-Object -First 1
+}
+if ($installVolume) {
+  Info ("New distro location: {0} ({1:N0} GB volume, {2:N0} GB free)" -f $InstallRoot, ($installVolume.TotalBytes / 1GB), ($installVolume.FreeBytes / 1GB))
+  $cappedVhdSize = Get-DevboxVhdCeiling -Requested $WSLDefaultVhdSize -VolumeTotalBytes $installVolume.TotalBytes
+  if ($cappedVhdSize -ne $WSLDefaultVhdSize) {
+    Warn "Capping the VHD ceiling to $cappedVhdSize so it cannot fill $($installVolume.Root) (requested $WSLDefaultVhdSize)."
+    $WSLDefaultVhdSize = $cappedVhdSize
+  }
 }
 if (-not $StatePath -or $StatePath -eq "") {
   $StatePath = Join-Path $env:USERPROFILE "collective-bootstrap-name.txt"
@@ -319,6 +394,15 @@ if ($wslConfigChanged -or -not $targetAlreadyExists) {
 }
 if ($targetAlreadyExists) {
   Info "Existing distro '$Distro' retained. defaultVhdSize does not resize existing VHDs; use grow-devbox-vhd.ps1 when an in-place grow is needed."
+  # An earlier bootstrap may have imported onto the small system drive.
+  $registration = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss' -ErrorAction SilentlyContinue |
+    ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object { $_.DistributionName -eq $Distro } | Select-Object -First 1
+  if ($registration -and $installVolume) {
+    $currentRoot = [IO.Path]::GetPathRoot(($registration.BasePath -replace '^\\\\\?\\', ''))
+    if ($currentRoot -ine $installVolume.Root) {
+      Warn ("'$Distro' lives on $currentRoot, but {0} is the larger drive. Move it (WSL stops briefly) with devbox-maintenance.ps1 -Operation Move -Distro $Distro -TargetDrive {1} (one-liner on a.skh.am/bootstrap)." -f $installVolume.Root, $installVolume.Root.Substring(0, 1))
+    }
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -485,9 +569,52 @@ if ($UseDefaultSubs) {
 $switchExit = $LASTEXITCODE
 if ($switchExit -ne 0) { Die "Devbox switch inside WSL failed (exit $switchExit)." }
 
+# ---------------------------------------------------------------------------
+# 6. Tailnet join, then Cacophony (only when caco is installed)
+# ---------------------------------------------------------------------------
+# The first activation starts tailscaled-autoconnect, so the join happens
+# within this session. Do not restart WSL from this elevated console: Windows
+# objects the guest creates afterwards would belong to Administrators.
+$tailscaleBin = "/run/current-system/sw/bin/tailscale"
+$joined = $null
+$deadline = (Get-Date).AddSeconds($TailscaleWaitSeconds)
+do {
+  try {
+    $status = (wsl.exe -d $Distro -u root -- $tailscaleBin status --json 2>$null) -join "`n" | ConvertFrom-Json
+    if ($status.BackendState -eq "Running") { $joined = $status; break }
+  } catch { }
+  Start-Sleep -Seconds 5
+} while ((Get-Date) -lt $deadline)
+if (-not $joined) {
+  Warn "Not on the tailnet after $TailscaleWaitSeconds s. Inside WSL: journalctl -u tailscaled-autoconnect -b. Skipping Cacophony bootstrap."
+} else {
+  Ok ("On the tailnet as {0} ({1})." -f $joined.Self.DNSName.TrimEnd('.'), (@($joined.Self.TailscaleIPs) -join ', '))
+  # The configured user owns the checkout and caco; read it from wsl.conf.
+  $devboxUser = ((wsl.exe -d $Distro -u root -- sh -c "sed -n 's/^default=//p' /etc/wsl.conf" 2>$null) -join "").Trim()
+  if ($devboxUser -notmatch '^[a-z_][a-z0-9_-]*$') { $devboxUser = "harryaskham" }
+  if ($SkipCaco) {
+    Info "Skipping Cacophony bootstrap (per -SkipCaco)."
+  } else {
+    wsl.exe -d $Distro -u $devboxUser -- bash -lc "command -v caco >/dev/null" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+      Info "caco is not installed for $devboxUser on this machine; skipping Cacophony bootstrap."
+    } else {
+      Info "Bootstrapping Cacophony for $devboxUser (bootstrap-caco.sh)..."
+      wsl.exe -d $Distro -u $devboxUser -- bash -lc '~/collective/scripts/bootstrap-caco.sh --no-tui' | Out-Host
+      if ($LASTEXITCODE -ne 0) {
+        Warn "Cacophony bootstrap failed (exit $LASTEXITCODE). Retry inside WSL: ~/collective/scripts/bootstrap-caco.sh"
+      } else {
+        Ok "Cacophony bootstrapped."
+      }
+    }
+  }
+}
+
 Ok "Devbox '$DevboxHost' bootstrapped."
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "  - Open WSL:           wsl -d $Distro" -ForegroundColor Cyan
 Write-Host "  - Re-switch anytime:  cd ~/collective && cltv switch" -ForegroundColor Cyan
 Write-Host "  - Tailnet join + Windows convergence run automatically on switch." -ForegroundColor Cyan
+Write-Host "  - From a normal (unelevated) Windows terminal: wsl --shutdown, then reopen WSL for a clean systemd boot." -ForegroundColor Cyan
+Write-Host "  - Once, for machine-scope installs: devbox-windows-admin inside WSL (one UAC prompt)." -ForegroundColor Cyan

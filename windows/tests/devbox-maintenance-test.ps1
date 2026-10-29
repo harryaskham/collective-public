@@ -134,6 +134,38 @@ try {
   $plan = Get-MaintenancePlan (New-TestRequest 'Compact' 'NixOS') @()
   Assert-True 'devbox distro is started even if it was down' ($plan.StartTarget)
 
+  # Move: a drive letter only, a fixed layout, and checks before WSL is touched.
+  $move = ConvertTo-MaintenanceRequest ([PSCustomObject]@{ id = 'abcdefgh'; operation = 'Move'; distro = 'NixOS'; targetDrive = 'q' })
+  Assert-True 'Move normalizes the drive letter' ($move.targetDrive -eq 'Q')
+  foreach ($bad in @('', 'QQ', 'Q:', 'Q:\x', '1')) {
+    Assert-Throws "Move target '$bad' is rejected" { ConvertTo-MaintenanceRequest ([PSCustomObject]@{ id = 'abcdefgh'; operation = 'Move'; distro = 'NixOS'; targetDrive = $bad }) } 'target drive letter'
+  }
+  Assert-Throws 'only Move takes a drive' { ConvertTo-MaintenanceRequest ([PSCustomObject]@{ id = 'abcdefgh'; operation = 'Compact'; distro = 'NixOS'; targetDrive = 'Q' }) } 'Only Move'
+  Assert-Throws 'dot-only distro names are rejected' { ConvertTo-MaintenanceRequest ([PSCustomObject]@{ id = 'abcdefgh'; operation = 'Move'; distro = '..'; targetDrive = 'Q' }) } 'Distro name'
+  Assert-True 'Move destination is <Drive>:\WSL\<Distro>' ((Get-MoveDestination 'q' 'NixOS') -eq 'Q:\WSL\NixOS')
+  $plan = Get-MaintenancePlan $move @('NixOS', 'Ubuntu2204')
+  Assert-True 'Move shuts WSL down, pauses the watchdog and restores what ran' ($plan.Shutdown -and $plan.PauseWatchdog -and $plan.StartTarget -and (@($plan.RestartOthers) -join ',') -eq 'Ubuntu2204')
+  $plan = Get-MaintenancePlan $move @('Ubuntu2204') $true
+  Assert-True 'moving the devbox distro shuts WSL down even when it is stopped' ($plan.Shutdown -and $plan.StartTarget)
+  $other = ConvertTo-MaintenanceRequest ([PSCustomObject]@{ id = 'abcdefgh'; operation = 'Move'; distro = 'CollectiveCanary'; targetDrive = 'Q' })
+  $plan = Get-MaintenancePlan $other @('NixOS') $true
+  Assert-True 'moving a stopped distro whose VHD is released leaves WSL running' (-not $plan.Shutdown -and -not $plan.PauseWatchdog -and -not $plan.StartTarget -and @($plan.RestartOthers).Count -eq 0)
+  $plan = Get-MaintenancePlan $other @('NixOS') $false
+  Assert-True 'a stopped distro whose VHD WSL still holds needs a shutdown' ($plan.Shutdown -and (@($plan.RestartOthers) -join ',') -eq 'NixOS' -and -not $plan.StartTarget)
+  $plan = Get-MaintenancePlan $other @('NixOS', 'CollectiveCanary') $false
+  Assert-True 'a running distro is moved with a shutdown and restarted' ($plan.Shutdown -and $plan.StartTarget)
+  Assert-True 'a VHD fits with the margin' (Test-MoveFits ([int64]10GB) ([int64]61GB))
+  Assert-True 'a VHD does not fit within the margin' (-not (Test-MoveFits ([int64]10GB) ([int64]59GB)))
+  $image = Join-Path $testRoot 'ext4.vhdx'
+  [IO.File]::WriteAllBytes($image, [byte[]](1, 2, 3))
+  $tempRoot = [IO.Path]::GetPathRoot($image)
+  $same = Get-MovePlan ([PSCustomObject]@{ Name = 'Canary'; Path = $image }) (Join-Path $tempRoot 'WSL\Canary')
+  Assert-True 'a VHD already on the target drive needs nothing' ($same.AlreadyThere -and $same.Target -eq (Join-Path $tempRoot 'WSL\Canary\ext4.vhdx') -and $same.FileBytes -eq 3)
+  $unused = @([char[]](68..90) | ForEach-Object { "$_" } | Where-Object { -not (Test-Path "${_}:\") }) | Select-Object -Last 1
+  if ($unused) {
+    Assert-Throws 'a missing drive is refused' { Get-MovePlan ([PSCustomObject]@{ Name = 'Canary'; Path = $image }) "${unused}:\WSL\Canary" } 'not ready'
+  }
+
   # A file held open exclusively is not released; a closed one is.
   $file = Join-Path $testRoot 'image.vhdx'
   [IO.File]::WriteAllBytes($file, [byte[]](1, 2, 3))

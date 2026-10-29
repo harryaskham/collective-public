@@ -10,6 +10,24 @@ non-interactively (devbox-pool auth key) and converges its Windows host
 declaratively from inside WSL (Chrome, Slack, etc. via winget; power settings
 via `powercfg`).
 
+Before it starts, the machine must be registered: in collective
+(`machines/registry.nix`, its machine directory, `ssh.nix` keys and sops
+entries; the WSL-side preflight refuses otherwise) and, for Cacophony, in
+cacophony-config (the preflight warns if not).
+
+- **Placement:** a new distro goes on the largest fixed NTFS/ReFS drive when
+  that drive is bigger than the system drive, at `<Drive>:\WSL\NixOS` (Dev Boxes
+  with a 512 GB C: and a 1.5 TB Q:). Otherwise it stays under
+  `%LOCALAPPDATA%\WSL\NixOS`. `-InstallDrive Q` or `-InstallRoot` override this.
+  An existing distro on the smaller drive is reported with the
+  `devbox-maintenance.ps1 -Operation Move` command; it is never moved implicitly.
+- **After the switch:** the script waits for the tailnet join (the first
+  activation starts it), then runs `scripts/bootstrap-caco.sh --no-tui` as the
+  configured user when caco is installed for that user (`-SkipCaco` to skip).
+  It does not restart WSL itself: Windows objects created by a guest started
+  from this elevated console would belong to Administrators. Restart WSL once
+  from a normal terminal, and run `devbox-windows-admin` once (UAC).
+
 ## WSL memory and disk capacity
 
 The bootstrap configures these values before it imports the NixOS-WSL rootfs:
@@ -20,8 +38,11 @@ memory=48GB
 defaultVhdSize=1536GB
 ```
 
-The script merges these keys without replacing unrelated `.wslconfig` settings,
-then shuts WSL down so they are active before the distro VHD is created.
+The ceiling is capped to the install volume's size minus 50 GB (1484 GB on a
+1535 GB Q:, about 462 GB on a 512 GB C:), so the VHD cannot fill its drive while
+ext4 still has space. The script merges these keys without replacing unrelated
+`.wslconfig` settings, then shuts WSL down so they are active before the distro
+VHD is created.
 `defaultVhdSize` is a maximum for a dynamically expanding VHD; it does **not**
 preallocate 1.5 TiB of physical Windows disk space. It only controls newly
 created VHDs and therefore does not enlarge a distro that was already imported.
@@ -76,8 +97,9 @@ while its VM runs, even after `wsl --terminate`), compacts the VHD with
 that was running and resumes the watchdog. Restoration also runs when
 compaction fails, and
 compaction is safe to interrupt and re-run. It never unregisters, imports,
-moves, resizes or recreates a distro. Each run leaves a JSON receipt and a
-transcript in `%LOCALAPPDATA%\devbox\maintenance`.
+resizes or recreates a distro, and moves one only with `-Operation Move`
+(below). Each run leaves a JSON receipt and a transcript in
+`%LOCALAPPDATA%\devbox\maintenance`.
 
 In an **elevated** PowerShell (pinned to the current commit):
 
@@ -95,6 +117,33 @@ corruption. `-VerifyBoot` starts a stopped distro afterwards to prove it boots,
 then stops it again. `-Operation Cycle` only stops and restarts the distro (and
 leaves WSL and the watchdog alone for a distro other than NixOS).
 
+### Move the WSL disk to a bigger drive
+
+Dev Boxes with a 512 GB C: and a 1.5 TB Q: should keep the distro's VHD on Q:.
+`-Operation Move -TargetDrive Q` moves it to `Q:\WSL\<distro>` (the layout of
+the existing Q: devboxes) with `wsl --manage <distro> --move`. It needs no
+elevation:
+
+```powershell
+& $p -Operation Move -Distro NixOS -TargetDrive Q -DryRun   # destination, free space, capacity
+& $p -Operation Move -Distro NixOS -TargetDrive Q
+```
+
+Before WSL is touched it refuses a drive that is missing, not fixed, already
+has `Q:\WSL\<distro>\ext4.vhdx`, or lacks room for the VHD plus 50 GB. A VHD
+already on that drive is left alone. Like Compact, it pauses the watchdog,
+shuts WSL down, then restarts every distro that was running. A stopped
+distro whose VHD WSL no longer holds moves without the shutdown. Copying
+across volumes takes as long as the VHD is large; the watchdog pause is kept
+fresh meanwhile. On a new devbox, move right after the distro is imported,
+while the VHD is still small. The capacity check is reported for the
+destination; a 1536 GB ceiling on a 1535 GB Q: is flagged (resizing is
+separate).
+
+From inside WSL, `scripts/devbox-maintenance move` queues the same operation
+for the installed `DevboxMaintenance` task (see below); it checks the target
+first, then this session ends with WSL.
+
 Dry runs and receipts also check whether the VHD can fill the volume holding
 it while the distro still has free space: its virtual size (growth ceiling)
 above the volume's size minus 50 GB, or the growth still allowed (ceiling minus
@@ -108,9 +157,10 @@ share. A 1536 GB VHD on a 1535 GB volume ended with 2 GB free that way.
 `%ProgramData%\Collective\DevboxMaintenance`, writable only by Administrators
 and SYSTEM, and registers the elevated `DevboxMaintenance` task. An agent in
 WSL then queues a request (`%LOCALAPPDATA%\devbox\maintenance\request.json`)
-and starts the task; only `Compact` and `Cycle` with a plain distro name and
-boolean flags are accepted, so a request cannot run arbitrary code. The task
-runs while the user is signed in to Windows.
+and starts the task; only `Compact`, `Cycle` and `Move` with a plain distro
+name, boolean flags and (for Move) a drive letter are accepted, so a request
+cannot run arbitrary code or choose a path. The task runs while the user is
+signed in to Windows.
 
 ### If WSL does not come back
 

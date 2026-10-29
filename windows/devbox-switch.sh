@@ -262,6 +262,24 @@ preflight_devbox_registration() {
 }
 preflight_devbox_registration
 
+# Cacophony is optional per machine, so a missing node entry only warns here;
+# scripts/bootstrap-caco.sh (chained after the switch) refuses without one.
+preflight_cacophony_registration() {
+  local checkout
+  checkout="$(mktemp -d)"
+  if git clone --quiet --depth 1 git@github.com:harryaskham/cacophony-config.git "$checkout" 2>/dev/null; then
+    if awk -v node="$DEVBOX_HOST" '$1 == "name:" && $2 == node { found = 1 } END { exit !found }' "$checkout/config.yaml"; then
+      echo "[devbox] cacophony-config lists $DEVBOX_HOST."
+    else
+      echo "[devbox] WARN: $DEVBOX_HOST is not in cacophony-config (config.yaml); the Cacophony bootstrap will fail until it is added." >&2
+    fi
+  else
+    echo "[devbox] WARN: could not read cacophony-config to check $DEVBOX_HOST; continuing." >&2
+  fi
+  rm -rf "$checkout"
+}
+preflight_cacophony_registration
+
 # Some private flake inputs are pinned as github:owner/repo/<rev> (cacophony's
 # culture-sdk -> paratenic, cost's kittui-src). Nix fetches those as HTTPS
 # tarballs, not over SSH, and GitHub answers 404 without a token. `cltv switch`
