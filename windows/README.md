@@ -335,15 +335,18 @@ can idle-shut down immediately afterward. The attached client waits on an owned
 stdin pipe; closing that pipe or losing the supervisor releases only that
 client, not the distro.
 
-After four consecutive failed probes the supervisor asks the distro's sshd for
-its banner, from Windows and without `wsl.exe`: first the distro's `eth0`
-address (a dynamic neighbour on the WSL vEthernet adapter), then `127.0.0.1`
-through WSL's localhost relay. A failed probe only shows that `wsl.exe` could
-not reach the distro; busy hosts stall that control channel while systemd, SSH
-and builds carry on. If the distro's OpenSSH answers, the supervisor logs it and
-keeps waiting. Only when nothing answers does it run `wsl --terminate NixOS` and
-make one clean relaunch attempt with a new attached client. Probes have a
-60-second timeout. The supervisor keeps retrying; scheduled minute triggers and
+A failed probe is logged and nothing more: by default the supervisor never
+terminates the distro. A failed probe only shows that `wsl.exe` could not reach
+the distro; busy hosts stall that control channel while systemd, SSH and builds
+carry on. Of 59 terminations with journal evidence in October 2026, 32 hit a
+distro that was logging normally up to the kill, and real failures looped for
+hours. Each failed probe also records whether the distro's sshd answers, read
+from Windows without `wsl.exe` (the distro's `eth0`, a dynamic neighbour on the
+WSL vEthernet adapter, then `127.0.0.1` through WSL's localhost relay).
+Setting `devbox.windows.wsl.watchdog.failuresBeforeTerminate` re-enables
+termination after that many failures, and even then only for a distro whose
+sshd does not answer: it runs `wsl --terminate NixOS` and makes one clean
+relaunch attempt with a new attached client. Probes have a 60-second timeout. The supervisor keeps retrying; scheduled minute triggers and
 restart-on-error recover a dead supervisor. Tasks have unlimited execution time,
 not the previous three-minute limit. A global per-user/distro mutex prevents
 overlapping recovery across interactive and boot sessions.
