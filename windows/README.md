@@ -335,8 +335,14 @@ can idle-shut down immediately afterward. The attached client waits on an owned
 stdin pipe; closing that pipe or losing the supervisor releases only that
 client, not the distro.
 
-After two consecutive failed probes the supervisor runs `wsl --terminate NixOS`
-and makes one clean relaunch attempt with a new attached client. Probes have a
+After four consecutive failed probes the supervisor asks the distro's sshd for
+its banner, from Windows and without `wsl.exe`: first the distro's `eth0`
+address (a dynamic neighbour on the WSL vEthernet adapter), then `127.0.0.1`
+through WSL's localhost relay. A failed probe only shows that `wsl.exe` could
+not reach the distro; busy hosts stall that control channel while systemd, SSH
+and builds carry on. If the distro's OpenSSH answers, the supervisor logs it and
+keeps waiting. Only when nothing answers does it run `wsl --terminate NixOS` and
+make one clean relaunch attempt with a new attached client. Probes have a
 60-second timeout. The supervisor keeps retrying; scheduled minute triggers and
 restart-on-error recover a dead supervisor. Tasks have unlimited execution time,
 not the previous three-minute limit. A global per-user/distro mutex prevents
