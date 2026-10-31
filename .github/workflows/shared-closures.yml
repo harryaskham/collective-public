@@ -1,0 +1,152 @@
+name: Shared closures
+
+# Builds the publicly buildable part of collective machines' closures on free
+# public runners into FlakeHub Cache, so those machines substitute instead of
+# building (shared-closures/README.md). Each shared-closures/<machine>.json is
+# written by the private collective repo's scripts/shared-closure-publish; its
+# .drv bundle is the release asset shared-closure-<machine>.tar.
+
+on:
+  push:
+    branches: [main]
+    paths: ['shared-closures/*.json']
+  workflow_dispatch:
+    inputs:
+      machine:
+        description: Manifest to build (empty builds all)
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  id-token: write
+
+# Never cancel a running build: its uploads are the point.
+concurrency:
+  group: shared-closures-${{ inputs.machine || 'all' }}
+  cancel-in-progress: false
+
+env:
+  SHARD_SIZE: 25
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      any: ${{ steps.plan.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: plan
+        env:
+          WANT: ${{ inputs.machine }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          rows='[]'
+          for f in shared-closures/*.json; do
+            machine=$(jq -r .machine "$f")
+            [[ -z $WANT || $WANT == "$machine" ]] || continue
+            system=$(jq -r .system "$f")
+            case $system in
+              aarch64-darwin) runner=macos-latest ;;
+              x86_64-linux) runner=ubuntu-latest ;;
+              aarch64-linux) runner=ubuntu-24.04-arm ;;
+              *) echo "::warning::$machine: no free runner for $system"; continue ;;
+            esac
+            tops=$(jq '.tops | length' "$f")
+            (( tops > 0 )) || { echo "$machine: nothing to build"; continue; }
+            shards=$(( (tops + SHARD_SIZE - 1) / SHARD_SIZE ))
+            echo "$machine ($system): $tops build roots in $shards shard(s) on $runner"
+            rows=$(jq -c --arg m "$machine" --arg r "$runner" --argjson n "$shards" \
+              '. + [range(0; $n) as $i | {machine: $m, runner: $r, shard: $i, shards: $n}]' <<<"$rows")
+          done
+          echo "matrix={\"include\":$rows}" >> "$GITHUB_OUTPUT"
+          echo "any=$(jq 'length > 0' <<<"$rows")" >> "$GITHUB_OUTPUT"
+
+  # FlakeHub Cache pushes need the project to exist; publishing creates it.
+  publish:
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: DeterminateSystems/flakehub-push@v7
+        with:
+          visibility: unlisted
+          rolling: true
+          include-output-paths: false
+
+  build:
+    needs: [plan, publish]
+    if: ${{ !cancelled() && needs.plan.outputs.any == 'true' }}
+    name: ${{ matrix.machine }} ${{ matrix.shard }}/${{ matrix.shards }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk
+        run: |
+          df -h / | tail -1
+          if [[ $RUNNER_OS == macOS ]]; then
+            keep=$(xcode-select -p | sed 's|/Contents/Developer||')
+            for x in /Applications/Xcode_*.app; do [[ $x == "$keep" ]] || sudo rm -rf "$x" & done
+            sudo rm -rf ~/Library/Android /Users/runner/hostedtoolcache &
+          else
+            sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache &
+          fi
+          wait
+          df -h / | tail -1
+      - uses: DeterminateSystems/determinate-nix-action@v3
+        with:
+          # FlakeHub advertises a higher priority than cache.nixos.org; prefer
+          # the free public cache for anything both serve.
+          extra-conf: |
+            extra-substituters = https://cache.nixos.org?priority=10
+            trusted-users = root runner
+      - uses: DeterminateSystems/flakehub-cache-action@v3
+      - name: Import derivations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MACHINE: ${{ matrix.machine }}
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ matrix.shards }}
+        run: |
+          set -euo pipefail
+          f=shared-closures/$MACHINE.json
+          gh release download "shared-closure-$MACHINE" -R "$GITHUB_REPOSITORY" \
+            -p "$(jq -r .bundle.asset "$f")" -O bundle.tar
+          echo "$(jq -r .bundle.sha256 "$f")  bundle.tar" | shasum -a 256 -c -
+          tar -xf bundle.tar
+          jq -r --argjson i "$SHARD" --argjson n "$SHARDS" \
+            '.tops | to_entries[] | select(.key % $n == $i) | .value' "$f" > shard.txt
+          xargs nix copy --no-check-sigs --derivation --from "file://$PWD/cache" < shard.txt
+          echo "$(wc -l < shard.txt | tr -d ' ') build roots imported"
+      - name: Skip what FlakeHub already serves
+        run: |
+          set -euo pipefail
+          netrc=$(nix config show netrc-file)
+          : > todo.txt
+          while read -r drv; do
+            served=1
+            for out in $(nix-store -q --outputs "$drv"); do
+              hash=$(basename "$out" | cut -d- -f1)
+              code=$(curl -s -o /dev/null -w '%{http_code}' --netrc-file "$netrc" \
+                "https://cache.flakehub.com/$hash.narinfo" || true)
+              [[ $code == 200 ]] || { served=0; break; }
+            done
+            (( served )) || echo "$drv" >> todo.txt
+          done < shard.txt
+          echo "$(wc -l < todo.txt | tr -d ' ') of $(wc -l < shard.txt | tr -d ' ') build roots to build"
+      - name: Build
+        run: |
+          set -euo pipefail
+          [[ -s todo.txt ]] || { echo "nothing to build"; exit 0; }
+          sed 's/$/^*/' todo.txt | xargs nix build --no-link --keep-going
+      - name: Disk
+        if: always()
+        run: df -h / | tail -1
