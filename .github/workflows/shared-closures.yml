@@ -28,6 +28,7 @@ concurrency:
 
 env:
   SHARD_SIZE: 25
+  MAX_SHARDS: 20
 
 jobs:
   plan:
@@ -57,6 +58,7 @@ jobs:
             tops=$(jq '.tops | length' "$f")
             (( tops > 0 )) || { echo "$machine: nothing to build"; continue; }
             shards=$(( (tops + SHARD_SIZE - 1) / SHARD_SIZE ))
+            (( shards <= MAX_SHARDS )) || shards=$MAX_SHARDS
             echo "$machine ($system): $tops build roots in $shards shard(s) on $runner"
             rows=$(jq -c --arg m "$machine" --arg r "$runner" --argjson n "$shards" \
               '. + [range(0; $n) as $i | {machine: $m, runner: $r, shard: $i, shards: $n}]' <<<"$rows")
