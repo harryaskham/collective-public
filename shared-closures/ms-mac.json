@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-10-31T15:49:05Z",
+ "generatedAt": "2026-10-31T22:25:44Z",
  "nixpkgs": "locked",
  "bundle": {
   "asset": "shared-closure-ms-mac.tar",
-  "sha256": "ef67ea033e4f49de0e213c12a2ec15c0f04a9860e15286ed4e2ce2f8bdf149a2",
-  "bytes": 85647360
+  "sha256": "0e7e65a4f9a50adc723589c3c81393f4ab936868327dd89de6b7bf05a284d307",
+  "bytes": 85657600
  },
  "tops": [
   "/nix/store/00irjxk4vf5jz2g3ahpjfp9rwlr9s4k9-hash32-0.3.1.drv",
@@ -333,6 +333,7 @@
   "/nix/store/8gqqvx53rlng732mkffgg7cn2vfspd5d-cargo-package-serde_yaml-0.9.34+deprecated.drv",
   "/nix/store/8gvx60jkp9pzm434hglwzspqjwmnlsqv-error-code-3.3.2.drv",
   "/nix/store/8hawlglj366fymicrs19zclrwv8ah9rz-python3.14-azure-cli-telemetry-1.1.0.drv",
+  "/nix/store/8hxvcbxscypp29s5zgmv7b7cxpixsdpn-syncthing-collective-stignore.drv",
   "/nix/store/8ilbk45qz1zc8bqd1fbjag960xq2a3pm-cltv-secret-help.drv",
   "/nix/store/8j3nlg166irk03qw12nyljh79pb14psn-core_maths-0.1.1.drv",
   "/nix/store/8jdyvr6flkwzhwjswag5ak0w6yycfc11-phf_generator-0.13.1.drv",
@@ -1055,6 +1056,7 @@
   "/nix/store/vsqmn7qkj0zn8fgkhggsfj2qjf8mmj7p-cargo_metadata-0.19.2.drv",
   "/nix/store/vsvlfzahcplf7qhr2c0s6qmyl4y99h62-cargo-package-ashpd-0.8.1.drv",
   "/nix/store/vy31ps8f7ad23pfds308gjsj7ndylivd-presser-0.3.1.drv",
+  "/nix/store/vynssazpdlbqqcj7adgrl9fl2217i1y3-shared-closure-refresh.drv",
   "/nix/store/w69i3x5436w750c6ls8y0fap4ibw4pn4-cargo-package-digest-0.10.7.drv",
   "/nix/store/w735bzspcdf5ki47r04xziqr60g4jx9z-cargo-vendor-dir.drv",
   "/nix/store/w954kg2a0540l802nb94lqh5pxl17j5h-webview2-com-sys-0.38.2.drv",
@@ -2202,6 +2204,7 @@
   "servo_arc-0.4.3",
   "set-wallpaper",
   "sha1-checked-0.10.0",
+  "shared-closure-refresh",
   "simd-adler32-0.3.10",
   "simplecss-0.2.2",
   "six-1.17.0",
@@ -2243,6 +2246,7 @@
   "symphonia-metadata-0.5.5",
   "symphonia-utils-xiph-0.5.5",
   "sync-xrandr-xresources",
+  "syncthing-collective-stignore",
   "syntect-5.3.0",
   "system-deps-6.2.2",
   "tailscale",
@@ -2386,8 +2390,8 @@
   "zune-jpeg-0.4.21"
  ],
  "counts": {
-  "notOnPublicCache": 3082,
-  "publishable": 2336,
-  "buildTops": 1195
+  "notOnPublicCache": 3085,
+  "publishable": 2338,
+  "buildTops": 1197
  }
 }
