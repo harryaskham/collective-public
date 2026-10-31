@@ -41,13 +41,26 @@ jobs:
       - id: plan
         env:
           WANT: ${{ inputs.machine }}
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
           shopt -s nullglob
+          # A push builds only the manifests it changed; dispatch builds the
+          # named one, or all.
+          changed=''
+          if [[ $GITHUB_EVENT_NAME == push && -n $BEFORE && ! $BEFORE =~ ^0+$ ]]; then
+            changed=$(gh api "repos/$GITHUB_REPOSITORY/compare/$BEFORE...$GITHUB_SHA" \
+              --jq '.files[].filename | select(test("^shared-closures/[^/]+[.]json$"))')
+            echo "changed manifests: ${changed:-none}"
+          fi
           rows='[]'
           for f in shared-closures/*.json; do
             machine=$(jq -r .machine "$f")
             [[ -z $WANT || $WANT == "$machine" ]] || continue
+            if [[ $GITHUB_EVENT_NAME == push && -n $BEFORE && ! $BEFORE =~ ^0+$ ]]; then
+              grep -qxF "$f" <<<"$changed" || continue
+            fi
             system=$(jq -r .system "$f")
             case $system in
               aarch64-darwin) runner=macos-latest ;;
