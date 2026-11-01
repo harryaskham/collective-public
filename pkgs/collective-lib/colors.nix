@@ -198,6 +198,81 @@ rec {
     { inherit (scheme) foreground background cursor; }
     // toHashedColorSet (toAnsiOrderedSchemeLossy scheme);
 
+  # "#RRGGBB" -> { r; g; b; } as 0-255 integers.
+  hexChannels = c:
+    let h = rawHex c;
+    in {
+      r = lib.fromHexString (substring 0 2 h);
+      g = lib.fromHexString (substring 2 2 h);
+      b = lib.fromHexString (substring 4 2 h);
+    };
+
+  # Perceived brightness (ITU-R BT.601 weights) above the midpoint.
+  isLightColor = c:
+    let ch = hexChannels c;
+    in 299 * ch.r + 587 * ch.g + 114 * ch.b > 128 * 1000;
+
+  schemeBackground = scheme:
+    withHash (if scheme.background or null != null then scheme.background else scheme.color0);
+  schemeForeground = scheme:
+    withHash (if scheme.foreground or null != null then scheme.foreground else scheme.color7);
+
+  isLightScheme = scheme: isLightColor (schemeBackground scheme);
+
+  # Linear blend of two "#RRGGBB" colours: t = 0 gives a, t = 1 gives b.
+  # Used to derive layered UI surfaces (canvas -> surface -> elevated) from
+  # any scheme's background and greys.
+  mixColors = a: b: t:
+    let
+      ca = hexChannels a;
+      cb = hexChannels b;
+      blend = x: y: builtins.floor (x * (1.0 - t) + y * t + 0.5);
+      byte = n: lib.toUpper (lib.fixedWidthString 2 "0" (lib.toHexString n));
+    in "#${byte (blend ca.r cb.r)}${byte (blend ca.g cb.g)}${byte (blend ca.b cb.b)}";
+
+  # CSS rgba() for a "#RRGGBB" colour and an alpha in [0, 1].
+  cssRgba = c: a:
+    let ch = hexChannels c;
+    in "rgba(${toString ch.r}, ${toString ch.g}, ${toString ch.b}, ${toString a})";
+
+  # Semantic Nord-style palette for UI chrome (bars, menus, lock screens,
+  # notifications): nord0-3 are surfaces from the background outwards,
+  # nord4-6 text, nord7-10 frost accents, nord11-15 aurora (red, orange,
+  # yellow, green, purple), plus the scheme's real background/foreground.
+  # Nord-ordered schemes map 1:1. ANSI-ordered schemes (e-ink etc.) are
+  # approximated, taking surfaces from the light or dark end to match the
+  # background so text stays legible.
+  toNordPalette = scheme:
+    let
+      c = i: withHash scheme."color${toString i}";
+      background = schemeBackground scheme;
+      foreground = schemeForeground scheme;
+      light = isLightScheme scheme;
+      named = genAttrs (genList (i: "nord${toString i}") 16) (n: null);
+    in
+      if scheme.ordering == "nord" then
+        mapAttrs (n: _: c (lib.toInt (substring 4 2 n))) named
+        // { inherit background foreground light; }
+      else {
+        nord0 = background;
+        nord1 = if light then c 15 else c 0;
+        nord2 = if light then c 7 else c 8;
+        nord3 = c 8;
+        nord4 = foreground;
+        nord5 = if light then c 0 else c 7;
+        nord6 = if light then c 0 else c 15;
+        nord7 = c 6;
+        nord8 = c 14;
+        nord9 = c 4;
+        nord10 = c 12;
+        nord11 = c 1;
+        nord12 = c 9;
+        nord13 = c 3;
+        nord14 = c 2;
+        nord15 = c 5;
+        inherit background foreground light;
+      };
+
   schemes = {
     nord = rec {
       ordering = "nord";
@@ -380,6 +455,46 @@ rec {
   };
 
   _tests = with tests; suite {
+    hexChannels =
+      expect.eq (hexChannels "#88C0D0") { r = 136; g = 192; b = 208; };
+
+    mixColors = {
+      ends = expect.eq [ (mixColors "#000000" "#FFFFFF" 0.0) (mixColors "#000000" "#FFFFFF" 1.0) ] [ "#000000" "#FFFFFF" ];
+      half = expect.eq (mixColors "#000000" "#FFFFFF" 0.5) "#808080";
+      nordMidnight = expect.eq (mixColors "#1A1D23" "#3B4252" 0.5) "#2B303B";
+    };
+
+    cssRgba = expect.eq (cssRgba "#88C0D0" 0.2) "rgba(136, 192, 208, 0.200000)";
+
+    isLightScheme = {
+      nord = expect.eq (isLightScheme schemes.nord) false;
+      nordMidnight = expect.eq (isLightScheme schemes.nord-midnight) false;
+      nordLight = expect.eq (isLightScheme schemes.nord-light) true;
+      einkLight = expect.eq (isLightScheme schemes.eink-light) true;
+      einkDark = expect.eq (isLightScheme schemes.imitate-eink-dark) false;
+    };
+
+    toNordPalette = {
+      nord =
+        expect.eq
+          (toNordPalette schemes.nord)
+          { nord0 = "#2E3440"; nord1 = "#3B4252"; nord2 = "#434C5E"; nord3 = "#4C566A";
+            nord4 = "#D8DEE9"; nord5 = "#E5E9F0"; nord6 = "#ECEFF4"; nord7 = "#8FBCBB";
+            nord8 = "#88C0D0"; nord9 = "#81A1C1"; nord10 = "#5E81AC"; nord11 = "#BF616A";
+            nord12 = "#D08770"; nord13 = "#EBCB8B"; nord14 = "#A3BE8C"; nord15 = "#B48EAD";
+            background = "#2E3440"; foreground = "#D8DEE9"; light = false; };
+      midnightBackground =
+        expect.eq (toNordPalette schemes.nord-midnight).background "#1A1D23";
+      einkLight =
+        expect.eq
+          (toNordPalette schemes.eink-light)
+          { nord0 = "#ffffff"; nord1 = "#f7f7f7"; nord2 = "#b9b9b9"; nord3 = "#525252";
+            nord4 = "#000000"; nord5 = "#101010"; nord6 = "#101010"; nord7 = "#868686";
+            nord8 = "#868686"; nord9 = "#686868"; nord10 = "#686868"; nord11 = "#7c7c7c";
+            nord12 = "#7c7c7c"; nord13 = "#a0a0a0"; nord14 = "#8e8e8e"; nord15 = "#747474";
+            background = "#ffffff"; foreground = "#000000"; light = true; };
+    };
+
     toOrderedHashedColorList = 
       expect.eq
         (toOrderedHashedColorList schemes.nord) 
