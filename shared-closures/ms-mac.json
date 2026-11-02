@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-01T18:45:35Z",
+ "generatedAt": "2026-11-02T00:03:24Z",
  "nixpkgs": "locked",
  "bundle": {
   "asset": "shared-closure-ms-mac.tar",
-  "sha256": "a10ff9be3ce1ea751e65057f7f7d6a8537f601375e7183fa739587997d6caeda",
-  "bytes": 85678080
+  "sha256": "5816031270eeb5c333a0224a830861dcebcbc88597f61a52946b084caffd9cd5",
+  "bytes": 85698560
  },
  "tops": [
   "/nix/store/00irjxk4vf5jz2g3ahpjfp9rwlr9s4k9-hash32-0.3.1.drv",
@@ -130,6 +130,7 @@
   "/nix/store/37kssjlm6igm2z04s4cdg50gpi6rgx2h-codepage-0.1.2.drv",
   "/nix/store/38fi6qzfs50ri91l9izpvn1x0yi4h13f-cargo-package-utf8parse-0.2.2.drv",
   "/nix/store/38n2bgws261r5df1c65rwrvikcv7xkqj-futures-io-0.3.33.drv",
+  "/nix/store/3bixi3y0fph7zy0iyqz0kv0wwaymdhgn-hm_gtk4.0settings.ini.drv",
   "/nix/store/3cb6kwvmm1zbdflrfkqlqpm1wx7mlx4h-cltv-nix-eval-help.drv",
   "/nix/store/3cxpwphxby2phl64lx8f14zswhqvl7yw-web-search-mcp-0.1.1.drv",
   "/nix/store/3d234jka1ihjc3ahwygk8ngd76bi812x-agent-utils-durable-extensions.drv",
@@ -301,6 +302,7 @@
   "/nix/store/7hl3pb8cq6nxri76fr8zamr6k6vzhlky-cargo-package-num-conv-0.2.1.drv",
   "/nix/store/7jbcvdwxl2sq87myhj2ivrjinhg4pzz3-cltv-secret-edit.drv",
   "/nix/store/7kgn5q728qbckmppqjh50y057zcgpfh2-google-chrome-stable.drv",
+  "/nix/store/7kjz30kz9v25siyyzmrkpqsh2gqwzhc5-hm_.gtkrc2.0.drv",
   "/nix/store/7lqzxiz0h4r5s5c8qd267081qj1rppsa-wasm-bindgen-futures-0.4.70.drv",
   "/nix/store/7n7qf9rqf7bhb461zpzlikaqxb7y36dp-cargo-vendor-dir.drv",
   "/nix/store/7nr3kwg3h3d79f9zik9qjzn3i0szabp0-cargo-package-cfg_aliases-0.2.1.drv",
@@ -512,6 +514,7 @@
   "/nix/store/d6lh06fjk4b9ygffx5snyqywvnn7b89k-symphonia-format-isomp4-0.5.5.drv",
   "/nix/store/d6mqrr29sg5fylfv5rxqfs0m9q36x01n-serde_yaml-0.9.34+deprecated.drv",
   "/nix/store/d7fbd09jmp7w5a2c6gzrv45xa27nvl9q-unsplash-wallpaper.drv",
+  "/nix/store/d7kqdsfni1gn23dwcfbgx8yjpvx55wal-etc-skhdrc.drv",
   "/nix/store/d8nf0zkfl6gai8j3jdkyqxinki702y0m-cargo-package-assert_cmd-2.2.0.drv",
   "/nix/store/daprwbas18fhyx5yir109km123b3g4ry-pyproject-hook.drv",
   "/nix/store/db73acgal7dhqvh1xr31p1h4zsj37mhk-notify-debouncer-mini-0.5.0.drv",
@@ -568,6 +571,7 @@
   "/nix/store/fz1v57fnfcdqqralpjhx42jis9yzrbm6-cfg_aliases-0.2.2.drv",
   "/nix/store/fzhar012bqb3cd42h3071hrm7ijkb0kg-cargo-package-notify-types-1.0.1.drv",
   "/nix/store/g138cprxch2kwbgb6yf56dg98k95xqsm-cargo-package-regex-automata-0.4.14.drv",
+  "/nix/store/g19y1h8gi21vqaqac1sj8bq8w8z2y839-hm_gtk3.0settings.ini.drv",
   "/nix/store/g3y0xa0b6hm9d06l99lxhj0km05bgllb-cargo-package-zmij-1.0.21.drv",
   "/nix/store/g5d1wcxhmm0n00l67kk79s4jy4hir7bp-cargo-package-nix-0.25.1.drv",
   "/nix/store/g65hkmgz7m0p82kx5j0950l9r2bcr32x-cargo-package-colorchoice-1.0.5.drv",
@@ -804,6 +808,7 @@
   "/nix/store/m6xlnx1lwl7zrn75w3rgnsydqbz80i8s-jiff-tzdb-0.1.6.drv",
   "/nix/store/m8x8wvqvi90fqir43w80hjplb50k4yf3-cargo-package-as-slice-0.2.1.drv",
   "/nix/store/m9gbk6y2q3zpbmzn29dvjsc5aqmfjjp4-cargo-package-stable_deref_trait-1.2.1.drv",
+  "/nix/store/m9wvn27z1d2r55gm34h0212hamqgvvf5-hm_xsettingsd.conf.drv",
   "/nix/store/ma7ksc00ywbjni2dg6drbq4b2ba9njq1-cargo-package-windows_i686_gnullvm-0.52.6.drv",
   "/nix/store/malnvp430svhvrhqriy3jwi09ilgn52i-cltv-bt.drv",
   "/nix/store/mbzkw48hscbg1s6kq85djy3scsq29ph1-core-graphics-types-0.2.0.drv",
@@ -1178,7 +1183,6 @@
   "/nix/store/zh0070mi54jsg4galcx5d0sgdnd6bqsi-cltv-pi-test.drv",
   "/nix/store/zhwvi1id4x9nlq37gvk044dyr10rcgr1-cargo-package-schemars-1.2.1.drv",
   "/nix/store/zhxi919sn7fyw600jwcl8ddji6wwj9bz-codex-checkout.drv",
-  "/nix/store/zivlcqz6yganxyw6z17nm1ivaj5c90vq-etc-skhdrc.drv",
   "/nix/store/zkal5dq98gypyw02mx2npxwzvhzr25a3-ttf-parser-0.25.1.drv",
   "/nix/store/zkicbb6schkspvxg1185pdwaxrk6yrys-requests-2.32.5.drv",
   "/nix/store/zl19gnvy7yc610vqyaf93dsssqc2p78d-tokio-tungstenite-0.28.0.drv",
@@ -1955,16 +1959,20 @@
   "hhear",
   "hidapi-2.6.7",
   "hm_.agdadefaults",
+  "hm_.gtkrc2.0",
   "hm_emacsdoomnixagda.el",
   "hm_emacsdoomnixhaskell.el",
   "hm_ghosttyconfig",
   "hm_gitattributes",
+  "hm_gtk3.0settings.ini",
+  "hm_gtk4.0settings.ini",
   "hm_hmfontconfigdefaultfonts.xml",
   "hm_hmfontconfigrendering.xml",
   "hm_kittykitty.conf",
   "hm_linearconfig.json",
   "hm_nixpkgsconfig.nix",
   "hm_tmuxtmux.conf",
+  "hm_xsettingsd.conf",
   "home-manager-agent-domains",
   "hotspot-ip",
   "hound-3.5.1",
@@ -2374,8 +2382,8 @@
   "zune-jpeg-0.4.21"
  ],
  "counts": {
-  "notOnPublicCache": 3029,
-  "publishable": 2337,
-  "buildTops": 1189
+  "notOnPublicCache": 3034,
+  "publishable": 2342,
+  "buildTops": 1193
  }
 }
