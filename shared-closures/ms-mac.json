@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-03T05:10:40Z",
+ "generatedAt": "2026-11-03T22:55:16Z",
  "nixpkgs": "locked",
  "bundle": {
   "asset": "shared-closure-ms-mac.tar",
-  "sha256": "0b4e4b84ea3e9714f405fd45b51c9937b179d06f12f5f981d0db3e65f4acd943",
-  "bytes": 85688320
+  "sha256": "c3529b4acad0f1ec32c65bc01cd6be527e261b7212864353562f8f6ad6b7d89d",
+  "bytes": 85698560
  },
  "tops": [
   "/nix/store/00irjxk4vf5jz2g3ahpjfp9rwlr9s4k9-hash32-0.3.1.drv",
@@ -156,7 +156,6 @@
   "/nix/store/3sbaqnsd46m8inyklc16amv0d9xns6bz-switch-to-termux-x11.drv",
   "/nix/store/3w7z9n2h703h0g98x6bgl1qqqjzm1snr-inotify-0.10.2.drv",
   "/nix/store/3z92z9lxlb7lfmkw2kpcdfa6czb0pgj4-fonttools-4.61.1.drv",
-  "/nix/store/40x0ph1sr8zjhif3i2rbj8q5jvv5xzgv-agent-utils-durable-extensions.drv",
   "/nix/store/41bv6h3vv02hhxpgzmyq1bm0x1bbpsx0-cargo-package-pin-utils-0.1.0.drv",
   "/nix/store/43r5d4pgz83vg1jd4j81xbq6546snqzf-calamine-0.35.0.drv",
   "/nix/store/43vicb26cny21qc1gyscj3g1mpgal688-catwhich.drv",
@@ -502,6 +501,7 @@
   "/nix/store/cy54yq7rrwwcfkk1ik97cw3rhi9swr3a-concat.drv",
   "/nix/store/d0y9yr8i2xkx99hd56rmhnf7gb4pbzc2-cargo-package-wasmparser-0.244.0.drv",
   "/nix/store/d19p8mpskzvlchjlvi3s0dbnfwl6r4hp-cltv-config-help.drv",
+  "/nix/store/d1vkw2iiz4jqs39v4sfzrii73c6k26s3-agent-utils-durable-extensions.drv",
   "/nix/store/d2lkljmssmri9ddim72x718l6mrx9jsz-zerocopy-0.8.62.drv",
   "/nix/store/d2vxgwn383zd2c6pmlbdpn8pnr3xqbp7-cargo-package-tracing-0.1.44.drv",
   "/nix/store/d34nyqp2abk1pck20yg2a54f9wldyq6q-cargo-package-webpki-roots-0.26.11.drv",
