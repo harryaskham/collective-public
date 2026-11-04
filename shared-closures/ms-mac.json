@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-04T16:47:25Z",
+ "generatedAt": "2026-11-04T20:08:51Z",
  "nixpkgs": "locked",
  "bundle": {
   "asset": "shared-closure-ms-mac.tar",
-  "sha256": "f635501d870a23df8fbcf4795a8041ff43c749eb86158f1a2c28db152b1f0673",
-  "bytes": 85493760
+  "sha256": "10c8f05ef72a905143d1eed332547d66564d6984a5f243035f2d3247c29b3d5a",
+  "bytes": 85504000
  },
  "tops": [
   "/nix/store/00irjxk4vf5jz2g3ahpjfp9rwlr9s4k9-hash32-0.3.1.drv",
@@ -577,7 +577,6 @@
   "/nix/store/fzhar012bqb3cd42h3071hrm7ijkb0kg-cargo-package-notify-types-1.0.1.drv",
   "/nix/store/g138cprxch2kwbgb6yf56dg98k95xqsm-cargo-package-regex-automata-0.4.14.drv",
   "/nix/store/g19y1h8gi21vqaqac1sj8bq8w8z2y839-hm_gtk3.0settings.ini.drv",
-  "/nix/store/g35pl9y6k55xan0kgkb0m3sswyy16rkp-agent-utils-durable-extensions.drv",
   "/nix/store/g3y0xa0b6hm9d06l99lxhj0km05bgllb-cargo-package-zmij-1.0.21.drv",
   "/nix/store/g5d1wcxhmm0n00l67kk79s4jy4hir7bp-cargo-package-nix-0.25.1.drv",
   "/nix/store/g65hkmgz7m0p82kx5j0950l9r2bcr32x-cargo-package-colorchoice-1.0.5.drv",
@@ -1131,6 +1130,7 @@
   "/nix/store/xw2060n2gywvk3wbcj0p4m0imjqi2i1w-cltv-file-home.drv",
   "/nix/store/xwmk6hx815phj3amwagcqp11j5ycc23p-gix-lock-21.0.2.drv",
   "/nix/store/xx3pwn6s6jwxpv52s4nnfj7j9kx4sy2q-cargo-package-arbitrary-1.4.2.drv",
+  "/nix/store/xxjv51da8ajcxds3jxcngxvmii8zrgbj-agent-utils-durable-extensions.drv",
   "/nix/store/xy8x10psd1mzif6j0nz2ma4xw7wzcrk8-webkit2gtk-2.0.2.drv",
   "/nix/store/xycynxzf44srjm6xl94xvg5k9xjdszb2-wry-0.55.1.drv",
   "/nix/store/xzwgvyyjw4xjh14vd6nanrav1c0f2x3x-set-wallpaper.drv",
