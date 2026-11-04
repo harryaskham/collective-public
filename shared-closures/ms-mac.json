@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-04T03:50:33Z",
+ "generatedAt": "2026-11-04T05:13:38Z",
  "nixpkgs": "locked",
  "bundle": {
   "asset": "shared-closure-ms-mac.tar",
-  "sha256": "fc2329e3abfe9028e40b72038ce51e193c7fb0979d0a1f18c5f56133673e8f7d",
-  "bytes": 85698560
+  "sha256": "3deb988140b6c6632748c4c2c1101fab2ed5d0e05d0e7835ec893b5629fd2aea",
+  "bytes": 85708800
  },
  "tops": [
   "/nix/store/00irjxk4vf5jz2g3ahpjfp9rwlr9s4k9-hash32-0.3.1.drv",
@@ -1008,6 +1008,7 @@
   "/nix/store/s869fgidnzzz9r34fgdfbzwfvis1gifw-clru-0.6.3.drv",
   "/nix/store/s99vqc8d3l57rf3r8igg5nzffl6klnc4-gix-hashtable-0.12.0.drv",
   "/nix/store/s9z08hc7q419g2p74pg9bm20b3pghsk8-ahp-ws-0.8.0.drv",
+  "/nix/store/safjqzrgf8gjv7fzyn1xl0vznzvazapx-org.collective.linux-vm.socket-vmnet.plist.drv",
   "/nix/store/sbf7s9vx24i7pd2grdn1qn5rx04i73hq-tauri-runtime-wry-2.11.4.drv",
   "/nix/store/scjxb814kwhf5yf31mx41sl0k87bhcmp-predicates-tree-1.0.13.drv",
   "/nix/store/sdpg02nvlq4bg9frbh55lwzqsar42fv7-removeReferencesToRustToolchainHook.drv",
@@ -2082,6 +2083,7 @@
   "oboe-sys-0.6.1",
   "oid-registry-0.7.1",
   "org-mcp-0.0.6",
+  "org.collective.linux-vm.socket-vmnet.plist",
   "org.nixos.nix-gc-weekly.plist",
   "org.nixos.skhd.plist",
   "org.nixos.yabai.plist",
@@ -2382,8 +2384,8 @@
   "zune-jpeg-0.4.21"
  ],
  "counts": {
-  "notOnPublicCache": 3045,
-  "publishable": 2343,
-  "buildTops": 1193
+  "notOnPublicCache": 3047,
+  "publishable": 2345,
+  "buildTops": 1194
  }
 }
