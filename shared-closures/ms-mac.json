@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-04T20:08:51Z",
+ "generatedAt": "2026-11-04T21:59:23Z",
  "nixpkgs": "locked",
  "bundle": {
   "asset": "shared-closure-ms-mac.tar",
-  "sha256": "10c8f05ef72a905143d1eed332547d66564d6984a5f243035f2d3247c29b3d5a",
-  "bytes": 85504000
+  "sha256": "e8da5a9f3666c99ae26bbd1fe65a224fd255693b94016d20c12a72b2be8ff357",
+  "bytes": 85514240
  },
  "tops": [
   "/nix/store/00irjxk4vf5jz2g3ahpjfp9rwlr9s4k9-hash32-0.3.1.drv",
@@ -61,6 +61,7 @@
   "/nix/store/1blfw85b00q690bv3nmkyl24sk7njihg-cltv-pi-help.drv",
   "/nix/store/1bx7kym6z69yh4m8mpmgjih1jd0wr1yx-ctor-proc-macro-0.0.7.drv",
   "/nix/store/1bzcxa5l6r6f16pbdp8wp6ih231ggrqb-gdkx11-0.18.2.drv",
+  "/nix/store/1cj278qixd9xz3ikf574wj27f7gmyqry-rex.drv",
   "/nix/store/1cymgpk1x21z0pk4chl2cd63vv0kk0pf-cargo-package-tracing-log-0.2.0.drv",
   "/nix/store/1g4dvvxf2xlkhkl795318618gisrmdf1-cargo-package-tar-0.4.45.drv",
   "/nix/store/1g4gi5gm2dsqh7a93sn8m7bnlcsw3ikw-schemars_derive-1.2.2.drv",
@@ -538,6 +539,7 @@
   "/nix/store/dpj00wccg3ih3bcfyp07f14m72mra3hr-toml_edit-0.20.2.drv",
   "/nix/store/dplxbq06dw1jhmxql9c9yihqmnfcngr8-vedit-silence-help.drv",
   "/nix/store/dv7hb61s00ddqcsadqkwwk86nhmqfzw7-cargo-package-inotify-0.10.2.drv",
+  "/nix/store/dvk075ipsbigf71ayr0v1byjrbixd37s-home-manager-agent-domains.drv",
   "/nix/store/dwfcppsfyq4l03mqgaaq63dh1v13szkk-strict-num-0.1.1.drv",
   "/nix/store/dyfb1qw3kyc5lsi44mbbfkia6301apk6-clipboard-win-5.4.1.drv",
   "/nix/store/dyzv61143m75z7niyw32bbqxjyvhyqkb-rust-embed-8.11.0.drv",
@@ -609,7 +611,6 @@
   "/nix/store/gwpl1kynyylc3zsdhf1s7dfp7yxnq323-cargo-package-idna-1.1.0.drv",
   "/nix/store/gxm5kw9n0i3hwhq1yyxpdv1hg6dj6qpz-cargo-package-nu-ansi-term-0.50.3.drv",
   "/nix/store/gy7d55c2z0l8fdyyyc9klhx4z2jk88i2-tauri-winres-0.3.6.drv",
-  "/nix/store/gzlg7xvsrgzbj5vxzx6s6896gw1cg0gr-home-manager-agent-domains.drv",
   "/nix/store/h0j1lk3236k7yq5wk11bbkrhzi0c7w72-cargo-package-loop9-0.1.5.drv",
   "/nix/store/h13sqi5gmf8g1c20rky984lh6nvvjsjq-cargo-package-predicates-3.1.4.drv",
   "/nix/store/h2s4zl8igj8md61zn9ri95sg4pgclpvb-glib-macros-0.18.5.drv",
@@ -927,6 +928,7 @@
   "/nix/store/pqpqfsg93xzq5dqpzkkcbphxkmlh2mvm-bytes-1.12.1.drv",
   "/nix/store/prgckmlmr6d436911pancf7i2hll0x58-mio-1.2.2.drv",
   "/nix/store/pwdbrlhmzzjyc7fkvyd5805r6z5qy8mf-futures-0.3.32.drv",
+  "/nix/store/pwfvz59d7321m2g5fqhik46gnj5h9ipk-hm_rexsystemname.drv",
   "/nix/store/pwg9pdk51955pcz4virlmhd1a5b1064b-vswhom-0.1.0.drv",
   "/nix/store/pxh9p123fshqhfsi0axwc6xlz1wgjvis-hyper-1.11.0.drv",
   "/nix/store/pxpg6sanl1aa7bdxm6jnw14fn1fibxz3-cltv-desktop-server-help.drv",
@@ -1987,6 +1989,7 @@
   "hm_kittykitty.conf",
   "hm_linearconfig.json",
   "hm_nixpkgsconfig.nix",
+  "hm_rexsystemname",
   "hm_tmuxtmux.conf",
   "hm_xsettingsd.conf",
   "home-manager-agent-domains",
@@ -2171,6 +2174,7 @@
   "reqwest-0.13.4",
   "resvg-0.45.1",
   "retry",
+  "rex",
   "rgb-0.8.53",
   "rkvm-tunnel",
   "rodio-0.20.1",
@@ -2407,8 +2411,8 @@
   "zune-jpeg-0.4.21"
  ],
  "counts": {
-  "notOnPublicCache": 3045,
-  "publishable": 2344,
-  "buildTops": 1206
+  "notOnPublicCache": 3052,
+  "publishable": 2347,
+  "buildTops": 1208
  }
 }
