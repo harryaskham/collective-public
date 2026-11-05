@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-04T21:59:23Z",
+ "generatedAt": "2026-11-05T02:59:36Z",
  "nixpkgs": "locked",
  "bundle": {
   "asset": "shared-closure-ms-mac.tar",
-  "sha256": "e8da5a9f3666c99ae26bbd1fe65a224fd255693b94016d20c12a72b2be8ff357",
-  "bytes": 85514240
+  "sha256": "2f0852399cccc794ecc065d0ae443fee3c453f67baa754e23253367685c5bbf4",
+  "bytes": 85473280
  },
  "tops": [
   "/nix/store/00irjxk4vf5jz2g3ahpjfp9rwlr9s4k9-hash32-0.3.1.drv",
@@ -338,7 +338,6 @@
   "/nix/store/8fsjxvv10gyq349nds3n2pa4cxkyj7fx-cargo-package-icu_properties-2.2.0.drv",
   "/nix/store/8gqqvx53rlng732mkffgg7cn2vfspd5d-cargo-package-serde_yaml-0.9.34+deprecated.drv",
   "/nix/store/8gvx60jkp9pzm434hglwzspqjwmnlsqv-error-code-3.3.2.drv",
-  "/nix/store/8hawlglj366fymicrs19zclrwv8ah9rz-python3.14-azure-cli-telemetry-1.1.0.drv",
   "/nix/store/8hxvcbxscypp29s5zgmv7b7cxpixsdpn-syncthing-collective-stignore.drv",
   "/nix/store/8ilbk45qz1zc8bqd1fbjag960xq2a3pm-cltv-secret-help.drv",
   "/nix/store/8j3nlg166irk03qw12nyljh79pb14psn-core_maths-0.1.1.drv",
@@ -522,6 +521,7 @@
   "/nix/store/d7fbd09jmp7w5a2c6gzrv45xa27nvl9q-unsplash-wallpaper.drv",
   "/nix/store/d7kqdsfni1gn23dwcfbgx8yjpvx55wal-etc-skhdrc.drv",
   "/nix/store/d8nf0zkfl6gai8j3jdkyqxinki702y0m-cargo-package-assert_cmd-2.2.0.drv",
+  "/nix/store/d8zjx1zyf15ms15dnxapjmcjjh0cw5hh-agent-utils-durable-extensions.drv",
   "/nix/store/daprwbas18fhyx5yir109km123b3g4ry-pyproject-hook.drv",
   "/nix/store/db73acgal7dhqvh1xr31p1h4zsj37mhk-notify-debouncer-mini-0.5.0.drv",
   "/nix/store/dch71rqzmnq1b2rk1928378r6dbhg8ih-cargo-package-unarray-0.1.4.drv",
@@ -1132,7 +1132,6 @@
   "/nix/store/xw2060n2gywvk3wbcj0p4m0imjqi2i1w-cltv-file-home.drv",
   "/nix/store/xwmk6hx815phj3amwagcqp11j5ycc23p-gix-lock-21.0.2.drv",
   "/nix/store/xx3pwn6s6jwxpv52s4nnfj7j9kx4sy2q-cargo-package-arbitrary-1.4.2.drv",
-  "/nix/store/xxjv51da8ajcxds3jxcngxvmii8zrgbj-agent-utils-durable-extensions.drv",
   "/nix/store/xy8x10psd1mzif6j0nz2ma4xw7wzcrk8-webkit2gtk-2.0.2.drv",
   "/nix/store/xycynxzf44srjm6xl94xvg5k9xjdszb2-wry-0.55.1.drv",
   "/nix/store/xzwgvyyjw4xjh14vd6nanrav1c0f2x3x-set-wallpaper.drv",
@@ -2148,7 +2147,6 @@
   "pyproject-hook",
   "python-dateutil-2.9.0.post0",
   "python3-3.14.8-env",
-  "python3.14-azure-cli-telemetry-1.1.0",
   "python3.14-fabric-3.2.3",
   "python3.14-mcp-types-2.2.0",
   "python3.14-poetry-2.5.1",
@@ -2411,8 +2409,8 @@
   "zune-jpeg-0.4.21"
  ],
  "counts": {
-  "notOnPublicCache": 3052,
-  "publishable": 2347,
-  "buildTops": 1208
+  "notOnPublicCache": 3039,
+  "publishable": 2346,
+  "buildTops": 1207
  }
 }
