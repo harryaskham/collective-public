@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-06T09:53:39Z",
+ "generatedAt": "2026-11-06T16:52:51Z",
  "nixpkgs": "locked",
  "bundle": {
   "asset": "shared-closure-ms-mac.tar",
-  "sha256": "2f6b92eb80e9cf421a16e61bcb256560bee9b3590348d869774b052aa06c2f0c",
-  "bytes": 85442560
+  "sha256": "e1c89b2f4c6efbca4bbba3651678b4e8e980c41f805cfdfc5f39e61b5a6bee8b",
+  "bytes": 85473280
  },
  "tops": [
   "/nix/store/00irjxk4vf5jz2g3ahpjfp9rwlr9s4k9-hash32-0.3.1.drv",
@@ -34,7 +34,6 @@
   "/nix/store/0ns7zwsl1acc5c8hfx7rakk8gc5nss3h-darwin-rebuild.drv",
   "/nix/store/0q0lnrmak20cqjdq8ik709x94qdqr9iv-cargo-package-winnow-0.7.15.drv",
   "/nix/store/0qk9w5cgjklqcxg819qr8w84b94zjpwh-pyobjc-framework-libdispatch-12.1.drv",
-  "/nix/store/0s465zf9bxzphvskxxg7v1i7y530z7m4-pi-coding-agent-1.5.0.tgz.drv",
   "/nix/store/0sg5agzfmjw2zqz7k62yy2np0ay35r7f-cargo-package-event-listener-strategy-0.5.4.drv",
   "/nix/store/0sg703f07sgp0a8y1gz95fqm11klnlqj-cargo-package-nix-0.29.0.drv",
   "/nix/store/0sqh8c4dqmjfc4mb7cczkm783qah620l-cargo-package-wasip3-0.4.0+wasi-0.3.0-rc-2026-01-06.drv",
@@ -340,6 +339,7 @@
   "/nix/store/8gqqvx53rlng732mkffgg7cn2vfspd5d-cargo-package-serde_yaml-0.9.34+deprecated.drv",
   "/nix/store/8gvx60jkp9pzm434hglwzspqjwmnlsqv-error-code-3.3.2.drv",
   "/nix/store/8hxvcbxscypp29s5zgmv7b7cxpixsdpn-syncthing-collective-stignore.drv",
+  "/nix/store/8i46lazc39vr8awyrr99jw866mhvgh09-agent-utils-durable-extensions.drv",
   "/nix/store/8ilbk45qz1zc8bqd1fbjag960xq2a3pm-cltv-secret-help.drv",
   "/nix/store/8j3nlg166irk03qw12nyljh79pb14psn-core_maths-0.1.1.drv",
   "/nix/store/8jdyvr6flkwzhwjswag5ak0w6yycfc11-phf_generator-0.13.1.drv",
@@ -948,6 +948,7 @@
   "/nix/store/qa00fmf4138rnwbmrzs0jw6fyarmca7l-python3.14-fabric-3.2.3.drv",
   "/nix/store/qbcjvfdkby0hgsa2ph0qbx9pz01ba6gb-rusqlite-0.34.0.drv",
   "/nix/store/qdbzv0vk04fjll4ac841xqs13nx9z58i-aiohttp-3.13.3.drv",
+  "/nix/store/qdqfxcs6jixkwgijayhsriw6p068im47-pi-src-with-lock.drv",
   "/nix/store/qfm49n2djwm7j2b7cmwzl1xjgcf3nqca-darwin-version.json.drv",
   "/nix/store/qg5b11npa7iq510i91yagifa0v5fcnj8-whisper-rs-sys-0.14.1.drv",
   "/nix/store/qh7i17pkazv806asr58acafgsm9zl6iz-jiff-static-0.2.28.drv",
@@ -1117,7 +1118,6 @@
   "/nix/store/xi85lx2vhh05cjaqf0nn39ym4gwp8dj8-html5ever-0.38.0.drv",
   "/nix/store/xi9p03di6jhz4if3mfypq2wjdr0909w5-jiff-core-0.1.0.drv",
   "/nix/store/xirwxfsxjmdgv387kah22mgqiqqvkq55-cargo-package-toml-0.8.23.drv",
-  "/nix/store/xkbl3bm3bbff547f6z41kr65d5bn4mqy-agent-utils-durable-extensions.drv",
   "/nix/store/xlvkl1nisf09h9x08r9wfyg7pfqccawn-euclid-0.20.14.drv",
   "/nix/store/xm07bk1na2lr00zs4jx67wawq3fgwm58-yarl-1.22.0.drv",
   "/nix/store/xnp2kzxdaa28qyqsgmjyq98wqx7mxicx-softbuffer-0.4.8.drv",
@@ -2116,7 +2116,7 @@
   "phf_generator-0.13.1",
   "phf_macros-0.13.1",
   "pi-checkout",
-  "pi-coding-agent-1.5.0.tgz",
+  "pi-src-with-lock",
   "pico-args-0.5.0",
   "pillow-12.1.1",
   "platform-tools_r37.0.1-darwin.zip",
@@ -2409,8 +2409,8 @@
   "zune-jpeg-0.4.21"
  ],
  "counts": {
-  "notOnPublicCache": 3039,
-  "publishable": 2344,
+  "notOnPublicCache": 3040,
+  "publishable": 2345,
   "buildTops": 1207
  }
 }
