@@ -2,11 +2,11 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-06T18:37:55Z",
+ "generatedAt": "2026-11-06T19:36:56Z",
  "nixpkgs": "locked",
  "bundle": {
   "asset": "shared-closure-ms-mac.tar",
-  "sha256": "d47f79566b52f5d3724a3fce6ebca47ce34d18371e99c32a4648eb9625f6ede3",
+  "sha256": "abe159f129d94ae8597a2555af9a1ae4e5e1b21ff110572154a756142c07727f",
   "bytes": 83998720
  },
  "tops": [
@@ -443,7 +443,6 @@
   "/nix/store/ay47q8cnjabjvlzvzwyxhnxvqf1q6ss4-geforce-now-mitm.drv",
   "/nix/store/ayf751drclfp51y8hvdy26n62f79gfz8-gix-pack-0.65.0.drv",
   "/nix/store/az4iyvf12534f87v7i0rds21crpm8hby-cargo-package-wasm-metadata-0.244.0.drv",
-  "/nix/store/b0fr97biyp2s4ssqg7cqjw89n0b7m3cj-claude-tmux-warn.drv",
   "/nix/store/b0icd7zav6kbfiaf9ksxnj6fgz2hqclf-rust-embed-impl-8.11.0.drv",
   "/nix/store/b4qjm797624hgpaci32srfkd6gax7slw-cltv-kv-create.drv",
   "/nix/store/b512bjsk0vx6l1qz595n1zm7pwlmwqf0-cargo-package-hashbrown-0.15.5.drv",
@@ -699,6 +698,7 @@
   "/nix/store/in0p6w4rdawhbw8hz2dwxcqmrkbxvr1h-cargo-package-futures-io-0.3.32.drv",
   "/nix/store/in9l23hlvk9pklzd1lar6j2r2rx5zsry-gix-odb-0.75.0.drv",
   "/nix/store/iqrkpilr1c3ma04sv5cd6njml5z5rpvi-libappindicator-sys-0.9.0.drv",
+  "/nix/store/ir109wdgmsmq0afb1r0h7hysm56q2x9j-claude-tmux-warn.drv",
   "/nix/store/ir9ggiz0zp0nwnifdk0h4llpdcq2a0rn-cargo-package-yoke-0.8.2.drv",
   "/nix/store/is7kqqcnknn75q4p728ghnrdhxccrgv0-cargo-package-exr-1.74.0.drv",
   "/nix/store/ivfzlic71x34n88h4lsyx2zw38y68gj5-cargo-package-windows_i686_msvc-0.52.6.drv",
