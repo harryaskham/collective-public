@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-07T01:04:00Z",
+ "generatedAt": "2026-11-06T19:36:56Z",
  "nixpkgs": "locked",
  "bundle": {
   "asset": "shared-closure-ms-mac.tar",
-  "sha256": "df74a657c7f2f654cba7bb65ae76896396d3ac113bffaf7e7382bbdb160a141d",
-  "bytes": 83968000
+  "sha256": "abe159f129d94ae8597a2555af9a1ae4e5e1b21ff110572154a756142c07727f",
+  "bytes": 83998720
  },
  "tops": [
   "/nix/store/00irjxk4vf5jz2g3ahpjfp9rwlr9s4k9-hash32-0.3.1.drv",
@@ -35,7 +35,6 @@
   "/nix/store/0pvlgmgzckjsj2zln7vnybzwims6715x-pydantic-settings-2.14.1.drv",
   "/nix/store/0q0lnrmak20cqjdq8ik709x94qdqr9iv-cargo-package-winnow-0.7.15.drv",
   "/nix/store/0qk9w5cgjklqcxg819qr8w84b94zjpwh-pyobjc-framework-libdispatch-12.1.drv",
-  "/nix/store/0s465zf9bxzphvskxxg7v1i7y530z7m4-pi-coding-agent-1.5.0.tgz.drv",
   "/nix/store/0sg5agzfmjw2zqz7k62yy2np0ay35r7f-cargo-package-event-listener-strategy-0.5.4.drv",
   "/nix/store/0sg703f07sgp0a8y1gz95fqm11klnlqj-cargo-package-nix-0.29.0.drv",
   "/nix/store/0sqh8c4dqmjfc4mb7cczkm783qah620l-cargo-package-wasip3-0.4.0+wasi-0.3.0-rc-2026-01-06.drv",
@@ -982,6 +981,7 @@
   "/nix/store/qa00fmf4138rnwbmrzs0jw6fyarmca7l-python3.14-fabric-3.2.3.drv",
   "/nix/store/qbcjvfdkby0hgsa2ph0qbx9pz01ba6gb-rusqlite-0.34.0.drv",
   "/nix/store/qdbzv0vk04fjll4ac841xqs13nx9z58i-aiohttp-3.13.3.drv",
+  "/nix/store/qdqfxcs6jixkwgijayhsriw6p068im47-pi-src-with-lock.drv",
   "/nix/store/qfm49n2djwm7j2b7cmwzl1xjgcf3nqca-darwin-version.json.drv",
   "/nix/store/qg5b11npa7iq510i91yagifa0v5fcnj8-whisper-rs-sys-0.14.1.drv",
   "/nix/store/qh7i17pkazv806asr58acafgsm9zl6iz-jiff-static-0.2.28.drv",
@@ -2192,7 +2192,7 @@
   "phf_generator-0.13.1",
   "phf_macros-0.13.1",
   "pi-checkout",
-  "pi-coding-agent-1.5.0.tgz",
+  "pi-src-with-lock",
   "pico-args-0.5.0",
   "pillow-12.1.1",
   "platform-tools_r37.0.1-darwin.zip",
@@ -2512,8 +2512,8 @@
   "zune-jpeg-0.4.21"
  ],
  "counts": {
-  "notOnPublicCache": 3041,
-  "publishable": 2332,
+  "notOnPublicCache": 3040,
+  "publishable": 2335,
   "buildTops": 1261
  }
 }
