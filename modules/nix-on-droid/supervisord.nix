@@ -297,6 +297,13 @@ with lib; let
       fi
     fi
 
+    # Services must not inherit the identity of whatever interactive session started supervisord
+    # (activation run from a herdr/tmux/zellij/screen pane): every program, and every shell nod-exec
+    # or sshd later spawns, would otherwise look nested inside that pane, and herdr refuses to start.
+    for _v in $(${pkgs.coreutils}/bin/env | ${pkgs.gnused}/bin/sed -n 's/^\(HERDR_[A-Za-z0-9_]*\|ZELLIJ[A-Za-z0-9_]*\)=.*/\1/p'); do
+      unset "$_v"
+    done
+    unset TMUX TMUX_PANE STY WINDOW
     exec ${supervisor}/bin/supervisord -c "$CONFIGFILE"
   '';
 
