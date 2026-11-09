@@ -69,7 +69,9 @@ in {
                   c.a
             sw."~"       "✲" se.ctrl
         _
+          "⇡" n.wm_workspace_up
           "⇠" w.wm_workspace_previous  c.s  "⇢" e.wm_workspace_next
+          "⇣" s.wm_workspace_down
                         "⌥" se.alt
         _
           "↑" n.wm_move_up  "⛶" macros.ne.tmux_zoom

@@ -41,6 +41,7 @@ Named switching only finds layouts that are installed in Omni's layout list.
 | Move pad | Directional move/swap, through the selected manager |
 | Resize pad | Resize using Flotilla's default Ctrl+Alt+Shift+arrow bindings |
 | WS− / WS+ | Previous/next workspace, through the selected manager |
+| North / south on WS− or WS+ | The space north or south on Flotilla's grid of spaces (one per Harbour page; Omni 1.33.39+, Flotilla 0.1.32+) |
 | Four live slots | Flotilla slots 1, 2, 3, 5; defaults WM, Tile, Full, Pin |
 |  / south 󰞒 /  | Hide / minimize / restore; not terminal-session closure or Show |
 | Bottom ABC / Portrait / Landscape | Explicit configurable keyboard return layouts |

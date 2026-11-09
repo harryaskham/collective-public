@@ -34,8 +34,8 @@ let
     w = resize "←" "left"; e = resize "→" "right";
   };
   actions = row 0.65 [
-    (key "WS−" _.wm_workspace_previous)
-    (key "WS+" _.wm_workspace_next)
+    ((key "WS−" _.wm_workspace_previous) // { n = label "WS↑" _.wm_workspace_up; s = label "WS↓" _.wm_workspace_down; })
+    ((key "WS+" _.wm_workspace_next) // { n = label "WS↑" _.wm_workspace_up; s = label "WS↓" _.wm_workspace_down; })
     { c = kv.k _.flotilla_1; }
     { c = kv.k _.flotilla_2; }
     { c = kv.k _.flotilla_3; }

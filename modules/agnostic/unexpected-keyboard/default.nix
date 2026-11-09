@@ -294,6 +294,9 @@ let
               "wm_move_down"
               "wm_workspace_previous"
               "wm_workspace_next"
+              # North/south on Flotilla's grid of spaces (one per Harbour page).
+              "wm_workspace_up"
+              "wm_workspace_down"
               # Turns Flotilla's hardware shortcuts off/on for nested tiling WMs.
               "flotilla_shortcuts"
             ] // selfAttrs (genList (i: "flotilla_${toString (i + 1)}") 12);
@@ -1414,6 +1417,15 @@ rec {
             show = null;
           }
         ) compact;
+        # Flotilla's grid of spaces (one per Harbour page): S keeps W/E for previous/next and gains north/south.
+        spaceGrid = mapAttrs (_: layout:
+          let s = head (filter (k: k.c != null && k.c.k == "s") (concatMap (row: row.keys) layout.keyboard.rows));
+          # North keeps the tmux session picker; north-east is up.
+          in expect.eq [s.w.k s.e.k (s.n != null) s.ne.k s.s.k s.ne.legend s.s.legend]
+            ["wm_workspace_previous" "wm_workspace_next" true "wm_workspace_up" "wm_workspace_down" "⇡" "⇣"]
+        ) compact;
+        deckSpaceGrid = let ws = filter (k: k.c != null && elem k.c.k ["wm_workspace_previous" "wm_workspace_next"]) (keys "Flotilla WM");
+          in expect.eq (map (k: [k.n.k k.s.k]) ws) [["wm_workspace_up" "wm_workspace_down"] ["wm_workspace_up" "wm_workspace_down"]];
         deckVisibilityGlyphs = genAttrs ["Flotilla WM" "Flotilla WM (Arrows)"] (name:
           let
             hide = head (filter (k: k.c != null && k.c.k == "wm_hide_all") (keys name));
