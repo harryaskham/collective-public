@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-11T14:49:38Z",
+ "generatedAt": "2026-11-11T19:12:23Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-f01ca1f3375b09ea.tar",
-  "sha256": "f01ca1f3375b09ea024b7b4ce45d129c8a10fceefb08f8251549856413f62108",
-  "bytes": 85370880
+  "asset": "shared-closure-ms-mac-af0705257f7a12fe.tar",
+  "sha256": "af0705257f7a12fe6d0263d4b3f5dbf48db3221c4d553453e7dc4e43b1571d83",
+  "bytes": 85422080
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -51,6 +51,7 @@
   "/nix/store/12y1j9ynki5sqfiqjyf7kz6lbcmkpbxk-cc-1.2.65.drv",
   "/nix/store/136234hsji9m7wr47xnvnci5587zafsy-vnc.drv",
   "/nix/store/13cl3bq8y8j9kzmd7jz42lw8nq14pha8-simplecss-0.2.2.drv",
+  "/nix/store/13z0brnam8fn47si5yaq8nqa40d5phip-pi-src-with-lock.drv",
   "/nix/store/15r90y4ayixdv6rsfslqfgwbiammili6-extended-0.1.0.drv",
   "/nix/store/17f8c8a2nkpg8j4hj6byabhamv53qvgx-cargo-package-time-0.3.47.drv",
   "/nix/store/17kpvajlz548r9xlx056f1kwkaj563py-cargo-package-float-cmp-0.10.0.drv",
@@ -308,7 +309,6 @@
   "/nix/store/7rdcdbdgl531g1g5c5cvbygi40pi2zlq-jmespath-0.5.0.drv",
   "/nix/store/7rm1kdfdd4p34h797825h2wfkvf1fcds-cargo-package-qoi-0.4.1.drv",
   "/nix/store/7rmq1mar2rrjd3qbhiryn3rxfd8bkzkq-glutin_wgl_sys-0.6.1.drv",
-  "/nix/store/7s6y80vjcbvq0amzbkcs0ad07qs6zc0p-pi-coding-agent-1.5.2.tgz.drv",
   "/nix/store/7s9idhj408c442003rzb2w6ilzkykh4c-cargo-package-cfg-if-1.0.4.drv",
   "/nix/store/7vcjf7qaw4kydp2rg39i4k0s40c8qsv5-dlopen2_derive-0.4.3.drv",
   "/nix/store/7vnza5k0mgbgh5hfrk1kws0vi036ylzy-cargo-package-getrandom-0.4.2.drv",
@@ -959,6 +959,7 @@
   "/nix/store/qvds1wi1iv582mn348vfxjnc40xnhq15-cargo-package-built-0.8.0.drv",
   "/nix/store/qw42v7nqdbfvl5w79vpx9qlvzwn0drrp-etc-099-host-keys.conf.drv",
   "/nix/store/qwm7fh967s93xm3mr35bf1j90bz7iw16-cltv-public-help.drv",
+  "/nix/store/qwwwv0iplgyqaapfikcmsxxc77bx3h1n-suplex-ghostty-kit-2.2.2026110702.drv",
   "/nix/store/qyal0vsbx9knd6amqvrlvhcbci2k5f4z-cargo-1.94.1-aarch64-apple-darwin.tar.xz.drv",
   "/nix/store/r0fx8f08xvzhbplr6rmr4yk1rxvfmrpy-indent.drv",
   "/nix/store/r133pavgf6y135m9m3pss4jw0qam06xc-symphonia-codec-pcm-0.5.5.drv",
@@ -2099,7 +2100,7 @@
   "pdf-extract-0.12.0",
   "phf_codegen-0.13.1",
   "pi-checkout",
-  "pi-coding-agent-1.5.2.tgz",
+  "pi-src-with-lock",
   "pico-args-0.5.0",
   "pillow-12.1.1",
   "platform-tools_r37.0.1-darwin.zip",
@@ -2219,6 +2220,7 @@
   "string_cache-0.9.0",
   "string_cache_codegen-0.6.1",
   "subcommands-of",
+  "suplex-ghostty-kit-2.2.2026110702",
   "svgtypes-0.15.3",
   "swift-rs-1.0.8",
   "switch-to-termux",
@@ -2389,8 +2391,8 @@
   "zune-jpeg-0.4.21"
  ],
  "counts": {
-  "notOnPublicCache": 3011,
-  "publishable": 2289,
-  "buildTops": 1197
+  "notOnPublicCache": 3015,
+  "publishable": 2294,
+  "buildTops": 1198
  }
 }
