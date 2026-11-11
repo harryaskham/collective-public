@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-10T15:50:39Z",
+ "generatedAt": "2026-11-11T03:34:43Z",
  "nixpkgs": "locked",
  "bundle": {
   "asset": "shared-closure-ms-mac.tar",
-  "sha256": "cac5e3a66b7f26b0a7ea2150b65452f494242883965c54358e51d8987e8cadfb",
-  "bytes": 85370880
+  "sha256": "fad5bf47395fe8866af65028d199842cd42a67cd63a1222f01a44c4d8845c1e3",
+  "bytes": 85381120
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -43,6 +43,7 @@
   "/nix/store/0wzxp3f65b0xb80vw194w1hna3nzbnbv-cltv-config-keyboard-unexpected.drv",
   "/nix/store/0xkk18ik1bbd0dl7il62jx579n0zbydf-gdkx11-sys-0.18.2.drv",
   "/nix/store/0y6rdqgpjdkj2hknsxn637jw1skxyj4z-anyhow-1.0.103.drv",
+  "/nix/store/0ylx126ffkhyrw5v9rghs18k4lnqfdmb-home-manager-agent-domains.drv",
   "/nix/store/10g9bjw676h677hz2kvpp41whlwgl02v-org.nixos.yabai.plist.drv",
   "/nix/store/10qwsibmivayvb5cyqxqa9n75yylbcxq-nod-adb-help.drv",
   "/nix/store/11r62ww1qnq8xdpnaagg5m40336b2yl1-cargo-package-clap-4.6.0.drv",
@@ -172,7 +173,6 @@
   "/nix/store/4bdv4r2bnpcmafzwahmlkq1av9n9hww4-cltv-debug.drv",
   "/nix/store/4c81y5v50kz8r9khnhl07jvifsapgmph-cargo-package-linux-raw-sys-0.12.1.drv",
   "/nix/store/4cmdyfxmpgi7dj8p2zhnvwsb4300qxyj-manpage-urls.json.drv",
-  "/nix/store/4ffpjx5808hm3c62bmwfjl9h9dp1ai2p-home-manager-agent-domains.drv",
   "/nix/store/4fjx2x8p2mfbha1xgminw0bmks6xqfc7-cltv-secret.drv",
   "/nix/store/4gdvkb2d63946mvbrbrwzaqyajak2spb-notify-7.0.0.drv",
   "/nix/store/4gfdgpqjqwk3jkjc2f9pjyln6kgn8i7a-json-patch-3.0.1.drv",
@@ -2389,8 +2389,8 @@
   "zune-jpeg-0.4.21"
  ],
  "counts": {
-  "notOnPublicCache": 2992,
-  "publishable": 2288,
+  "notOnPublicCache": 3005,
+  "publishable": 2289,
   "buildTops": 1197
  }
 }
