@@ -192,6 +192,19 @@ in {
         !assertion.assertion && lib.hasInfix "requiresPath must be absolute: rel" assertion.message
       ) systemRelativeRequires.assertions)
       true;
+    # The daemon must not inherit the start lock, and no starter may wait for
+    # it without limit: together they hung phone activations (2026-11-12).
+    startLockIsNotInheritedAndBounded =
+      expect.eq (lib.hasInfix "/bin/flock --close --timeout 30" (startScript systemDefault)) true;
+    activationEndsQueuedStartersBeforeStoppingTheOldInstance =
+      expect.eq (lib.hasInfix "__sd_kill_starters KILL"
+        (lib.head (lib.splitString "Stopping old instance" systemDefault.build.activationAfter.supervisord))) true;
+    activationHoldsTheLockButKeepsItFromTheDaemon =
+      expect.eq (lib.hasInfix "/bin/flock --nonblock 9" systemDefault.build.activationAfter.supervisord
+        && lib.hasInfix "/bin/supervisord-start --locked 9>&-" systemDefault.build.activationAfter.supervisord
+        && lib.hasInfix "\"\${1:-}\" = --locked" (startScript systemDefault)) true;
+    activationOutlivesAFailedStart =
+      expect.eq (lib.hasInfix "__sd_start || _sd_rc=$?" systemDefault.build.activationAfter.supervisord) true;
     reservesExecCanaryName = expect.eq
       (lib.any (assertion:
         !assertion.assertion

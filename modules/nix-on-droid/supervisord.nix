@@ -160,6 +160,23 @@ with lib; let
 
   flock = "${pkgs.util-linux}/bin/flock";
   lockFile = "${cfg.stateDir}/run/supervisord.lock";
+  # Longest a starter waits for the lock. A holder is another starter: at most
+  # an exec canary probe, a shutdown of the old instance and supervisord's own
+  # start, a few seconds under proot.
+  startLockTimeout = 30;
+  # A timed-out wait, told apart from the inner script's own failures.
+  startLockBusy = 75;
+
+  # Ends every starter: those waiting for the lock and one inside the inner
+  # script. A starter left waiting takes the lock the moment the running
+  # supervisord stops and starts one from its own, possibly older, generation.
+  sdKillStartersFn = ''
+    __sd_kill_starters() {
+      for __p in $(${pkgs.procps}/bin/pgrep -f 'supervisord-start-inner' 2>/dev/null || true); do
+        kill "-$1" "$__p" 2>/dev/null || true
+      done
+    }
+  '';
 
   # Shared shell helpers (bd-63202d). A bare pidfile-alive or port-open probe
   # cannot tell a CURRENT-generation supervisord from a wedged or
@@ -208,7 +225,22 @@ with lib; let
     mkdir -p "$STATEDIR"/{run,log}
     ${optionalString (programDirs != []) "mkdir -p ${escapeShellArgs programDirs}"}
 
-    exec ${flock} "$LOCKFILE" ${supervisord-start-inner}/bin/supervisord-start-inner
+    # An activation holds the lock itself across its stop and start.
+    if [ "''${1:-}" = --locked ]; then
+      exec ${supervisord-start-inner}/bin/supervisord-start-inner
+    fi
+
+    # The lock covers the start only. --close keeps the lock's descriptor out
+    # of the inner script, and so out of the supervisord it becomes. Without it
+    # the daemon held the lock for its whole life: every later starter queued
+    # behind it for good, and when an activation stopped supervisord the oldest
+    # queued starter took the lock and started its own generation's supervisord,
+    # which left the activation's start waiting forever (astra and sgu24,
+    # 2026-11-12: switches hung at "Activating supervisord" for hours).
+    # --timeout bounds the wait whatever holds the lock.
+    exec ${flock} --close --timeout ${toString startLockTimeout} \
+      --conflict-exit-code ${toString startLockBusy} \
+      "$LOCKFILE" ${supervisord-start-inner}/bin/supervisord-start-inner
   '' // {
     # For tests: the locked inner script links conditional programs.
     inherit supervisord-start-inner;
@@ -369,6 +401,22 @@ in {
       build.activationAfter.supervisord = ''
         PIDFILE="${pidFile}"
 
+        # End starters queued on the lock before the old instance stops and
+        # releases it, or the oldest of them starts a supervisord first.
+        ${sdKillStartersFn}
+        __sd_kill_starters KILL
+
+        # Hold the start lock from here until this generation's supervisord is
+        # up. A shell opened meanwhile sees no supervisord and tries to start
+        # one (the shell.init check below); with the lock held it waits
+        # instead of starting a second instance in the middle of the restart.
+        # Descriptor 9 is closed for the start itself, or the daemon would
+        # inherit the lock and keep it.
+        mkdir -p "${cfg.stateDir}/run"
+        exec 9>>"${lockFile}"
+        _sd_locked=0
+        if ${flock} --nonblock 9; then _sd_locked=1; fi
+
         # Kill any existing supervisord and ALL its children
         if [ -f "$PIDFILE" ]; then
           OLD_PID=$(cat "$PIDFILE" 2>/dev/null)
@@ -415,11 +463,36 @@ in {
           done
         }
         __sd_sweep_orphans TERM
+        if [ "$_sd_locked" = 0 ]; then
+          # The old instance held the lock itself: it was started before the
+          # lock stopped being inherited. It has let go now, or soon will.
+          if ${flock} --timeout ${toString startLockTimeout} 9; then _sd_locked=1; fi
+        fi
         # Give trap-based cleanups a moment, then SIGKILL any survivors.
         sleep 1
+        # That includes a supervisord some starter brought up before the lock
+        # was ours.
+        __sd_kill_starters KILL
         __sd_sweep_orphans KILL
 
-        $DRY_RUN_CMD ${supervisord-start}/bin/supervisord-start
+        # With the lock held, start under it. Without it (something else still
+        # holds it), start the ordinary way, which waits for the lock a bounded
+        # time. A failed start must not end the activation here: the
+        # post-condition below decides, and replaces whatever is in the way.
+        __sd_start() {
+          if [ "$_sd_locked" = 1 ]; then
+            ${supervisord-start}/bin/supervisord-start --locked 9>&-
+          else
+            ${supervisord-start}/bin/supervisord-start 9>&-
+          fi
+        }
+        _sd_rc=0
+        $DRY_RUN_CMD __sd_start || _sd_rc=$?
+        if [ "$_sd_rc" = ${toString startLockBusy} ]; then
+          echo "[supervisord] start lock still held after ${toString startLockTimeout}s" >&2
+        elif [ "$_sd_rc" != 0 ]; then
+          echo "[supervisord] start exited $_sd_rc" >&2
+        fi
 
         # Post-condition (bd-63202d): assert the now-running supervisord serves
         # THIS generation's config. If a stale/old-generation instance survived
@@ -432,16 +505,27 @@ in {
           ${sdRunningConfFn}
           _sd_pid=$(__sd_running_pid)
           _sd_conf=$(__sd_running_conf "$_sd_pid")
+          _sd_replace=""
           if [ -n "$_sd_conf" ] && [ "$_sd_conf" != "${configFile}" ]; then
-            echo "[supervisord] post-activation: running config '$_sd_conf' != current '${configFile}'; forcing replacement" >&2
+            _sd_replace="running config '$_sd_conf' != current '${configFile}'"
+          elif [ "$_sd_rc" != 0 ] && [ -z "$_sd_pid" ]; then
+            _sd_replace="nothing is running after a failed start"
+          fi
+          if [ -n "$_sd_replace" ]; then
+            echo "[supervisord] post-activation: $_sd_replace; forcing replacement" >&2
+            __sd_kill_starters KILL
             ${supervisorctl-wrapped}/bin/supervisorctl shutdown 2>/dev/null || true
             ${pkgs.coreutils}/bin/sleep 1
             [ -n "$_sd_pid" ] && kill -9 "$_sd_pid" 2>/dev/null || true
             rm -f "${pidFile}"
-            ${supervisord-start}/bin/supervisord-start
+            __sd_start
           fi
-          unset _sd_pid _sd_conf
+          unset _sd_pid _sd_conf _sd_replace
         fi
+        # Starters that queued meanwhile have nothing left to do.
+        __sd_kill_starters KILL
+        exec 9>&-
+        unset _sd_rc _sd_locked
       '';
 
       # Belt-and-suspenders: also check on every shell open.
