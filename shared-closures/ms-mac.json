@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-11T19:12:23Z",
+ "generatedAt": "2026-11-12T05:08:39Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-af0705257f7a12fe.tar",
-  "sha256": "af0705257f7a12fe6d0263d4b3f5dbf48db3221c4d553453e7dc4e43b1571d83",
-  "bytes": 85422080
+  "asset": "shared-closure-ms-mac-cad26f6172c02971.tar",
+  "sha256": "cad26f6172c029714453e67bfdb6f4f82794ab48d560d2ba3f660ab1ed898b13",
+  "bytes": 85452800
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -60,6 +60,7 @@
   "/nix/store/1bdgwv7lwnlxjp96xyhkr60vfylcz6qy-wgpu-core-deps-windows-linux-android-30.0.1.drv",
   "/nix/store/1blfw85b00q690bv3nmkyl24sk7njihg-cltv-pi-help.drv",
   "/nix/store/1bx7kym6z69yh4m8mpmgjih1jd0wr1yx-ctor-proc-macro-0.0.7.drv",
+  "/nix/store/1by31g05hi0fn1rsf7frv49an0q1lb6m-vimplugin-vim-rex-navigator-0-unstable-2026-10-18.drv",
   "/nix/store/1bzcxa5l6r6f16pbdp8wp6ih231ggrqb-gdkx11-0.18.2.drv",
   "/nix/store/1cj278qixd9xz3ikf574wj27f7gmyqry-rex.drv",
   "/nix/store/1cymgpk1x21z0pk4chl2cd63vv0kk0pf-cargo-package-tracing-log-0.2.0.drv",
@@ -181,6 +182,7 @@
   "/nix/store/4hs496wycx630w02caj2nqiqsw6sly0x-cargo-package-wasm-bindgen-0.2.118.drv",
   "/nix/store/4jni3ipbzrq068cvha36byyj5vhfynxq-compression-codecs-0.4.37.drv",
   "/nix/store/4jx16l8ww2xag9dvz5gda0j77f6l1gbs-adb-stream.drv",
+  "/nix/store/4k5id7arby4fmpvml2iv2pnj044vdbcy-org.nixos.jankyborders.plist.drv",
   "/nix/store/4m15grkjwaplhpyy3w5j61ma1x78mgys-herdr-libghostty-vt-zig-cache.drv",
   "/nix/store/4m3phnq42z2h2rrwhmmgp84ph8farkw1-rustls-pki-types-1.15.1.drv",
   "/nix/store/4m44p7bvjfsp6ls3adcrnhgnah4nycw2-cargo-package-once_cell-1.21.4.drv",
@@ -349,6 +351,7 @@
   "/nix/store/8rcsvhfa6bflyg7fs76kwc88alas6g28-websockets-16.0.drv",
   "/nix/store/8rhhyqkf7bx828hxpi7sj6zsqck2930g-urlpattern-0.3.0.drv",
   "/nix/store/8scmxcyyz9kvpgq2ifz7lmyiqpfd5zg2-vimplugin-vim-easymotion-3.0.1-unstable-2022-04-04.drv",
+  "/nix/store/8v07gh2gi9mkpsbb5mbd74k00wi5xynr-codex-unwrapped.drv",
   "/nix/store/8v1v4q5k1hfjiy23lfra39y58iv0ihyw-cargo-package-png-0.18.1.drv",
   "/nix/store/8vdxsxkmr9w0yk3gzphp7fcqra4pr8qn-cargo-package-event-listener-5.4.1.drv",
   "/nix/store/8vyz56s9i12fx9f9w5j02n6530f8vs74-gix-submodule-0.25.0.drv",
@@ -575,6 +578,7 @@
   "/nix/store/g19y1h8gi21vqaqac1sj8bq8w8z2y839-hm_gtk3.0settings.ini.drv",
   "/nix/store/g3y0xa0b6hm9d06l99lxhj0km05bgllb-cargo-package-zmij-1.0.21.drv",
   "/nix/store/g5d1wcxhmm0n00l67kk79s4jy4hir7bp-cargo-package-nix-0.25.1.drv",
+  "/nix/store/g5v7nc3qx0grkil9987ps6knld56r4va-home-manager-agent-domains.drv",
   "/nix/store/g65hkmgz7m0p82kx5j0950l9r2bcr32x-cargo-package-colorchoice-1.0.5.drv",
   "/nix/store/g6f7zrhx8ww9ym8g2qsm3s9kvidw2ilc-cargo-package-bit-vec-0.8.0.drv",
   "/nix/store/g6ywp5kh88f4yb62r1p0ckl35p34dnyf-cargo-package-wasm-bindgen-0.2.117.drv",
@@ -740,7 +744,6 @@
   "/nix/store/klwkkk53fjyfmbzbq7lcd882bq3qza5b-lopdf-0.42.0.drv",
   "/nix/store/kmxj68hlg0hd4a38hchnglkb9c6hwi3y-defmt-1.1.1.drv",
   "/nix/store/kn66x4jm32njybdiqfqs5vgi5fzs31wb-cargo-package-semver-1.0.28.drv",
-  "/nix/store/kn7w8cjfalacjz3g37z0kq4b6gnv43nv-home-manager-agent-domains.drv",
   "/nix/store/kpnjhsizfqd0qqyg7q7pyfvnz1bmgi9l-coreaudio-sys-0.2.17.drv",
   "/nix/store/kqvn482abhc3kxkw9x5sswsk4fzihyq6-gix-prompt-0.13.1.drv",
   "/nix/store/krd1ys8am1s2682l93fqzm2vazh80c84-cargo-package-image-webp-0.2.4.drv",
@@ -1159,7 +1162,6 @@
   "/nix/store/yprqch5bkqkjrbpc1j31g7jlq3gg6vfd-cargo-package-flate2-1.1.9.drv",
   "/nix/store/yr2fj8bc9jr9czqnfd2i7fl4lwlcnbwp-cargo-package-noop_proc_macro-0.3.0.drv",
   "/nix/store/ys3fr13rfj3wb16gfa1487z8n5xyblsn-gix-shallow-0.8.1.drv",
-  "/nix/store/ys6d6v89pwzilcqmlwd7xq3srj9z0zi1-codex-unwrapped.drv",
   "/nix/store/yvqi41602pcgcddy54rjgqxacx4jvwvb-ecb-0.1.2.drv",
   "/nix/store/yvssrvbm3dqm7ndvknpg7l355ghri5na-trove-classifiers-2026.1.14.14.drv",
   "/nix/store/yz0ijxby8iqqhkflsbjla2axfnvpvy40-cargo-package-anstream-1.0.0.drv",
@@ -2088,6 +2090,7 @@
   "oid-registry-0.7.1",
   "org-mcp-0.0.6",
   "org.collective.linux-vm.socket-vmnet.plist",
+  "org.nixos.jankyborders.plist",
   "org.nixos.nix-gc-weekly.plist",
   "org.nixos.skhd.plist",
   "org.nixos.yabai.plist",
@@ -2325,6 +2328,7 @@
   "vimplugin-nord-vim-0.19.0-unstable-2023-05-03",
   "vimplugin-vim-airline-themes-0-unstable-2025-09-22",
   "vimplugin-vim-easymotion-3.0.1-unstable-2022-04-04",
+  "vimplugin-vim-rex-navigator-0-unstable-2026-10-18",
   "vimplugin-vim-sensible-2.0-unstable-2024-06-08",
   "vivaldi-socks",
   "vnc",
@@ -2391,8 +2395,8 @@
   "zune-jpeg-0.4.21"
  ],
  "counts": {
-  "notOnPublicCache": 3015,
-  "publishable": 2294,
-  "buildTops": 1198
+  "notOnPublicCache": 3025,
+  "publishable": 2298,
+  "buildTops": 1200
  }
 }
