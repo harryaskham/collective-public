@@ -2,11 +2,11 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-13T13:12:10Z",
+ "generatedAt": "2026-11-13T13:23:04Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-1eb305382ff4a9d0.tar",
-  "sha256": "1eb305382ff4a9d0c03d0b78794fbe61a9435697d0d0dcf0ad1126ed1b692219",
+  "asset": "shared-closure-ms-mac-6ab78c24fc18b656.tar",
+  "sha256": "6ab78c24fc18b65697c471e5f6aa4be07b4965d7afc45b5b51bf93e56882497c",
   "bytes": 85463040
  },
  "tops": [
@@ -581,7 +581,6 @@
   "/nix/store/g6f7zrhx8ww9ym8g2qsm3s9kvidw2ilc-cargo-package-bit-vec-0.8.0.drv",
   "/nix/store/g6ywp5kh88f4yb62r1p0ckl35p34dnyf-cargo-package-wasm-bindgen-0.2.117.drv",
   "/nix/store/g7vqbz1hjprh56nnsfznwg1sxxij9am2-cargo-package-libfuzzer-sys-0.4.12.drv",
-  "/nix/store/g8y8d93whigk09ka8x0i8anqbwpg100g-codex-unwrapped.drv",
   "/nix/store/gcx6f84kxznyhawrdwhg0ykydxc01is4-charset-normalizer-3.4.4.drv",
   "/nix/store/gd8ax24qzswjxaaagda3lrsh2j0l02cz-predicates-3.1.4.drv",
   "/nix/store/gdnrz5rwady5wsjhcv8x444cfv8kwx5f-cltv-pi.drv",
@@ -696,6 +695,7 @@
   "/nix/store/jb2axrd2k716f4j91k2hdmnfwnbzi1gd-compact_str-0.8.2.drv",
   "/nix/store/jbbzbpk5rbcjsxaf19f3y62jk6jv4hnm-cargo-package-num-derive-0.4.2.drv",
   "/nix/store/jbiyg3wy8xdxahd0cr9criljj45ivf9m-toml_datetime-0.6.3.drv",
+  "/nix/store/jd0n6mr6jfzi4rn1c0ij158x2dr4gpda-codex-unwrapped.drv",
   "/nix/store/jd1490fk6kk060zb93r0gc7aqyj8njz6-cargo-package-imgref-1.12.0.drv",
   "/nix/store/jf638r5223xfvzd5gl9xfjp1r0r3ijpl-cargo-package-nom-8.0.0.drv",
   "/nix/store/jfnakzvb0bjrfmpabp9arr27ix7w581w-darwin-version.json.drv",
