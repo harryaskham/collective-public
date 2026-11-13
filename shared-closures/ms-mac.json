@@ -2,11 +2,11 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-13T00:12:25Z",
+ "generatedAt": "2026-11-13T03:08:10Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-9e3053820d15263f.tar",
-  "sha256": "9e3053820d15263f09481b2264514b4ce2eecd9dd3660366eb84ce5f2af95804",
+  "asset": "shared-closure-ms-mac-1e31a7883c857baa.tar",
+  "sha256": "1e31a7883c857baacd0313d2a101d20d8fa8053c0d8a741003e2cfad8320bfd6",
   "bytes": 85463040
  },
  "tops": [
@@ -325,7 +325,6 @@
   "/nix/store/87vdhb3srah70axqrs2idy9z7rziwmsi-atuin-zsh-init.drv",
   "/nix/store/88hyimv579ii9mvxwmb85wy0m6b5kj64-six-1.17.0.drv",
   "/nix/store/891983442g2w471az8vyr5vl40wilfmz-cargo-package-scopeguard-1.2.0.drv",
-  "/nix/store/893jw0qk7ri37yb6cs9n4rkn20wp22sj-claude-tmux-warn.drv",
   "/nix/store/89c7sk9m37q1fwr55a1ygcaav09rrsgj-typing-extensions-4.15.0.drv",
   "/nix/store/89dl6j85hv4jw2lhav0k9ysaishg4hn7-launchd-empty-restart-triggers.json.drv",
   "/nix/store/8a507z9g9lbmn79fzcps80w8z56ww7lk-cargo-package-unicode-xid-0.2.6.drv",
@@ -996,6 +995,7 @@
   "/nix/store/rxl27jlvhf44zwmspmz2g37fkjz3gdlg-cargo-package-r-efi-5.3.0.drv",
   "/nix/store/ry0phpaszzbqbbk4qmj4qa2il1iqr5bl-cargo-package-xdg-home-1.3.0.drv",
   "/nix/store/ry7d9h0is6c7fnzdlvcx7b1hgnj9i1fa-cargo-package-serde_core-1.0.228.drv",
+  "/nix/store/rz27p1bnginywfk845bdr534p8jy4i93-claude-tmux-warn.drv",
   "/nix/store/rz8cdywaml29kcp2i3npzas2im3i7f5l-zerofrom-0.1.7.drv",
   "/nix/store/s084dhkzz7mq5zch2i6d04grmsm5nrf5-cargo-package-futures-util-0.3.32.drv",
   "/nix/store/s0ranifdbq1pxwhbd9k5bidq8m1rx8f4-ghostty-run.drv",
