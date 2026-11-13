@@ -2,11 +2,11 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-13T13:23:04Z",
+ "generatedAt": "2026-11-13T17:19:51Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-6ab78c24fc18b656.tar",
-  "sha256": "6ab78c24fc18b65697c471e5f6aa4be07b4965d7afc45b5b51bf93e56882497c",
+  "asset": "shared-closure-ms-mac-22906f80fd9558d7.tar",
+  "sha256": "22906f80fd9558d71ed463b675dcbc629e68e7430c7251a15e8b77f490eb7957",
   "bytes": 85463040
  },
  "tops": [
@@ -18,6 +18,7 @@
   "/nix/store/0am0d5kcxn6s6anhqp8s110dqwbp65kv-cairo-sys-rs-0.18.2.drv",
   "/nix/store/0chk66i1hn6bp2vyr02vs5vjhplhifww-cargo-package-lebe-0.5.3.drv",
   "/nix/store/0cxlk4ynf21q54jig1nm881sg6r7bxl7-gix-features-0.46.2.drv",
+  "/nix/store/0dic9p32gvwr9qzqfmi647x1vabp0297-agent-utils-durable-extensions.drv",
   "/nix/store/0dr1p41iyq2wr21yx4liwmbr3al1kmdq-etc-sudo_local.drv",
   "/nix/store/0dsan4f4wg2xazaw8w32lgv08zw6675r-cargo-package-proc-macro2-1.0.106.drv",
   "/nix/store/0f4lj7qxymq9pj8m56ajcaqvahj52qqz-toml_edit-0.25.12+spec-1.1.0.drv",
@@ -475,6 +476,7 @@
   "/nix/store/cdrkjv9cxc0lcgb80b061vk84hzv5qbk-cargo-package-fastrand-2.4.1.drv",
   "/nix/store/cffn20rkjvczb0bzbzr0cv582lzpvg6p-cltv-file.drv",
   "/nix/store/cfz9hgvzpmspnykkcd1z6n65zn7jc1ik-cltv-kv-help.drv",
+  "/nix/store/cgbjhkf4i8yds6a9jz5nwmg8impg8y48-home-manager-agent-domains.drv",
   "/nix/store/cgf6d5zyxihgvbvyb63akavz9bsz9f10-cargo-package-serde_repr-0.1.20.drv",
   "/nix/store/cgj3hlgq4avy3hmzv1chbkmzkgcl9ll7-cargo-package-ravif-0.13.0.drv",
   "/nix/store/ch0fbllld05wph9p6r15pkfsr324b25i-raw-window-metal-1.1.0.drv",
@@ -576,7 +578,6 @@
   "/nix/store/g19y1h8gi21vqaqac1sj8bq8w8z2y839-hm_gtk3.0settings.ini.drv",
   "/nix/store/g3y0xa0b6hm9d06l99lxhj0km05bgllb-cargo-package-zmij-1.0.21.drv",
   "/nix/store/g5d1wcxhmm0n00l67kk79s4jy4hir7bp-cargo-package-nix-0.25.1.drv",
-  "/nix/store/g5v7nc3qx0grkil9987ps6knld56r4va-home-manager-agent-domains.drv",
   "/nix/store/g65hkmgz7m0p82kx5j0950l9r2bcr32x-cargo-package-colorchoice-1.0.5.drv",
   "/nix/store/g6f7zrhx8ww9ym8g2qsm3s9kvidw2ilc-cargo-package-bit-vec-0.8.0.drv",
   "/nix/store/g6ywp5kh88f4yb62r1p0ckl35p34dnyf-cargo-package-wasm-bindgen-0.2.117.drv",
@@ -893,7 +894,6 @@
   "/nix/store/nxk5f82w4mzk5s8631fnjrwpwflndkcn-futures-sink-0.3.33.drv",
   "/nix/store/nxk776ni6pid209crfqp4i3fv9n84w5a-cltv-kv-get.drv",
   "/nix/store/nxlbvav1gik2gamyszcfmxrmrd7f6cbn-confirm.drv",
-  "/nix/store/nyczc4vziw27ii33sk41w9v6rcav1b2p-agent-utils-durable-extensions.drv",
   "/nix/store/nywi26h97z8kaca7q1wjy2bsajak6yj1-cargo-package-tokio-1.51.0.drv",
   "/nix/store/nyzp9zfm7acpff3w9i646s1fyxdvz9k7-nullhup.drv",
   "/nix/store/nz8mixn2gd44wp5wb9ld175z1kpw4ahf-serialize-to-javascript-0.1.2.drv",
@@ -2395,8 +2395,8 @@
   "zune-jpeg-0.4.21"
  ],
  "counts": {
-  "notOnPublicCache": 3027,
-  "publishable": 2298,
+  "notOnPublicCache": 3036,
+  "publishable": 2299,
   "buildTops": 1200
  }
 }
