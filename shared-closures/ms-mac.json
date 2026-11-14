@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-13T21:43:14Z",
+ "generatedAt": "2026-11-14T04:38:00Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-5f34bb6ba8105b0f.tar",
-  "sha256": "5f34bb6ba8105b0ff7d602daf8111918433a758eaa2fc95c41cf5a9ea92c6034",
-  "bytes": 85432320
+  "asset": "shared-closure-ms-mac-43544aada5567018.tar",
+  "sha256": "43544aada5567018e42b54383f6b7269850c49ea1ed1b3b3825179f0f3d5dac2",
+  "bytes": 85473280
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -52,6 +52,7 @@
   "/nix/store/12y1j9ynki5sqfiqjyf7kz6lbcmkpbxk-cc-1.2.65.drv",
   "/nix/store/136234hsji9m7wr47xnvnci5587zafsy-vnc.drv",
   "/nix/store/13cl3bq8y8j9kzmd7jz42lw8nq14pha8-simplecss-0.2.2.drv",
+  "/nix/store/13z0brnam8fn47si5yaq8nqa40d5phip-pi-src-with-lock.drv",
   "/nix/store/15r90y4ayixdv6rsfslqfgwbiammili6-extended-0.1.0.drv",
   "/nix/store/17f8c8a2nkpg8j4hj6byabhamv53qvgx-cargo-package-time-0.3.47.drv",
   "/nix/store/17kpvajlz548r9xlx056f1kwkaj563py-cargo-package-float-cmp-0.10.0.drv",
@@ -311,7 +312,6 @@
   "/nix/store/7rdcdbdgl531g1g5c5cvbygi40pi2zlq-jmespath-0.5.0.drv",
   "/nix/store/7rm1kdfdd4p34h797825h2wfkvf1fcds-cargo-package-qoi-0.4.1.drv",
   "/nix/store/7rmq1mar2rrjd3qbhiryn3rxfd8bkzkq-glutin_wgl_sys-0.6.1.drv",
-  "/nix/store/7s6y80vjcbvq0amzbkcs0ad07qs6zc0p-pi-coding-agent-1.5.2.tgz.drv",
   "/nix/store/7s9idhj408c442003rzb2w6ilzkykh4c-cargo-package-cfg-if-1.0.4.drv",
   "/nix/store/7vcjf7qaw4kydp2rg39i4k0s40c8qsv5-dlopen2_derive-0.4.3.drv",
   "/nix/store/7vnza5k0mgbgh5hfrk1kws0vi036ylzy-cargo-package-getrandom-0.4.2.drv",
@@ -476,7 +476,6 @@
   "/nix/store/cdrkjv9cxc0lcgb80b061vk84hzv5qbk-cargo-package-fastrand-2.4.1.drv",
   "/nix/store/cffn20rkjvczb0bzbzr0cv582lzpvg6p-cltv-file.drv",
   "/nix/store/cfz9hgvzpmspnykkcd1z6n65zn7jc1ik-cltv-kv-help.drv",
-  "/nix/store/cgbjhkf4i8yds6a9jz5nwmg8impg8y48-home-manager-agent-domains.drv",
   "/nix/store/cgf6d5zyxihgvbvyb63akavz9bsz9f10-cargo-package-serde_repr-0.1.20.drv",
   "/nix/store/cgj3hlgq4avy3hmzv1chbkmzkgcl9ll7-cargo-package-ravif-0.13.0.drv",
   "/nix/store/ch0fbllld05wph9p6r15pkfsr324b25i-raw-window-metal-1.1.0.drv",
@@ -673,6 +672,7 @@
   "/nix/store/ih6wy8pz9lw7dsc3mq9csiis34vrjb5f-gix-protocol-0.56.0.drv",
   "/nix/store/ihsh6c37rq421703i6pka5j0zbnb33i7-serial2-0.2.36.drv",
   "/nix/store/iji28qi793vcj4i0fili232hwxqpn2vy-cargo-package-memoffset-0.6.5.drv",
+  "/nix/store/im1d2ha63lrk6fnc1smrk4y657lq4din-home-manager-agent-domains.drv",
   "/nix/store/imkrij0qipjlsckgckljld14vy0d4dhz-rand_pcg-0.10.2.drv",
   "/nix/store/in0p6w4rdawhbw8hz2dwxcqmrkbxvr1h-cargo-package-futures-io-0.3.32.drv",
   "/nix/store/in9l23hlvk9pklzd1lar6j2r2rx5zsry-gix-odb-0.75.0.drv",
@@ -2103,7 +2103,7 @@
   "pdf-extract-0.12.0",
   "phf_codegen-0.13.1",
   "pi-checkout",
-  "pi-coding-agent-1.5.2.tgz",
+  "pi-src-with-lock",
   "pico-args-0.5.0",
   "pillow-12.1.1",
   "platform-tools_r37.0.1-darwin.zip",
@@ -2395,8 +2395,8 @@
   "zune-jpeg-0.4.21"
  ],
  "counts": {
-  "notOnPublicCache": 3036,
-  "publishable": 2298,
+  "notOnPublicCache": 3039,
+  "publishable": 2300,
   "buildTops": 1200
  }
 }
