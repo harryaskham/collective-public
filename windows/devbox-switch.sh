@@ -251,7 +251,7 @@ preflight_devbox_registration() {
   age="$(ssh-to-age -private-key -i "$KEY")"
   for secret in \
     "[\"keys\"][\"nix\"][\"attic\"][\"caches\"][\"$DEVBOX_HOST\"][\"server_env\"]" \
-    '["keys"]["cacophony"]["ts"]["devbox-pool"]' \
+    '["keys"]["tailscale"]["joining"]["devbox-pool"]' \
     '["keys"]["github"]["personal"]'; do
     if ! SOPS_AGE_KEY="$age" sops decrypt --extract "$secret" "$SECRETS_FILE" >/dev/null 2>&1; then
       echo "ERROR: required sops value $secret is missing or not decryptable with the bootstrap key" >&2

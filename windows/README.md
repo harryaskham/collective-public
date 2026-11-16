@@ -438,7 +438,7 @@ these first:
 5. Ensure the reused/new age recipient can decrypt `secrets.yaml`. Reusing an
    already-enrolled key such as `ms-mac` needs no new recipient; a genuinely new
    key requires re-keying the sops file.
-6. Ensure the shared `keys/cacophony/ts/devbox-pool` Tailscale auth key is
+6. Ensure the shared `keys/tailscale/joining/devbox-pool` Tailscale auth key is
    present in sops.
 
 Commit and push these changes before running bootstrap. Missing `flake.nix`,
