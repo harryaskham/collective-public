@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-17T09:34:15Z",
+ "generatedAt": "2026-11-17T15:53:00Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-afc58a0c792bac8b.tar",
-  "sha256": "afc58a0c792bac8bffc2a59e1ef6df484dc85fe45a19587e5bc853f2fa1500c3",
-  "bytes": 86968320
+  "asset": "shared-closure-ms-mac-b4a6642ee723d6c4.tar",
+  "sha256": "b4a6642ee723d6c45232de94280006cde7c4391d19fec9572fb31a83afa6a034",
+  "bytes": 86978560
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -51,7 +51,6 @@
   "/nix/store/12y1j9ynki5sqfiqjyf7kz6lbcmkpbxk-cc-1.2.65.drv",
   "/nix/store/136234hsji9m7wr47xnvnci5587zafsy-vnc.drv",
   "/nix/store/13cl3bq8y8j9kzmd7jz42lw8nq14pha8-simplecss-0.2.2.drv",
-  "/nix/store/13z0brnam8fn47si5yaq8nqa40d5phip-pi-src-with-lock.drv",
   "/nix/store/15r90y4ayixdv6rsfslqfgwbiammili6-extended-0.1.0.drv",
   "/nix/store/17f8c8a2nkpg8j4hj6byabhamv53qvgx-cargo-package-time-0.3.47.drv",
   "/nix/store/17kpvajlz548r9xlx056f1kwkaj563py-cargo-package-float-cmp-0.10.0.drv",
@@ -263,9 +262,9 @@
   "/nix/store/6nk9ppskp52ddpv7dn4ngab4r9xl5ihh-cltv-file-xdg.drv",
   "/nix/store/6pb89hd526af1r7i66g67yl7j8g7i32a-spirv-0.4.0+sdk-1.4.341.0.drv",
   "/nix/store/6pwy444aaa7ffzslxdlbmq6pb0abipn2-cargo-package-gif-0.14.1.drv",
+  "/nix/store/6rrkwfmik1madyff7iy4yabx50fn7xh7-cargo-vendor-dir.drv",
   "/nix/store/6rvm00y0z2p4bxf7j6rcr0nsapcsyngm-cargo-package-wait-timeout-0.2.1.drv",
   "/nix/store/6rys7anc191iksdp0z8wpn3ch0gksqkv-typed-path-0.12.3.drv",
-  "/nix/store/6skclr5j40b251qwjzlxhkmd8qan3rqm-cargo-vendor-dir.drv",
   "/nix/store/6ssyd4m76fm08vp70r0k5xzrv8j3f4kc-cargo-package-notify-7.0.0.drv",
   "/nix/store/6svnkcrp156fzzgx8a6mdswjrd8528qs-dom_query-0.27.0.drv",
   "/nix/store/6w3bnyjix3i95px2nyvw0sh15kax6gy5-gix-index-0.46.0.drv",
@@ -309,6 +308,7 @@
   "/nix/store/7rdcdbdgl531g1g5c5cvbygi40pi2zlq-jmespath-0.5.0.drv",
   "/nix/store/7rm1kdfdd4p34h797825h2wfkvf1fcds-cargo-package-qoi-0.4.1.drv",
   "/nix/store/7rmq1mar2rrjd3qbhiryn3rxfd8bkzkq-glutin_wgl_sys-0.6.1.drv",
+  "/nix/store/7s6y80vjcbvq0amzbkcs0ad07qs6zc0p-pi-coding-agent-1.5.2.tgz.drv",
   "/nix/store/7s9idhj408c442003rzb2w6ilzkykh4c-cargo-package-cfg-if-1.0.4.drv",
   "/nix/store/7vcjf7qaw4kydp2rg39i4k0s40c8qsv5-dlopen2_derive-0.4.3.drv",
   "/nix/store/7vnza5k0mgbgh5hfrk1kws0vi036ylzy-cargo-package-getrandom-0.4.2.drv",
@@ -334,6 +334,7 @@
   "/nix/store/8fsjxvv10gyq349nds3n2pa4cxkyj7fx-cargo-package-icu_properties-2.2.0.drv",
   "/nix/store/8gqqvx53rlng732mkffgg7cn2vfspd5d-cargo-package-serde_yaml-0.9.34+deprecated.drv",
   "/nix/store/8gvx60jkp9pzm434hglwzspqjwmnlsqv-error-code-3.3.2.drv",
+  "/nix/store/8hfl1xd46z6gvf52hc6y47dbpbd6536d-suplex-ghostty-kit-2.2.2026111701.drv",
   "/nix/store/8hxvcbxscypp29s5zgmv7b7cxpixsdpn-syncthing-collective-stignore.drv",
   "/nix/store/8ilbk45qz1zc8bqd1fbjag960xq2a3pm-cltv-secret-help.drv",
   "/nix/store/8jx2pvbbgwvwn1lb6125aygn877dsb6y-oid-registry-0.7.1.drv",
@@ -948,7 +949,6 @@
   "/nix/store/qvds1wi1iv582mn348vfxjnc40xnhq15-cargo-package-built-0.8.0.drv",
   "/nix/store/qw42v7nqdbfvl5w79vpx9qlvzwn0drrp-etc-099-host-keys.conf.drv",
   "/nix/store/qwm7fh967s93xm3mr35bf1j90bz7iw16-cltv-public-help.drv",
-  "/nix/store/qwwwv0iplgyqaapfikcmsxxc77bx3h1n-suplex-ghostty-kit-2.2.2026110702.drv",
   "/nix/store/qyal0vsbx9knd6amqvrlvhcbci2k5f4z-cargo-1.94.1-aarch64-apple-darwin.tar.xz.drv",
   "/nix/store/r0fx8f08xvzhbplr6rmr4yk1rxvfmrpy-indent.drv",
   "/nix/store/r133pavgf6y135m9m3pss4jw0qam06xc-symphonia-codec-pcm-0.5.5.drv",
@@ -2074,7 +2074,7 @@
   "pdf-extract-0.12.0",
   "phf_codegen-0.13.1",
   "pi-checkout",
-  "pi-src-with-lock",
+  "pi-coding-agent-1.5.2.tgz",
   "pico-args-0.5.0",
   "pillow-12.1.1",
   "platform-tools_r37.0.1-darwin.zip",
@@ -2191,7 +2191,7 @@
   "string_cache-0.9.0",
   "string_cache_codegen-0.6.1",
   "subcommands-of",
-  "suplex-ghostty-kit-2.2.2026110702",
+  "suplex-ghostty-kit-2.2.2026111701",
   "svgtypes-0.15.3",
   "swift-rs-1.0.8",
   "switch-to-termux",
@@ -2360,8 +2360,8 @@
   "zune-jpeg-0.4.21"
  ],
  "counts": {
-  "notOnPublicCache": 3169,
-  "publishable": 2420,
+  "notOnPublicCache": 3172,
+  "publishable": 2422,
   "buildTops": 1182
  }
 }
