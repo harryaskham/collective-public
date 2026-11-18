@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-17T21:47:59Z",
+ "generatedAt": "2026-11-18T00:00:29Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-7d1ad5459fac03f0.tar",
-  "sha256": "7d1ad5459fac03f0e0da25b792dd04e00980f4ab59f005b41230fbd80025c74d",
-  "bytes": 87009280
+  "asset": "shared-closure-ms-mac-2490184192797ce9.tar",
+  "sha256": "2490184192797ce968c32289751aec5f6c2355c5b7365d7314c8f3562c7612de",
+  "bytes": 86978560
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -51,7 +51,6 @@
   "/nix/store/12y1j9ynki5sqfiqjyf7kz6lbcmkpbxk-cc-1.2.65.drv",
   "/nix/store/136234hsji9m7wr47xnvnci5587zafsy-vnc.drv",
   "/nix/store/13cl3bq8y8j9kzmd7jz42lw8nq14pha8-simplecss-0.2.2.drv",
-  "/nix/store/13z0brnam8fn47si5yaq8nqa40d5phip-pi-src-with-lock.drv",
   "/nix/store/15r90y4ayixdv6rsfslqfgwbiammili6-extended-0.1.0.drv",
   "/nix/store/17f8c8a2nkpg8j4hj6byabhamv53qvgx-cargo-package-time-0.3.47.drv",
   "/nix/store/17kpvajlz548r9xlx056f1kwkaj563py-cargo-package-float-cmp-0.10.0.drv",
@@ -309,6 +308,7 @@
   "/nix/store/7rdcdbdgl531g1g5c5cvbygi40pi2zlq-jmespath-0.5.0.drv",
   "/nix/store/7rm1kdfdd4p34h797825h2wfkvf1fcds-cargo-package-qoi-0.4.1.drv",
   "/nix/store/7rmq1mar2rrjd3qbhiryn3rxfd8bkzkq-glutin_wgl_sys-0.6.1.drv",
+  "/nix/store/7s6y80vjcbvq0amzbkcs0ad07qs6zc0p-pi-coding-agent-1.5.2.tgz.drv",
   "/nix/store/7s9idhj408c442003rzb2w6ilzkykh4c-cargo-package-cfg-if-1.0.4.drv",
   "/nix/store/7vcjf7qaw4kydp2rg39i4k0s40c8qsv5-dlopen2_derive-0.4.3.drv",
   "/nix/store/7vnza5k0mgbgh5hfrk1kws0vi036ylzy-cargo-package-getrandom-0.4.2.drv",
@@ -353,6 +353,7 @@
   "/nix/store/8vyz56s9i12fx9f9w5j02n6530f8vs74-gix-submodule-0.25.0.drv",
   "/nix/store/8ywnvgkx46zxx0qzvgczan5gl709a325-cargo-package-serial-0.4.0.drv",
   "/nix/store/90f7qcw0z7f5zmkxd4d6cfh7hnsxvcrr-cleanup.drv",
+  "/nix/store/90lwzwls2m1gz3aklhif6df46j26rq5l-codex-unwrapped.drv",
   "/nix/store/90qdq7c2ib85wxyjikkil26iwmwqi4fr-cargo-package-thiserror-impl-1.0.69.drv",
   "/nix/store/90v15hrqkv7caq6p1h8n0s7r1jry65kw-arc-swap-1.9.1.drv",
   "/nix/store/91a376id58r2kngagqr5q1jwh9q104n2-cargo-package-pollster-0.4.0.drv",
@@ -686,7 +687,6 @@
   "/nix/store/jb2axrd2k716f4j91k2hdmnfwnbzi1gd-compact_str-0.8.2.drv",
   "/nix/store/jbbzbpk5rbcjsxaf19f3y62jk6jv4hnm-cargo-package-num-derive-0.4.2.drv",
   "/nix/store/jbiyg3wy8xdxahd0cr9criljj45ivf9m-toml_datetime-0.6.3.drv",
-  "/nix/store/jd0n6mr6jfzi4rn1c0ij158x2dr4gpda-codex-unwrapped.drv",
   "/nix/store/jd1490fk6kk060zb93r0gc7aqyj8njz6-cargo-package-imgref-1.12.0.drv",
   "/nix/store/jf638r5223xfvzd5gl9xfjp1r0r3ijpl-cargo-package-nom-8.0.0.drv",
   "/nix/store/jfnakzvb0bjrfmpabp9arr27ix7w581w-darwin-version.json.drv",
@@ -2074,7 +2074,7 @@
   "pdf-extract-0.12.0",
   "phf_codegen-0.13.1",
   "pi-checkout",
-  "pi-src-with-lock",
+  "pi-coding-agent-1.5.2.tgz",
   "pico-args-0.5.0",
   "pillow-12.1.1",
   "platform-tools_r37.0.1-darwin.zip",
@@ -2361,7 +2361,7 @@
  ],
  "counts": {
   "notOnPublicCache": 3172,
-  "publishable": 2423,
+  "publishable": 2422,
   "buildTops": 1182
  }
 }
