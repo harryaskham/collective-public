@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-18T05:29:03Z",
+ "generatedAt": "2026-11-18T05:55:52Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-e301ed5326a84525.tar",
-  "sha256": "e301ed5326a8452542d1df3f781e5157375df8f4e0689b415f30ea54498fd8dd",
-  "bytes": 87029760
+  "asset": "shared-closure-ms-mac-817ca0d73b434eb3.tar",
+  "sha256": "817ca0d73b434eb321cd2aeb201d76aae39c95c3803d4150d113bfd0ef938f83",
+  "bytes": 87009280
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -29,7 +29,6 @@
   "/nix/store/0jjsh9fbbh4aqqqaaa14p6i2k1jq98c6-cargo-package-simd-adler32-0.3.9.drv",
   "/nix/store/0klc73gz2fm1jjah5nhpdznr3zjqh2in-phf_codegen-0.13.1.drv",
   "/nix/store/0l83bh15qj2v3rprn61v9lfymfay4h0w-gix-traverse-0.52.0.drv",
-  "/nix/store/0m5sz5la425h5vy4zinavw2nbzj05c7p-claude-tmux-warn.drv",
   "/nix/store/0ns7zwsl1acc5c8hfx7rakk8gc5nss3h-darwin-rebuild.drv",
   "/nix/store/0q0lnrmak20cqjdq8ik709x94qdqr9iv-cargo-package-winnow-0.7.15.drv",
   "/nix/store/0qk9w5cgjklqcxg819qr8w84b94zjpwh-pyobjc-framework-libdispatch-12.1.drv",
@@ -51,7 +50,6 @@
   "/nix/store/12y1j9ynki5sqfiqjyf7kz6lbcmkpbxk-cc-1.2.65.drv",
   "/nix/store/136234hsji9m7wr47xnvnci5587zafsy-vnc.drv",
   "/nix/store/13cl3bq8y8j9kzmd7jz42lw8nq14pha8-simplecss-0.2.2.drv",
-  "/nix/store/13z0brnam8fn47si5yaq8nqa40d5phip-pi-src-with-lock.drv",
   "/nix/store/15r90y4ayixdv6rsfslqfgwbiammili6-extended-0.1.0.drv",
   "/nix/store/17f8c8a2nkpg8j4hj6byabhamv53qvgx-cargo-package-time-0.3.47.drv",
   "/nix/store/17kpvajlz548r9xlx056f1kwkaj563py-cargo-package-float-cmp-0.10.0.drv",
@@ -309,6 +307,7 @@
   "/nix/store/7rdcdbdgl531g1g5c5cvbygi40pi2zlq-jmespath-0.5.0.drv",
   "/nix/store/7rm1kdfdd4p34h797825h2wfkvf1fcds-cargo-package-qoi-0.4.1.drv",
   "/nix/store/7rmq1mar2rrjd3qbhiryn3rxfd8bkzkq-glutin_wgl_sys-0.6.1.drv",
+  "/nix/store/7s6y80vjcbvq0amzbkcs0ad07qs6zc0p-pi-coding-agent-1.5.2.tgz.drv",
   "/nix/store/7s9idhj408c442003rzb2w6ilzkykh4c-cargo-package-cfg-if-1.0.4.drv",
   "/nix/store/7vcjf7qaw4kydp2rg39i4k0s40c8qsv5-dlopen2_derive-0.4.3.drv",
   "/nix/store/7vnza5k0mgbgh5hfrk1kws0vi036ylzy-cargo-package-getrandom-0.4.2.drv",
@@ -353,7 +352,6 @@
   "/nix/store/8vyz56s9i12fx9f9w5j02n6530f8vs74-gix-submodule-0.25.0.drv",
   "/nix/store/8ywnvgkx46zxx0qzvgczan5gl709a325-cargo-package-serial-0.4.0.drv",
   "/nix/store/90f7qcw0z7f5zmkxd4d6cfh7hnsxvcrr-cleanup.drv",
-  "/nix/store/90lwzwls2m1gz3aklhif6df46j26rq5l-codex-unwrapped.drv",
   "/nix/store/90qdq7c2ib85wxyjikkil26iwmwqi4fr-cargo-package-thiserror-impl-1.0.69.drv",
   "/nix/store/90v15hrqkv7caq6p1h8n0s7r1jry65kw-arc-swap-1.9.1.drv",
   "/nix/store/91a376id58r2kngagqr5q1jwh9q104n2-cargo-package-pollster-0.4.0.drv",
@@ -989,6 +987,7 @@
   "/nix/store/s1a3566vddiqz5qg0lafys9n8nk3n136-ps-sudo.drv",
   "/nix/store/s2c4n0n57lfs4p8rnad8k6w0als6c9jf-cargo-package-slab-0.4.12.drv",
   "/nix/store/s2hg815ng0ndaawg9rrbmh2v4nybdnnf-cargo-package-quick-error-2.0.1.drv",
+  "/nix/store/s3l5xqcrwzchdkajd103vfxlri11x4rr-codex-unwrapped.drv",
   "/nix/store/s3nvszaly5pc5zjxbp8mgndnp0zslphb-tmux-mux-delete.drv",
   "/nix/store/s4gzg6bfs2daflzy76xpgdx68zck0hrl-cargo-package-icu_provider-2.2.0.drv",
   "/nix/store/s4xwvnkha7y2fmpri7rwzp0dnwm9nvmn-pi-checkout.drv",
@@ -1048,6 +1047,7 @@
   "/nix/store/vrmgqki6ya9imm7dvv40di8djdigc5kn-cargo-package-signal-hook-registry-1.4.8.drv",
   "/nix/store/vsqmn7qkj0zn8fgkhggsfj2qjf8mmj7p-cargo_metadata-0.19.2.drv",
   "/nix/store/vsvlfzahcplf7qhr2c0s6qmyl4y99h62-cargo-package-ashpd-0.8.1.drv",
+  "/nix/store/vx6pdiybs4f3sh0yd63g409nb976ap2x-tti.drv",
   "/nix/store/vy31ps8f7ad23pfds308gjsj7ndylivd-presser-0.3.1.drv",
   "/nix/store/w69i3x5436w750c6ls8y0fap4ibw4pn4-cargo-package-digest-0.10.7.drv",
   "/nix/store/w735bzspcdf5ki47r04xziqr60g4jx9z-cargo-vendor-dir.drv",
@@ -1179,6 +1179,7 @@
   "/nix/store/zkicbb6schkspvxg1185pdwaxrk6yrys-requests-2.32.5.drv",
   "/nix/store/zlgjva5sazfzglcqc2y5j0ldlqqwqlyj-cargo-package-predicates-core-1.0.10.drv",
   "/nix/store/znjsy23ldrmwlj1i52yq3dg21zpdj6y9-inheritCargoArtifactsHook.drv",
+  "/nix/store/zplymna7d0dyp2x5zwg98hpxd8s87a4p-claude-tmux-warn.drv",
   "/nix/store/zprl5lra3fhm9nx9hfbhrcl77ff0fvrw-serialize-to-javascript-impl-0.1.2.drv",
   "/nix/store/zqkq5bam9sgcqnn62b06wnfxj817r627-cargo-package-ureq-2.12.1.drv",
   "/nix/store/zr6hyqkdd1jmbmwicks0jaa8jgn697ir-webpki-roots-1.0.9.drv",
@@ -2076,7 +2077,7 @@
   "pebble-client-0.1.0",
   "phf_codegen-0.13.1",
   "pi-checkout",
-  "pi-src-with-lock",
+  "pi-coding-agent-1.5.2.tgz",
   "pico-args-0.5.0",
   "pillow-12.1.1",
   "platform-tools_r37.0.1-darwin.zip",
@@ -2257,6 +2258,7 @@
   "tray-icon-0.24.2",
   "trove-classifiers-2026.1.14.14",
   "ttf-parser-0.25.1",
+  "tti",
   "tuios-v0.7.0",
   "type1-encoding-parser-0.1.1",
   "typed-path-0.12.3",
@@ -2364,6 +2366,6 @@
  "counts": {
   "notOnPublicCache": 3174,
   "publishable": 2424,
-  "buildTops": 1183
+  "buildTops": 1184
  }
 }
