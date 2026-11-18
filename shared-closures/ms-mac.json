@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-18T01:52:27Z",
+ "generatedAt": "2026-11-18T05:29:03Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-4f7d9158dfe43716.tar",
-  "sha256": "4f7d9158dfe437167e912d546964807b81d6a8a9d2201449a17122d43c46a496",
-  "bytes": 87009280
+  "asset": "shared-closure-ms-mac-e301ed5326a84525.tar",
+  "sha256": "e301ed5326a8452542d1df3f781e5157375df8f4e0689b415f30ea54498fd8dd",
+  "bytes": 87029760
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -361,6 +361,7 @@
   "/nix/store/91hl886knwgi3w0gckmivqcd0im9wbbx-cargo-package-x11rb-protocol-0.13.2.drv",
   "/nix/store/937qnld9lm6p0aaffppgaf4prwbrp6aq-cargo-package-bumpalo-3.20.2.drv",
   "/nix/store/961narfcw4rz3s778c1i4cf71qrdqyiz-io-close-0.3.7.drv",
+  "/nix/store/98lbiqswvdwv8nn60ca3vnmmg1bram30-pebble-client-0.1.0.drv",
   "/nix/store/99sxry62rfxmq4b774hr4qpiv3d5fr5r-tailscale.drv",
   "/nix/store/9bz33mmgjkn1zvf6n1a3n0rassc6cxrz-faster-hex-0.10.0.drv",
   "/nix/store/9dx9v3xkw8xcs8hij0carwsqpg3pigmr-filetime-0.2.27.drv",
@@ -400,7 +401,6 @@
   "/nix/store/acdq7shwhydkfk3w1vjpf82cnr01cqcp-vivaldi-socks.drv",
   "/nix/store/acmcx3xp3ls7jz80rgvhiqh9058n35sy-cargo-package-lock_api-0.4.14.drv",
   "/nix/store/acqvg7yz65jh5vjbjd5gdyfs2vsy5chf-wgpu-core-deps-emscripten-30.0.1.drv",
-  "/nix/store/ad0vwif7w4wfpw915y5xypn23xiaq0qi-check-link-targets.sh.drv",
   "/nix/store/adng0q5nfq5cmsjilr2iz6pgrnrkkmll-swy.drv",
   "/nix/store/afcwv5v6lksqwyf0jm8gblssx78spbjl-cargo-package-log-0.4.29.drv",
   "/nix/store/ag9x254jjzyga9yigg4qcji4x95lc5yi-cltv-nix-help.drv",
@@ -426,6 +426,7 @@
   "/nix/store/ayf751drclfp51y8hvdy26n62f79gfz8-gix-pack-0.65.0.drv",
   "/nix/store/az4iyvf12534f87v7i0rds21crpm8hby-cargo-package-wasm-metadata-0.244.0.drv",
   "/nix/store/b0icd7zav6kbfiaf9ksxnj6fgz2hqclf-rust-embed-impl-8.11.0.drv",
+  "/nix/store/b3fz49rq905wzndz0vfmqnhv0yyaclci-check-link-targets.sh.drv",
   "/nix/store/b4qjm797624hgpaci32srfkd6gax7slw-cltv-kv-create.drv",
   "/nix/store/b512bjsk0vx6l1qz595n1zm7pwlmwqf0-cargo-package-hashbrown-0.15.5.drv",
   "/nix/store/b63dkcdzgnjjglk2r5bf5i8pr8iy6q9l-cargo-package-filetime-0.2.27.drv",
@@ -2072,6 +2073,7 @@
   "path-binaries",
   "pathspec-1.0.4",
   "pdf-extract-0.12.0",
+  "pebble-client-0.1.0",
   "phf_codegen-0.13.1",
   "pi-checkout",
   "pi-src-with-lock",
@@ -2360,8 +2362,8 @@
   "zune-jpeg-0.4.21"
  ],
  "counts": {
-  "notOnPublicCache": 3172,
-  "publishable": 2423,
-  "buildTops": 1182
+  "notOnPublicCache": 3174,
+  "publishable": 2424,
+  "buildTops": 1183
  }
 }
