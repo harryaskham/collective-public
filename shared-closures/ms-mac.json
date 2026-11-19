@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-19T10:02:54Z",
+ "generatedAt": "2026-11-19T22:45:22Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-d60bc3bef3cc1c67.tar",
-  "sha256": "d60bc3bef3cc1c67ef9ddb404d01c7236ca7ec1788d01f25231cd8a6eb1f7acb",
-  "bytes": 87009280
+  "asset": "shared-closure-ms-mac-2c40879835b7a6b1.tar",
+  "sha256": "2c40879835b7a6b1060e077a6d60795cd1f036f319a0e8138a3dc4e499c8de62",
+  "bytes": 87040000
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -37,6 +37,7 @@
   "/nix/store/0sqh8c4dqmjfc4mb7cczkm783qah620l-cargo-package-wasip3-0.4.0+wasi-0.3.0-rc-2026-01-06.drv",
   "/nix/store/0v599xd8p897cg6rbksfbqm41x1y4bf8-rust-docs-1.94.1-aarch64-apple-darwin.tar.xz.drv",
   "/nix/store/0vp80hs9n7kxzh49h6gx45bn36gsky6i-Cargo.toml.drv",
+  "/nix/store/0vsab2050n6xvjb6dzfmlarzh2300m0q-rex.drv",
   "/nix/store/0wbyvg2ijfwygjsbv70wk0111x3qbq7m-claude-tmux.drv",
   "/nix/store/0wr5g4fa3js2rsvljfmwnb7aarhvb06w-futures-util-0.3.33.drv",
   "/nix/store/0wzxp3f65b0xb80vw194w1hna3nzbnbv-cltv-config-keyboard-unexpected.drv",
@@ -50,6 +51,7 @@
   "/nix/store/12y1j9ynki5sqfiqjyf7kz6lbcmkpbxk-cc-1.2.65.drv",
   "/nix/store/136234hsji9m7wr47xnvnci5587zafsy-vnc.drv",
   "/nix/store/13cl3bq8y8j9kzmd7jz42lw8nq14pha8-simplecss-0.2.2.drv",
+  "/nix/store/13z0brnam8fn47si5yaq8nqa40d5phip-pi-src-with-lock.drv",
   "/nix/store/15r90y4ayixdv6rsfslqfgwbiammili6-extended-0.1.0.drv",
   "/nix/store/17f8c8a2nkpg8j4hj6byabhamv53qvgx-cargo-package-time-0.3.47.drv",
   "/nix/store/17kpvajlz548r9xlx056f1kwkaj563py-cargo-package-float-cmp-0.10.0.drv",
@@ -60,7 +62,6 @@
   "/nix/store/1bx7kym6z69yh4m8mpmgjih1jd0wr1yx-ctor-proc-macro-0.0.7.drv",
   "/nix/store/1by31g05hi0fn1rsf7frv49an0q1lb6m-vimplugin-vim-rex-navigator-0-unstable-2026-10-18.drv",
   "/nix/store/1bzcxa5l6r6f16pbdp8wp6ih231ggrqb-gdkx11-0.18.2.drv",
-  "/nix/store/1cj278qixd9xz3ikf574wj27f7gmyqry-rex.drv",
   "/nix/store/1cymgpk1x21z0pk4chl2cd63vv0kk0pf-cargo-package-tracing-log-0.2.0.drv",
   "/nix/store/1g4dvvxf2xlkhkl795318618gisrmdf1-cargo-package-tar-0.4.45.drv",
   "/nix/store/1g4gi5gm2dsqh7a93sn8m7bnlcsw3ikw-schemars_derive-1.2.2.drv",
@@ -307,7 +308,6 @@
   "/nix/store/7rdcdbdgl531g1g5c5cvbygi40pi2zlq-jmespath-0.5.0.drv",
   "/nix/store/7rm1kdfdd4p34h797825h2wfkvf1fcds-cargo-package-qoi-0.4.1.drv",
   "/nix/store/7rmq1mar2rrjd3qbhiryn3rxfd8bkzkq-glutin_wgl_sys-0.6.1.drv",
-  "/nix/store/7s6y80vjcbvq0amzbkcs0ad07qs6zc0p-pi-coding-agent-1.5.2.tgz.drv",
   "/nix/store/7s9idhj408c442003rzb2w6ilzkykh4c-cargo-package-cfg-if-1.0.4.drv",
   "/nix/store/7vcjf7qaw4kydp2rg39i4k0s40c8qsv5-dlopen2_derive-0.4.3.drv",
   "/nix/store/7vnza5k0mgbgh5hfrk1kws0vi036ylzy-cargo-package-getrandom-0.4.2.drv",
@@ -2077,7 +2077,7 @@
   "pebble-client-0.1.0",
   "phf_codegen-0.13.1",
   "pi-checkout",
-  "pi-coding-agent-1.5.2.tgz",
+  "pi-src-with-lock",
   "pico-args-0.5.0",
   "pillow-12.1.1",
   "platform-tools_r37.0.1-darwin.zip",
@@ -2364,8 +2364,8 @@
   "zune-jpeg-0.4.21"
  ],
  "counts": {
-  "notOnPublicCache": 3174,
-  "publishable": 2424,
+  "notOnPublicCache": 3169,
+  "publishable": 2420,
   "buildTops": 1184
  }
 }
