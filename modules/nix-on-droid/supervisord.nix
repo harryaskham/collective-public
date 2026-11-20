@@ -33,6 +33,14 @@ with lib; let
     else v; # "unexpected"
   programOpts = import ../supervisord-program-options.nix { inherit lib typed; };
 
+  # See the startretries option: restarting programs outlast a missing network.
+  startretriesFor = prog:
+    if prog.startretries != null
+    then prog.startretries
+    else if prog.autorestart != false && prog.autorestart != "false"
+    then 1000
+    else null;
+
   pidFile = "${cfg.stateDir}/run/supervisord.pid";
 
   # supervisord refuses to start at all when any program's log file has no
@@ -76,7 +84,7 @@ with lib; let
     directory=${prog.directory}
     autostart=${boolToConf prog.autostart}
     autorestart=${autorestartToConf prog.autorestart}
-    startsecs=${toString prog.startsecs}
+    startsecs=${toString prog.startsecs}${optionalString (startretriesFor prog != null) "\nstartretries=${toString (startretriesFor prog)}"}
     stopsignal=${prog.stopsignal}
     ${optionalString (prog.stopwaitsecs != null) "stopwaitsecs=${toString prog.stopwaitsecs}"}
     stopasgroup=${boolToConf prog.stopasgroup}

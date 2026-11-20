@@ -79,6 +79,24 @@ let
       };
     };
   });
+  systemRetries = evalSystem ({ ... }: {
+    supervisord = {
+      enable = true;
+      programs.daemon.command = "/bin/true";
+      programs.unexpected = {
+        command = "/bin/true";
+        autorestart = "unexpected";
+      };
+      programs.explicit = {
+        command = "/bin/true";
+        startretries = 5;
+      };
+      programs.oneshot = {
+        command = "/bin/true";
+        autorestart = false;
+      };
+    };
+  });
   systemLogDirs = evalSystem ({ ... }: {
     supervisord = {
       enable = true;
@@ -148,6 +166,7 @@ in {
     defaultsToNull = expect.eq homeDefault.supervisord.programs.example.stopwaitsecs null;
     acceptsInteger = expect.eq homeExplicit.supervisord.programs.example.stopwaitsecs 45;
     acceptsRequiresPath = expect.eq homeConditional.supervisord.programs.cond.requiresPath "/home/u/.caco";
+    startretriesDefaultsToNull = expect.eq homeDefault.supervisord.programs.example.startretries null;
   };
 
   nix-on-droid = suite {
@@ -155,6 +174,17 @@ in {
       expect.eq (lib.hasInfix "stopwaitsecs=" (renderedConfig systemDefault)) false;
     rendersExplicitValue =
       expect.eq (lib.hasInfix "stopwaitsecs=45" (renderedConfig systemExplicit)) true;
+    # A daemon that starts before its network (SGU24's tailnet listeners after
+    # an activation without a tailnet address, 2026-11-19) must keep retrying
+    # instead of going FATAL after supervisord's three tries.
+    restartingProgramKeepsRetrying =
+      expect.eq (lib.hasInfix "[program:daemon]\ncommand=/bin/true\ndirectory=/\nautostart=true\nautorestart=true\nstartsecs=1\nstartretries=1000\nstopsignal=" (renderedConfig systemRetries)) true;
+    unexpectedRestartKeepsRetrying =
+      expect.eq (lib.hasInfix "autorestart=unexpected\nstartsecs=1\nstartretries=1000\n" (renderedConfig systemRetries)) true;
+    rendersExplicitStartretries =
+      expect.eq (lib.hasInfix "[program:explicit]\ncommand=/bin/true\ndirectory=/\nautostart=true\nautorestart=true\nstartsecs=1\nstartretries=5\nstopsignal=" (renderedConfig systemRetries)) true;
+    nonRestartingProgramKeepsSupervisorDefault =
+      expect.eq (lib.hasInfix "[program:oneshot]\ncommand=/bin/true\ndirectory=/\nautostart=true\nautorestart=false\nstartsecs=1\nstopsignal=" (renderedConfig systemRetries)) true;
     rendersExecCanary =
       expect.eq (lib.hasInfix "[program:collective-exec-canary]" (renderedConfig systemDefault)) true;
     execCanaryIsOnDemand =

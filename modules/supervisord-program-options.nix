@@ -39,6 +39,20 @@ with lib;
       default = 1;
       description = "Seconds the program must stay running to consider the start successful. Use 0 for oneshot.";
     };
+    startretries = mkOption {
+      type = types.nullOr types.int;
+      default = null;
+      description = ''
+        Failed starts supervisord allows before it gives up and marks the
+        program FATAL, where it stays until someone starts it by hand. Each
+        retry waits one second longer than the last. When null, a program that
+        restarts (autorestart not false) gets 1000: about 5.8 days of retries,
+        a few minutes apart at most, so a daemon that starts before what it
+        needs, such as a listener on the tailnet address while the phone has
+        none, comes up by itself once it can. A program that does not restart
+        keeps supervisord's default of 3.
+      '';
+    };
     stopsignal = mkOption {
       type = types.str;
       default = "TERM";
