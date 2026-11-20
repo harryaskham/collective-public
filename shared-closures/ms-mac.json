@@ -2,11 +2,11 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-20T18:26:15Z",
+ "generatedAt": "2026-11-20T23:53:08Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-43579f7a8c1464b0.tar",
-  "sha256": "43579f7a8c1464b0a9665037537573c08cd678f2ca99ee7fa148407919139fd9",
+  "asset": "shared-closure-ms-mac-560c785a18cabff5.tar",
+  "sha256": "560c785a18cabff5b395f37283d60718715ff1d0e06d45c3bc2b992084650a50",
   "bytes": 87040000
  },
  "tops": [
@@ -427,7 +427,6 @@
   "/nix/store/b3fz49rq905wzndz0vfmqnhv0yyaclci-check-link-targets.sh.drv",
   "/nix/store/b4qjm797624hgpaci32srfkd6gax7slw-cltv-kv-create.drv",
   "/nix/store/b512bjsk0vx6l1qz595n1zm7pwlmwqf0-cargo-package-hashbrown-0.15.5.drv",
-  "/nix/store/b5sm4a05nw7xccml33hjndb7nzzvxzky-claude-tmux-warn.drv",
   "/nix/store/b63dkcdzgnjjglk2r5bf5i8pr8iy6q9l-cargo-package-filetime-0.2.27.drv",
   "/nix/store/b6y2xvsgsddx576klm9ckggngnsp713v-cargo-package-x11rb-0.13.2.drv",
   "/nix/store/b8a009s2sppa39j76sngdac7mjbwcg25-gix-quote-0.6.2.drv",
@@ -524,6 +523,7 @@
   "/nix/store/djcn2avqnkrz5pi98niz1w2j2skym6hh-typenum-1.20.0.drv",
   "/nix/store/dl0gyrgjdjb879rjw63z1yaa0wrmgklr-quinn-udp-0.5.15.drv",
   "/nix/store/dmcqznwn8pkb12g2gcrzq2z93gdcfwyn-symphonia-utils-xiph-0.5.5.drv",
+  "/nix/store/dmyagwl9ghcsl37s56sw6q6syx3d3wqp-claude-tmux-warn.drv",
   "/nix/store/dn0qy3yvq8cqks1gwbs7rf0bcf1f3dnd-Cargo.toml.drv",
   "/nix/store/dnj7n8dp4551qgcxyqs6bs4fwrbyl2jv-gix-glob-0.24.0.drv",
   "/nix/store/dnna7cl6g92gbw97bq43nxajzr6g588f-symphonia-format-caf-0.5.5.drv",
