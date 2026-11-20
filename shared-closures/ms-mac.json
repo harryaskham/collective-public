@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-20T02:37:49Z",
+ "generatedAt": "2026-11-20T04:37:53Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-a42ea9029a769617.tar",
-  "sha256": "a42ea9029a769617c468edfece56ede6d8a8c92c923f20d1f7b839f87b78b82f",
-  "bytes": 87009280
+  "asset": "shared-closure-ms-mac-ee75dfb306d73796.tar",
+  "sha256": "ee75dfb306d737964d04f7ddca932dafca4b8ff7a6952d99d934de668669c630",
+  "bytes": 87040000
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -51,6 +51,7 @@
   "/nix/store/12y1j9ynki5sqfiqjyf7kz6lbcmkpbxk-cc-1.2.65.drv",
   "/nix/store/136234hsji9m7wr47xnvnci5587zafsy-vnc.drv",
   "/nix/store/13cl3bq8y8j9kzmd7jz42lw8nq14pha8-simplecss-0.2.2.drv",
+  "/nix/store/13z0brnam8fn47si5yaq8nqa40d5phip-pi-src-with-lock.drv",
   "/nix/store/15r90y4ayixdv6rsfslqfgwbiammili6-extended-0.1.0.drv",
   "/nix/store/17f8c8a2nkpg8j4hj6byabhamv53qvgx-cargo-package-time-0.3.47.drv",
   "/nix/store/17kpvajlz548r9xlx056f1kwkaj563py-cargo-package-float-cmp-0.10.0.drv",
@@ -307,7 +308,6 @@
   "/nix/store/7rdcdbdgl531g1g5c5cvbygi40pi2zlq-jmespath-0.5.0.drv",
   "/nix/store/7rm1kdfdd4p34h797825h2wfkvf1fcds-cargo-package-qoi-0.4.1.drv",
   "/nix/store/7rmq1mar2rrjd3qbhiryn3rxfd8bkzkq-glutin_wgl_sys-0.6.1.drv",
-  "/nix/store/7s6y80vjcbvq0amzbkcs0ad07qs6zc0p-pi-coding-agent-1.5.2.tgz.drv",
   "/nix/store/7s9idhj408c442003rzb2w6ilzkykh4c-cargo-package-cfg-if-1.0.4.drv",
   "/nix/store/7vcjf7qaw4kydp2rg39i4k0s40c8qsv5-dlopen2_derive-0.4.3.drv",
   "/nix/store/7vnza5k0mgbgh5hfrk1kws0vi036ylzy-cargo-package-getrandom-0.4.2.drv",
@@ -2077,7 +2077,7 @@
   "pebble-client-0.1.0",
   "phf_codegen-0.13.1",
   "pi-checkout",
-  "pi-coding-agent-1.5.2.tgz",
+  "pi-src-with-lock",
   "pico-args-0.5.0",
   "pillow-12.1.1",
   "platform-tools_r37.0.1-darwin.zip",
@@ -2365,7 +2365,7 @@
  ],
  "counts": {
   "notOnPublicCache": 3169,
-  "publishable": 2419,
+  "publishable": 2420,
   "buildTops": 1184
  }
 }
