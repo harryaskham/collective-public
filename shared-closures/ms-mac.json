@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-20T15:13:36Z",
+ "generatedAt": "2026-11-20T15:33:49Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-3e8fab9ee33233ba.tar",
-  "sha256": "3e8fab9ee33233ba1df079d017fad18d40760ef72e475ab94b68d4186e930369",
-  "bytes": 85524480
+  "asset": "shared-closure-ms-mac-ada2ee7681480949.tar",
+  "sha256": "ada2ee76814809494269baee3f4cb1eea56fe24f782ee360b6e5a6c53c4ba1ba",
+  "bytes": 85483520
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -52,7 +52,6 @@
   "/nix/store/12y1j9ynki5sqfiqjyf7kz6lbcmkpbxk-cc-1.2.65.drv",
   "/nix/store/136234hsji9m7wr47xnvnci5587zafsy-vnc.drv",
   "/nix/store/13cl3bq8y8j9kzmd7jz42lw8nq14pha8-simplecss-0.2.2.drv",
-  "/nix/store/13z0brnam8fn47si5yaq8nqa40d5phip-pi-src-with-lock.drv",
   "/nix/store/15r90y4ayixdv6rsfslqfgwbiammili6-extended-0.1.0.drv",
   "/nix/store/16glfbgzaqklsx1gx6h4jydmabaf0msd-pydantic-settings-2.13.1.drv",
   "/nix/store/17f8c8a2nkpg8j4hj6byabhamv53qvgx-cargo-package-time-0.3.47.drv",
@@ -807,6 +806,7 @@
   "/nix/store/lxick8fsxn3yjc020lqvkpc1gq5jx47q-imagesize-0.13.0.drv",
   "/nix/store/lxrfxx1sw9ldsnxpih65wrr4yi869aw3-kurbo-0.11.3.drv",
   "/nix/store/lyjykpnmq9gnn6c8f61yd9yfqgc851jf-jev_cli-0.6.2.tar.gz.drv",
+  "/nix/store/lz31d64kqm4l9px6y781bbk885cvpk66-pi-coding-agent-1.6.0.tgz.drv",
   "/nix/store/lzmcaz98pw9dd00khw3x650q24ydscx9-wasm-bindgen-macro-support-0.2.120.drv",
   "/nix/store/m003ha63q9x0rx9xh4cw703g18ci6rp6-cargo-package-rand-0.9.3.drv",
   "/nix/store/m0a2v1j04gd4f8pf882bkz4rqs5p2i2d-gix-transport-0.53.0.drv",
@@ -2153,7 +2153,7 @@
   "pebble-client-0.1.0",
   "phf_codegen-0.13.1",
   "pi-checkout",
-  "pi-src-with-lock",
+  "pi-coding-agent-1.6.0.tgz",
   "pico-args-0.5.0",
   "pillow-12.1.1",
   "platform-tools_r37.0.1-darwin.zip",
@@ -2468,7 +2468,7 @@
  ],
  "counts": {
   "notOnPublicCache": 3169,
-  "publishable": 2410,
+  "publishable": 2409,
   "buildTops": 1238
  }
 }
