@@ -175,6 +175,49 @@ with lib; let
   # A timed-out wait, told apart from the inner script's own failures.
   startLockBusy = 75;
 
+  # How long an activation lets the old instance shut itself down: the longest
+  # stopwaitsecs of any program (Supervisor's default is 10) plus a margin for
+  # proot, so supervisord stops (or SIGKILLs) its own programs before the
+  # activation kills it. A flat 7.5 s cut that short (bd-54fdad).
+  supervisorStopWaitDefault = 10;
+  shutdownWaitSecs =
+    10
+    + lib.foldl' lib.max supervisorStopWaitDefault (lib.mapAttrsToList (_: prog:
+      if (prog.stopwaitsecs or null) == null
+      then supervisorStopWaitDefault
+      else prog.stopwaitsecs)
+    allPrograms);
+
+  # The children of an instance about to be replaced, each as pid:starttime.
+  # A program still stopping when its supervisord dies outlives it, reparented
+  # to init (bd-54fdad, 21 Nov 2026: astra and sgu24 kept generation-old cages
+  # and cursive holding the cages socket and port 7685, so this generation's
+  # copies sat in BACKOFF, and ran atuin, dbus, omni and the liveness ping
+  # twice). Only recorded children whose kernel start time still matches are
+  # signalled: never a reused pid, nor a daemon that detached itself.
+  sdOldChildrenFn = ''
+    __sd_old_children=""
+    __sd_starttime() {
+      ${pkgs.gnused}/bin/sed -n 's/.*) //p' /proc/"$1"/stat 2>/dev/null | ${pkgs.coreutils}/bin/cut -d' ' -f20 || true
+    }
+    __sd_record_children() {
+      for __c in $(${pkgs.procps}/bin/pgrep -P "$1" 2>/dev/null || true); do
+        __st=$(__sd_starttime "$__c")
+        [ -n "$__st" ] && __sd_old_children="$__sd_old_children $__c:$__st"
+      done
+      return 0
+    }
+    __sd_signal_old_children() {
+      for __e in $__sd_old_children; do
+        __c=''${__e%%:*}
+        if [ "$(__sd_starttime "$__c")" = "''${__e#*:}" ]; then
+          kill "-$1" "$__c" 2>/dev/null || true
+        fi
+      done
+      return 0
+    }
+  '';
+
   # Ends every starter: those waiting for the lock and one inside the inner
   # script. A starter left waiting takes the lock the moment the running
   # supervisord stops and starts one from its own, possibly older, generation.
@@ -425,6 +468,13 @@ in {
         _sd_locked=0
         if ${flock} --nonblock 9; then _sd_locked=1; fi
 
+        # Record every running supervisord's children before anything stops
+        # them, so none outlives its instance (bd-54fdad).
+        ${sdOldChildrenFn}
+        for __sd_p in $(${pkgs.procps}/bin/pgrep -f 'supervisord.*supervisord\.conf' 2>/dev/null || true); do
+          __sd_record_children "$__sd_p"
+        done
+
         # Kill any existing supervisord and ALL its children
         if [ -f "$PIDFILE" ]; then
           OLD_PID=$(cat "$PIDFILE" 2>/dev/null)
@@ -432,7 +482,9 @@ in {
             echo "[supervisord] Stopping old instance (pid $OLD_PID) and children..."
             # Ask supervisord to stop all programs first (cleanest path)
             ${supervisorctl-wrapped}/bin/supervisorctl shutdown 2>/dev/null || true
-            for i in $(seq 1 15); do
+            # Long enough for supervisord's own stop timeouts, which end any
+            # program that ignores its stop signal.
+            for i in $(seq 1 ${toString (2 * shutdownWaitSecs)}); do
               kill -0 "$OLD_PID" 2>/dev/null || break
               sleep 0.5
             done
@@ -471,6 +523,7 @@ in {
           done
         }
         __sd_sweep_orphans TERM
+        __sd_signal_old_children TERM
         if [ "$_sd_locked" = 0 ]; then
           # The old instance held the lock itself: it was started before the
           # lock stopped being inherited. It has let go now, or soon will.
@@ -482,6 +535,7 @@ in {
         # was ours.
         __sd_kill_starters KILL
         __sd_sweep_orphans KILL
+        __sd_signal_old_children KILL
 
         # With the lock held, start under it. Without it (something else still
         # holds it), start the ordinary way, which waits for the lock a bounded
@@ -522,9 +576,13 @@ in {
           if [ -n "$_sd_replace" ]; then
             echo "[supervisord] post-activation: $_sd_replace; forcing replacement" >&2
             __sd_kill_starters KILL
+            [ -n "$_sd_pid" ] && __sd_record_children "$_sd_pid"
             ${supervisorctl-wrapped}/bin/supervisorctl shutdown 2>/dev/null || true
             ${pkgs.coreutils}/bin/sleep 1
             [ -n "$_sd_pid" ] && kill -9 "$_sd_pid" 2>/dev/null || true
+            __sd_signal_old_children TERM
+            ${pkgs.coreutils}/bin/sleep 1
+            __sd_signal_old_children KILL
             rm -f "${pidFile}"
             __sd_start
           fi

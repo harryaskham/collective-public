@@ -235,6 +235,28 @@ in {
         && lib.hasInfix "\"\${1:-}\" = --locked" (startScript systemDefault)) true;
     activationOutlivesAFailedStart =
       expect.eq (lib.hasInfix "__sd_start || _sd_rc=$?" systemDefault.build.activationAfter.supervisord) true;
+    # bd-54fdad (21 Nov 2026): a fixed 7.5 s wait killed supervisord while it
+    # was still stopping cages, cursive and others; they outlived it and kept
+    # this generation's copies from starting.
+    activationWaitsForSupervisorsOwnStopTimeout =
+      expect.eq (lib.hasInfix "$(seq 1 40)" systemDefault.build.activationAfter.supervisord
+        && !(lib.hasInfix "$(seq 1 15)" systemDefault.build.activationAfter.supervisord)) true;
+    activationWaitFollowsTheLongestStopwaitsecs =
+      expect.eq (lib.hasInfix "$(seq 1 110)" systemExplicit.build.activationAfter.supervisord) true;
+    activationRecordsChildrenBeforeStoppingTheOldInstance =
+      expect.eq (lib.hasInfix "__sd_record_children \"$__sd_p\""
+        (lib.head (lib.splitString "Stopping old instance" systemDefault.build.activationAfter.supervisord))) true;
+    activationEndsSurvivingChildrenTermThenKill = let
+      act = systemDefault.build.activationAfter.supervisord;
+      afterTerm = lib.last (lib.splitString "__sd_signal_old_children TERM\nif" act);
+    in
+      expect.eq (lib.hasInfix "__sd_sweep_orphans TERM\n__sd_signal_old_children TERM" act
+        && lib.hasInfix "__sd_sweep_orphans KILL\n__sd_signal_old_children KILL" afterTerm) true;
+    signalsOnlyChildrenWhoseStartTimeStillMatches =
+      expect.eq (lib.hasInfix "if [ \"$(__sd_starttime \"$__c\")\" = \"\${__e#*:}\" ]; then" systemDefault.build.activationAfter.supervisord) true;
+    replacementPathAlsoEndsTheReplacedInstancesChildren =
+      expect.eq (lib.hasInfix "__sd_record_children \"$_sd_pid\""
+        (lib.last (lib.splitString "forcing replacement" systemDefault.build.activationAfter.supervisord))) true;
     reservesExecCanaryName = expect.eq
       (lib.any (assertion:
         !assertion.assertion
