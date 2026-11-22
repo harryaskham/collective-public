@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-22T17:52:39Z",
+ "generatedAt": "2026-11-22T18:05:25Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-4479dbebc65ebe72.tar",
-  "sha256": "4479dbebc65ebe72f3afb49dddcdceb5bcad2b4e45c1433cd0e58cb020f05e57",
-  "bytes": 85524480
+  "asset": "shared-closure-ms-mac-f9a86699c6edb306.tar",
+  "sha256": "f9a86699c6edb306c313548ffe8df7d01960d6d5e8d48cf3c92b3885b4e267dc",
+  "bytes": 85483520
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -148,7 +148,6 @@
   "/nix/store/3nh7whz3592yas7gyannc7kpdjx2srxg-web-sys-0.3.97.drv",
   "/nix/store/3nycngaa6ak31f195mh67hbd4m7p9bpq-cltv-script-run.drv",
   "/nix/store/3pl2ms96hhwinxf5kqnqhjga40d3giap-serde_with_macros-3.22.0.drv",
-  "/nix/store/3qiyn84gc4a1vg47disjixawhwmfqs6w-pi-src-with-lock.drv",
   "/nix/store/3rfync7h12271yxp9mz79m6jbv048hi0-cargo-package-tokio-macros-2.7.0.drv",
   "/nix/store/3rqnw0jwwl72z48x3xv2svdlawdi4fsv-type1-encoding-parser-0.1.1.drv",
   "/nix/store/3s6as3pkq8bb9a4g7ikqs4856dp2r9gv-gix-object-0.55.0.drv",
@@ -807,6 +806,7 @@
   "/nix/store/lxick8fsxn3yjc020lqvkpc1gq5jx47q-imagesize-0.13.0.drv",
   "/nix/store/lxrfxx1sw9ldsnxpih65wrr4yi869aw3-kurbo-0.11.3.drv",
   "/nix/store/lyjykpnmq9gnn6c8f61yd9yfqgc851jf-jev_cli-0.6.2.tar.gz.drv",
+  "/nix/store/lz31d64kqm4l9px6y781bbk885cvpk66-pi-coding-agent-1.6.0.tgz.drv",
   "/nix/store/lzmcaz98pw9dd00khw3x650q24ydscx9-wasm-bindgen-macro-support-0.2.120.drv",
   "/nix/store/m003ha63q9x0rx9xh4cw703g18ci6rp6-cargo-package-rand-0.9.3.drv",
   "/nix/store/m0a2v1j04gd4f8pf882bkz4rqs5p2i2d-gix-transport-0.53.0.drv",
@@ -1000,6 +1000,7 @@
   "/nix/store/r9bz4s8p3j5l235gwalpl7sxaczj40pj-cargo-package-async-channel-2.5.0.drv",
   "/nix/store/r9lyryrzi617sz3l6giyf6ahihfg9gpx-rustls-0.23.41.drv",
   "/nix/store/r9qf2m7zyx7xcvgb6ljdy857s0gyrd8n-etc-zshrc.drv",
+  "/nix/store/ra6indiclv87gdyk7w8wgdkq51mncga4-tti.drv",
   "/nix/store/rdr7n302x35fz8zbirrlfl4biq2lrrf3-cargo-package-serde_spanned-0.6.9.drv",
   "/nix/store/rhin417cg38vxlznns8j0in8qr1d7xqb-python-multipart-0.0.31.drv",
   "/nix/store/rhy3fbkzrhq81gbzm6fm2ljsi48rzkmd-cargo-package-num-rational-0.4.2.drv",
@@ -1090,7 +1091,6 @@
   "/nix/store/vrmgqki6ya9imm7dvv40di8djdigc5kn-cargo-package-signal-hook-registry-1.4.8.drv",
   "/nix/store/vsqmn7qkj0zn8fgkhggsfj2qjf8mmj7p-cargo_metadata-0.19.2.drv",
   "/nix/store/vsvlfzahcplf7qhr2c0s6qmyl4y99h62-cargo-package-ashpd-0.8.1.drv",
-  "/nix/store/vx6pdiybs4f3sh0yd63g409nb976ap2x-tti.drv",
   "/nix/store/vy31ps8f7ad23pfds308gjsj7ndylivd-presser-0.3.1.drv",
   "/nix/store/w1s9xarns3gdgwkncd5lmjncynq4v8h8-certifi-2026.2.25.drv",
   "/nix/store/w26y41m0h79gm2l7j9b17wrf55hc1rci-pydantic-2.13.1.drv",
@@ -2153,7 +2153,7 @@
   "pebble-client-0.1.0",
   "phf_codegen-0.13.1",
   "pi-checkout",
-  "pi-src-with-lock",
+  "pi-coding-agent-1.6.0.tgz",
   "pico-args-0.5.0",
   "pillow-12.1.1",
   "platform-tools_r37.0.1-darwin.zip",
@@ -2468,7 +2468,7 @@
  ],
  "counts": {
   "notOnPublicCache": 3172,
-  "publishable": 2410,
+  "publishable": 2409,
   "buildTops": 1238
  }
 }
