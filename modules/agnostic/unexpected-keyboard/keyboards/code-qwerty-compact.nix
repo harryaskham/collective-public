@@ -314,7 +314,8 @@ in {
               c.a
         "⇤" sw.snap_left  "✲" se.ctrl
       _
-              "⎆" macros.n.tmux_session_picker  "⇡" ne.wm_workspace_up
+        "⎆" macros.nw.tmux_session_picker
+              "⇡" n.wm_workspace_up
         "⇠" w.wm_workspace_previous  c.s  "⇢" e.wm_workspace_next
               "⇣" s.wm_workspace_down
                     "⌥" se.alt
