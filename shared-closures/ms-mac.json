@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-23T04:51:46Z",
+ "generatedAt": "2026-11-23T06:34:42Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-c0fffcfe05018594.tar",
-  "sha256": "c0fffcfe0501859467480ac974057a3ec60baf387bfccf1cf763b697978ab002",
-  "bytes": 87040000
+  "asset": "shared-closure-ms-mac-06541b47912a0383.tar",
+  "sha256": "06541b47912a0383437c3763aa3506bfad6736fd11fb5be8142aeb267ae17053",
+  "bytes": 87050240
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -361,6 +361,7 @@
   "/nix/store/937qnld9lm6p0aaffppgaf4prwbrp6aq-cargo-package-bumpalo-3.20.2.drv",
   "/nix/store/961narfcw4rz3s778c1i4cf71qrdqyiz-io-close-0.3.7.drv",
   "/nix/store/98lbiqswvdwv8nn60ca3vnmmg1bram30-pebble-client-0.1.0.drv",
+  "/nix/store/98pl664q3qf9307i3g9n1bwmn1awx8d2-tylerd-edge-front.drv",
   "/nix/store/99sxry62rfxmq4b774hr4qpiv3d5fr5r-tailscale.drv",
   "/nix/store/9bz33mmgjkn1zvf6n1a3n0rassc6cxrz-faster-hex-0.10.0.drv",
   "/nix/store/9dx9v3xkw8xcs8hij0carwsqpg3pigmr-filetime-0.2.27.drv",
@@ -2260,6 +2261,7 @@
   "ttf-parser-0.25.1",
   "tti",
   "tuios-v0.7.0",
+  "tylerd-edge-front",
   "type1-encoding-parser-0.1.1",
   "typed-path-0.12.3",
   "typenum-1.20.0",
@@ -2364,8 +2366,8 @@
   "zune-jpeg-0.4.21"
  ],
  "counts": {
-  "notOnPublicCache": 3172,
-  "publishable": 2420,
-  "buildTops": 1184
+  "notOnPublicCache": 3173,
+  "publishable": 2421,
+  "buildTops": 1185
  }
 }
