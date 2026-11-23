@@ -299,6 +299,8 @@ let
               "wm_workspace_down"
               # Turns Flotilla's hardware shortcuts off/on for nested tiling WMs.
               "flotilla_shortcuts"
+              # Lifetail input on/off (Omni 1.33.43+): what Lifetail hears is typed into the field.
+              "lifetail_toggle"
             ] // selfAttrs (genList (i: "flotilla_${toString (i + 1)}") 12);
             in if cfg.enableFork then xs else mapAttrs (_: _: "removed") xs;
         };
@@ -1417,6 +1419,12 @@ rec {
             show = null;
           }
         ) compact;
+        # Lifetail input's toggle is north-west on L; L keeps its quote.
+        lifetailToggle = mapAttrs (_: layout:
+          let l = head (filter (k: k.c != null && k.c.k == "l") (concatMap (row: row.keys) layout.keyboard.rows));
+          in expect.eq [l.nw.k l.nw.legend l.ne.k] ["lifetail_toggle" "" "\""]
+        ) compact;
+        upstreamLifetail = expect.eq upstream.lib.codes._.lifetail_toggle "removed";
         # Flotilla's grid of spaces (one per Harbour page): S keeps W/E for previous/next and gains north/south.
         spaceGrid = mapAttrs (_: layout:
           let s = head (filter (k: k.c != null && k.c.k == "s") (concatMap (row: row.keys) layout.keyboard.rows));

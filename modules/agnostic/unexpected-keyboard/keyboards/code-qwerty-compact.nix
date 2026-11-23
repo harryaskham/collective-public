@@ -348,7 +348,7 @@ in {
               "󰌐" macros.s.hide_keyboard
         sw."["       se."]"
       _
-                      ne."\""
+        "" nw.lifetail_toggle  ne."\""  # nf-fa-microphone (U+F130): Lifetail input on/off.
                 c.l
         "⌥" sw.alt
       _

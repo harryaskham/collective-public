@@ -18,6 +18,10 @@
 - **D** uses solid shafted arrows **   ** for moving windows; **F** uses
   thin chevrons **   ** for focus. Directions and Fn stay in place.
   G retains its hollow tmux-resize triangles. E ↖ remains the mounted-terminal key.
+- **L ↖ → ** turns Omni's Lifetail input on and off (`lifetail_toggle`, Omni 1.33.43+). While it is on,
+  what Lifetail hears is typed into the field as it is heard, and corrected when each utterance's final
+  text lands; the glyph is lit. Set the daemon in Omni → Settings → Lifetail (a
+  `lifetail://pair?server=…&token=…` link, or the server and token). An older Omni has no such key.
 - **C ↑ → **, **V ↑ → 󰞒**, **N ↑ → ** hide, minimize, and restore windows.
   Minimize uses Nerd Font `md-arrow_collapse_down` (U+F0792), not an underline.
 
