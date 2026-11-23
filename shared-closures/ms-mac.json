@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-23T03:10:49Z",
+ "generatedAt": "2026-11-23T04:51:46Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-0ab63fd2f2c5cff1.tar",
-  "sha256": "0ab63fd2f2c5cff1a292878a62021d1b85dbd947d90521ef483662c1ccc102c0",
-  "bytes": 87009280
+  "asset": "shared-closure-ms-mac-c0fffcfe05018594.tar",
+  "sha256": "c0fffcfe0501859467480ac974057a3ec60baf387bfccf1cf763b697978ab002",
+  "bytes": 87040000
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -146,6 +146,7 @@
   "/nix/store/3nh7whz3592yas7gyannc7kpdjx2srxg-web-sys-0.3.97.drv",
   "/nix/store/3nycngaa6ak31f195mh67hbd4m7p9bpq-cltv-script-run.drv",
   "/nix/store/3pl2ms96hhwinxf5kqnqhjga40d3giap-serde_with_macros-3.22.0.drv",
+  "/nix/store/3qiyn84gc4a1vg47disjixawhwmfqs6w-pi-src-with-lock.drv",
   "/nix/store/3rfync7h12271yxp9mz79m6jbv048hi0-cargo-package-tokio-macros-2.7.0.drv",
   "/nix/store/3rqnw0jwwl72z48x3xv2svdlawdi4fsv-type1-encoding-parser-0.1.1.drv",
   "/nix/store/3s6as3pkq8bb9a4g7ikqs4856dp2r9gv-gix-object-0.55.0.drv",
@@ -783,7 +784,6 @@
   "/nix/store/lxrfxx1sw9ldsnxpih65wrr4yi869aw3-kurbo-0.11.3.drv",
   "/nix/store/lyjykpnmq9gnn6c8f61yd9yfqgc851jf-jev_cli-0.6.2.tar.gz.drv",
   "/nix/store/lykj40hqx2w0clpv9fi5mnnp6b2rmk9j-linear-extra-mcp-0.1.0.drv",
-  "/nix/store/lz31d64kqm4l9px6y781bbk885cvpk66-pi-coding-agent-1.6.0.tgz.drv",
   "/nix/store/lzmcaz98pw9dd00khw3x650q24ydscx9-wasm-bindgen-macro-support-0.2.120.drv",
   "/nix/store/m003ha63q9x0rx9xh4cw703g18ci6rp6-cargo-package-rand-0.9.3.drv",
   "/nix/store/m0a2v1j04gd4f8pf882bkz4rqs5p2i2d-gix-transport-0.53.0.drv",
@@ -2077,7 +2077,7 @@
   "pebble-client-0.1.0",
   "phf_codegen-0.13.1",
   "pi-checkout",
-  "pi-coding-agent-1.6.0.tgz",
+  "pi-src-with-lock",
   "pico-args-0.5.0",
   "pillow-12.1.1",
   "platform-tools_r37.0.1-darwin.zip",
@@ -2365,7 +2365,7 @@
  ],
  "counts": {
   "notOnPublicCache": 3172,
-  "publishable": 2419,
+  "publishable": 2420,
   "buildTops": 1184
  }
 }
