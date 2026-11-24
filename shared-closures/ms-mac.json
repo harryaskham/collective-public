@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-24T12:43:44Z",
+ "generatedAt": "2026-11-24T12:59:40Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-f67c5523cb213f83.tar",
-  "sha256": "f67c5523cb213f83b2920f78eabf5a4232018133e88d68c954d44568bb182de0",
-  "bytes": 85524480
+  "asset": "shared-closure-ms-mac-1234c0525b902261.tar",
+  "sha256": "1234c0525b902261dba73a72bc251cf7217dce6528b3519f9cc52f61bc4bfe92",
+  "bytes": 85534720
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -129,6 +129,7 @@
   "/nix/store/361vwbifsib0g8glm7whnrjscwq25mc1-waypipe-darwin-0.11.2-darwin.1.drv",
   "/nix/store/3721ynmi5jvyvhdj97mllpw7as5qn17y-cargo-package-termtree-0.5.1.drv",
   "/nix/store/37kssjlm6igm2z04s4cdg50gpi6rgx2h-codepage-0.1.2.drv",
+  "/nix/store/380iahi0ns5rzyralgj0hyxd5y1liy2z-cargo-vendor-dir.drv",
   "/nix/store/38fi6qzfs50ri91l9izpvn1x0yi4h13f-cargo-package-utf8parse-0.2.2.drv",
   "/nix/store/38n2bgws261r5df1c65rwrvikcv7xkqj-futures-io-0.3.33.drv",
   "/nix/store/3bixi3y0fph7zy0iyqz0kv0wwaymdhgn-hm_gtk4.0settings.ini.drv",
@@ -233,7 +234,6 @@
   "/nix/store/5sfbf38x7hhizjyn2kks7f4q2jsh9kj1-gix-filter-0.25.0.drv",
   "/nix/store/5vlc8c2ay3vb2g83hjcjcdrpcfbipap2-cargo-package-ryu-1.0.23.drv",
   "/nix/store/5vmm8czygnip70qhnd1n02g5pp4l17li-naga-30.0.0.drv",
-  "/nix/store/5vw0h4x9q99cslhrh3cvjl8rnzjsx75c-home-manager-agent-domains.drv",
   "/nix/store/5wa2biqsk7yh6a5xpqciqdq5m9jaxxi3-cargo-package-anstyle-parse-1.0.0.drv",
   "/nix/store/5x3dfxf9y7zn4qw2xx95bjfx1avdrrfx-cargo-package-fdeflate-0.3.7.drv",
   "/nix/store/5xwxwixf66bc90p3vns8id1gdb5x8n0j-notify-types-1.0.1.drv",
@@ -839,6 +839,7 @@
   "/nix/store/mfxids2jif08v38hqyvx2fg1x4ch7ygj-cargo-package-anstyle-wincon-3.0.11.drv",
   "/nix/store/mg24283cdpds9az9rfriiymkvrknz2fn-cltv-nix-cache.drv",
   "/nix/store/mhf3dk669lxrlcp1jixvc0cjindbrz53-cltv-template.drv",
+  "/nix/store/mhw0g6jaqjsvs1qz9arxxq8jwxk59cyp-home-manager-agent-domains.drv",
   "/nix/store/mjjfx43vbjkfw4ri4n4ixf27p19h2lhy-cargo-package-wit-parser-0.244.0.drv",
   "/nix/store/ml32zsamzfrnhjmhp85wy09rgqyb7mgi-cargo-package-zbus_names-3.0.0.drv",
   "/nix/store/mmg2bbgv5ms46swgd0xnlnsqij2viv1f-rust-analyzer-1.94.1-aarch64-apple-darwin.tar.xz.drv",
@@ -1104,7 +1105,6 @@
   "/nix/store/wfdb6kmplb36h32lfbl053xxj7fk906w-rustfmt-1.94.1-aarch64-apple-darwin.tar.xz.drv",
   "/nix/store/wfdrb8d3pdha9b11s02w5w3w80mnzyja-cargo-package-anstyle-1.0.14.drv",
   "/nix/store/wfzkpnlg2yj847cfw2vmnnd12r416qwb-symphonia-metadata-0.5.5.drv",
-  "/nix/store/wgf5mm8fa3717carm55gf55m1mgl22p1-cargo-vendor-dir.drv",
   "/nix/store/wggkcj2nhlrvz0m100sjlmjb1m6bqyqb-cargo-package-walkdir-2.5.0.drv",
   "/nix/store/wi9ww65cwlj95dhps1ycy4q7pw3gh07j-wgpu-core-30.0.0.drv",
   "/nix/store/wiwljaf87ia1qi7nz7dhx8bhgbs425q8-cargo-package-core2-0.4.0.drv",
@@ -2471,8 +2471,8 @@
   "zune-jpeg-0.4.21"
  ],
  "counts": {
-  "notOnPublicCache": 3174,
-  "publishable": 2411,
+  "notOnPublicCache": 3177,
+  "publishable": 2412,
   "buildTops": 1240
  }
 }
