@@ -2,11 +2,11 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-24T12:59:40Z",
+ "generatedAt": "2026-11-24T18:03:37Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-1234c0525b902261.tar",
-  "sha256": "1234c0525b902261dba73a72bc251cf7217dce6528b3519f9cc52f61bc4bfe92",
+  "asset": "shared-closure-ms-mac-dbcc7ed1ec1e2943.tar",
+  "sha256": "dbcc7ed1ec1e2943db587f25fe4a235a85724738536b637ddcd1337da484b314",
   "bytes": 85534720
  },
  "tops": [
@@ -149,7 +149,6 @@
   "/nix/store/3nh7whz3592yas7gyannc7kpdjx2srxg-web-sys-0.3.97.drv",
   "/nix/store/3nycngaa6ak31f195mh67hbd4m7p9bpq-cltv-script-run.drv",
   "/nix/store/3pl2ms96hhwinxf5kqnqhjga40d3giap-serde_with_macros-3.22.0.drv",
-  "/nix/store/3qiyn84gc4a1vg47disjixawhwmfqs6w-pi-src-with-lock.drv",
   "/nix/store/3rfync7h12271yxp9mz79m6jbv048hi0-cargo-package-tokio-macros-2.7.0.drv",
   "/nix/store/3rqnw0jwwl72z48x3xv2svdlawdi4fsv-type1-encoding-parser-0.1.1.drv",
   "/nix/store/3s6as3pkq8bb9a4g7ikqs4856dp2r9gv-gix-object-0.55.0.drv",
@@ -253,6 +252,7 @@
   "/nix/store/69wazd5rawxcpp5dqhz4jrsqbjxb100m-vimplugin-nord-vim-0.19.0-unstable-2023-05-03.drv",
   "/nix/store/69xiabcpwnz2s7ggf17ahs4nrf0l77yj-claude-code-tools-1.11.0.drv",
   "/nix/store/6a37baj6q3q9jc0ihjiira8cad7wa0ah-coremidi-0.9.1.drv",
+  "/nix/store/6b861mg0jxk6cdwm8nl5kf5mjnb80msi-form_urlencoded-1.2.3.drv",
   "/nix/store/6c9m49sqs2x1gcj931js3jafnjmdd411-cargo-package-wasip2-1.0.2+wasi-0.2.9.drv",
   "/nix/store/6d596cbi13gwg2b25skmc91rwh33v4yj-rpds-py-2026.5.1.drv",
   "/nix/store/6d600l3lj2h5cjk1ij0b6hz32ri648zh-aiohappyeyeballs-2.6.1.drv",
@@ -262,6 +262,7 @@
   "/nix/store/6fp51xp5av1d6277dphlws5b9js899gs-cargo-package-ppv-lite86-0.2.21.drv",
   "/nix/store/6gm52wc35vy773lr7x91ym6phfmv1d0p-portable-atomic-util-0.2.7.drv",
   "/nix/store/6grl8r8wy11jkxr8asgqi30lrgh09p3m-cargo-package-icu_collections-2.2.0.drv",
+  "/nix/store/6h7gxqh0m3cmsvv1pwsi2wi0n32y9l70-url-2.5.9.drv",
   "/nix/store/6hy7n5hzp8hr9jg6qzh70zjbc26qbq5r-rust-std-1.94.1-aarch64-apple-darwin.tar.xz.drv",
   "/nix/store/6ipvqjraliglra140q9js5kpbsn3mj5r-cargo-package-windows_x86_64_gnu-0.52.6.drv",
   "/nix/store/6k7y797har40s404970car4c5cll4rsk-proc-macro-crate-2.0.2.drv",
@@ -807,6 +808,7 @@
   "/nix/store/lxick8fsxn3yjc020lqvkpc1gq5jx47q-imagesize-0.13.0.drv",
   "/nix/store/lxrfxx1sw9ldsnxpih65wrr4yi869aw3-kurbo-0.11.3.drv",
   "/nix/store/lyjykpnmq9gnn6c8f61yd9yfqgc851jf-jev_cli-0.6.2.tar.gz.drv",
+  "/nix/store/lz31d64kqm4l9px6y781bbk885cvpk66-pi-coding-agent-1.6.0.tgz.drv",
   "/nix/store/lzmcaz98pw9dd00khw3x650q24ydscx9-wasm-bindgen-macro-support-0.2.120.drv",
   "/nix/store/m003ha63q9x0rx9xh4cw703g18ci6rp6-cargo-package-rand-0.9.3.drv",
   "/nix/store/m0a2v1j04gd4f8pf882bkz4rqs5p2i2d-gix-transport-0.53.0.drv",
@@ -943,6 +945,7 @@
   "/nix/store/pl358iik8fh0zqfjrrvw7ryh9k1s3is9-httpcore-1.0.9.drv",
   "/nix/store/pm8zgdz0phqicil5318wprbqsifj0ps1-cargo-package-av-scenechange-0.14.1.drv",
   "/nix/store/pncr8f02pq6g8x12i56qddyn7hxzczm6-cltv-nix-status.drv",
+  "/nix/store/pndqalks9fqqjyi1jf6q13mn64n2iha9-rustix-1.1.6.drv",
   "/nix/store/pqpqfsg93xzq5dqpzkkcbphxkmlh2mvm-bytes-1.12.1.drv",
   "/nix/store/prgckmlmr6d436911pancf7i2hll0x58-mio-1.2.2.drv",
   "/nix/store/pwdbrlhmzzjyc7fkvyd5805r6z5qy8mf-futures-0.3.32.drv",
@@ -1907,6 +1910,7 @@
   "filetime-0.2.27",
   "float-cmp-0.9.0",
   "fonttools-4.61.1",
+  "form_urlencoded-1.2.3",
   "frozenlist-1.8.0",
   "futures-0.3.32",
   "futures-channel-0.3.33",
@@ -2156,7 +2160,7 @@
   "pebble-client-0.1.0",
   "phf_codegen-0.13.1",
   "pi-checkout",
-  "pi-src-with-lock",
+  "pi-coding-agent-1.6.0.tgz",
   "pico-args-0.5.0",
   "pillow-12.1.1",
   "platform-tools_r37.0.1-darwin.zip",
@@ -2245,6 +2249,7 @@
   "rustc-1.94.1-aarch64-apple-darwin.tar.xz",
   "rustfmt-1.94.1-aarch64-apple-darwin.tar.xz",
   "rusticata-macros-4.1.0",
+  "rustix-1.1.6",
   "rustls-0.23.38",
   "rustls-0.23.40",
   "rustls-0.23.41",
@@ -2378,6 +2383,7 @@
   "unicode-vo-0.1.0",
   "unsafe-libyaml-0.2.11",
   "unsplash-wallpaper",
+  "url-2.5.9",
   "urllib3-2.6.3",
   "urlpattern-0.3.0",
   "usvg-0.45.1",
@@ -2471,8 +2477,8 @@
   "zune-jpeg-0.4.21"
  ],
  "counts": {
-  "notOnPublicCache": 3177,
-  "publishable": 2412,
-  "buildTops": 1240
+  "notOnPublicCache": 3182,
+  "publishable": 2416,
+  "buildTops": 1243
  }
 }
