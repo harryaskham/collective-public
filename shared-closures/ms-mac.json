@@ -2,11 +2,11 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-25T07:18:56Z",
+ "generatedAt": "2026-11-25T12:30:57Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-245da14007aa071c.tar",
-  "sha256": "245da14007aa071ced710049f7b693682b722ab60ded620cfc6f343e604f928b",
+  "asset": "shared-closure-ms-mac-9579cf53ad5cd2db.tar",
+  "sha256": "9579cf53ad5cd2db76ec7baad8994227c267234c4aec61263901052aeac9241b",
   "bytes": 87121920
  },
  "tops": [
@@ -127,7 +127,6 @@
   "/nix/store/361vwbifsib0g8glm7whnrjscwq25mc1-waypipe-darwin-0.11.2-darwin.1.drv",
   "/nix/store/3721ynmi5jvyvhdj97mllpw7as5qn17y-cargo-package-termtree-0.5.1.drv",
   "/nix/store/37kssjlm6igm2z04s4cdg50gpi6rgx2h-codepage-0.1.2.drv",
-  "/nix/store/380iahi0ns5rzyralgj0hyxd5y1liy2z-cargo-vendor-dir.drv",
   "/nix/store/38fi6qzfs50ri91l9izpvn1x0yi4h13f-cargo-package-utf8parse-0.2.2.drv",
   "/nix/store/38n2bgws261r5df1c65rwrvikcv7xkqj-futures-io-0.3.33.drv",
   "/nix/store/3bixi3y0fph7zy0iyqz0kv0wwaymdhgn-hm_gtk4.0settings.ini.drv",
@@ -236,6 +235,7 @@
   "/nix/store/5yliiqzfkmi47b7aa85rrzam51z4phff-uuid-1.26.1.drv",
   "/nix/store/5z93kk6gsws9rhxdiamy0q1mbzn1y4xh-objc2-ui-kit-0.3.2.drv",
   "/nix/store/61sly1qlwsq7i69vmrr2bxy113hn2arr-hypr.drv",
+  "/nix/store/62sr9c0xphlg22s9l3mk07fsp75kvvya-cargo-vendor-dir.drv",
   "/nix/store/632rr5krxpx7x94hbnwf4gw6m43lainh-xmlwriter-0.1.0.drv",
   "/nix/store/63naqa8w1ib4diakiy1ipnf0hgcc13fz-tmux-mux-save.drv",
   "/nix/store/63w04nhwvq46k9536yv9h6b6qp388z5l-cargo-package-tracing-attributes-0.1.31.drv",
