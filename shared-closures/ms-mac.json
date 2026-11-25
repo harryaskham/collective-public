@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-25T12:30:57Z",
+ "generatedAt": "2026-11-25T17:28:39Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-9579cf53ad5cd2db.tar",
-  "sha256": "9579cf53ad5cd2db76ec7baad8994227c267234c4aec61263901052aeac9241b",
-  "bytes": 87121920
+  "asset": "shared-closure-ms-mac-4f2d8e5400640a13.tar",
+  "sha256": "4f2d8e5400640a136519a253b2fe23e193377663864f7ebed0e6940d88340c84",
+  "bytes": 87080960
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -146,7 +146,6 @@
   "/nix/store/3nh7whz3592yas7gyannc7kpdjx2srxg-web-sys-0.3.97.drv",
   "/nix/store/3nycngaa6ak31f195mh67hbd4m7p9bpq-cltv-script-run.drv",
   "/nix/store/3pl2ms96hhwinxf5kqnqhjga40d3giap-serde_with_macros-3.22.0.drv",
-  "/nix/store/3qiyn84gc4a1vg47disjixawhwmfqs6w-pi-src-with-lock.drv",
   "/nix/store/3rfync7h12271yxp9mz79m6jbv048hi0-cargo-package-tokio-macros-2.7.0.drv",
   "/nix/store/3rqnw0jwwl72z48x3xv2svdlawdi4fsv-type1-encoding-parser-0.1.1.drv",
   "/nix/store/3s6as3pkq8bb9a4g7ikqs4856dp2r9gv-gix-object-0.55.0.drv",
@@ -1067,6 +1066,7 @@
   "/nix/store/wk3ij11plynz8nbzz1qd0ihjvjfrfgc1-cargo-package-zune-jpeg-0.5.15.drv",
   "/nix/store/wkclbidg3imy83ri1581wllqj5w90kvn-bit-set-0.10.0.drv",
   "/nix/store/wknwfhdq7yj1y7h3kxpj4sg9q44sx3s1-cargo-package-futures-channel-0.3.32.drv",
+  "/nix/store/wpsmmwba2rfkxsg9briqxxhnk0490gxc-pi-coding-agent-1.6.1.tgz.drv",
   "/nix/store/wq3cdkkgj3jliw9a4vcilspxc29z297a-switch-to-termux.drv",
   "/nix/store/wq7np6accsp4ifkin07wbxdvya5y014g-cargo-package-bit_field-0.10.3.drv",
   "/nix/store/wrr0jlnj085k4srmzp6mmx03m311b7fd-asn1-rs-derive-0.5.1.drv",
@@ -2083,7 +2083,7 @@
   "pebble-client-0.1.0",
   "phf_codegen-0.13.1",
   "pi-checkout",
-  "pi-src-with-lock",
+  "pi-coding-agent-1.6.1.tgz",
   "pico-args-0.5.0",
   "pillow-12.1.1",
   "platform-tools_r37.0.1-darwin.zip",
@@ -2373,7 +2373,7 @@
  ],
  "counts": {
   "notOnPublicCache": 3181,
-  "publishable": 2425,
+  "publishable": 2424,
   "buildTops": 1188
  }
 }
