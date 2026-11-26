@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-26T13:14:26Z",
+ "generatedAt": "2026-11-26T16:07:09Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-816880d8f83c2719.tar",
-  "sha256": "816880d8f83c2719770543521eb9b0d7fc9c8900e561035f8dab9bcf4fa8c9fe",
-  "bytes": 85565440
+  "asset": "shared-closure-ms-mac-1f2c0f8c608918b0.tar",
+  "sha256": "1f2c0f8c608918b008bd06f2313e5f85c52218d67aab3baafc2b57e8499a78ad",
+  "bytes": 85534720
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -417,7 +417,6 @@
   "/nix/store/afcwv5v6lksqwyf0jm8gblssx78spbjl-cargo-package-log-0.4.29.drv",
   "/nix/store/ag9x254jjzyga9yigg4qcji4x95lc5yi-cltv-nix-help.drv",
   "/nix/store/ahrwrgncq0acfdsc5asfpl0hz1b0r601-cargo-vendor-dir.drv",
-  "/nix/store/ajb824101jqhfsjcfxs1swsiaj7cpfvs-pi-src-with-lock.drv",
   "/nix/store/ajmj7hblxa7ldnvabx72c3imjld9q9hj-cargo-package-fnv-1.0.7.drv",
   "/nix/store/al83jvl01ph2f7nai84asnqfn8jz5grz-cargo-package-windows_x86_64_gnullvm-0.52.6.drv",
   "/nix/store/al96nnz18s75fysanfjxqf8pmkvf5vgh-js-sys-0.3.97.drv",
@@ -1114,6 +1113,7 @@
   "/nix/store/wk3ij11plynz8nbzz1qd0ihjvjfrfgc1-cargo-package-zune-jpeg-0.5.15.drv",
   "/nix/store/wkclbidg3imy83ri1581wllqj5w90kvn-bit-set-0.10.0.drv",
   "/nix/store/wknwfhdq7yj1y7h3kxpj4sg9q44sx3s1-cargo-package-futures-channel-0.3.32.drv",
+  "/nix/store/wpsmmwba2rfkxsg9briqxxhnk0490gxc-pi-coding-agent-1.6.1.tgz.drv",
   "/nix/store/wq3cdkkgj3jliw9a4vcilspxc29z297a-switch-to-termux.drv",
   "/nix/store/wq7np6accsp4ifkin07wbxdvya5y014g-cargo-package-bit_field-0.10.3.drv",
   "/nix/store/wrr0jlnj085k4srmzp6mmx03m311b7fd-asn1-rs-derive-0.5.1.drv",
@@ -2160,7 +2160,7 @@
   "pebble-client-0.1.0",
   "phf_codegen-0.13.1",
   "pi-checkout",
-  "pi-src-with-lock",
+  "pi-coding-agent-1.6.1.tgz",
   "pico-args-0.5.0",
   "pillow-12.1.1",
   "platform-tools_r37.0.1-darwin.zip",
@@ -2478,7 +2478,7 @@
  ],
  "counts": {
   "notOnPublicCache": 3183,
-  "publishable": 2413,
+  "publishable": 2412,
   "buildTops": 1243
  }
 }
