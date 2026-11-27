@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-27T15:00:41Z",
+ "generatedAt": "2026-11-27T15:11:52Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-e9e29c782ff7eddb.tar",
-  "sha256": "e9e29c782ff7eddbf41de3ff2e4174c0ec4833b561605708a17b4562265e7661",
-  "bytes": 87121920
+  "asset": "shared-closure-ms-mac-380efe474e51bf98.tar",
+  "sha256": "380efe474e51bf98a5c401467365773c9e2fed372c1a27e9520141e3dd2b89c9",
+  "bytes": 87091200
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -234,7 +234,6 @@
   "/nix/store/5yliiqzfkmi47b7aa85rrzam51z4phff-uuid-1.26.1.drv",
   "/nix/store/5z93kk6gsws9rhxdiamy0q1mbzn1y4xh-objc2-ui-kit-0.3.2.drv",
   "/nix/store/61sly1qlwsq7i69vmrr2bxy113hn2arr-hypr.drv",
-  "/nix/store/62sr9c0xphlg22s9l3mk07fsp75kvvya-cargo-vendor-dir.drv",
   "/nix/store/632rr5krxpx7x94hbnwf4gw6m43lainh-xmlwriter-0.1.0.drv",
   "/nix/store/63naqa8w1ib4diakiy1ipnf0hgcc13fz-tmux-mux-save.drv",
   "/nix/store/63w04nhwvq46k9536yv9h6b6qp388z5l-cargo-package-tracing-attributes-0.1.31.drv",
@@ -403,7 +402,6 @@
   "/nix/store/afcwv5v6lksqwyf0jm8gblssx78spbjl-cargo-package-log-0.4.29.drv",
   "/nix/store/ag9x254jjzyga9yigg4qcji4x95lc5yi-cltv-nix-help.drv",
   "/nix/store/ahrwrgncq0acfdsc5asfpl0hz1b0r601-cargo-vendor-dir.drv",
-  "/nix/store/ajb824101jqhfsjcfxs1swsiaj7cpfvs-pi-src-with-lock.drv",
   "/nix/store/ajmj7hblxa7ldnvabx72c3imjld9q9hj-cargo-package-fnv-1.0.7.drv",
   "/nix/store/al83jvl01ph2f7nai84asnqfn8jz5grz-cargo-package-windows_x86_64_gnullvm-0.52.6.drv",
   "/nix/store/al96nnz18s75fysanfjxqf8pmkvf5vgh-js-sys-0.3.97.drv",
@@ -905,6 +903,7 @@
   "/nix/store/pdxv72j4cvxkb0zgsqna6m88pq527cqf-schemars-0.8.22.drv",
   "/nix/store/pf904i92lhcvdi4cdafdplmw7fp7bdgz-tmux-mux-show.drv",
   "/nix/store/pfrf6mg58s3irpf6r5n05cza5fb020xk-cargo-package-block-buffer-0.10.4.drv",
+  "/nix/store/pg1mhnm0cmzis67yqcr4wbmq1ybqjkv8-cargo-vendor-dir.drv",
   "/nix/store/pg2hvdqf55v2r327bl5sr5qb4pfy7b1k-commandlinetools-mac_arm64-15859902_latest.zip.drv",
   "/nix/store/pi8is5ypd7ki8xbzhzhv1imqrx12jizs-aiosignal-1.4.0.drv",
   "/nix/store/pia196c64nqc5qkzbd58w66wzpzazlxb-cargo-package-async-process-2.5.0.drv",
@@ -1067,6 +1066,7 @@
   "/nix/store/wk3ij11plynz8nbzz1qd0ihjvjfrfgc1-cargo-package-zune-jpeg-0.5.15.drv",
   "/nix/store/wkclbidg3imy83ri1581wllqj5w90kvn-bit-set-0.10.0.drv",
   "/nix/store/wknwfhdq7yj1y7h3kxpj4sg9q44sx3s1-cargo-package-futures-channel-0.3.32.drv",
+  "/nix/store/wpsmmwba2rfkxsg9briqxxhnk0490gxc-pi-coding-agent-1.6.1.tgz.drv",
   "/nix/store/wq3cdkkgj3jliw9a4vcilspxc29z297a-switch-to-termux.drv",
   "/nix/store/wq7np6accsp4ifkin07wbxdvya5y014g-cargo-package-bit_field-0.10.3.drv",
   "/nix/store/wrr0jlnj085k4srmzp6mmx03m311b7fd-asn1-rs-derive-0.5.1.drv",
@@ -2083,7 +2083,7 @@
   "pebble-client-0.1.0",
   "phf_codegen-0.13.1",
   "pi-checkout",
-  "pi-src-with-lock",
+  "pi-coding-agent-1.6.1.tgz",
   "pico-args-0.5.0",
   "pillow-12.1.1",
   "platform-tools_r37.0.1-darwin.zip",
@@ -2373,7 +2373,7 @@
  ],
  "counts": {
   "notOnPublicCache": 3183,
-  "publishable": 2423,
+  "publishable": 2422,
   "buildTops": 1188
  }
 }
