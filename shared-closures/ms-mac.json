@@ -2,11 +2,11 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-27T19:17:18Z",
+ "generatedAt": "2026-11-27T20:09:22Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-fac15e2b9555100b.tar",
-  "sha256": "fac15e2b9555100b629167bb9062019a6d94d58e08cccaac91254d4368390434",
+  "asset": "shared-closure-ms-mac-4fd4c5d879325712.tar",
+  "sha256": "4fd4c5d879325712d60e87253a9fcff97c3c918124e5416a1a3cbc3050db80ce",
   "bytes": 87121920
  },
  "tops": [
@@ -260,6 +260,7 @@
   "/nix/store/6k7y797har40s404970car4c5cll4rsk-proc-macro-crate-2.0.2.drv",
   "/nix/store/6kjypki2qswzcmlwjfnm91msnnlm1y78-symphonia-codec-vorbis-0.5.5.drv",
   "/nix/store/6lfhsk7mb3crij47aizld3x7lrv63105-cltv-template-help.drv",
+  "/nix/store/6m9giqlj3ddxv2dcnf1l1li8n87dq426-cargo-vendor-dir.drv",
   "/nix/store/6nk9ppskp52ddpv7dn4ngab4r9xl5ihh-cltv-file-xdg.drv",
   "/nix/store/6pb89hd526af1r7i66g67yl7j8g7i32a-spirv-0.4.0+sdk-1.4.341.0.drv",
   "/nix/store/6pwy444aaa7ffzslxdlbmq6pb0abipn2-cargo-package-gif-0.14.1.drv",
@@ -904,7 +905,6 @@
   "/nix/store/pdxv72j4cvxkb0zgsqna6m88pq527cqf-schemars-0.8.22.drv",
   "/nix/store/pf904i92lhcvdi4cdafdplmw7fp7bdgz-tmux-mux-show.drv",
   "/nix/store/pfrf6mg58s3irpf6r5n05cza5fb020xk-cargo-package-block-buffer-0.10.4.drv",
-  "/nix/store/pg1mhnm0cmzis67yqcr4wbmq1ybqjkv8-cargo-vendor-dir.drv",
   "/nix/store/pg2hvdqf55v2r327bl5sr5qb4pfy7b1k-commandlinetools-mac_arm64-15859902_latest.zip.drv",
   "/nix/store/pi8is5ypd7ki8xbzhzhv1imqrx12jizs-aiosignal-1.4.0.drv",
   "/nix/store/pia196c64nqc5qkzbd58w66wzpzazlxb-cargo-package-async-process-2.5.0.drv",
