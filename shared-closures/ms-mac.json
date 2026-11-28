@@ -2,12 +2,12 @@
  "schema": 1,
  "machine": "ms-mac",
  "system": "aarch64-darwin",
- "generatedAt": "2026-11-28T03:17:57Z",
+ "generatedAt": "2026-11-28T06:31:25Z",
  "nixpkgs": "locked",
  "bundle": {
-  "asset": "shared-closure-ms-mac-9001cc4059a3c499.tar",
-  "sha256": "9001cc4059a3c4990850fb4361c4d79ded239f7dc50a60a58d9732363a55249c",
-  "bytes": 87091200
+  "asset": "shared-closure-ms-mac-d194a0edc520cd6f.tar",
+  "sha256": "d194a0edc520cd6fe6992c6dc8c74f6df09f70c57c73da123ecfcc92b33d6534",
+  "bytes": 87121920
  },
  "tops": [
   "/nix/store/02d4gp6v1r76gksr8kbv2g2cddc5vilb-web-sys-0.3.104.drv",
@@ -579,6 +579,7 @@
   "/nix/store/gf8qzp1bak6n0fj3p5ipkvknkiw1smnm-cargo-package-serde_json-1.0.149.drv",
   "/nix/store/gfszj5f6zivbw8ra6s4d6gmsh06z1p4g-gix-ignore-0.19.1.drv",
   "/nix/store/ggkwkwv4y62dnq2m6d02zqrqkaadixs6-cargo-package-ordered-stream-0.2.0.drv",
+  "/nix/store/gh840841brl70nrik7w4wj4lb286rzzk-pi-src-with-lock.drv",
   "/nix/store/gih1bf0xfvx7616jrcq5xjq480kix6f0-data-url-0.3.2.drv",
   "/nix/store/gipkkks7px7kfzglhyc97fxcz18sd3kj-rustls-0.23.43.drv",
   "/nix/store/gj14hrwp3nj6b15zvrb5kiphb97ym5mb-string_cache_codegen-0.6.1.drv",
@@ -976,7 +977,6 @@
   "/nix/store/rmnai4g93h14rciygsml0wxvfcfap4hg-cargo-package-rayon-1.11.0.drv",
   "/nix/store/rnqb911gzq9x3vs691mdd4pivxmgpzb0-cltv-desktop-wm.drv",
   "/nix/store/rnys5mm3m56035nsp5nln9h1xj2d54kc-soup3-sys-0.5.0.drv",
-  "/nix/store/rpmgdjlcv538s856y32f9mj6lsmx46p3-pi-coding-agent-1.7.0.tgz.drv",
   "/nix/store/rq2v3jshr8pm8psh4jym6vglwyriadp3-x509-parser-0.16.0.drv",
   "/nix/store/rqvsim0yklwdkbivqyhpamxkyzrxc4fz-futures-core-0.3.33.drv",
   "/nix/store/rxl27jlvhf44zwmspmz2g37fkjz3gdlg-cargo-package-r-efi-5.3.0.drv",
@@ -2083,7 +2083,7 @@
   "pebble-client-0.1.0",
   "phf_codegen-0.13.1",
   "pi-checkout",
-  "pi-coding-agent-1.7.0.tgz",
+  "pi-src-with-lock",
   "pico-args-0.5.0",
   "pillow-12.1.1",
   "platform-tools_r37.0.1-darwin.zip",
@@ -2373,7 +2373,7 @@
  ],
  "counts": {
   "notOnPublicCache": 3183,
-  "publishable": 2422,
+  "publishable": 2423,
   "buildTops": 1188
  }
 }
